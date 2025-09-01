@@ -1,0 +1,147 @@
+@layer components {
+  /* Smart Content Zones - Enhanced Legibility */
+  .content-plate-light {
+    backdrop-filter: blur(32px) saturate(110%) brightness(105%);
+    background: hsl(var(--background) / 0.25);
+    border: 1px solid hsl(var(--border) / 0.20);
+    box-shadow: 0 2px 8px hsl(240 15% 15% / 0.05),
+      inset 0 1px 0 hsl(var(--foreground) / 0.03);
+  }
+
+  .content-plate-medium {
+    backdrop-filter: blur(40px) saturate(115%) brightness(106%);
+    background: hsl(var(--background) / 0.45);
+    border: 1px solid hsl(var(--border) / 0.25);
+    box-shadow: 0 4px 12px hsl(240 15% 15% / 0.06),
+      inset 0 1px 0 hsl(var(--foreground) / 0.04);
+  }
+
+  .content-plate-heavy {
+    backdrop-filter: blur(48px) saturate(120%) brightness(107%);
+    background: hsl(var(--background) / 0.65);
+    border: 1px solid hsl(var(--border) / 0.30);
+    box-shadow: 0 6px 16px hsl(240 15% 15% / 0.08),
+      inset 0 1px 0 hsl(var(--foreground) / 0.05),
+      inset 0 -1px 0 hsl(var(--foreground) / 0.02);
+  }
+
+  .reading-zone-glass {
+    backdrop-filter: blur(56px) saturate(125%) brightness(108%);
+    background: hsl(var(--background) / 0.80);
+    border: 1px solid hsl(var(--border) / 0.35);
+    box-shadow: 0 8px 20px hsl(240 15% 15% / 0.10),
+      inset 0 2px 0 hsl(var(--foreground) / 0.06);
+  }
+
+  /* Dark Mode Content Zones */
+  .dark .content-plate-light {
+    backdrop-filter: blur(24px) saturate(160%) brightness(110%);
+    background: hsl(var(--background) / 0.40);
+    border: 1px solid hsl(var(--border) / 0.30);
+    box-shadow: 0 2px 8px hsl(var(--foreground) / 0.05),
+      inset 0 1px 0 hsl(var(--foreground) / 0.06);
+  }
+
+  .dark .content-plate-medium {
+    backdrop-filter: blur(32px) saturate(165%) brightness(115%);
+    background: hsl(var(--background) / 0.60);
+    border: 1px solid hsl(var(--border) / 0.40);
+    box-shadow: 0 4px 12px hsl(var(--foreground) / 0.08),
+      inset 0 1px 0 hsl(var(--foreground) / 0.08);
+  }
+
+  .dark .content-plate-heavy {
+    backdrop-filter: blur(40px) saturate(170%) brightness(120%);
+    background: hsl(var(--background) / 0.75);
+    border: 1px solid hsl(var(--border) / 0.50);
+    box-shadow: 0 6px 16px hsl(var(--foreground) / 0.10),
+      inset 0 2px 0 hsl(var(--foreground) / 0.10),
+      inset 0 -1px 0 hsl(var(--foreground) / 0.04);
+  }
+
+  .dark .reading-zone-glass {
+    backdrop-filter: blur(48px) saturate(175%) brightness(125%);
+    background: hsl(var(--background) / 0.85);
+    border: 1px solid hsl(var(--border) / 0.60);
+    box-shadow: 0 8px 20px hsl(var(--foreground) / 0.12),
+      inset 0 2px 0 hsl(var(--foreground) / 0.12);
+  }
+
+  /* Smart StatCard Enhancement */
+  .stat-card-enhanced {
+    backdrop-filter: blur(44px) saturate(115%) brightness(106%);
+    background: hsl(var(--card) / 0.60);
+    border: 1px solid hsl(var(--border) / 0.30);
+    box-shadow: 0 4px 16px hsl(240 15% 15% / 0.08),
+      inset 0 1px 0 hsl(var(--foreground) / 0.05);
+  }
+
+  .dark .stat-card-enhanced {
+    backdrop-filter: blur(36px) saturate(170%) brightness(118%);
+    background: hsl(var(--card) / 0.70);
+    border: 1px solid hsl(var(--border) / 0.45);
+    box-shadow: 0 4px 16px hsl(var(--foreground) / 0.10),
+      inset 0 1px 0 hsl(var(--foreground) / 0.08);
+  }
+
+  /* Icon Container Enhancement */
+  .icon-container-enhanced {
+    backdrop-filter: blur(24px) saturate(110%) brightness(105%);
+    background: hsl(var(--muted) / 0.45);
+    border: 1px solid hsl(var(--border) / 0.25);
+    box-shadow: 0 2px 8px hsl(240 15% 15% / 0.06),
+      inset 0 1px 0 hsl(var(--foreground) / 0.04);
+  }
+
+  .dark .icon-container-enhanced {
+    backdrop-filter: blur(20px) saturate(150%) brightness(110%);
+    background: hsl(var(--muted) / 0.55);
+    border: 1px solid hsl(var(--border) / 0.35);
+    box-shadow: 0 2px 8px hsl(var(--foreground) / 0.08),
+      inset 0 1px 0 hsl(var(--foreground) / 0.06);
+  }
+
+  /* Progressive Enhancement - Fallbacks */
+  @supports not (backdrop-filter: blur(1px)) {
+    .content-plate-light,
+    .content-plate-medium,
+    .content-plate-heavy,
+    .reading-zone-glass,
+    .stat-card-enhanced,
+    .icon-container-enhanced {
+      background: hsl(var(--background) / 0.95);
+    }
+    
+    .dark .content-plate-light,
+    .dark .content-plate-medium,
+    .dark .content-plate-heavy,
+    .dark .reading-zone-glass,
+    .dark .stat-card-enhanced,
+    .dark .icon-container-enhanced {
+      background: hsl(var(--background) / 0.90);
+    }
+  }
+
+  /* High Contrast Mode Support */
+  @media (prefers-contrast: high) {
+    .content-plate-light,
+    .content-plate-medium,
+    .content-plate-heavy,
+    .reading-zone-glass,
+    .stat-card-enhanced,
+    .icon-container-enhanced {
+      background: hsl(var(--background) / 0.90);
+      border: 2px solid hsl(var(--border));
+    }
+  }
+
+  /* Reduced Transparency Preference */
+  @media (prefers-reduced-transparency: reduce) {
+    .content-plate-light { background: hsl(var(--background) / 0.95); }
+    .content-plate-medium { background: hsl(var(--background) / 0.96); }
+    .content-plate-heavy { background: hsl(var(--background) / 0.97); }
+    .reading-zone-glass { background: hsl(var(--background) / 0.98); }
+    .stat-card-enhanced { background: hsl(var(--card) / 0.95); }
+    .icon-container-enhanced { background: hsl(var(--muted) / 0.90); }
+  }
+}

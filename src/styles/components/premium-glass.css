@@ -1,0 +1,189 @@
+@layer components {
+  /* Premium Typography for Glass Backgrounds */
+  .text-glass-enhanced {
+    @apply text-foreground/95 dark:text-foreground/90 font-medium
+           drop-shadow-sm dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)];
+  }
+  
+  .text-glass-primary {
+    @apply text-foreground dark:text-foreground font-semibold
+           drop-shadow-sm dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)];
+  }
+  
+  .text-glass-premium {
+    @apply text-foreground font-semibold
+           drop-shadow-[0_1px_3px_rgba(0,0,0,0.2)]
+           dark:drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)];
+  }
+  
+  /* Content Background Plates for Enhanced Legibility */
+  .content-plate-light {
+    @apply bg-[hsl(var(--background)/0.44)] dark:bg-[hsl(var(--background)/0.64)] backdrop-blur-sm
+           rounded-xl p-4 border border-border/20 dark:border-white/[0.1];
+  }
+
+  .content-plate-medium {
+    @apply bg-[hsl(var(--background)/0.64)] dark:bg-[hsl(var(--background)/0.84)] backdrop-blur-md
+           rounded-xl p-6 border border-border/30 dark:border-white/[0.15]
+           shadow-lg shadow-[hsl(var(--foreground)/0.05)] dark:shadow-[hsl(var(--primary)/0.1)];
+  }
+
+  .content-plate-heavy {
+    @apply bg-[hsl(var(--background)/0.84)] dark:bg-[hsl(var(--background)/0.94)] backdrop-blur-lg
+           rounded-2xl p-6 border border-border/40 dark:border-white/20
+           shadow-xl shadow-[hsl(var(--foreground)/0.08)] dark:shadow-[hsl(var(--primary)/0.15)];
+  }
+  
+  /* Smart Interactive States with Enhanced Contrast */
+  .glass-interactive {
+    @apply transition-all duration-300 cursor-pointer
+           hover:bg-[hsl(var(--background)/0.15)] dark:hover:bg-white/20
+           hover:border-border/40 dark:hover:border-white/[0.3]
+           active:bg-[hsl(var(--background)/0.2)] dark:active:bg-white/[0.25]
+           focus:outline-none focus:ring-2 focus:ring-primary/30
+           focus:border-primary/40;
+  }
+  
+  .glass-interactive-premium {
+    @apply transition-all duration-300 cursor-pointer
+           hover:bg-primary/10 dark:hover:bg-primary/15
+           hover:border-primary/40 dark:hover:border-primary/[0.35]
+           hover:shadow-xl hover:shadow-primary/20 dark:hover:shadow-primary/30
+           active:bg-primary/15 dark:active:bg-primary/20
+           focus:outline-none focus:ring-2 focus:ring-primary/40
+           focus:border-primary/50;
+  }
+  
+  /* Contextual Glass Borders that Adapt */
+  .border-glass-adaptive {
+    @apply border border-border/[0.25] dark:border-white/20
+           hover:border-border/40 dark:hover:border-white/[0.3]
+           focus-within:border-primary/40 dark:focus-within:border-primary/[0.35]
+           transition-colors duration-300;
+  }
+  
+  /* Ambient Lighting Effects */
+  .glass-ambient-warm {
+    @apply relative;
+  }
+  
+  .glass-ambient-warm::before {
+    content: '';
+    @apply absolute -inset-1 bg-gradient-to-r from-primary/10 via-accent/5 to-primary/10
+           dark:from-primary/15 dark:via-accent/[0.08] dark:to-primary/15
+           rounded-3xl opacity-0 transition-opacity duration-500 -z-10;
+  }
+  
+  .glass-ambient-warm:hover::before {
+    @apply opacity-100;
+  }
+  
+  /* Depth and Layering System */
+  .glass-layer-base {
+    @apply relative z-10;
+  }
+  
+  .glass-layer-elevated {
+    @apply relative z-20;
+  }
+  
+  .glass-layer-floating {
+    @apply relative z-30;
+  }
+  
+  .glass-layer-modal {
+    @apply relative z-40;
+  }
+  
+  /* Micro-interactions for Premium Feel */
+  .glass-micro-lift {
+    @apply transition-all duration-300 
+           hover:scale-[1.02] hover:-translate-y-1
+           hover:shadow-2xl hover:shadow-foreground/10 dark:hover:shadow-primary/20;
+  }
+  
+  .glass-micro-glow {
+    @apply transition-all duration-500
+           hover:shadow-[0_0_20px_rgba(var(--primary),0.15)]
+           dark:hover:shadow-[0_0_30px_rgba(var(--primary),0.25)];
+  }
+  
+  /* Enhanced Reading Zones */
+  .reading-zone-glass {
+    @apply bg-[hsl(var(--background)/0.19)] dark:bg-[hsl(220_15%_35%/0.22)] backdrop-blur-lg
+           border border-border/30 dark:border-[hsl(220_15%_45%/0.25)]
+           rounded-2xl p-8 relative overflow-hidden
+           shadow-xl shadow-[hsl(var(--foreground)/0.05)] dark:shadow-[hsl(var(--primary)/0.1)];
+  }
+  
+  .reading-zone-glass::before {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-b 
+           from-[hsl(var(--background)/0.08)] via-transparent to-[hsl(var(--background)/0.04)]
+           dark:from-[hsl(220_15%_40%/0.06)] dark:via-transparent dark:to-[hsl(220_15%_35%/0.03)]
+           pointer-events-none;
+  }
+  
+  /* Premium Button Variants for Glass */
+  .btn-glass-primary {
+    @apply bg-primary/80 dark:bg-primary/90 backdrop-blur-md
+           text-primary-foreground font-semibold
+           border border-primary/30 dark:border-primary/40
+           rounded-xl px-6 py-3 shadow-lg shadow-primary/25
+           transition-all duration-300
+           hover:bg-primary/90 dark:hover:bg-primary
+           hover:shadow-xl hover:shadow-primary/35
+           hover:scale-105 active:scale-95;
+  }
+  
+  .btn-glass-secondary {
+    @apply bg-[hsl(var(--background)/0.6)] dark:bg-white/20 backdrop-blur-md
+           text-foreground font-medium
+           border border-border/40 dark:border-white/[0.3]
+           rounded-xl px-6 py-3 shadow-lg
+           transition-all duration-300
+           hover:bg-[hsl(var(--background)/0.8)] dark:hover:bg-white/[0.3]
+           hover:border-border/[0.6] dark:hover:border-white/40
+           hover:shadow-xl hover:scale-105 active:scale-95;
+  }
+  
+  /* Enterprise-Grade Polish Effects */
+  .glass-enterprise {
+    @apply relative overflow-hidden rounded-2xl
+           bg-[hsl(var(--background)/0.12)] dark:bg-white/[0.18] backdrop-blur-xl
+           border border-border/[0.35] dark:border-white/[0.28]
+           shadow-2xl shadow-[hsl(var(--foreground)/0.08)] dark:shadow-[hsl(var(--primary)/0.15)];
+  }
+  
+  .glass-enterprise::before {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-br 
+           from-primary/5 via-transparent to-accent/[0.03]
+           dark:from-primary/[0.08] dark:via-transparent dark:to-accent/5
+           opacity-80;
+  }
+  
+  .glass-enterprise::after {
+    content: '';
+    @apply absolute inset-[1px] rounded-2xl
+           bg-gradient-to-r from-white/10 via-transparent to-white/5
+           dark:from-white/5 dark:via-transparent dark:to-white/[0.03]
+           pointer-events-none;
+  }
+  
+  /* Chromatic Aberration Effect for High-End Feel */
+  .glass-chromatic {
+    @apply relative;
+  }
+  
+  .glass-chromatic::before {
+    content: '';
+    @apply absolute inset-0 rounded-[inherit] opacity-0
+           shadow-[0_0_20px_rgba(255,0,100,0.1),0_0_40px_rgba(0,100,255,0.1)]
+           transition-opacity duration-700;
+  }
+  
+  .glass-chromatic:hover::before {
+    @apply opacity-100;
+  }
+}

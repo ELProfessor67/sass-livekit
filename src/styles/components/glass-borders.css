@@ -1,0 +1,37 @@
+@layer utilities {
+  /* Subtle Border Utility Classes for Glass Components */
+  
+  /* Ultra-thin borders for subtle edge definition */
+  .border-glass-subtle {
+    border: 1px solid hsl(var(--glass-border-subtle));
+  }
+  
+  .border-glass-medium {
+    border: 1px solid hsl(var(--glass-border-medium));
+  }
+  
+  /* Hover state border enhancements */
+  .border-glass-hover:hover {
+    border-color: hsl(var(--glass-border-medium));
+  }
+  
+  /* Adaptive borders that become more visible on interaction */
+  .border-glass-adaptive {
+    border: 1px solid hsl(var(--glass-border-subtle));
+    transition: border-color 0.3s ease;
+  }
+  
+  .border-glass-adaptive:hover,
+  .border-glass-adaptive:focus-within {
+    border-color: hsl(var(--glass-border-medium));
+  }
+  
+  /* Special borders for premium glass components */
+  .border-glass-premium {
+    border: 1px solid hsl(var(--primary) / 0.2);
+  }
+  
+  .dark .border-glass-premium {
+    border-color: hsl(var(--primary) / 0.3);
+  }
+}

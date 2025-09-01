@@ -1,0 +1,83 @@
+
+@import "./styles/design-tokens.css";
+@import "./styles/base.css";
+@import "./styles/components/metrics.css";
+@import "./styles/components/charts.css";
+@import "./styles/components/layout.css";
+@import "./styles/components/glass.css";
+@import "./styles/components/glass-borders.css";
+@import "./styles/components/liquid-glass.css";
+@import "./styles/components/premium-glass.css";
+@import "./styles/components/ui-themes.css";
+@import "./styles/components/content-zones.css";
+@import "./styles/animations.css";
+@import "./styles/navigation.css";
+
+/* Theme-aware transcript styles */
+.glass-ui .transcript-message-user {
+  @apply backdrop-blur-lg bg-white/[0.08] border border-white/[0.12] rounded-lg;
+}
+
+.glass-ui .transcript-message-agent {
+  @apply backdrop-blur-lg bg-white/[0.12] border border-white/[0.15] rounded-lg;
+}
+
+.minimal-ui .transcript-message-user {
+  @apply bg-card border border-border rounded-3xl;
+}
+
+.minimal-ui .transcript-message-agent {
+  @apply bg-muted border border-border rounded-3xl;
+}
+
+.dark .transcript-message-user,
+.dark .transcript-message-agent {
+  @apply text-foreground/90 font-light;
+}
+
+/* Theme-aware calendar styles */
+.glass-ui .rdp {
+  @apply backdrop-blur-2xl bg-white/[0.03] border border-white/[0.12] rounded-xl text-foreground 
+         shadow-[0_32px_80px_rgba(0,0,0,0.4),0_8px_32px_rgba(255,255,255,0.1)_inset,0_0_0_1px_rgba(255,255,255,0.05)_inset];
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.minimal-ui .rdp {
+  @apply bg-card border border-border rounded-3xl text-foreground shadow-xl;
+}
+
+.rdp-day_selected {
+  @apply bg-gradient-to-br from-primary to-primary/80 
+         text-primary-foreground font-medium rounded-lg
+         shadow-[0_4px_16px_rgba(255,74,113,0.4)] !important;
+}
+
+.glass-ui .rdp-day_range_middle {
+  @apply bg-primary/10 text-foreground backdrop-blur-sm bg-white/[0.05] rounded-lg !important;
+}
+
+.minimal-ui .rdp-day_range_middle {
+  @apply bg-primary/10 text-foreground rounded-2xl !important;
+}
+
+.rdp-day_range_start, 
+.rdp-day_range_end {
+  @apply bg-gradient-to-br from-primary to-primary/80 
+         text-primary-foreground font-medium rounded-lg
+         shadow-[0_4px_16px_rgba(255,74,113,0.4)] !important;
+}
+
+/* Theme-aware popover content */
+.glass-ui [data-radix-popper-content-wrapper] {
+  @apply backdrop-blur-xl !important;
+}
+
+.glass-ui .popover-content-calendar {
+  @apply backdrop-blur-xl bg-white/[0.12] border border-white/[0.15] rounded-xl
+         shadow-[0_20px_60px_rgba(0,0,0,0.25)];
+}
+
+.minimal-ui .popover-content-calendar {
+  @apply bg-card border border-border rounded-3xl shadow-2xl;
+}

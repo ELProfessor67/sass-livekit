@@ -1,0 +1,33 @@
+
+@layer components {
+  .metric-card {
+    @apply rounded-lg border bg-card text-card-foreground 
+           shadow-sm hover:shadow-md transition-all duration-500
+           hover:border-primary/20 dark:hover:border-primary/20
+           hover:bg-gradient-to-b hover:from-card hover:to-card/95
+           dark:hover:from-black/95 dark:hover:to-black;
+  }
+
+  .metric-value {
+    @apply text-3xl font-extralight tracking-tight
+           transition-all duration-300 
+           group-hover:text-primary
+           group-hover:scale-[1.02] transform-gpu;
+  }
+
+  .metric-label {
+    @apply text-sm font-medium text-muted-foreground;
+  }
+
+  .metric-trend {
+    @apply text-sm font-medium flex items-center gap-0.5;
+  }
+
+  .metric-trend-positive {
+    @apply text-success;
+  }
+
+  .metric-trend-negative {
+    @apply text-destructive;
+  }
+}

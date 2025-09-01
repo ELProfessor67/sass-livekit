@@ -1,0 +1,137 @@
+
+@layer components {
+  /* Glass Morphism Base Classes - Enhanced for Glass UI Theme */
+  .glass-ui .glass-card {
+    @apply backdrop-blur-2xl bg-gradient-to-br from-card/30 to-card/20
+           border border-white/25 dark:border-white/20
+           shadow-[0_20px_60px_rgba(0,0,0,0.15),0_8px_32px_rgba(255,255,255,0.12)_inset]
+           dark:shadow-[0_20px_60px_rgba(0,0,0,0.35),0_8px_32px_rgba(255,255,255,0.08)_inset]
+           transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_32px_80px_rgba(0,0,0,0.25)];
+  }
+
+  .glass-ui .glass-card-premium {
+    @apply backdrop-blur-3xl bg-gradient-to-br from-card/40 to-card/25
+           border border-primary/30 dark:border-primary/25
+           shadow-[0_32px_80px_rgba(255,74,113,0.2),0_16px_48px_rgba(0,0,0,0.25),0_8px_32px_rgba(255,255,255,0.15)_inset]
+           dark:shadow-[0_32px_80px_rgba(255,74,113,0.3),0_16px_48px_rgba(0,0,0,0.45),0_8px_32px_rgba(255,255,255,0.08)_inset]
+           relative overflow-hidden transition-all duration-500 hover:scale-[1.02];
+  }
+
+  .glass-ui .glass-card-premium::before {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent
+           opacity-0 transition-opacity duration-500;
+  }
+
+  .glass-ui .glass-card-premium:hover::before {
+    @apply opacity-100;
+  }
+
+  /* Liquid Glass Hover Effects - Enhanced for Glass UI */
+  .glass-ui .liquid-hover {
+    @apply transition-all duration-500 ease-out
+           hover:scale-[1.03] hover:shadow-[0_40px_120px_rgba(255,74,113,0.25)]
+           dark:hover:shadow-[0_40px_120px_rgba(255,74,113,0.35)]
+           hover:border-primary/40 dark:hover:border-primary/35
+           hover:backdrop-blur-3xl;
+  }
+
+  /* Glass Surface Materials - Enhanced Glass UI Only */
+  .glass-ui .glass-surface-light {
+    @apply bg-gradient-to-br from-white/25 to-white/10
+           border border-white/30 dark:border-white/20
+           backdrop-blur-xl;
+  }
+
+  .glass-ui .glass-surface-medium {
+    @apply bg-gradient-to-br from-card/35 to-card/20
+           border border-white/25 dark:border-white/15
+           backdrop-blur-2xl;
+  }
+
+  .glass-ui .glass-surface-heavy {
+    @apply bg-gradient-to-br from-card/45 to-card/30
+           border border-white/20 dark:border-white/15
+           backdrop-blur-3xl;
+  }
+
+  /* Ambient Lighting Effects - Glass UI Only */
+  .glass-ui .ambient-glow {
+    @apply relative;
+  }
+
+  .glass-ui .ambient-glow::after {
+    content: '';
+    @apply absolute -inset-0.5 bg-gradient-to-r from-primary/20 via-primary/5 to-primary/20
+           rounded-[inherit] blur-sm opacity-0 transition-opacity duration-300 -z-10;
+  }
+
+  .glass-ui .ambient-glow:hover::after {
+    @apply opacity-100;
+  }
+
+  /* Premium Typography Effects - Glass UI Only */
+  .glass-ui .text-glass {
+    @apply text-transparent bg-clip-text bg-gradient-to-br
+           from-foreground via-foreground/90 to-foreground/70;
+  }
+
+  .glass-ui .text-premium-glow {
+    @apply text-transparent bg-clip-text bg-gradient-to-br
+           from-primary via-primary/90 to-primary/70
+           drop-shadow-[0_0_8px_rgba(255,74,113,0.3)];
+  }
+
+  /* Frosted Glass Backgrounds - Glass UI Only */
+  .glass-ui .frosted-glass {
+    @apply backdrop-blur-md bg-gradient-to-br from-background/80 to-background/60
+           border border-white/10 dark:border-white/10;
+  }
+
+  /* Reflective Surfaces - Glass UI Only */
+  .glass-ui .reflective-surface {
+    @apply relative overflow-hidden;
+  }
+
+  .glass-ui .reflective-surface::before {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-transparent
+           transform -skew-x-12 translate-x-full opacity-0 transition-all duration-700;
+  }
+
+  .glass-ui .reflective-surface:hover::before {
+    @apply -translate-x-full opacity-100;
+  }
+
+  /* Spring Animation Utilities - Available in both themes */
+  .spring-bounce {
+    transition: transform 300ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  }
+
+  .spring-elastic {
+    transition: all 500ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  /* Liquid Button Effects - Glass UI Only */
+  .glass-ui .liquid-button {
+    @apply relative overflow-hidden backdrop-blur-sm
+           bg-gradient-to-r from-primary/90 to-primary/80
+           border border-primary/30 
+           shadow-[0_4px_20px_rgba(255,74,113,0.3)]
+           transition-all duration-300;
+  }
+
+  .glass-ui .liquid-button::before {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-r from-primary to-primary/90
+           translate-y-full transition-transform duration-300;
+  }
+
+  .glass-ui .liquid-button:hover::before {
+    @apply translate-y-0;
+  }
+
+  .glass-ui .liquid-button > * {
+    @apply relative z-10;
+  }
+}

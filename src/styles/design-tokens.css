@@ -1,0 +1,204 @@
+
+@layer base {
+  :root {
+    /* Typography Scale */
+    --text-xs: 0.75rem;      /* 12px */
+    --text-sm: 0.875rem;     /* 14px */
+    --text-base: 1rem;       /* 16px */
+    --text-lg: 1.125rem;     /* 18px */
+    --text-xl: 1.25rem;      /* 20px */
+    --text-2xl: 1.5rem;      /* 24px */
+    --text-3xl: 1.875rem;    /* 30px */
+    --text-4xl: 2.25rem;     /* 36px */
+    
+    /* Font Weight Scale */
+    --font-thin: 100;
+    --font-extralight: 200;
+    --font-light: 300;
+    --font-normal: 400;
+    --font-medium: 500;
+    --font-semibold: 600;
+    --font-bold: 700;
+    
+    /* Line Height Scale */
+    --leading-tight: 1.25;
+    --leading-snug: 1.375;
+    --leading-normal: 1.5;
+    --leading-relaxed: 1.625;
+    --leading-loose: 2;
+    
+    /* Consistent Spacing Scale */
+    --space-xs: 0.25rem;     /* 4px */
+    --space-sm: 0.5rem;      /* 8px */
+    --space-md: 0.75rem;     /* 12px */
+    --space-lg: 1rem;        /* 16px */
+    --space-xl: 1.5rem;      /* 24px */
+    --space-2xl: 2rem;       /* 32px */
+    --space-3xl: 3rem;       /* 48px */
+    --space-4xl: 4rem;       /* 64px */
+    
+    /* Border Radius Scale */
+    --radius-xs: 0.125rem;   /* 2px */
+    --radius-sm: 0.25rem;    /* 4px */
+    --radius-md: 0.375rem;   /* 6px */
+    --radius-lg: 0.5rem;     /* 8px */
+    --radius-xl: 0.75rem;    /* 12px */
+    --radius-2xl: 1rem;      /* 16px */
+    --radius-3xl: 1.5rem;    /* 24px */
+    --radius-full: 9999px;
+    
+    /* Opacity Scale */
+    --opacity-subtle: 0.05;
+    --opacity-light: 0.10;
+    --opacity-medium: 0.20;
+    --opacity-strong: 0.40;
+    --opacity-heavy: 0.60;
+    --opacity-opaque: 0.80;
+    
+    /* Clean Light Mode Glass System */
+    --light-glass-opacity-subtle: 0.05;
+    --light-glass-opacity-light: 0.08;
+    --light-glass-opacity-medium: 0.12;
+    --light-glass-opacity-heavy: 0.16;
+    --light-glass-opacity-premium: 0.20;
+    
+    /* Clean Light Mode Neutral Accent System */
+    --neutral-accent-subtle: 220 15% 92% / 0.40;
+    --neutral-accent-light: 210 20% 88% / 0.50;
+    --neutral-accent-medium: 200 25% 84% / 0.60;
+    --neutral-accent-strong: 190 30% 80% / 0.70;
+    --neutral-glow: 185 25% 85% / 0.25;
+    --neutral-atmosphere: 210 20% 96% / 0.30;
+    
+    /* Enhanced Clean Light Mode Shadow System */
+    --light-shadow-subtle: 0 2px 8px hsl(240 15% 15% / 0.08), 0 1px 2px hsl(240 20% 10% / 0.12);
+    --light-shadow-medium: 0 4px 16px hsl(240 15% 15% / 0.12), 0 2px 4px hsl(240 20% 10% / 0.16);
+    --light-shadow-elevated: 0 8px 32px hsl(240 15% 15% / 0.16), 0 4px 8px hsl(240 20% 10% / 0.20);
+    --light-shadow-floating: 0 16px 64px hsl(240 15% 15% / 0.20), 0 8px 16px hsl(240 20% 10% / 0.25);
+    --light-shadow-premium: 0 24px 80px hsl(240 15% 15% / 0.25), 0 12px 24px hsl(240 20% 10% / 0.30);
+    
+    /* Theme Surface System */
+    --surface-base: var(--background);
+    --surface-elevated: var(--card);
+    --surface-overlay: var(--popover);
+    --surface-glass-light: var(--card) / var(--glass-opacity-light);
+    --surface-glass-medium: var(--card) / var(--glass-opacity-medium);
+    --surface-glass-heavy: var(--card) / var(--glass-opacity-heavy);
+    
+    /* Interactive States */
+    --state-hover-opacity: 0.08;
+    --state-active-opacity: 0.12;
+    --state-focus-opacity: 0.16;
+    --state-disabled-opacity: 0.40;
+    
+    /* Theme Transitions */
+    --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-base: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 500ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-spring: 400ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    
+    /* Enhanced Shadow System */
+    --shadow-xs: 0 1px 2px hsl(var(--foreground) / 0.05);
+    --shadow-sm: 0 2px 4px hsl(var(--foreground) / 0.06), 0 1px 2px hsl(var(--foreground) / 0.04);
+    --shadow-md: 0 4px 8px hsl(var(--foreground) / 0.08), 0 2px 4px hsl(var(--foreground) / 0.06);
+    --shadow-lg: 0 8px 16px hsl(var(--foreground) / 0.10), 0 4px 8px hsl(var(--foreground) / 0.08);
+    --shadow-xl: 0 16px 32px hsl(var(--foreground) / 0.12), 0 8px 16px hsl(var(--foreground) / 0.10);
+    --shadow-2xl: 0 24px 48px hsl(var(--foreground) / 0.15), 0 12px 24px hsl(var(--foreground) / 0.12);
+    
+    /* Glass Shadow System */
+    --shadow-glass-sm: var(--shadow-sm), inset 0 1px 0 hsl(var(--foreground) / 0.08);
+    --shadow-glass-md: var(--shadow-md), inset 0 1px 0 hsl(var(--foreground) / 0.10);
+    --shadow-glass-lg: var(--shadow-lg), inset 0 2px 0 hsl(var(--foreground) / 0.12);
+    --shadow-glass-xl: var(--shadow-xl), inset 0 2px 0 hsl(var(--foreground) / 0.15);
+  }
+
+  .dark {
+    /* Enhanced Dark Mode Shadows with Periwinkle Atmosphere */
+    --shadow-xs: 0 1px 2px hsl(var(--primary) / 0.10), 0 1px 1px hsl(var(--foreground) / 0.06);
+    --shadow-sm: 0 2px 4px hsl(var(--primary) / 0.12), 0 1px 2px hsl(var(--foreground) / 0.08);
+    --shadow-md: 0 4px 8px hsl(var(--primary) / 0.15), 0 2px 4px hsl(var(--foreground) / 0.10);
+    --shadow-lg: 0 8px 16px hsl(var(--primary) / 0.18), 0 4px 8px hsl(var(--foreground) / 0.12);
+    --shadow-xl: 0 16px 32px hsl(var(--primary) / 0.22), 0 8px 16px hsl(var(--foreground) / 0.15);
+    --shadow-2xl: 0 24px 48px hsl(var(--primary) / 0.26), 0 12px 24px hsl(var(--foreground) / 0.18);
+    
+    /* Dark Mode Glass Shadows */
+    --shadow-glass-sm: var(--shadow-sm), inset 0 1px 0 hsl(var(--foreground) / 0.12);
+    --shadow-glass-md: var(--shadow-md), inset 0 1px 0 hsl(var(--foreground) / 0.15);
+    --shadow-glass-lg: var(--shadow-lg), inset 0 2px 0 hsl(var(--foreground) / 0.18);
+    --shadow-glass-xl: var(--shadow-xl), inset 0 2px 0 hsl(var(--foreground) / 0.20);
+  }
+}
+
+@layer components {
+  /* Theme Surface Utilities */
+  .surface-base {
+    background: hsl(var(--surface-base));
+  }
+  
+  .surface-elevated {
+    background: hsl(var(--surface-elevated));
+  }
+  
+  .surface-overlay {
+    background: hsl(var(--surface-overlay));
+  }
+  
+  /* Theme Typography */
+  .text-theme-primary {
+    color: hsl(var(--foreground));
+  }
+  
+  .text-theme-secondary {
+    color: hsl(var(--muted-foreground));
+  }
+  
+  .text-theme-accent {
+    color: hsl(var(--primary));
+  }
+  
+  /* Theme Borders */
+  .border-theme-light {
+    border-color: hsl(var(--border) / var(--opacity-light));
+  }
+  
+  .border-theme-medium {
+    border-color: hsl(var(--border) / var(--opacity-medium));
+  }
+  
+  .border-theme-strong {
+    border-color: hsl(var(--border) / var(--opacity-strong));
+  }
+  
+  /* Theme Interactive States */
+  .hover-theme-subtle:hover {
+    background: hsl(var(--foreground) / var(--state-hover-opacity));
+  }
+  
+  .hover-theme-accent:hover {
+    background: hsl(var(--primary) / var(--state-hover-opacity));
+    border-color: hsl(var(--primary) / var(--opacity-medium));
+  }
+  
+  /* Clean Light Mode Hover States */
+  .light\:hover-theme-neutral:hover {
+    background: hsl(var(--neutral-accent-light));
+    box-shadow: var(--light-shadow-medium);
+  }
+  
+  /* Theme Transitions */
+  .transition-theme-fast {
+    transition: var(--transition-fast);
+  }
+  
+  .transition-theme-base {
+    transition: var(--transition-base);
+  }
+  
+  .transition-theme-slow {
+    transition: var(--transition-slow);
+  }
+  
+  .transition-theme-spring {
+    transition: var(--transition-spring);
+  }
+}

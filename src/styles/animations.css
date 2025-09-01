@@ -1,0 +1,92 @@
+
+@layer components {
+  /* Card hover effects for light mode */
+  :root .metric-card:hover {
+    @apply bg-gradient-to-b from-card to-card/95 
+           shadow-[0_8px_30px_rgba(0,0,0,0.06)] 
+           transition-all duration-500;
+  }
+  
+  :root .chart-card:hover {
+    @apply bg-gradient-to-b from-card to-card/95 
+           shadow-[0_8px_30px_rgba(0,0,0,0.08)] 
+           backdrop-blur-sm transition-all duration-500;
+  }
+  
+  /* Card hover effects for dark mode */
+  .dark .metric-card:hover {
+    @apply bg-gradient-to-b from-black/95 to-black 
+           shadow-[0_8px_30px_rgba(124,58,237,0.15)] 
+           transition-all duration-500 border-primary/20;
+  }
+  
+  .dark .chart-card:hover {
+    @apply bg-gradient-to-b from-black/95 to-black 
+           shadow-[0_8px_30px_rgba(124,58,237,0.2)] 
+           backdrop-blur-sm transition-all duration-500 
+           border-primary/20;
+  }
+
+  /* Card content hover effects */
+  .metric-card:hover .metric-value,
+  .chart-card:hover .section-header {
+    @apply text-primary transition-colors duration-300;
+  }
+  
+  /* Disable all scaling on specific pages */
+  .no-hover-scaling * {
+    transform: none !important;
+  }
+  
+  .no-hover-scaling *:hover {
+    transform: none !important;
+    scale: none !important;
+  }
+  
+  /* Page transitions */
+  .page-transition-enter {
+    @apply opacity-0 translate-y-2;
+  }
+  
+  .page-transition-enter-active {
+    @apply opacity-100 translate-y-0 transition-all duration-300;
+  }
+  
+  .page-transition-exit {
+    @apply opacity-100 translate-y-0;
+  }
+  
+  .page-transition-exit-active {
+    @apply opacity-0 -translate-y-2 transition-all duration-300;
+  }
+
+  .settings-tab-transition {
+    @apply transition-all duration-300 ease-in-out;
+  }
+
+  .settings-content-enter {
+    @apply opacity-0 translate-y-2;
+  }
+  
+  .settings-content-enter-active {
+    @apply opacity-100 translate-y-0 transition-all duration-300;
+  }
+  
+  .settings-content-exit {
+    @apply opacity-100;
+  }
+  
+  .settings-content-exit-active {
+    @apply opacity-0 -translate-y-2 transition-all duration-300;
+  }
+  
+  /* Subtle pulse animation for heatmap cells with high activity */
+  @keyframes subtle-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.85; }
+  }
+  
+  .animate-pulse-subtle {
+    animation: subtle-pulse 2s infinite ease-in-out;
+  }
+}

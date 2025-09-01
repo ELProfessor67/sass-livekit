@@ -1,0 +1,3 @@
+livekit-agents[groq,deepgram]~=1.0
+python-dotenv
+aiohttp

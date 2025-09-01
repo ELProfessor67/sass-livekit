@@ -1,0 +1,20 @@
+
+@layer components {
+  .chart-card {
+    @apply rounded-lg border bg-card text-card-foreground shadow-sm transition-all duration-300;
+  }
+
+  .chart-card:hover {
+    @apply shadow-lg border-primary/20;
+    @apply bg-gradient-to-b from-card to-card/95;
+  }
+
+  .dark .chart-card:hover {
+    @apply bg-gradient-to-b from-black/95 to-black border-primary/20;
+    @apply shadow-[0_8px_30px_rgba(124,58,237,0.15)];
+  }
+
+  .hover-tooltip {
+    @apply bg-popover/95 backdrop-blur-sm text-popover-foreground shadow-lg border border-border/50 p-3 rounded-lg;
+  }
+}
