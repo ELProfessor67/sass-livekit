@@ -225,6 +225,10 @@ export type Database = {
           background_denoising_enabled: boolean | null
           background_sound_setting: string | null
           calendar_id: string | null
+          cal_api_key: string | null
+          cal_event_type_id: string | null
+          cal_event_type_slug: string | null
+          cal_timezone: string | null
           company_id: string | null
           created_at: string | null
           end_call_message: string | null
@@ -295,6 +299,10 @@ export type Database = {
           background_denoising_enabled?: boolean | null
           background_sound_setting?: string | null
           calendar_id?: string | null
+          cal_api_key?: string | null
+          cal_event_type_id?: string | null
+          cal_event_type_slug?: string | null
+          cal_timezone?: string | null
           company_id?: string | null
           created_at?: string | null
           end_call_message?: string | null
@@ -365,6 +373,10 @@ export type Database = {
           background_denoising_enabled?: boolean | null
           background_sound_setting?: string | null
           calendar_id?: string | null
+          cal_api_key?: string | null
+          cal_event_type_id?: string | null
+          cal_event_type_slug?: string | null
+          cal_timezone?: string | null
           company_id?: string | null
           created_at?: string | null
           end_call_message?: string | null

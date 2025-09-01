@@ -179,8 +179,6 @@ async function createRuleForNumber({
     metadata: meta, // rule metadata
   };
 
-  console.log('createRuleForNumber', options);
-
   // Will throw if a conflicting rule already exists
   return await lk.createSipDispatchRule(rule, options);
 }
@@ -207,22 +205,7 @@ livekitSipRouter.get('/sip/dispatch-rules', async (_req, res) => {
   }
 });
 
-/**
- * POST /api/v1/livekit/auto-assign
- * body: {
- *   phoneNumber: "+19862108561",
- *   agentName?: "ai",               // or set LK_AGENT_NAME env
- *   assistantId?: "uuid-...",
- *   llm_model?: "llama-3.3-70b-versatile",
- *   stt_model?: "nova-3",
- *   tts_model?: "aura-asteria-en",
- *   replaceCatchAll?: false,        // delete catch-all to allow per-DID rule
- *   forceReplace?: false,           // remove number-specific rules before create
- *   trunkId?: "ST_xxx" | trunkName?: "livekitInbound",
- *   roomPrefix?: "did-",
- *   extraMetadata?: { ... }         // copied into rule.metadata (diagnostic)
- * }
- */
+
 livekitSipRouter.post('/auto-assign', async (req, res) => {
   try {
     const {
@@ -261,8 +244,6 @@ livekitSipRouter.post('/auto-assign', async (req, res) => {
       forceFirstMessage: true,
       llm_model, stt_model, tts_model,
     });
-
-    console.log(agentMetadataJson,"agentMetadataJson")
 
     // Optional debug
     const promptHash = assistantIdFinal ? sha256(assistantIdFinal) : ''; // just to have a stable debug token

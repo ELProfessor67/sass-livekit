@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { CardContent } from "@/components/ui/card";
 import { CreateAssistantDialog } from "@/components/assistants/CreateAssistantDialog";
 import { supabase } from "@/integrations/supabase/client";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface Assistant {
   id: string;
@@ -54,21 +55,39 @@ function AssistantCard({ assistant }: { assistant: Assistant }) {
             </div>
           </div>
           <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleEdit}
-              className="h-7 w-7 p-0 bg-background/80 hover:bg-background border-border/50"
-            >
-              <Edit2 className="h-3 w-3" />
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 w-7 p-0 bg-background/80 hover:bg-background border-border/50"
-            >
-              <Copy className="h-3 w-3" />
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleEdit}
+                    className="h-7 w-7 p-0 bg-background/80 hover:bg-background border-border/50"
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Edit assistant configuration</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 w-7 p-0 bg-background/80 hover:bg-background border-border/50"
+                  >
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Duplicate assistant</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
 

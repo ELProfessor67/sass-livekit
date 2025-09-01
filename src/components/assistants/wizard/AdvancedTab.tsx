@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, X } from "lucide-react";
 import { AdvancedData } from "./types";
 import { WizardSlider } from "./WizardSlider";
+import { setupCalEventType } from "@/lib/api/calls/setupCalEventType";
 
 interface AdvancedTabProps {
   data: AdvancedData;
@@ -15,6 +16,10 @@ interface AdvancedTabProps {
 }
 
 export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
+  const [calSubmitting, setCalSubmitting] = React.useState(false);
+  const [calError, setCalError] = React.useState<string | null>(null);
+  const [calSuccess, setCalSuccess] = React.useState<string | null>(null);
+
   const addEndCallPhrase = () => {
     onChange({
       endCallPhrases: [...data.endCallPhrases, ""]
@@ -65,18 +70,9 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
             <Label className="settings-label">Cal.com API Key</Label>
             <Input
               type="password"
-              placeholder="sk_live_..."
+              placeholder="cal_live_..."
               value={data.calApiKey || ""}
               onChange={(e) => onChange({ calApiKey: e.target.value })}
-              className="settings-input"
-            />
-          </div>
-          <div className="space-y-[var(--space-md)]">
-            <Label className="settings-label">Event Type ID</Label>
-            <Input
-              placeholder="e.g. 12345"
-              value={data.calEventTypeId || ""}
-              onChange={(e) => onChange({ calEventTypeId: e.target.value })}
               className="settings-input"
             />
           </div>
@@ -98,6 +94,68 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
               className="settings-input"
             />
           </div>
+          <div className="space-y-[var(--space-md)]">
+            <Label className="settings-label">Event Type ID</Label>
+            <Input
+              placeholder="Auto-filled after connection"
+              value={data.calEventTypeId || ""}
+              onChange={(e) => onChange({ calEventTypeId: e.target.value })}
+              className="settings-input"
+              disabled
+            />
+          </div>
+        </div>
+
+        {/* Cal.com Connection Button */}
+        <div className="mt-4 flex items-center gap-4">
+          <Button
+            onClick={async () => {
+              if (!data.calApiKey || !data.calEventTypeSlug || !data.calTimezone) {
+                setCalError("Please fill in API Key, Event Type Slug, and Timezone");
+                return;
+              }
+              
+              setCalSubmitting(true);
+              setCalError(null);
+              setCalSuccess(null);
+              
+              try {
+                const resp = await setupCalEventType({ 
+                  apiKey: data.calApiKey, 
+                  eventTypeSlug: data.calEventTypeSlug, 
+                  timezone: data.calTimezone 
+                });
+                
+                const detail = { 
+                  cal_api_key: data.calApiKey, 
+                  cal_event_type_id: resp.eventTypeId, 
+                  cal_event_type_slug: resp.eventTypeSlug, 
+                  cal_timezone: data.calTimezone 
+                };
+                
+                const event = new CustomEvent('assistant-cal-config', { detail });
+                window.dispatchEvent(event);
+                
+                onChange({ calEventTypeId: resp.eventTypeId });
+                setCalSuccess(`Connected: ${resp.eventTypeSlug} (#${resp.eventTypeId})`);
+              } catch (e: any) {
+                setCalError(e?.message || 'Failed to connect');
+              } finally {
+                setCalSubmitting(false);
+              }
+            }}
+            disabled={calSubmitting || !data.calApiKey || !data.calEventTypeSlug || !data.calTimezone}
+            className="mt-2"
+          >
+            {calSubmitting ? 'Connecting…' : 'Connect Cal.com'}
+          </Button>
+          
+          {calSuccess && (
+            <span className="text-sm text-green-600 font-medium">{calSuccess}</span>
+          )}
+          {calError && (
+            <span className="text-sm text-destructive font-medium">{calError}</span>
+          )}
         </div>
       </div>
       {/* Compliance & Recording */}

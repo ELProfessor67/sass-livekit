@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, Sparkles, Trash2, Edit3 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +38,7 @@ const CreateAssistant = () => {
   const [activeTab, setActiveTab] = useState("model");
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const tabs = [
     { id: "model", label: "Model" },
@@ -140,6 +141,137 @@ const CreateAssistant = () => {
     window.addEventListener('assistant-cal-config', listener);
     return () => window.removeEventListener('assistant-cal-config', listener);
   }, []);
+
+  // Load existing assistant data when editing
+  useEffect(() => {
+    const loadExistingAssistant = async () => {
+      if (!isEditing || !id) return;
+      
+      setIsLoading(true);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data, error } = await supabase
+          .from('assistant')
+          .select('*')
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .single();
+
+        if (error) {
+          console.error('Failed to load assistant:', error);
+          toast({
+            title: 'Error',
+            description: 'Failed to load assistant data. Please try again.',
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        if (data) {
+          // Map database data to form data
+          setFormData({
+            name: data.name || "Untitled Assistant",
+            id: data.id,
+            model: {
+              provider: data.llm_provider_setting || "OpenAI",
+              model: data.llm_model_setting || "GPT-4o Mini",
+              knowledgeBase: data.knowledge_base_id || "None",
+              calendar: "None", // Not stored in DB yet
+              conversationStart: "assistant-first",
+              temperature: data.temperature_setting || 0.3,
+              maxTokens: data.max_token_setting || 250,
+              firstMessage: data.first_message || "",
+              systemPrompt: data.prompt || "",
+              transcriber: {
+                model: data.transcriber_model || "nova-2",
+                language: data.transcriber_language || "en"
+              }
+            },
+            voice: {
+              provider: data.voice_provider_setting || "ElevenLabs",
+              voice: data.voice_name_setting || "Rachel",
+              model: data.voice_model_setting || "eleven_turbo_v2_5",
+              backgroundSound: data.background_sound_setting || "none",
+              inputMinCharacters: data.input_min_characters || 10,
+              stability: data.voice_stability || 0.71,
+              clarity: data.voice_clarity_similarity || 0.75,
+              speed: 1.0,
+              style: 0.0,
+              latency: 1,
+              waitSeconds: data.wait_seconds || 0.5,
+              smartEndpointing: data.smart_endpointing ? "enabled" : "disabled",
+              advancedTimingEnabled: false,
+              timingSlider1: 0.3,
+              timingSlider2: 0.8,
+              timingSlider3: 1.2,
+              numWordsToInterrupt: 2,
+              voiceSeconds: data.voice_seconds || 0.2,
+              backOffSeconds: data.voice_backoff_seconds || 1,
+              silenceTimeout: data.silence_timeout || 30,
+              maxDuration: data.maximum_duration || 1800,
+              similarityBoost: 0.5,
+              useSpeakerBoost: data.use_speaker_boost || true,
+              optimizeStreaming: data.voice_optimize_streaming_latency || 2,
+              pronunciationDictionary: false,
+              chunk: 1
+            },
+            analysis: {
+              structuredData: [],
+              callSummary: true,
+              successEvaluation: true,
+              customSuccessPrompt: data.analysis_summary_prompt || ""
+            },
+            advanced: {
+              hipaaCompliant: data.hipaa_compliance || false,
+              recordingEnabled: data.audio_recording_setting || true,
+              videoRecordingEnabled: data.video_recording || false,
+              endCallMessage: data.end_call_message || "",
+              endCallPhrases: Array.isArray(data.end_call_phrases) ? data.end_call_phrases.filter(item => typeof item === 'string') : [],
+              maxCallDuration: 1800,
+              idleMessages: Array.isArray(data.idle_messages) ? data.idle_messages.filter(item => typeof item === 'string') : [],
+              idleMessageMaxSpokenCount: 1,
+              silenceTimeoutSeconds: 30,
+              responseDelaySeconds: 1,
+              llmRequestDelaySeconds: 0.1,
+              numWordsToInterruptAssistant: 2,
+              maxDurationSeconds: 600,
+              backgroundSound: "office"
+            }
+          });
+
+          // Load Cal.com config from localStorage if it exists
+          try {
+            const calConfigKey = `assistant-cal-config-${id}`;
+            const calConfig = localStorage.getItem(calConfigKey);
+            if (calConfig) {
+              const parsed = JSON.parse(calConfig);
+              handleFormDataChange('advanced', {
+                calApiKey: parsed.cal_api_key,
+                calEventTypeId: parsed.cal_event_type_id,
+                calEventTypeSlug: parsed.cal_event_type_slug,
+                calTimezone: parsed.cal_timezone,
+              });
+            }
+          } catch (err) {
+            console.warn('Failed to load Cal.com config:', err);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading assistant:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load assistant data. Please try again.',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadExistingAssistant();
+  }, [isEditing, id, toast]);
 
   const mapFormToAssistantPayload = async (userId: string) => {
     const kbId = formData.model.knowledgeBase && formData.model.knowledgeBase !== "None"
@@ -321,15 +453,19 @@ const CreateAssistant = () => {
                 <div>
                   <div className="flex items-center gap-[var(--space-md)]">
                     <h1 className="text-4xl font-extralight tracking-tight text-foreground">
-                      {formData.name}
+                      {isLoading ? "Loading..." : formData.name}
                     </h1>
-                    <Sparkles className="h-6 w-6 text-primary/60" />
+                    {isEditing ? (
+                      <Edit3 className="h-6 w-6 text-primary/60" />
+                    ) : (
+                      <Sparkles className="h-6 w-6 text-primary/60" />
+                    )}
                   </div>
                   <p className="text-[var(--text-sm)] text-muted-foreground font-mono mt-1">
-                    {formData.id}
+                    {isLoading ? "..." : formData.id}
                   </p>
                   <p className="text-lg font-light text-muted-foreground mt-2">
-                    {isEditing ? "Edit your AI assistant's configuration" : "Create your AI assistant's configuration"}
+                    {isEditing ? `Editing "${formData.name}" - Modify your AI assistant's configuration` : "Create your AI assistant's configuration"}
                   </p>
                 </div>
               </div>
@@ -338,12 +474,13 @@ const CreateAssistant = () => {
                   variant="outline"
                   className="px-[var(--space-lg)]"
                   onClick={handleSave}
-                  disabled={isSaving}
+                  disabled={isSaving || isLoading}
                 >
                   {isSaving ? 'Saving...' : 'Save'}
                 </Button>
                 <Button 
                   onClick={handleDeploy}
+                  disabled={isLoading}
                   className="bg-primary hover:bg-primary/90 text-primary-foreground px-[var(--space-xl)]"
                 >
                   Deploy Assistant
@@ -385,41 +522,50 @@ const CreateAssistant = () => {
 
             {/* Tab Content */}
             <div className="p-8">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeTab}
-                  variants={tabVariants}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  transition={{ duration: 0.2 }}
-                >
-                  {activeTab === "model" && (
-                    <ModelTab 
-                      data={formData.model} 
-                      onChange={(data) => handleFormDataChange('model', data)} 
-                    />
-                  )}
-                  {activeTab === "voice" && (
-                    <VoiceTab 
-                      data={formData.voice} 
-                      onChange={(data) => handleFormDataChange('voice', data)} 
-                    />
-                  )}
-                  {activeTab === "analysis" && (
-                    <AnalysisTab 
-                      data={formData.analysis} 
-                      onChange={(data) => handleFormDataChange('analysis', data)} 
-                    />
-                  )}
-                  {activeTab === "advanced" && (
-                    <AdvancedTab 
-                      data={formData.advanced} 
-                      onChange={(data) => handleFormDataChange('advanced', data)} 
-                    />
-                  )}
-                </motion.div>
-              </AnimatePresence>
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                    <p className="text-muted-foreground">Loading assistant configuration...</p>
+                  </div>
+                </div>
+              ) : (
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={activeTab}
+                    variants={tabVariants}
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    transition={{ duration: 0.2 }}
+                  >
+                    {activeTab === "model" && (
+                      <ModelTab 
+                        data={formData.model} 
+                        onChange={(data) => handleFormDataChange('model', data)} 
+                      />
+                    )}
+                    {activeTab === "voice" && (
+                      <VoiceTab 
+                        data={formData.voice} 
+                        onChange={(data) => handleFormDataChange('voice', data)} 
+                      />
+                    )}
+                    {activeTab === "analysis" && (
+                      <AnalysisTab 
+                        data={formData.analysis} 
+                        onChange={(data) => handleFormDataChange('analysis', data)} 
+                      />
+                    )}
+                    {activeTab === "advanced" && (
+                      <AdvancedTab 
+                        data={formData.advanced} 
+                        onChange={(data) => handleFormDataChange('advanced', data)} 
+                      />
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+              )}
             </div>
           </ThemeCard>
 
@@ -432,6 +578,7 @@ const CreateAssistant = () => {
                     variant="destructive-glass"
                     size="default"
                     className="gap-[var(--space-sm)]"
+                    disabled={isLoading}
                   >
                     <Trash2 className="h-4 w-4" />
                     Delete Assistant

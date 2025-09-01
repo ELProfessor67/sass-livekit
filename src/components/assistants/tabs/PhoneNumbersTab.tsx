@@ -182,7 +182,7 @@ export function PhoneNumbersTab() {
               </PageSubtext>
             </div>
             <div className="flex items-center gap-3">
-              <Select value={selectedTrunk} onValueChange={setSelectedTrunk}>
+              {/* <Select value={selectedTrunk} onValueChange={setSelectedTrunk}>
                 <SelectTrigger className="w-[260px]">
                   <SelectValue placeholder="Select Twilio trunk" />
                 </SelectTrigger>
@@ -193,7 +193,7 @@ export function PhoneNumbersTab() {
                     </SelectItem>
                   ))}
                 </SelectContent>
-              </Select>
+              </Select> */}
 
               <Button onClick={loadUnusedFromTwilio} disabled={loading}>
                 {loading ? (

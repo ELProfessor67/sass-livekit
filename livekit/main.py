@@ -19,6 +19,12 @@ from livekit.agents import AgentSession, Agent, RunContext, function_tool
 from livekit.plugins import groq
 from livekit.plugins import deepgram
 
+try:
+    from supabase import create_client, Client  # type: ignore
+except Exception:  # pragma: no cover
+    create_client = None  # type: ignore
+    Client = object  # type: ignore
+
 # Calendar integration (your module)
 from cal_calendar_api import Calendar, CalComCalendar, AvailableSlot, SlotUnavailableError
 
@@ -193,26 +199,24 @@ class Assistant(Agent):
             logging.exception("Error scheduling appointment")
             return "I hit an error while scheduling. Please try again or choose a different time."
 
-# ===================== Entrypoint =====================
+# ===================== Entrypoint (Single-Assistant) =====================
 
 async def entrypoint(ctx: agents.JobContext):
     await ctx.connect()
 
-    # --- Room / DID context -------------------------------------------------
+    # --- Room / DID context (kept) -----------------------------------------
     room_name = getattr(ctx.room, "name", "") or ""
     prefix = os.getenv("DISPATCH_ROOM_PREFIX", "did-")
     called_did = extract_called_did(room_name) or (room_name[len(prefix):] if room_name.startswith(prefix) else None)
     logging.info("DID ROUTE | room=%s | called_did=%s", room_name, called_did)
-    # -----------------------------------------------------------------------
 
     participant = await ctx.wait_for_participant()
+    # -----------------------------------------------------------------------
 
-    # --- Collect metadata (participant → room → env) ------------------------
-    p_meta_raw = participant.metadata or ""
-    print(f"participant.metadata: {p_meta_raw}")
+    # --- Collect raw metadata for assistantId ONLY -------------------------
     p_meta, p_kind = ({}, "none")
-    if p_meta_raw:
-        p_meta, p_kind = _parse_json_or_b64(p_meta_raw)
+    if participant.metadata:
+        p_meta, p_kind = _parse_json_or_b64(participant.metadata)
 
     r_meta_raw = getattr(ctx.room, "metadata", "") or ""
     r_meta, r_kind = ({}, "none")
@@ -221,35 +225,33 @@ async def entrypoint(ctx: agents.JobContext):
 
     e_meta, e_label = _from_env_json("ASSISTANT_JSON", "DEFAULT_ASSISTANT_JSON")
 
-    preliminary_sources: list[tuple[str, dict]] = [
+    id_sources: list[tuple[str, dict]] = [
         (f"participant.{p_kind}", p_meta),
         (f"room.{r_kind}", r_meta),
         (e_label, e_meta),
     ]
     # -----------------------------------------------------------------------
 
-    # --- Resolve assistantId (ID → fetch full assistant) --------------------
-    # 1) Try direct assistantId from metadata/env
+    # --- Resolve assistantId ----------------------------------------------
     assistant_id, id_src = choose_from_sources(
-        preliminary_sources,
+        id_sources,
         ("assistantId",),
         ("assistant", "id"),
         default=None,
     )
 
-    resolver_label = "resolver:none"
-    resolver_meta: dict = {}
-
-    # 2) If not present, try env ASSISTANT_ID
     if not assistant_id:
         env_assistant_id = os.getenv("ASSISTANT_ID", "").strip() or None
         if env_assistant_id:
             assistant_id = env_assistant_id
             id_src = "env:ASSISTANT_ID"
-    
-    # 3) If still missing, try number-based resolution on your backend
-    #    Accept both: /assistant/by-number?number=E164 or /assistant?number=E164
-    base_resolver = os.getenv("ASSISTANT_RESOLVER_URL", "http://localhost:4000/api/v1/livekit/assistant").rstrip("/")
+
+    backend_url = os.getenv("BACKEND_URL", "http://localhost:4000").rstrip("/")
+    resolver_path = os.getenv("ASSISTANT_RESOLVER_PATH", "/api/v1/livekit/assistant").lstrip("/")
+    base_resolver = f"{backend_url}/{resolver_path}".rstrip("/")
+
+
+    # If no assistant_id but we have a DID, resolve by number
     if not assistant_id and called_did:
         q = urllib.parse.urlencode({"number": called_did})
         for path in ("by-number", ""):
@@ -276,138 +278,115 @@ async def entrypoint(ctx: agents.JobContext):
                     id_src = f"{resolver_label}.assistant.id"
                     break
 
-    # 4) If we have an assistant_id, fetch full assistant as TOP PRECEDENCE
+    # If we have an assistant_id, fetch full assistant (Supabase preferred)
     if assistant_id:
-        url = f"{base_resolver}/{assistant_id}"
-        data = _http_get_json(url)
-        if data and data.get("success") and isinstance(data.get("assistant"), dict):
-            a = data["assistant"]
-            resolver_meta = {
-                "assistant": {
-                    "id": a.get("id") or assistant_id,
-                    "name": a.get("name"),
-                    "prompt": a.get("prompt"),
-                    "firstMessage": a.get("firstMessage"),
-                },
-                "cal_api_key": data.get("cal_api_key"),
-                "cal_event_type_id": (
-                    str(data.get("cal_event_type_id"))
-                    if data.get("cal_event_type_id") is not None else None
-                ),
-                "cal_timezone": data.get("cal_timezone"),
-            }
-            resolver_label = "resolver.ok"
-        else:
-            resolver_label = "resolver.error"
+        supabase_url = os.getenv("SUPABASE_URL", "").strip()
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE", "").strip()
+        logging.info("SUPABASE_CHECK | url_present=%s | key_present=%s | create_client=%s", 
+                     bool(supabase_url), bool(supabase_key), create_client is not None)
+        used_supabase = False
+        if create_client and supabase_url and supabase_key:
+            try:
+                sb: Client = create_client(supabase_url, supabase_key)  # type: ignore
+                resp = sb.table("assistant").select(
+                    "id, name, prompt, first_message, cal_api_key, cal_event_type_id, cal_timezone"
+                ).eq("id", assistant_id).single().execute()
+                row = resp.data
+                if row:
+                    resolver_meta = {
+                        "assistant": {
+                            "id": row.get("id") or assistant_id,
+                            "name": row.get("name") or "Assistant",
+                            "prompt": row.get("prompt") or "",
+                            "firstMessage": row.get("first_message") or "",
+                        },
+                        "cal_api_key": row.get("cal_api_key"),
+                        "cal_event_type_id": row.get("cal_event_type_id"),
+                        "cal_timezone": row.get("cal_timezone") or "UTC",
+                    }
+                    resolver_label = "resolver.supabase"
+                    used_supabase = True
+            except Exception:
+                logging.exception("SUPABASE_ERROR | assistant fetch failed")
 
-    # Final precedence: resolver (if any) → participant → room → env
-    sources: list[tuple[str, dict]] = []
-    if resolver_meta:
-        sources.append((resolver_label, resolver_meta))
-    sources.extend(preliminary_sources)
+        # Fallback to HTTP resolver by id
+        if not used_supabase:
+            url = f"{base_resolver}/{assistant_id}"
+            data = _http_get_json(url)
+            if data and data.get("success") and isinstance(data.get("assistant"), dict):
+                a = data["assistant"]
+                resolver_meta = {
+                    "assistant": {
+                        "id": a.get("id") or assistant_id,
+                        "name": a.get("name"),
+                        "prompt": a.get("prompt"),
+                        "firstMessage": a.get("firstMessage"),
+                    },
+                    "cal_api_key": data.get("cal_api_key"),
+                    "cal_event_type_id": (
+                        str(data.get("cal_event_type_id"))
+                        if data.get("cal_event_type_id") is not None else None
+                    ),
+                    "cal_timezone": data.get("cal_timezone"),
+                }
+                resolver_label = "resolver.id_http"
+            else:
+                resolver_label = "resolver.error"
 
-    logging.info(
-        "METADATA_SOURCES | resolver=%s | participant=%s | room=%s | env=%s",
-        resolver_label, p_kind, r_kind, e_label
-    )
-    logging.info("ASSISTANT_ID | value=%s | source=%s", assistant_id or "<none>", id_src)
-    # -----------------------------------------------------------------------
+    logging.info("ASSISTANT_ID | value=%s | source=%s | resolver=%s", assistant_id or "<none>", id_src, resolver_label)
 
-    # --- Multi-agent knobs --------------------------------------------------
-    worker_agent_name = os.getenv("LK_AGENT_NAME", "ai")
+    # --- Build instructions strictly from RESOLVED ASSISTANT ONLY ----------
+    assistant_name = (resolver_meta.get("assistant") or {}).get("name") or os.getenv("DEFAULT_ASSISTANT_NAME", "Assistant")
 
-    declared_agent_name, agent_src = choose_from_sources(
-        sources, ("agentName",), ("assistant", "agentName"),
-        default=worker_agent_name,
-    )
+    # Use only assistant.prompt (resolved). No overrides from room/participant/env JSON.
+    prompt = (resolver_meta.get("assistant") or {}).get("prompt") or os.getenv("DEFAULT_INSTRUCTIONS", "You are a helpful voice assistant.")
+    first_message = (resolver_meta.get("assistant") or {}).get("firstMessage") or ""
 
-    assistant_name, name_src = choose_from_sources(
-        sources, ("assistantName",), ("assistant", "name"),
-        default=os.getenv("DEFAULT_ASSISTANT_NAME", "Assistant"),
-    )
+    # Calendar (from resolver only)
+    cal_api_key = resolver_meta.get("cal_api_key")
+    cal_event_type_id = resolver_meta.get("cal_event_type_id")
+    cal_timezone = resolver_meta.get("cal_timezone") or "UTC"
 
-    prompt, prompt_src = choose_from_sources(
-        sources, ("assistant", "prompt"), ("prompt",), ("instructions",),
-        default=os.getenv("DEFAULT_INSTRUCTIONS", "You are a helpful voice assistant."),
-    )
+    # Force opening line: either provided firstMessage or a default using assistant_name/DID
+    force_first = (os.getenv("FORCE_FIRST_MESSAGE", "true").lower() != "false")
+    if force_first and not first_message:
+        first_message = (
+            f"Hi! You’ve reached {assistant_name}. Thanks for calling. How can I help you today?"
+            if called_did else
+            f"Hi! You’ve reached {assistant_name}. How can I help you today?"
+        )
 
-    first_message, fm_src = choose_from_sources(
-        sources, ("assistant", "firstMessage"), ("firstMessage",), ("first_message",),
-        default=None,
-    )
-
-    force_first_raw, ff_src = choose_from_sources(sources, ("forceFirstMessage",), default="true")
-    force_first = str(force_first_raw).strip().lower() != "false"
-
-    llm_model, llm_src = choose_from_sources(
-        sources, ("llm_model",), ("assistant", "llm_model"),
-        default=os.getenv("LLM_MODEL", "llama-3.3-70b-versatile"),
-    )
-    stt_model, stt_src = choose_from_sources(
-        sources, ("stt_model",), ("assistant", "stt_model"),
-        default=os.getenv("STT_MODEL", "nova-3"),
-    )
-    tts_model, tts_src = choose_from_sources(
-        sources, ("tts_model",), ("assistant", "tts_model"),
-        default=os.getenv("TTS_MODEL", "aura-asteria-en"),
-    )
-
-    cal_api_key, cal_key_src = choose_from_sources(sources, ("cal_api_key",), default=None)
-    cal_event_type_id_str, cal_evt_src = choose_from_sources(sources, ("cal_event_type_id",), default=None)
-    cal_timezone, cal_tz_src = choose_from_sources(sources, ("cal_timezone",), default="UTC")
-    # -----------------------------------------------------------------------
-
-    # --- PROMPT AUDIT -------------------------------------------------------
-    prompt_digest = sha256_text(prompt)
-    logging.info(
-        "PROMPT_TRACE | agent_worker=%s | agent_declared=%s (%s) | assistant=%s (%s) "
-        "| did=%s | prompt_source=%s | prompt_len=%d | prompt_sha256=%s | preview=%s",
-        worker_agent_name, declared_agent_name, agent_src, assistant_name, name_src,
-        called_did, prompt_src, len(prompt), prompt_digest, preview(prompt)
-    )
-    if first_message:
-        logging.info("PROMPT_TRACE_FIRST_MESSAGE | source=%s | len=%d | preview=%s",
-                     fm_src, len(first_message), preview(first_message))
-    else:
-        logging.info("PROMPT_TRACE_FIRST_MESSAGE | source=%s | value=<none>", fm_src)
-    # -----------------------------------------------------------------------
-
-    # --- Build instructions & optional calendar -----------------------------
     instructions = prompt
-
     calendar: Calendar | None = None
-    if cal_api_key and cal_event_type_id_str:
+    if cal_api_key and cal_event_type_id:
         try:
             calendar = CalComCalendar(
                 api_key=str(cal_api_key),
                 timezone=str(cal_timezone or "UTC"),
-                event_type_id=int(cal_event_type_id_str),
+                event_type_id=int(cal_event_type_id),
             )
             await calendar.initialize()
             instructions += (
                 " You have two tools available: list_available_slots and schedule_appointment. "
                 "Use them when the caller wants to book."
             )
-            logging.info("CALENDAR_READY | event_type_id=%s (%s) | tz=%s (%s)",
-                         cal_event_type_id_str, cal_evt_src, cal_timezone, cal_tz_src)
+            logging.info("CALENDAR_READY | event_type_id=%s | tz=%s", cal_event_type_id, cal_timezone)
         except Exception:
             logging.exception("Failed to initialize Cal.com calendar")
             instructions += " Calendar integration is currently unavailable."
 
-    if force_first:
-        if not first_message:
-            first_message = (
-                f"Hi! You’ve reached {assistant_name}. Thanks for calling. How can I help you today?"
-                if called_did else
-                f"Hi! You’ve reached {assistant_name}. How can I help you today?"
-            )
+    if force_first and first_message:
         instructions += f' IMPORTANT: Begin the call by saying exactly this (do not paraphrase): "{first_message}"'
 
     logging.info("PROMPT_TRACE_FINAL | sha256=%s | len=%d | preview=%s",
                  sha256_text(instructions), len(instructions), preview(instructions))
     # -----------------------------------------------------------------------
 
-    # --- Start agent session ------------------------------------------------
+    # --- Start single agent session ---------------------------------------
+    llm_model = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+    stt_model = os.getenv("STT_MODEL", "nova-3")
+    tts_model = os.getenv("TTS_MODEL", "aura-asteria-en")
+
     session = AgentSession(
         stt=deepgram.STT(model=stt_model),
         llm=groq.LLM(model=llm_model, temperature=0.1),
@@ -419,6 +398,7 @@ async def entrypoint(ctx: agents.JobContext):
         agent=Assistant(instructions=instructions, calendar=calendar),
     )
 
+    # Kick off with empty user_input; greeting comes from instructions
     await session.run(user_input="")
     # -----------------------------------------------------------------------
 
@@ -426,6 +406,6 @@ if __name__ == "__main__":
     agents.cli.run_app(
         agents.WorkerOptions(
             entrypoint_fnc=entrypoint,
-            agent_name=os.getenv("LK_AGENT_NAME", "ai"),
+            agent_name=os.getenv("LK_AGENT_NAME", "ai"),  # just a worker label; not used to pick prompts anymore
         )
     )

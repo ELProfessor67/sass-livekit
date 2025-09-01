@@ -2,15 +2,11 @@ import React from "react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { ModelData } from "./types";
-import { CalSetupDialog } from "@/components/assistants/dialogs/CalSetupDialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { setupCalEventType } from "@/lib/api/calls/setupCalEventType";
 import { WizardSlider } from "./WizardSlider";
+import { Input } from "@/components/ui/input";
 
 interface ModelTabProps {
   data: ModelData;
@@ -19,12 +15,6 @@ interface ModelTabProps {
 
 export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
   const [isTranscriberOpen, setIsTranscriberOpen] = React.useState(false);
-  const [calApiKey, setCalApiKey] = React.useState("");
-  const [calSlug, setCalSlug] = React.useState("");
-  const [calTz, setCalTz] = React.useState("UTC");
-  const [calSubmitting, setCalSubmitting] = React.useState(false);
-  const [calError, setCalError] = React.useState<string | null>(null);
-  const [calSuccess, setCalSuccess] = React.useState<string | null>(null);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[540px]">
@@ -42,10 +32,13 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
           {/* First Message Section */}
           <div>
             <label className="block text-base font-semibold tracking-[0.2px] mb-2">
-              First Message
+              First Message (Call Greeting)
             </label>
+            <p className="text-sm text-muted-foreground mb-2">
+              This is the first message your assistant will say when a call starts
+            </p>
             <Textarea
-              placeholder="Hi! This is Helen from Dental Clinic. How may I help you today?"
+              placeholder="Hi! This is [Your Name] from [Your Company]. How may I help you today?"
               value={data.firstMessage}
               onChange={(e) => onChange({ firstMessage: e.target.value })}
               className="h-12 text-[15px] resize-none"
@@ -132,51 +125,6 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                   <SelectItem value="Cal.com">Cal.com</SelectItem>
                 </SelectContent>
               </Select>
-              {data.calendar === 'Cal.com' && (
-                <div className="mt-3 space-y-2 p-3 border rounded-lg bg-background/50">
-                  <div className="text-sm font-medium">Cal.com Integration</div>
-                  <div className="grid grid-cols-1 gap-2">
-                    <div>
-                      <Label className="text-xs">API Key</Label>
-                      <Input type="password" value={calApiKey} onChange={(e) => setCalApiKey(e.target.value)} placeholder="cal_live_..." className="h-9" />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Event Type Slug</Label>
-                      <Input value={calSlug} onChange={(e) => setCalSlug(e.target.value)} placeholder="team/demo-call" className="h-9" />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Timezone</Label>
-                      <Input value={calTz} onChange={(e) => setCalTz(e.target.value)} placeholder="UTC or America/Los_Angeles" className="h-9" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        onClick={async () => {
-                          setCalSubmitting(true);
-                          setCalError(null);
-                          setCalSuccess(null);
-                          try {
-                            const resp = await setupCalEventType({ apiKey: calApiKey, eventTypeSlug: calSlug, timezone: calTz });
-                            const detail = { cal_api_key: calApiKey, cal_event_type_id: resp.eventTypeId, cal_event_type_slug: resp.eventTypeSlug, cal_timezone: calTz };
-                            const event = new CustomEvent('assistant-cal-config', { detail });
-                            window.dispatchEvent(event);
-                            setCalSuccess(`Connected: ${resp.eventTypeSlug} (#${resp.eventTypeId})`);
-                          } catch (e: any) {
-                            setCalError(e?.message || 'Failed to connect');
-                          } finally {
-                            setCalSubmitting(false);
-                          }
-                        }}
-                        disabled={calSubmitting || !calApiKey || !calSlug}
-                      >
-                        {calSubmitting ? 'Connecting…' : 'Connect'}
-                      </Button>
-                      {calSuccess && <span className="text-xs text-green-600">{calSuccess}</span>}
-                      {calError && <span className="text-xs text-destructive">{calError}</span>}
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Conversation Start */}

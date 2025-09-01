@@ -22,7 +22,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-/server/node_modules
-/server/package-lock.json
-/livekit/venv
-/livekit/__pycache__
