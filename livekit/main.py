@@ -397,6 +397,9 @@ async def entrypoint(ctx: agents.JobContext):
         room=ctx.room,
         agent=Assistant(instructions=instructions, calendar=calendar),
     )
+    await session.say(
+        "hello and welcome. how are you today?"
+    )
 
     # Kick off with empty user_input; greeting comes from instructions
     await session.run(user_input="")

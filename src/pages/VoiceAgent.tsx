@@ -64,25 +64,25 @@ export default function VoiceAgent() {
           assistantId: assistantId || undefined,
           assistant: assistant
             ? {
-                id: assistant.id,
-                name: assistant.name,
-                prompt: assistant.prompt,
-                firstMessage: assistant.first_message,
-                modelProvider: assistant.llm_provider_setting,
-                model: assistant.llm_model_setting,
-                temperature: assistant.temperature_setting,
-                maxTokens: assistant.max_token_setting,
-                voiceProvider: assistant.voice_provider_setting,
-                voiceModel: assistant.voice_model_setting,
-                voiceName: assistant.voice_name_setting,
-                backgroundSound: assistant.background_sound_setting,
-                waitSeconds: assistant.wait_seconds,
-                smartEndpointing: assistant.smart_endpointing,
-                cal_api_key: assistant.cal_api_key,
-                cal_event_type_id: assistant.cal_event_type_id,
-                cal_event_type_slug: assistant.cal_event_type_slug,
-                cal_timezone: assistant.cal_timezone,
-              }
+              id: assistant.id,
+              name: assistant.name,
+              prompt: assistant.prompt,
+              firstMessage: assistant.first_message,
+              modelProvider: assistant.llm_provider_setting,
+              model: assistant.llm_model_setting,
+              temperature: assistant.temperature_setting,
+              maxTokens: assistant.max_token_setting,
+              voiceProvider: assistant.voice_provider_setting,
+              voiceModel: assistant.voice_model_setting,
+              voiceName: assistant.voice_name_setting,
+              backgroundSound: assistant.background_sound_setting,
+              waitSeconds: assistant.wait_seconds,
+              smartEndpointing: assistant.smart_endpointing,
+              cal_api_key: assistant.cal_api_key,
+              cal_event_type_id: assistant.cal_event_type_id,
+              cal_event_type_slug: assistant.cal_event_type_slug,
+              cal_timezone: assistant.cal_timezone,
+            }
             : undefined,
           // Top-level fields to match agent expectations
           prompt: assistant?.prompt,
@@ -95,6 +95,7 @@ export default function VoiceAgent() {
           cal_timezone: assistant?.cal_timezone,
         },
       });
+      console.log("token payload", tokenPayload)
       if (tokenPayload?.accessToken) setToken(tokenPayload.accessToken);
     } catch (e) {
       console.error(e);

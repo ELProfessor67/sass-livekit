@@ -5,7 +5,7 @@ export type LivekitToken = {
 
 export async function createLivekitToken(args: { metadata?: any; agentId?: string }): Promise<LivekitToken> {
   const externalUrl = (import.meta.env.VITE_TOKEN_URL || (import.meta.env.TOKEN_URL as string | undefined)) as string | undefined;
-  const url = externalUrl || `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000'}/api/v1/livekit/create-token`;
+  const url = `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000'}/api/v1/livekit/create-token`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -21,7 +21,7 @@ export async function createLivekitToken(args: { metadata?: any; agentId?: strin
   // - { success, result: { accessToken, identity } }
   // - { accessToken, identity }
   // - { token }
-  // - { jwt }
+  // - { jwt }   
   // - { access_token }
   // - string token
   let accessToken: string | undefined;
