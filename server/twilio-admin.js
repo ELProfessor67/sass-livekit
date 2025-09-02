@@ -150,8 +150,9 @@ twilioAdminRouter.post('/assign', async (req, res) => {
                     },
                     { onConflict: 'phone_sid' },
                 );
-            } catch {
-                // ignore if you don't persist
+            } catch (error) {
+                console.warn('Failed to save phone number mapping (phone_number table may not exist yet):', error.message);
+                // Continue execution - the assignment will still work via LiveKit dispatch rules
             }
         }
 

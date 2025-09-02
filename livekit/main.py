@@ -10,14 +10,17 @@ import base64
 import os
 import re
 import hashlib
+import uuid
 
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo
 
 from livekit import agents
 from livekit.agents import AgentSession, Agent, RunContext, function_tool
-from livekit.plugins import groq
-from livekit.plugins import deepgram
+
+# ⬇️ OpenAI + VAD plugins
+from livekit.plugins import openai as lk_openai  # LLM, STT, TTS
+from livekit.plugins import silero              # VAD
 
 try:
     from supabase import create_client, Client  # type: ignore
@@ -27,6 +30,9 @@ except Exception:  # pragma: no cover
 
 # Calendar integration (your module)
 from cal_calendar_api import Calendar, CalComCalendar, AvailableSlot, SlotUnavailableError
+
+# Assistant service
+from services.assistant import Assistant
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -38,6 +44,147 @@ def sha256_text(s: str) -> str:
 
 def preview(s: str, n: int = 160) -> str:
     return s[:n] + ("…" if len(s) > n else "")
+
+def determine_call_status(call_duration: int, transcription: list) -> str:
+    """Determine call status based on duration and transcription content"""
+    
+    # Very short calls (less than 5 seconds) are likely dropped
+    if call_duration < 5:
+        return "dropped"
+    
+    # Short calls (less than 15 seconds) with no meaningful conversation
+    if call_duration < 15:
+        if not transcription or len(transcription) < 2:
+            return "dropped"
+    
+    # Check transcription for spam indicators
+    if transcription:
+        # Combine all transcription content for analysis
+        all_content = ""
+        for item in transcription:
+            if isinstance(item, dict) and "content" in item:
+                content = item["content"]
+                if isinstance(content, str):
+                    all_content += content.lower() + " "
+        
+        # Spam detection keywords
+        spam_keywords = [
+            "robocall", "telemarketing", "scam", "fraud", "suspicious",
+            "unwanted", "spam", "junk", "harassment", "threat"
+        ]
+        
+        if any(keyword in all_content for keyword in spam_keywords):
+            return "spam"
+        
+        # Check for no response patterns
+        if len(transcription) <= 1:
+            return "no_response"
+        
+        # Check if caller hung up immediately after greeting
+        if len(transcription) == 2:
+            first_message = transcription[0].get("content", "").lower() if transcription[0] else ""
+            if "hi" in first_message or "hello" in first_message or "thanks for calling" in first_message:
+                return "dropped"
+    
+    # Check for successful conversation indicators
+    if transcription and len(transcription) >= 4:
+        # Look for booking-related keywords (successful calls)
+        all_content = ""
+        for item in transcription:
+            if isinstance(item, dict) and "content" in item:
+                content = item["content"]
+                if isinstance(content, str):
+                    all_content += content.lower() + " "
+        
+        success_keywords = [
+            "appointment", "book", "schedule", "confirm", "details",
+            "name", "email", "phone", "thank you", "goodbye"
+        ]
+        
+        if any(keyword in all_content for keyword in success_keywords):
+            return "completed"
+    
+    # Default to completed for calls with reasonable duration and conversation
+    if call_duration >= 15 and transcription and len(transcription) >= 3:
+        return "completed"
+    
+    # If we have some conversation but it's unclear, mark as completed
+    if transcription and len(transcription) >= 2:
+        return "completed"
+    
+    # Default fallback
+    return "dropped"
+
+async def save_call_history_to_supabase(
+    call_id: str,
+    assistant_id: str,
+    called_did: str,
+    start_time: datetime.datetime,
+    end_time: datetime.datetime,
+    session_history: list,
+    participant_identity: str = None
+) -> bool:
+    """Save call history to Supabase with enhanced status detection"""
+    try:
+        if not create_client:
+            logging.warning("Supabase client not available, skipping call history save")
+            return False
+            
+        supabase_url = os.getenv("SUPABASE_URL", "").strip()
+        supabase_key = (
+            os.getenv("SUPABASE_SERVICE_ROLE", "").strip()
+            or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+        )
+        
+        if not supabase_url or not supabase_key:
+            logging.warning("Supabase credentials not configured, skipping call history save")
+            return False
+            
+        sb: Client = create_client(supabase_url, supabase_key)
+        
+        # Prepare transcription data
+        transcription = []
+        for item in session_history:
+            if isinstance(item, dict) and "role" in item and "content" in item:
+                transcription.append({
+                    "role": item["role"],
+                    "content": item["content"]
+                })
+        
+        # Calculate call duration
+        call_duration = int((end_time - start_time).total_seconds())
+        
+        # Determine call status based on duration and transcription
+        call_status = determine_call_status(call_duration, transcription)
+        
+        # Prepare call history data
+        call_data = {
+            "call_id": call_id,
+            "assistant_id": assistant_id,
+            "phone_number": called_did,
+            "participant_identity": participant_identity,
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "call_duration": call_duration,
+            "call_status": call_status,
+            "transcription": transcription,
+            "created_at": datetime.datetime.now().isoformat()
+        }
+        
+        # Insert into call_history table
+        result = sb.table("call_history").insert(call_data).execute()
+        
+        if result.data:
+            logging.info("CALL_HISTORY_SAVED | call_id=%s | duration=%ds | status=%s | transcription_items=%d", 
+                        call_id, call_duration, call_status, len(transcription))
+            return True
+        else:
+            logging.error("CALL_HISTORY_SAVE_FAILED | call_id=%s", call_id)
+            return False
+            
+    except Exception as e:
+        logging.exception("CALL_HISTORY_SAVE_ERROR | call_id=%s | error=%s", call_id, str(e))
+        return False
 
 def extract_called_did(room_name: str) -> str | None:
     """Find the first +E.164 sequence anywhere in the room name."""
@@ -93,127 +240,32 @@ def _http_get_json(url: str, timeout: int = 5) -> dict | None:
         logging.warning("resolver GET failed: %s (%s)", url, getattr(e, "reason", e))
         return None
 
-# ===================== Agent =====================
-
-class Assistant(Agent):
-    def __init__(self, instructions: str, calendar: Calendar | None = None) -> None:
-        super().__init__(instructions=instructions)
-        self.calendar = calendar
-        self._slots_map: dict[str, AvailableSlot] = {}
-
-    @function_tool
-    async def list_available_slots(self, ctx: RunContext, range_days: int = 7) -> str:
-        logging.info("tool:list_available_slots called")
-        if not self.calendar:
-            return "Calendar isn’t configured for this agent."
-
-        now = datetime.datetime.now(ZoneInfo("UTC"))
-        end_time = now + datetime.timedelta(days=range_days)
-
-        try:
-            slots = await self.calendar.list_available_slots(start_time=now, end_time=end_time)
-            if not slots:
-                return "No appointment slots are available in the next few days. Please try a different date range."
-
-            self._slots_map.clear()
-            top = slots[:5]
-
-            lines = ["Here are the available appointment times:"]
-            for i, slot in enumerate(top, 1):
-                local = slot.start_time.astimezone(self.calendar.tz)
-                now_local = datetime.datetime.now(self.calendar.tz)
-
-                days = (local.date() - now_local.date()).days
-                if days == 0:
-                    rel = "today"
-                elif days == 1:
-                    rel = "tomorrow"
-                elif days < 7:
-                    rel = f"in {days} days"
-                else:
-                    rel = f"in {days // 7} weeks"
-
-                lines.append(
-                    f"Option {i}: {local.strftime('%A, %B %d, %Y')} at "
-                    f"{local.strftime('%I:%M %p')} ({rel})"
-                )
-
-                # indexable keys
-                self._slots_map[slot.unique_hash] = slot
-                self._slots_map[f"option_{i}"] = slot
-                self._slots_map[f"option {i}"] = slot
-                self._slots_map[str(i)] = slot
-
-            lines.append("\nWhich option would you like to book? Say the option number (e.g., 'Option 1' or just '1').")
-            return "\n".join(lines)
-
-        except Exception:
-            logging.exception("Error listing available slots")
-            return "Sorry, I hit an error while checking available slots. Please try again."
-
-    @function_tool
-    async def schedule_appointment(
-        self,
-        ctx: RunContext,
-        slot_id: str,
-        attendee_name: str,
-        attendee_email: str,
-        attendee_phone: Optional[str] = None,
-        notes: Optional[str] = None,
-    ) -> str:
-        logging.info("tool:schedule_appointment called")
-        if not self.calendar:
-            return "Calendar isn’t configured for this agent."
-        if not self._slots_map:
-            return "I need to check available times first. Let me show you what’s available."
-
-        key = slot_id.strip()
-        slot = (
-            self._slots_map.get(key)
-            or self._slots_map.get(f"option_{key}")
-            or self._slots_map.get(f"option {key}")
-            or (self._slots_map.get(key.replace("option", "").strip()) if key.lower().startswith("option") else None)
-        )
-
-        if not slot:
-            return f"I couldn’t find “{slot_id}” in the presented options. I’ll show you the available times again."
-
-        try:
-            await self.calendar.schedule_appointment(
-                start_time=slot.start_time,
-                attendee_name=attendee_name,
-                attendee_email=attendee_email,
-                attendee_phone=attendee_phone or "",
-                notes=notes or "",
-            )
-            local = slot.start_time.astimezone(self.calendar.tz)
-            return (
-                f"Booked! Your appointment is on "
-                f"{local.strftime('%A, %B %d, %Y at %I:%M %p %Z')}. "
-                f"A confirmation will be sent to {attendee_email}."
-            )
-
-        except SlotUnavailableError:
-            return "That time was just taken. I’ll fetch the latest available times for you."
-        except Exception:
-            logging.exception("Error scheduling appointment")
-            return "I hit an error while scheduling. Please try again or choose a different time."
+# ===================== Agent (FSM-Guarded) =====================
+# Assistant class moved to services/assistant.py
 
 # ===================== Entrypoint (Single-Assistant) =====================
 
 async def entrypoint(ctx: agents.JobContext):
     await ctx.connect()
 
-    # --- Room / DID context (kept) -----------------------------------------
+    # --- Room / DID context -----------------------------------------
     room_name = getattr(ctx.room, "name", "") or ""
     prefix = os.getenv("DISPATCH_ROOM_PREFIX", "did-")
     called_did = extract_called_did(room_name) or (room_name[len(prefix):] if room_name.startswith(prefix) else None)
     logging.info("DID ROUTE | room=%s | called_did=%s", room_name, called_did)
 
     participant = await ctx.wait_for_participant()
-    # -----------------------------------------------------------------------
+    
+    # --- Call tracking setup ----------------------------------------
+    start_time = datetime.datetime.now()
+    call_id = str(uuid.uuid4())
+    logging.info("CALL_START | call_id=%s | start_time=%s", call_id, start_time.isoformat())
+    # ----------------------------------------------------------------
 
-    # --- Collect raw metadata for assistantId ONLY -------------------------
+    # --- Resolve assistantId (same as before) -----------------------
+    resolver_meta: dict = {}
+    resolver_label: str = "none"
+
     p_meta, p_kind = ({}, "none")
     if participant.metadata:
         p_meta, p_kind = _parse_json_or_b64(participant.metadata)
@@ -230,9 +282,7 @@ async def entrypoint(ctx: agents.JobContext):
         (f"room.{r_kind}", r_meta),
         (e_label, e_meta),
     ]
-    # -----------------------------------------------------------------------
 
-    # --- Resolve assistantId ----------------------------------------------
     assistant_id, id_src = choose_from_sources(
         id_sources,
         ("assistantId",),
@@ -250,8 +300,6 @@ async def entrypoint(ctx: agents.JobContext):
     resolver_path = os.getenv("ASSISTANT_RESOLVER_PATH", "/api/v1/livekit/assistant").lstrip("/")
     base_resolver = f"{backend_url}/{resolver_path}".rstrip("/")
 
-
-    # If no assistant_id but we have a DID, resolve by number
     if not assistant_id and called_did:
         q = urllib.parse.urlencode({"number": called_did})
         for path in ("by-number", ""):
@@ -278,11 +326,13 @@ async def entrypoint(ctx: agents.JobContext):
                     id_src = f"{resolver_label}.assistant.id"
                     break
 
-    # If we have an assistant_id, fetch full assistant (Supabase preferred)
     if assistant_id:
         supabase_url = os.getenv("SUPABASE_URL", "").strip()
-        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE", "").strip()
-        logging.info("SUPABASE_CHECK | url_present=%s | key_present=%s | create_client=%s", 
+        supabase_key = (
+            os.getenv("SUPABASE_SERVICE_ROLE", "").strip()
+            or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+        )
+        logging.info("SUPABASE_CHECK | url_present=%s | key_present=%s | create_client=%s",
                      bool(supabase_url), bool(supabase_key), create_client is not None)
         used_supabase = False
         if create_client and supabase_url and supabase_key:
@@ -292,6 +342,7 @@ async def entrypoint(ctx: agents.JobContext):
                     "id, name, prompt, first_message, cal_api_key, cal_event_type_id, cal_timezone"
                 ).eq("id", assistant_id).single().execute()
                 row = resp.data
+                print("row", row)
                 if row:
                     resolver_meta = {
                         "assistant": {
@@ -309,7 +360,6 @@ async def entrypoint(ctx: agents.JobContext):
             except Exception:
                 logging.exception("SUPABASE_ERROR | assistant fetch failed")
 
-        # Fallback to HTTP resolver by id
         if not used_supabase:
             url = f"{base_resolver}/{assistant_id}"
             data = _http_get_json(url)
@@ -337,8 +387,6 @@ async def entrypoint(ctx: agents.JobContext):
 
     # --- Build instructions strictly from RESOLVED ASSISTANT ONLY ----------
     assistant_name = (resolver_meta.get("assistant") or {}).get("name") or os.getenv("DEFAULT_ASSISTANT_NAME", "Assistant")
-
-    # Use only assistant.prompt (resolved). No overrides from room/participant/env JSON.
     prompt = (resolver_meta.get("assistant") or {}).get("prompt") or os.getenv("DEFAULT_INSTRUCTIONS", "You are a helpful voice assistant.")
     first_message = (resolver_meta.get("assistant") or {}).get("firstMessage") or ""
 
@@ -347,7 +395,7 @@ async def entrypoint(ctx: agents.JobContext):
     cal_event_type_id = resolver_meta.get("cal_event_type_id")
     cal_timezone = resolver_meta.get("cal_timezone") or "UTC"
 
-    # Force opening line: either provided firstMessage or a default using assistant_name/DID
+    # First line
     force_first = (os.getenv("FORCE_FIRST_MESSAGE", "true").lower() != "false")
     if force_first and not first_message:
         first_message = (
@@ -356,7 +404,21 @@ async def entrypoint(ctx: agents.JobContext):
             f"Hi! You’ve reached {assistant_name}. How can I help you today?"
         )
 
-    instructions = prompt
+    # Softer flow policy
+    flow_instructions = """
+GUIDED CALL POLICY (be natural, not rigid):
+- Prefer one tool call per caller turn. (Parallel tool calls are disabled.)
+- Only pass values the caller actually said—no placeholders.
+- If they mention symptoms, be empathetic, then ask if they want to book.
+- If they want to book:
+  1) Ask for the reason -> set_notes(reason).
+  2) Ask for a day -> list_slots_on_day(day), read numbered options.
+  3) They pick -> choose_slot(option).
+  4) Collect name -> email -> phone (one by one).
+  5) Read back summary. If yes -> confirm_details(); if no -> confirm_details_no() and fix it, then repeat.
+"""
+
+    instructions = prompt + "\n\n" + flow_instructions
     calendar: Calendar | None = None
     if cal_api_key and cal_event_type_id:
         try:
@@ -366,49 +428,102 @@ async def entrypoint(ctx: agents.JobContext):
                 event_type_id=int(cal_event_type_id),
             )
             await calendar.initialize()
-            instructions += (
-                " You have two tools available: list_available_slots and schedule_appointment. "
-                "Use them when the caller wants to book."
-            )
+            instructions += " Tools available: confirm_wants_to_book_yes, set_notes, list_slots_on_day, choose_slot, provide_name, provide_email, provide_phone, confirm_details_yes, confirm_details_no, finalize_booking."
             logging.info("CALENDAR_READY | event_type_id=%s | tz=%s", cal_event_type_id, cal_timezone)
         except Exception:
             logging.exception("Failed to initialize Cal.com calendar")
-            instructions += " Calendar integration is currently unavailable."
 
     if force_first and first_message:
-        instructions += f' IMPORTANT: Begin the call by saying exactly this (do not paraphrase): "{first_message}"'
+        instructions += f' IMPORTANT: Begin the call by saying: "{first_message}"'
 
     logging.info("PROMPT_TRACE_FINAL | sha256=%s | len=%d | preview=%s",
                  sha256_text(instructions), len(instructions), preview(instructions))
     # -----------------------------------------------------------------------
 
-    # --- Start single agent session ---------------------------------------
-    llm_model = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
-    stt_model = os.getenv("STT_MODEL", "nova-3")
-    tts_model = os.getenv("TTS_MODEL", "aura-asteria-en")
+    # --- OpenAI + VAD configuration ----------------------------------------
+    # Use OPENAI_API_KEY primarily; fall back to OPENAI_API if that's what you set.
+    openai_api_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API")
+    if not openai_api_key:
+        logging.warning("OPENAI_API_KEY/OPENAI_API not set; OpenAI plugins will fail to auth.")  # plugin reads env too
+
+    llm_model = os.getenv("OPENAI_LLM_MODEL", "gpt-4o-mini")
+    stt_model = os.getenv("OPENAI_STT_MODEL", "gpt-4o-transcribe")
+    tts_model = os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
+    tts_voice = os.getenv("OPENAI_TTS_VOICE", "alloy")
+
+    # Load / reuse VAD (required because OpenAI STT is non-streaming; VAD gates turns)
+    vad = ctx.proc.userdata.get("vad") if hasattr(ctx, "proc") else None
+    if vad is None:
+        # Fallback if prewarm didn't run
+        vad = silero.VAD.load()
 
     session = AgentSession(
-        stt=deepgram.STT(model=stt_model),
-        llm=groq.LLM(model=llm_model, temperature=0.1),
-        tts=deepgram.TTS(model=tts_model),
+        # 👇 VAD fixes the “STT does not support streaming” error
+        turn_detection="vad",
+        vad=vad,
+
+        # OpenAI STT / LLM / TTS
+        stt=lk_openai.STT(model=stt_model, api_key=openai_api_key),
+        llm=lk_openai.LLM(
+            model=llm_model,
+            api_key=openai_api_key,
+            temperature=0.1,
+            parallel_tool_calls=False,  # align with our FSM guard
+            tool_choice="auto",
+        ),
+        tts=lk_openai.TTS(model=tts_model, voice=tts_voice, api_key=openai_api_key),
     )
 
     await session.start(
         room=ctx.room,
         agent=Assistant(instructions=instructions, calendar=calendar),
     )
-    await session.say(
-        "hello and welcome. how are you today?"
-    )
+
+    # Add shutdown callback to save call history
+    async def save_call_on_shutdown():
+        end_time = datetime.datetime.now()
+        logging.info("CALL_END | call_id=%s | end_time=%s", call_id, end_time.isoformat())
+        
+        # Get session history
+        session_history = []
+        try:
+            if hasattr(session, 'history') and session.history:
+                # Convert session history to list format
+                history_dict = session.history.to_dict()
+                if "items" in history_dict:
+                    session_history = history_dict["items"]
+        except Exception as e:
+            logging.warning("Failed to get session history: %s", str(e))
+        
+        # Save to Supabase
+        await save_call_history_to_supabase(
+            call_id=call_id,
+            assistant_id=assistant_id or "unknown",
+            called_did=called_did or "unknown",
+            start_time=start_time,
+            end_time=end_time,
+            session_history=session_history,
+            participant_identity=participant.identity if participant else None
+        )
+    
+    ctx.add_shutdown_callback(save_call_on_shutdown)
 
     # Kick off with empty user_input; greeting comes from instructions
     await session.run(user_input="")
     # -----------------------------------------------------------------------
 
+def prewarm(proc: agents.JobProcess):
+    """Preload VAD so it’s instantly available for sessions."""
+    try:
+        proc.userdata["vad"] = silero.VAD.load()
+    except Exception:
+        logging.exception("Failed to prewarm Silero VAD")
+
 if __name__ == "__main__":
     agents.cli.run_app(
         agents.WorkerOptions(
             entrypoint_fnc=entrypoint,
-            agent_name=os.getenv("LK_AGENT_NAME", "ai"),  # just a worker label; not used to pick prompts anymore
+            prewarm_fnc=prewarm,  # ✅ ensures VAD is ready
+            agent_name=os.getenv("LK_AGENT_NAME", "ai"),
         )
     )

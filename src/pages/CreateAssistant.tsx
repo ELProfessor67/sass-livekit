@@ -22,6 +22,7 @@ import { VoiceTab } from "@/components/assistants/wizard/VoiceTab";
 import { AnalysisTab } from "@/components/assistants/wizard/AnalysisTab";
 import { AdvancedTab } from "@/components/assistants/wizard/AdvancedTab";
 import { AssistantFormData } from "@/components/assistants/wizard/types";
+import { useCurrentUser } from "@/hooks/useAuthService";
 import { supabase } from "@/integrations/supabase/client";
 
 const tabVariants = {
@@ -39,6 +40,7 @@ const CreateAssistant = () => {
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const user = useCurrentUser();
 
   const tabs = [
     { id: "model", label: "Model" },
@@ -127,20 +129,7 @@ const CreateAssistant = () => {
     }));
   };
 
-  // Listen for Cal setup completion and apply to Advanced section
-  React.useEffect(() => {
-    const listener = (e: any) => {
-      const detail = e?.detail || {};
-      handleFormDataChange('advanced', {
-        calApiKey: detail.cal_api_key,
-        calEventTypeId: detail.cal_event_type_id,
-        calEventTypeSlug: detail.cal_event_type_slug,
-        calTimezone: detail.cal_timezone,
-      });
-    };
-    window.addEventListener('assistant-cal-config', listener);
-    return () => window.removeEventListener('assistant-cal-config', listener);
-  }, []);
+
 
   // Load existing assistant data when editing
   useEffect(() => {
@@ -241,21 +230,14 @@ const CreateAssistant = () => {
             }
           });
 
-          // Load Cal.com config from localStorage if it exists
-          try {
-            const calConfigKey = `assistant-cal-config-${id}`;
-            const calConfig = localStorage.getItem(calConfigKey);
-            if (calConfig) {
-              const parsed = JSON.parse(calConfig);
-              handleFormDataChange('advanced', {
-                calApiKey: parsed.cal_api_key,
-                calEventTypeId: parsed.cal_event_type_id,
-                calEventTypeSlug: parsed.cal_event_type_slug,
-                calTimezone: parsed.cal_timezone,
-              });
-            }
-          } catch (err) {
-            console.warn('Failed to load Cal.com config:', err);
+          // Load Cal.com config from database
+          if (data.cal_api_key || data.cal_event_type_id || data.cal_event_type_slug || data.cal_timezone) {
+            handleFormDataChange('advanced', {
+              calApiKey: data.cal_api_key,
+              calEventTypeId: data.cal_event_type_id,
+              calEventTypeSlug: data.cal_event_type_slug,
+              calTimezone: data.cal_timezone,
+            });
           }
         }
       } catch (error) {
@@ -323,6 +305,12 @@ const CreateAssistant = () => {
       idle_messages: formData.advanced.idleMessages?.length ? formData.advanced.idleMessages : null,
       max_idle_messages: formData.advanced.idleMessageMaxSpokenCount,
       wait_seconds: formData.voice.waitSeconds,
+
+      // Cal.com Integration
+      cal_api_key: (formData.advanced as any).calApiKey || null,
+      cal_event_type_id: (formData.advanced as any).calEventTypeId || null,
+      cal_event_type_slug: (formData.advanced as any).calEventTypeSlug || null,
+      cal_timezone: (formData.advanced as any).calTimezone || null,
     } as any;
   };
 
@@ -349,25 +337,13 @@ const CreateAssistant = () => {
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('You must be signed in to save an assistant.');
+      if (!user?.id) throw new Error('You must be signed in to save an assistant.');
 
-      await ensureUserProfileExists(user.id, (user.user_metadata as any)?.full_name || (user.user_metadata as any)?.name || null);
+      await ensureUserProfileExists(user.id, user.fullName || null);
 
       const payload = await mapFormToAssistantPayload(user.id);
 
-      const persistCalConfig = (assistantId: string) => {
-        try {
-          const { calApiKey, calEventTypeId, calEventTypeSlug, calTimezone } = formData.advanced as any;
-          const hasAny = calApiKey || calEventTypeId || calEventTypeSlug || calTimezone;
-          if (!hasAny) return;
-          const key = `assistant-cal-config-${assistantId}`;
-          const payload = { cal_api_key: calApiKey || "", cal_event_type_id: calEventTypeId || "", cal_event_type_slug: calEventTypeSlug || "", cal_timezone: calTimezone || "" };
-          localStorage.setItem(key, JSON.stringify(payload));
-        } catch (err) {
-          console.warn('Failed to persist calendar config locally', err);
-        }
-      };
+
 
       if (isEditing && id) {
         const { error } = await supabase
@@ -377,15 +353,15 @@ const CreateAssistant = () => {
         if (error) {
           // Retry once if FK missing
           if ((error as any)?.code === '23503') {
-            await ensureUserProfileExists(user.id, (user.user_metadata as any)?.full_name || (user.user_metadata as any)?.name || null);
+            await ensureUserProfileExists(user.id, user.fullName || null);
             const retry = await supabase.from('assistant').update(payload).eq('id', id);
             if (retry.error) throw retry.error;
           } else {
             throw error;
           }
         }
-        persistCalConfig(id);
         toast({ title: 'Assistant updated', description: 'Your changes have been saved.' });
+        navigate('/assistants');
       } else {
         let { data, error } = await supabase
           .from('assistant')
@@ -394,7 +370,7 @@ const CreateAssistant = () => {
           .single();
         if (error) {
           if ((error as any)?.code === '23503') {
-            await ensureUserProfileExists(user.id, (user.user_metadata as any)?.full_name || (user.user_metadata as any)?.name || null);
+            await ensureUserProfileExists(user.id, user.fullName || null);
             const retry = await supabase
               .from('assistant')
               .insert(payload)
@@ -407,7 +383,6 @@ const CreateAssistant = () => {
           }
         }
         if (data?.id) {
-          persistCalConfig(data.id);
           toast({ title: 'Assistant created', description: 'Your assistant has been saved.' });
           navigate(`/assistants`);
         }

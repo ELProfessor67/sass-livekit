@@ -921,6 +921,50 @@ export type Database = {
         }
         Relationships: []
       }
+      phone_number: {
+        Row: {
+          id: string
+          phone_sid: string | null
+          number: string
+          label: string | null
+          inbound_assistant_id: string | null
+          webhook_status: string | null
+          status: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          phone_sid?: string | null
+          number: string
+          label?: string | null
+          inbound_assistant_id?: string | null
+          webhook_status?: string | null
+          status?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          phone_sid?: string | null
+          number?: string
+          label?: string | null
+          inbound_assistant_id?: string | null
+          webhook_status?: string | null
+          status?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_phone_number_assistant"
+            columns: ["inbound_assistant_id"]
+            isOneToOne: false
+            referencedRelation: "assistant"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workspace_settings: {
         Row: {
           agency_id: string | null

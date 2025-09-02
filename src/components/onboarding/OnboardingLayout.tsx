@@ -8,8 +8,9 @@ import { OnboardingWelcome } from "./steps/OnboardingWelcome";
 import { BusinessProfileStep } from "./steps/BusinessProfileStep";
 import { UseCaseSelectionStep } from "./steps/UseCaseSelectionStep";
 import { PreferencesStep } from "./steps/PreferencesStep";
-import { OnboardingComplete } from "./steps/OnboardingComplete";
 import { PricingPlanStep } from "./steps/PricingPlanStep";
+import { PaymentStep } from "./steps/PaymentStep";
+import { OnboardingComplete } from "./steps/OnboardingComplete";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
@@ -20,6 +21,7 @@ const steps = [
   { component: UseCaseSelectionStep, title: "Use Case" },
   { component: PreferencesStep, title: "Preferences" },
   { component: PricingPlanStep, title: "Pricing" },
+  { component: PaymentStep, title: "Payment" },
   { component: OnboardingComplete, title: "Complete" }
 ];
 

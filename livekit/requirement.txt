@@ -1,4 +1,5 @@
 livekit-agents[groq,deepgram]~=1.0
+livekit-agents[openai]>=1.2,<2
 python-dotenv
 aiohttp
 supabase>=2.4.0

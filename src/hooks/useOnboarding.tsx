@@ -10,6 +10,8 @@ export interface OnboardingData {
   notifications: boolean;
   goals: string[];
   plan: string;
+  paymentMethodId?: string;
+  subscriptionStatus?: string;
 }
 
 export interface OnboardingState {
@@ -41,7 +43,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
     const defaultState: OnboardingState = {
       currentStep: 0,
-      totalSteps: 6,
+      totalSteps: 7,
       isCompleted,
       data: {
         companyName: "",
@@ -52,7 +54,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         theme: "glass",
         notifications: true,
         goals: [],
-        plan: "basic",
+        plan: "starter",
       },
     };
 
@@ -62,11 +64,11 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     if (!initial.data?.plan) {
       initial = {
         ...initial,
-        data: { ...initial.data, plan: "basic" },
+        data: { ...initial.data, plan: "starter" },
       };
     }
-    if (!initial.totalSteps || initial.totalSteps < 6) {
-      initial = { ...initial, totalSteps: 6 };
+    if (!initial.totalSteps || initial.totalSteps < 7) {
+      initial = { ...initial, totalSteps: 7 };
     }
     if (initial.currentStep > initial.totalSteps - 1) {
       initial = { ...initial, currentStep: initial.totalSteps - 1 };
@@ -117,7 +119,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     localStorage.removeItem(COMPLETED_KEY);
     setState({
       currentStep: 0,
-      totalSteps: 6,
+      totalSteps: 7,
       isCompleted: false,
       data: {
         companyName: "",
@@ -128,7 +130,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         theme: "glass",
         notifications: true,
         goals: [],
-        plan: "basic"
+        plan: "starter"
       }
     });
   };

@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { useAuth } from "@/hooks/useAuth";
+import { useUserProfile } from "@/hooks/useAuthService";
 import { Camera, Mail, Building, Calendar } from "lucide-react";
 
 export default function Profile() {
-  const { user } = useAuth();
+  const { profile, getUserDisplayName, getUserInitials } = useUserProfile();
 
   return (
     <DashboardLayout>
@@ -25,7 +25,7 @@ export default function Profile() {
               <CardTitle className="flex items-center gap-2">
                 <Avatar className="h-8 w-8">
                   <AvatarFallback className="bg-primary/10 text-primary">
-                    {user?.fullName?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
+                    {getUserInitials()}
                   </AvatarFallback>
                 </Avatar>
                 Profile Information
@@ -36,7 +36,7 @@ export default function Profile() {
               <div className="flex items-center gap-4">
                 <Avatar className="h-20 w-20 ring-2 ring-primary/20">
                   <AvatarFallback className="bg-primary/10 text-primary text-xl font-semibold">
-                    {user?.fullName?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
+                    {getUserInitials()}
                   </AvatarFallback>
                 </Avatar>
                 <Button variant="outline" size="sm" className="gap-2">
@@ -50,7 +50,7 @@ export default function Profile() {
                   <Label htmlFor="fullName">Full Name</Label>
                   <Input 
                     id="fullName" 
-                    defaultValue={user?.fullName || ""} 
+                    defaultValue={profile?.fullName || ""} 
                     className="bg-background/50"
                   />
                 </div>
@@ -63,7 +63,7 @@ export default function Profile() {
                   <Input 
                     id="email" 
                     type="email" 
-                    defaultValue={user?.email || ""} 
+                    defaultValue={profile?.email || ""} 
                     className="bg-background/50"
                   />
                 </div>
@@ -75,7 +75,7 @@ export default function Profile() {
                   </Label>
                   <Input 
                     id="company" 
-                    defaultValue={user?.company || ""} 
+                    defaultValue={profile?.company || ""} 
                     className="bg-background/50"
                   />
                 </div>

@@ -126,16 +126,6 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
                   timezone: data.calTimezone 
                 });
                 
-                const detail = { 
-                  cal_api_key: data.calApiKey, 
-                  cal_event_type_id: resp.eventTypeId, 
-                  cal_event_type_slug: resp.eventTypeSlug, 
-                  cal_timezone: data.calTimezone 
-                };
-                
-                const event = new CustomEvent('assistant-cal-config', { detail });
-                window.dispatchEvent(event);
-                
                 onChange({ calEventTypeId: resp.eventTypeId });
                 setCalSuccess(`Connected: ${resp.eventTypeSlug} (#${resp.eventTypeId})`);
               } catch (e: any) {

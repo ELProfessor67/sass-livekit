@@ -9,4 +9,8 @@ Environment variables used by the app
 - VITE_BACKEND_URL: Vite proxy target during dev (default http://localhost:4000)
 - VITE_LIVEKIT_URL: LiveKit URL for frontend
 
+# Stripe Configuration (for payment processing)
+- VITE_STRIPE_PUBLISHABLE_KEY: Stripe publishable key (starts with pk_test_)
+- STRIPE_TEST_KEY: Stripe secret key (starts with sk_test_)
+
 

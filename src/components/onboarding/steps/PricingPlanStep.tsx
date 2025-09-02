@@ -4,14 +4,14 @@ import { useOnboarding } from "@/hooks/useOnboarding";
 import { Button } from "@/components/ui/button";
 
 const plans = [
-  { key: "basic", name: "Basic", price: "$20", features: ["Up to 100 calls/month", "Email support"] },
-  { key: "pro", name: "Pro", price: "$49", features: ["Up to 1,000 calls/month", "Priority support", "Advanced analytics"] },
-  { key: "enterprise", name: "Enterprise", price: "Contact", features: ["Unlimited calls", "SLA", "Dedicated success"] },
+  { key: "starter", name: "Starter", price: "$19", features: ["Up to 500 calls/month", "Basic analytics", "Email support", "2 team members", "Standard integrations"] },
+  { key: "professional", name: "Professional", price: "$49", features: ["Up to 2,500 calls/month", "Advanced analytics & reporting", "Priority support", "10 team members", "All integrations", "Custom branding"] },
+  { key: "enterprise", name: "Enterprise", price: "$99", features: ["Unlimited calls", "Real-time analytics", "24/7 phone support", "Unlimited team members", "Enterprise integrations", "Advanced security", "Dedicated account manager"] },
 ];
 
 export function PricingPlanStep() {
   const { data, updateData, nextStep, prevStep } = useOnboarding();
-  const [selected, setSelected] = React.useState<string>(data.plan || "basic");
+  const [selected, setSelected] = React.useState<string>(data.plan || "starter");
 
   const handleContinue = () => {
     updateData({ plan: selected });

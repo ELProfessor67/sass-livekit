@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Phone } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -6,56 +6,134 @@ import { TwilioIntegrationCard } from "./integrations/TwilioIntegrationCard";
 import { SecurityCard } from "./integrations/SecurityCard";
 import { MainHeading, BodyText } from "@/components/ui/typography";
 import { TwilioAuthDialog } from "./TwilioAuthDialog";
-import type { TwilioIntegration } from "./integrations/types";
-
-const mockIntegrations = [
-  {
-    id: "1",
-    name: "Twilio",
-    description: "Voice and SMS communications",
-    status: "connected",
-    lastUsed: "3 hours ago",
-    details: {
-      account: "AC********1234",
-      label: "Main Twilio Account",
-    },
-  }
-] as TwilioIntegration[];
+import type { TwilioIntegration, TwilioCredentials } from "./integrations/types";
+import { TwilioCredentialsService, type UserTwilioCredentials } from "@/lib/twilio-credentials";
 
 export function ApiIntegrations() {
   const { toast } = useToast();
-  const [integrations, setIntegrations] = useState<TwilioIntegration[]>(mockIntegrations);
-  
-  const handleTwilioConnect = (data: any) => {
-    const newIntegration = {
-      id: Math.random().toString(),
-      name: "Twilio",
-      description: "Voice and SMS communications",
-      status: "connected",
-      lastUsed: "Just now",
-      details: {
-        account: `AC****${data.accountSid.slice(-4)}`,
-        label: data.label,
-      },
-    } as TwilioIntegration;
-    
-    setIntegrations([...integrations, newIntegration]);
+  const [integrations, setIntegrations] = useState<TwilioIntegration[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load Twilio credentials on component mount
+  useEffect(() => {
+    loadTwilioCredentials();
+  }, []);
+
+  const loadTwilioCredentials = async () => {
+    try {
+      setIsLoading(true);
+      const credentials = await TwilioCredentialsService.getAllCredentials();
+      
+      const twilioIntegrations: TwilioIntegration[] = credentials.map(cred => ({
+        id: cred.id,
+        name: "Twilio",
+        description: "Voice and SMS communications",
+        status: "connected" as const,
+        lastUsed: formatLastUsed(cred.updated_at),
+        details: {
+          account: maskAccountSid(cred.account_sid),
+          label: cred.label,
+          trunkSid: cred.trunk_sid,
+        },
+      }));
+
+      setIntegrations(twilioIntegrations);
+    } catch (error) {
+      console.error("Error loading Twilio credentials:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load Twilio credentials.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
-  
-  const handleRemoveIntegration = (id: string) => {
-    setIntegrations(integrations.filter(integration => integration.id !== id));
-    
-    toast({
-      title: "Integration removed",
-      description: "The integration has been successfully removed.",
-    });
+
+  const handleTwilioConnect = async (data: TwilioCredentials) => {
+    try {
+      // Test credentials before saving
+      const isValid = await TwilioCredentialsService.testCredentials(data);
+      if (!isValid) {
+        toast({
+          title: "Invalid credentials",
+          description: "Please check your Twilio credentials and try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      await TwilioCredentialsService.saveCredentials(data);
+      await loadTwilioCredentials();
+      
+      toast({
+        title: "Twilio connected",
+        description: "Your Twilio account has been connected successfully.",
+      });
+    } catch (error) {
+      console.error("Error connecting Twilio:", error);
+      toast({
+        title: "Connection failed",
+        description: "Failed to connect your Twilio account. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
-  
-  const handleRefreshIntegration = (id: string) => {
-    toast({
-      title: "Integration refreshed",
-      description: "The integration credentials have been refreshed.",
-    });
+
+  const handleRemoveIntegration = async (id: string) => {
+    try {
+      await TwilioCredentialsService.deleteCredentials(id);
+      await loadTwilioCredentials();
+      
+      toast({
+        title: "Integration removed",
+        description: "The Twilio integration has been removed successfully.",
+      });
+    } catch (error) {
+      console.error("Error removing integration:", error);
+      toast({
+        title: "Removal failed",
+        description: "Failed to remove the integration. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRefreshIntegration = async (id: string) => {
+    try {
+      await TwilioCredentialsService.setActiveCredentials(id);
+      await loadTwilioCredentials();
+      
+      toast({
+        title: "Integration refreshed",
+        description: "The Twilio integration has been set as active.",
+      });
+    } catch (error) {
+      console.error("Error refreshing integration:", error);
+      toast({
+        title: "Refresh failed",
+        description: "Failed to refresh the integration. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Helper functions
+  const maskAccountSid = (accountSid: string): string => {
+    if (accountSid.length <= 8) return accountSid;
+    return accountSid.substring(0, 2) + "*".repeat(accountSid.length - 6) + accountSid.substring(accountSid.length - 4);
+  };
+
+  const formatLastUsed = (dateString: string): string => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) return "Just now";
+    if (diffInHours < 24) return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
+    
+    const diffInDays = Math.floor(diffInHours / 24);
+    return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
   };
 
   return (

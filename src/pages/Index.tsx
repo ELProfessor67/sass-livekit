@@ -1,12 +1,25 @@
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useBusinessUseCase } from "@/components/BusinessUseCaseProvider";
-import { mockApi } from "@/lib/api";
-import { mapCallsToUseCase, calculateUseCaseMetrics } from "@/utils/dataMapping";
+import { calculateUseCaseMetrics } from "@/utils/dataMapping";
 import DashboardLayout from "@/layout/DashboardLayout";
 import FilterBar from "@/components/navigation/FilterBar";
 import DashboardContent from "@/components/dashboard/DashboardContent";
-import { differenceInDays } from "date-fns";
+import { supabase } from "@/integrations/supabase/client";
+
+interface CallHistory {
+  id: string;
+  call_id: string;
+  assistant_id: string;
+  phone_number: string;
+  participant_identity: string;
+  start_time: string;
+  end_time: string;
+  call_duration: number;
+  call_status: string;
+  transcription: Array<{ role: string; content: any }>;
+  created_at: string;
+}
 
 export default function Index() {
   const { config } = useBusinessUseCase();
@@ -14,24 +27,87 @@ export default function Index() {
     from: new Date(new Date().setDate(new Date().getDate() - 30)),
     to: new Date()
   });
+  const [realCallHistory, setRealCallHistory] = useState<CallHistory[]>([]);
+  const [isLoadingRealData, setIsLoadingRealData] = useState(true);
 
-  // Generate enhanced mock data specifically for the selected date range
-  const mockCalls = useMemo(() => {
-    // Calculate days in range
-    const daysInRange = differenceInDays(dateRange.to, dateRange.from) + 1;
+  // Helper function to determine call outcome from transcription
+  const getCallOutcome = (transcription: Array<{ role: string; content: any }>) => {
+    if (!transcription || transcription.length === 0) return 'No Outcome';
     
-    // For a 30-day range, generate exactly 94 calls
-    const baseCallCount = 94;
+    const lastMessage = transcription[transcription.length - 1];
+    if (lastMessage && lastMessage.role === 'assistant') {
+      // Safely convert content to string and handle different data types
+      const content = typeof lastMessage.content === 'string' 
+        ? lastMessage.content.toLowerCase()
+        : String(lastMessage.content || '').toLowerCase();
+      
+      if (content.includes('appointment') || content.includes('booked')) return 'Booked Appointment';
+      if (content.includes('spam')) return 'Spam';
+      if (content.includes('not qualified')) return 'Not Qualified';
+      if (content.includes('message')) return 'Message to Franchise';
+    }
     
-    // Generate calls with the specific parameters for the date range
-    const baseCalls = mockApi.generateCalls(baseCallCount, dateRange);
-    
-    // Map the calls to the current use case context
-    return mapCallsToUseCase(baseCalls, config);
-  }, [dateRange.from, dateRange.to, config]);
-  
-  // All calls are already filtered for the date range in the generator
-  const callLogs = mockCalls;
+    return 'Call Dropped';
+  };
+
+  // Fetch real call history from Supabase
+  useEffect(() => {
+    const fetchCallHistory = async () => {
+      try {
+        setIsLoadingRealData(true);
+        const { data, error } = await supabase
+          .from('call_history')
+          .select('*')
+          .order('start_time', { ascending: false });
+
+        if (error) {
+          console.error('Error fetching call history:', error);
+          return;
+        }
+
+        setRealCallHistory(data || []);
+      } catch (error) {
+        console.error('Error:', error);
+      } finally {
+        setIsLoadingRealData(false);
+      }
+    };
+
+    fetchCallHistory();
+  }, []);
+
+  // Convert real call history to the format expected by the dashboard
+  const realCallLogs = useMemo(() => {
+    return realCallHistory.map(call => ({
+      id: call.id,
+      name: call.participant_identity || 'Unknown',
+      phoneNumber: call.phone_number || '',
+      date: new Date(call.start_time).toLocaleDateString('en-US'),
+      time: new Date(call.start_time).toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true 
+      }),
+      duration: `${Math.floor(call.call_duration / 60)}:${(call.call_duration % 60).toString().padStart(2, '0')}`,
+      direction: 'inbound',
+      channel: 'voice',
+      tags: [],
+      status: call.call_status,
+      resolution: getCallOutcome(call.transcription),
+      call_recording: '',
+      summary: '',
+      transcript: call.transcription,
+      analysis: null,
+      address: '',
+      messages: [],
+      phone_number: call.phone_number || '',
+      call_outcome: getCallOutcome(call.transcription),
+      created_at: call.start_time
+    }));
+  }, [realCallHistory]);
+
+  // Use only real data from Supabase
+  const callLogs = realCallLogs;
 
   // Calculate use case specific statistics
   const stats = useMemo(() => {
@@ -75,7 +151,7 @@ export default function Index() {
       <DashboardContent 
         dateRange={dateRange}
         callLogs={processedCallLogs}
-        isLoading={false}
+        isLoading={isLoadingRealData}
         stats={stats}
         callOutcomesData={callOutcomesData}
       />

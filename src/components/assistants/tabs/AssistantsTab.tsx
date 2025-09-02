@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CardContent } from "@/components/ui/card";
 import { CreateAssistantDialog } from "@/components/assistants/CreateAssistantDialog";
+import { useCurrentUser } from "@/hooks/useAuthService";
 import { supabase } from "@/integrations/supabase/client";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -117,12 +118,11 @@ function AssistantCard({ assistant }: { assistant: Assistant }) {
 export function AssistantsTab() {
   const [searchQuery, setSearchQuery] = useState("");
   const [assistants, setAssistants] = useState<Assistant[]>([]);
+  const user = useCurrentUser();
 
   useEffect(() => {
     const loadAssistantsForUser = async () => {
-      const { data: authData } = await supabase.auth.getUser();
-      const currentUser = authData?.user;
-      if (!currentUser) {
+      if (!user?.id) {
         setAssistants([]);
         return;
       }
@@ -130,7 +130,7 @@ export function AssistantsTab() {
       const { data, error } = await supabase
         .from("assistant")
         .select("id, name, prompt, first_message")
-        .eq("user_id", currentUser.id)
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -163,7 +163,7 @@ export function AssistantsTab() {
     };
 
     void loadAssistantsForUser();
-  }, []);
+  }, [user?.id]);
 
   const filteredAssistants = assistants.filter(assistant =>
     assistant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||

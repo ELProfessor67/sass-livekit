@@ -8,24 +8,24 @@ import { CreditCard, Download, Calendar, Zap, Phone, MessageSquare, Users } from
 
 const currentPlan = {
   name: "Professional",
-  price: "$99",
+  price: "$49",
   period: "month",
   status: "active",
   nextBilling: "2024-09-25"
 };
 
 const usage = [
-  { name: "API Calls", used: 8500, limit: 10000, icon: Zap },
+  { name: "API Calls", used: 1250, limit: 2500, icon: Zap },
   { name: "Phone Minutes", used: 450, limit: 1000, icon: Phone },
   { name: "Text Messages", used: 1200, limit: 2000, icon: MessageSquare },
-  { name: "Team Members", used: 3, limit: 5, icon: Users }
+  { name: "Team Members", used: 4, limit: 10, icon: Users }
 ];
 
 const invoices = [
-  { id: "INV-001", date: "2024-08-25", amount: "$99.00", status: "paid" },
-  { id: "INV-002", date: "2024-07-25", amount: "$99.00", status: "paid" },
-  { id: "INV-003", date: "2024-06-25", amount: "$99.00", status: "paid" },
-  { id: "INV-004", date: "2024-05-25", amount: "$99.00", status: "paid" }
+  { id: "INV-001", date: "2024-08-25", amount: "$49.00", status: "paid" },
+  { id: "INV-002", date: "2024-07-25", amount: "$49.00", status: "paid" },
+  { id: "INV-003", date: "2024-06-25", amount: "$49.00", status: "paid" },
+  { id: "INV-004", date: "2024-05-25", amount: "$49.00", status: "paid" }
 ];
 
 export default function Billing() {

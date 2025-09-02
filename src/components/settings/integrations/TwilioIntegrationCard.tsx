@@ -57,7 +57,7 @@ export function TwilioIntegrationCard({
                   </span>
                 </div>
                 <div className="text-xs text-muted-foreground mt-0.5">
-                  Account: {integration.details.account} • Last used: {integration.lastUsed}
+                  Account: {integration.details.account} • Trunk: {integration.details.trunkSid} • Last used: {integration.lastUsed}
                 </div>
               </div>
             </div>

@@ -8,7 +8,15 @@ export interface TwilioIntegration {
   details: {
     account: string;
     label: string;
+    trunkSid?: string;
   };
+}
+
+export interface TwilioCredentials {
+  accountSid: string;
+  authToken: string;
+  trunkSid: string;
+  label: string;
 }
 
 export type Integration = TwilioIntegration;

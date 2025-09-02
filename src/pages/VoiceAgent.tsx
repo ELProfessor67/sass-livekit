@@ -35,7 +35,7 @@ export default function VoiceAgent() {
       }
       const { data, error } = await supabase
         .from('assistant')
-        .select('id, name, prompt, first_message, llm_provider_setting, llm_model_setting, temperature_setting, max_token_setting, voice_provider_setting, voice_model_setting, voice_name_setting, background_sound_setting, wait_seconds, smart_endpointing')
+        .select('id, name, prompt, first_message, llm_provider_setting, llm_model_setting, temperature_setting, max_token_setting, voice_provider_setting, voice_model_setting, voice_name_setting, background_sound_setting, wait_seconds, smart_endpointing, cal_api_key, cal_event_type_id, cal_event_type_slug, cal_timezone')
         .eq('id', assistantId)
         .maybeSingle();
       if (error) {
@@ -43,14 +43,7 @@ export default function VoiceAgent() {
         console.warn('Failed to load assistant details:', error);
         setAssistant(null);
       } else {
-        try {
-          const calKey = `assistant-cal-config-${assistantId}`;
-          const calRaw = localStorage.getItem(calKey);
-          const cal = calRaw ? JSON.parse(calRaw) : null;
-          setAssistant({ ...(data as any), ...(cal || {}) });
-        } catch {
-          setAssistant(data);
-        }
+        setAssistant(data);
       }
     };
     void loadAssistant();

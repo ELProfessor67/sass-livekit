@@ -17,6 +17,9 @@ const twilioFormSchema = z.object({
   authToken: z.string().min(1, {
     message: "Twilio Auth Token is required."
   }),
+  trunkSid: z.string().min(1, {
+    message: "Twilio Trunk SID is required."
+  }),
   label: z.string().min(1, {
     message: "Label is required."
   })
@@ -39,6 +42,7 @@ export function TwilioAuthDialog({
     defaultValues: {
       accountSid: "",
       authToken: "",
+      trunkSid: "",
       label: ""
     }
   });
@@ -100,6 +104,24 @@ export function TwilioAuthDialog({
                     <Input 
                       type="password"
                       placeholder="Twilio Auth Token"
+                      className="bg-background/50 border-border/60 focus:border-primary/40"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="trunkSid"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-normal">Twilio Trunk SID</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="Twilio Trunk SID"
                       className="bg-background/50 border-border/60 focus:border-primary/40"
                       {...field}
                     />

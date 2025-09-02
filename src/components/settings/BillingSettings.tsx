@@ -26,25 +26,25 @@ const invoices = [
   {
     id: "INV-001",
     date: "Apr 23, 2025",
-    amount: "$29.00",
+    amount: "$49.00",
     status: "paid" as const
   },
   {
     id: "INV-002",
     date: "Mar 23, 2025",
-    amount: "$29.00",
+    amount: "$49.00",
     status: "paid" as const
   },
   {
     id: "INV-003",
     date: "Feb 23, 2025",
-    amount: "$19.00",
+    amount: "$49.00",
     status: "paid" as const
   },
   {
     id: "INV-004",
     date: "Jan 23, 2025",
-    amount: "$19.00",
+    amount: "$49.00",
     status: "paid" as const
   }
 ];
