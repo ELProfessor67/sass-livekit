@@ -11,7 +11,7 @@ import { InlineTranscriptView } from "./InlineTranscriptView";
 interface MessageBubbleProps {
   message: {
     id: string;
-    type: 'call';
+    type: 'call' | 'transcription';
     timestamp: Date;
     direction: string;
     duration: string;
@@ -22,6 +22,8 @@ interface MessageBubbleProps {
     transcript?: any;
     date: string;
     time: string;
+    isLive?: boolean;
+    confidence?: number;
   };
   conversation: Conversation;
   showAvatar?: boolean;
@@ -54,6 +56,7 @@ export function MessageBubble({ message, conversation, showAvatar = true }: Mess
   };
 
   const isIncoming = message.direction === 'inbound';
+  const isLiveTranscription = message.type === 'transcription' && message.isLive;
 
   return (
     <div className={`flex ${isIncoming ? 'justify-start' : 'justify-end'} space-x-2`}>
@@ -70,34 +73,69 @@ export function MessageBubble({ message, conversation, showAvatar = true }: Mess
 
       <div className={`max-w-sm ${!isIncoming ? 'ml-auto' : ''}`}>
         <div
-          className={`px-3 py-2 rounded-xl ${
-            isIncoming
+          className={`px-3 py-2 rounded-xl transition-all duration-200 ${
+            isLiveTranscription
+              ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800'
+              : isIncoming
               ? 'bg-card/50 border border-border/50'
               : 'bg-primary/10 border border-primary/20'
           }`}
         >
           {/* Call Header */}
           <div className="flex items-center space-x-2 mb-1">
-            <Phone className="w-3 h-3 text-muted-foreground" />
-            <span className="text-xs font-medium text-foreground">
-              {isIncoming ? 'Incoming' : 'Outgoing'} Call
-            </span>
-            <Badge 
-              variant={getOutcomeBadgeColor(message.resolution)}
-              className="text-[10px] ml-auto px-1.5 py-0"
-            >
-              {normalizeResolution(message.resolution || 'Unknown')}
-            </Badge>
+            {message.type === 'transcription' ? (
+              <>
+                <Mic className="w-3 h-3 text-muted-foreground" />
+                <span className="text-xs font-medium text-foreground">
+                  Live Transcription
+                </span>
+                {isLiveTranscription && (
+                  <Badge variant="secondary" className="text-[10px] ml-auto px-1.5 py-0 animate-pulse">
+                    Live
+                  </Badge>
+                )}
+              </>
+            ) : (
+              <>
+                <Phone className="w-3 h-3 text-muted-foreground" />
+                <span className="text-xs font-medium text-foreground">
+                  {isIncoming ? 'Incoming' : 'Outgoing'} Call
+                </span>
+                <Badge 
+                  variant={getOutcomeBadgeColor(message.resolution)}
+                  className="text-[10px] ml-auto px-1.5 py-0"
+                >
+                  {normalizeResolution(message.resolution || 'Unknown')}
+                </Badge>
+              </>
+            )}
           </div>
 
           {/* Call Details */}
           <div className="flex items-center space-x-2 text-[11px] text-muted-foreground mb-2">
-            <div className="flex items-center space-x-1">
-              <Clock className="w-2.5 h-2.5" />
-              <span>{message.duration}</span>
-            </div>
-            <span>•</span>
-            <span>{message.status}</span>
+            {message.type === 'transcription' ? (
+              <>
+                <div className="flex items-center space-x-1">
+                  <Clock className="w-2.5 h-2.5" />
+                  <span>{message.time}</span>
+                </div>
+                {message.confidence && (
+                  <>
+                    <span>•</span>
+                    <span>Confidence: {Math.round(message.confidence * 100)}%</span>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="flex items-center space-x-1">
+                  <Clock className="w-2.5 h-2.5" />
+                  <span>{message.duration}</span>
+                </div>
+                <span>•</span>
+                <span>{message.status}</span>
+              </>
+            )}
           </div>
 
           {/* Summary */}
@@ -105,6 +143,25 @@ export function MessageBubble({ message, conversation, showAvatar = true }: Mess
             <p className="text-xs text-foreground mb-2 leading-relaxed">
               {message.summary}
             </p>
+          )}
+
+          {/* Live Transcription Text */}
+          {message.type === 'transcription' && message.transcript && (
+            <div className="text-xs text-foreground mb-2 leading-relaxed">
+              {message.transcript.map((entry: any, idx: number) => (
+                <div key={idx} className="mb-1">
+                  <span className="font-medium text-foreground">
+                    {entry.speaker}:
+                  </span>
+                  <span className="text-muted-foreground ml-1">
+                    {entry.text}
+                    {isLiveTranscription && idx === message.transcript.length - 1 && (
+                      <span className="inline-block w-2 h-4 bg-current animate-pulse ml-1" />
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
           )}
 
           {/* Recording */}

@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { useUserProfile } from "@/hooks/useAuthService";
+import { useAuth } from "@/contexts/AuthContext";
 import { Camera, Mail, Building, Calendar } from "lucide-react";
 
 export default function Profile() {
-  const { profile, getUserDisplayName, getUserInitials } = useUserProfile();
+  const { user } = useAuth();
 
   return (
     <DashboardLayout>
@@ -25,7 +25,7 @@ export default function Profile() {
               <CardTitle className="flex items-center gap-2">
                 <Avatar className="h-8 w-8">
                   <AvatarFallback className="bg-primary/10 text-primary">
-                    {getUserInitials()}
+                    {user?.fullName?.charAt(0) || user?.email?.charAt(0) || 'U'}
                   </AvatarFallback>
                 </Avatar>
                 Profile Information
@@ -36,7 +36,7 @@ export default function Profile() {
               <div className="flex items-center gap-4">
                 <Avatar className="h-20 w-20 ring-2 ring-primary/20">
                   <AvatarFallback className="bg-primary/10 text-primary text-xl font-semibold">
-                    {getUserInitials()}
+                    {user?.fullName?.charAt(0) || user?.email?.charAt(0) || 'U'}
                   </AvatarFallback>
                 </Avatar>
                 <Button variant="outline" size="sm" className="gap-2">

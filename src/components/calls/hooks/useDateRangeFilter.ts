@@ -42,7 +42,6 @@ export function useDateRangeFilter(calls: Call[]) {
   });
   
   const filteredByDateRange = useMemo(() => {
-    console.log(`useDateRangeFilter: Filtering calls for date range: ${dateRange.from.toLocaleDateString()} - ${dateRange.to.toLocaleDateString()}`);
     
     return calls.filter(call => {
       // Construct a proper date object from date and time strings

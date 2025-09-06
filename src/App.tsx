@@ -1,4 +1,5 @@
 
+import { useState, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -6,8 +7,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { BusinessUseCaseProvider } from "./components/BusinessUseCaseProvider";
-import { useAuth } from "./hooks/useAuth";
-import { useUserProfile } from "./hooks/useUserProfile";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { supabase } from "./integrations/supabase/client";
 import Index from "./pages/Index";
 import Assistants from "./pages/Assistants";
 import CreateAssistant from "./pages/CreateAssistant";
@@ -34,8 +35,9 @@ const queryClient = new QueryClient({
       retry: 1, // Only retry once
       retryDelay: 500, // Wait half a second before retry
       staleTime: 1000 * 60 * 5, // Data stays fresh for 5 minutes
-      refetchOnWindowFocus: false, // Don't refetch when window gets focus
-      refetchOnReconnect: false, // Don't refetch when reconnecting
+      refetchOnWindowFocus: false, // Disable aggressive refetching on window focus
+      refetchOnReconnect: true, // Refetch when reconnecting
+      refetchOnMount: true, // Always refetch on component mount
     }
   }
 });
@@ -43,14 +45,58 @@ const queryClient = new QueryClient({
 function AnimatedRoutes() {
   function RequireOnboarding() {
     const location = useLocation();
-    const { isAuthenticated, isLoading } = useAuth();
-    const { profile, isLoading: isProfileLoading } = useUserProfile();
+    const { user, loading } = useAuth();
+    const [onboardingStatus, setOnboardingStatus] = useState<boolean | null>(null);
 
-    if (isLoading || isProfileLoading) return null;
+    // Check onboarding status from database with timeout
+    useEffect(() => {
+      if (user?.id && !loading) {
+        const checkOnboardingStatus = async () => {
+          try {
+            // Set a timeout for the database query
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Database timeout')), 3000)
+            );
+            
+            const queryPromise = supabase
+              .from("users")
+              .select("onboarding_completed")
+              .eq("id", user.id)
+              .single();
+            
+            const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
+            
+            if (error) {
+              console.error("Error checking onboarding status:", error);
+              // If we can't check the database, assume onboarding is completed for existing users
+              setOnboardingStatus(true);
+            } else {
+              setOnboardingStatus(data?.onboarding_completed || false);
+            }
+          } catch (error) {
+            console.error("Error checking onboarding status:", error);
+            // If there's any error (including timeout), assume onboarding is completed
+            setOnboardingStatus(true);
+          }
+        };
 
-    const dbCompleted = Boolean(profile?.onboarding_completed);
+        checkOnboardingStatus();
+      }
+    }, [user?.id, loading]);
+
+    if (loading || onboardingStatus === null) {
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+      );
+    }
+
     const localCompleted = localStorage.getItem("onboarding-completed") === "true";
-    const shouldRedirectToOnboarding = isAuthenticated && !(dbCompleted || localCompleted);
+    const shouldRedirectToOnboarding = user && !localCompleted && !onboardingStatus;
 
     if (shouldRedirectToOnboarding && location.pathname !== "/onboarding") {
       return <Navigate to="/onboarding" replace />;
@@ -89,17 +135,19 @@ function AnimatedRoutes() {
 
 const App = () => (
   <ThemeProvider defaultTheme="dark">
-    <BusinessUseCaseProvider>
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <AnimatedRoutes />
-          </BrowserRouter>
-        </TooltipProvider>
-      </QueryClientProvider>
-    </BusinessUseCaseProvider>
+    <AuthProvider>
+      <BusinessUseCaseProvider>
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <AnimatedRoutes />
+            </BrowserRouter>
+          </TooltipProvider>
+        </QueryClientProvider>
+      </BusinessUseCaseProvider>
+    </AuthProvider>
   </ThemeProvider>
 );
 

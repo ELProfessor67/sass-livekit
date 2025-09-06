@@ -16,7 +16,6 @@ export interface UserTwilioCredentials {
 export interface TwilioCredentialsInput {
   accountSid: string;
   authToken: string;
-  trunkSid: string;
   label: string;
 }
 
@@ -56,11 +55,32 @@ export class TwilioCredentialsService {
 
   /**
    * Save new Twilio credentials for the current user
+   * This will automatically create a main trunk for the user
    */
   static async saveCredentials(credentials: TwilioCredentialsInput): Promise<UserTwilioCredentials> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated");
+
+      // First, create the main trunk for the user
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
+      const response = await fetch(`${backendUrl}/api/v1/twilio/user/create-main-trunk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user.id
+        },
+        body: JSON.stringify({
+          accountSid: credentials.accountSid,
+          authToken: credentials.authToken,
+          label: credentials.label
+        })
+      });
+
+      const trunkResult = await response.json();
+      if (!trunkResult.success) {
+        throw new Error(trunkResult.message || 'Failed to create main trunk');
+      }
 
       const { data, error } = await supabase
         .from("user_twilio_credentials")
@@ -68,7 +88,7 @@ export class TwilioCredentialsService {
           user_id: user.id,
           account_sid: credentials.accountSid,
           auth_token: credentials.authToken,
-          trunk_sid: credentials.trunkSid,
+          trunk_sid: trunkResult.trunkSid,
           label: credentials.label,
           is_active: true
         })
@@ -98,7 +118,6 @@ export class TwilioCredentialsService {
       const updateData: any = {};
       if (credentials.accountSid) updateData.account_sid = credentials.accountSid;
       if (credentials.authToken) updateData.auth_token = credentials.authToken;
-      if (credentials.trunkSid) updateData.trunk_sid = credentials.trunkSid;
       if (credentials.label) updateData.label = credentials.label;
 
       const { data, error } = await supabase
@@ -203,12 +222,10 @@ export class TwilioCredentialsService {
       // For now, we'll just validate the format
       const accountSidPattern = /^AC[a-f0-9]{32}$/;
       const authTokenPattern = /^[a-f0-9]{32}$/;
-      const trunkSidPattern = /^TK[a-f0-9]{32}$/;
 
       return (
         accountSidPattern.test(credentials.accountSid) &&
-        authTokenPattern.test(credentials.authToken) &&
-        trunkSidPattern.test(credentials.trunkSid)
+        authTokenPattern.test(credentials.authToken)
       );
     } catch (error) {
       console.error("Error testing Twilio credentials:", error);

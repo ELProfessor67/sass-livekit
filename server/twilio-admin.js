@@ -10,8 +10,8 @@ const twilio = Twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TO
 
 // Optional Supabase client (safe to remove if you don't persist mappings)
 const supa =
-    process.env.VITE_SUPABASE_URL && process.env.VITE_SUPABASE_SERVICE_ROLE
-        ? createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_SERVICE_ROLE)
+    process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+        ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
         : null;
 
 /** Build our public base URL (works locally & behind tunnels) */
@@ -228,18 +228,36 @@ twilioAdminRouter.post('/map', async (req, res) => {
         if (!e164) return res.status(400).json({ success: false, message: 'Could not resolve phone number' });
 
         // optional persistence (safe no-op if you removed Supabase)
+        console.log('Supabase client status:', supa ? 'connected' : 'null');
+        console.log('Environment variables:', {
+            SUPABASE_URL: process.env.SUPABASE_URL ? 'set' : 'not set',
+            SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'set' : 'not set'
+        });
+
         if (supa) {
-            await supa.from('phone_number').upsert(
-                {
-                    phone_sid: phoneSid || null,
-                    number: e164,
-                    label: label || null,
-                    inbound_assistant_id: assistantId,
-                    webhook_status: 'configured',
-                    status: 'active',
-                },
-                { onConflict: 'number' },
-            );
+            try {
+                const { data, error } = await supa.from('phone_number').upsert(
+                    {
+                        phone_sid: phoneSid || null,
+                        number: e164,
+                        label: label || null,
+                        inbound_assistant_id: assistantId,
+                        webhook_status: 'configured',
+                        status: 'active',
+                    },
+                    { onConflict: 'number' },
+                );
+
+                if (error) {
+                    console.error('Database upsert error:', error);
+                } else {
+                    console.log('Successfully saved phone number to database:', data);
+                }
+            } catch (dbError) {
+                console.error('Database operation failed:', dbError);
+            }
+        } else {
+            console.warn('Supabase client is null - phone number not saved to database');
         }
 
         res.json({ success: true, mapped: { phoneSid: phoneSid || null, number: e164, assistantId } });

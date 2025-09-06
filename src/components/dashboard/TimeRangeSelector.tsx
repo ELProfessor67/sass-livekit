@@ -21,10 +21,16 @@ interface TimeRangeSelectorProps {
       to: Date;
     };
   }) => void;
+  initialRange?: {
+    from: Date;
+    to: Date;
+  };
 }
 
-export default function TimeRangeSelector({ onRangeChange }: TimeRangeSelectorProps) {
+export default function TimeRangeSelector({ onRangeChange, initialRange }: TimeRangeSelectorProps) {
   const [open, setOpen] = useState(false);
+  
+  console.log('TimeRangeSelector - initialRange:', initialRange);
   const {
     selectedPreset,
     dateRange,
@@ -37,7 +43,7 @@ export default function TimeRangeSelector({ onRangeChange }: TimeRangeSelectorPr
     setComparisonType,
     handlePresetChange,
     updateComparisonRange
-  } = useTimeRange({ onRangeChange });
+  } = useTimeRange({ onRangeChange, initialRange });
 
   const formatDateDisplay = () => {
     if (selectedPreset !== "custom") {

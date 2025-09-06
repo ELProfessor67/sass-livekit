@@ -12,8 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { Eye, EyeOff, Mail, Lock, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -26,6 +25,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 export default function Login() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { signIn } = useAuth();
   const [showPassword, setShowPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
 
@@ -41,19 +41,31 @@ export default function Login() {
 
   const rememberMe = watch("rememberMe");
 
-  const { signIn } = useAuth();
-
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
     try {
-      await signIn(data.email, data.password);
-      toast({
-        title: "Welcome back!",
-        description: "You've been signed in successfully.",
-      });
-      const onboardingCompleted = localStorage.getItem("onboarding-completed") === "true";
-      navigate(onboardingCompleted ? "/" : "/onboarding");
+      console.log('Starting sign in process...');
+      const result = await signIn(data.email, data.password);
+      console.log('Sign in result:', result);
+      
+      if (result.success) {
+        console.log('Sign in successful, navigating...');
+        toast({
+          title: "Welcome back!",
+          description: "You've been signed in successfully.",
+        });
+        const onboardingCompleted = localStorage.getItem("onboarding-completed") === "true";
+        navigate(onboardingCompleted ? "/" : "/onboarding");
+      } else {
+        console.log('Sign in failed:', result.message);
+        toast({
+          title: "Sign in failed",
+          description: result.message || "Please check your credentials and try again.",
+          variant: "destructive",
+        });
+      }
     } catch (error: any) {
+      console.error('Sign in error:', error);
       toast({
         title: "Sign in failed",
         description: error?.message || "Please check your credentials and try again.",
@@ -78,6 +90,7 @@ export default function Login() {
       return;
     }
     try {
+      const { supabase } = await import("@/integrations/supabase/client");
       await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
       toast({ title: "Reset email sent", description: "Check your inbox for the password reset link." });
     } catch (error: any) {

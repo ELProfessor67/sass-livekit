@@ -27,7 +27,7 @@ export function ApiIntegrations() {
       const twilioIntegrations: TwilioIntegration[] = credentials.map(cred => ({
         id: cred.id,
         name: "Twilio",
-        description: "Voice and SMS communications",
+        description: `Voice and SMS communications${cred.trunk_sid ? ' with auto-generated trunk' : ''}`,
         status: "connected" as const,
         lastUsed: formatLastUsed(cred.updated_at),
         details: {
@@ -50,25 +50,33 @@ export function ApiIntegrations() {
     }
   };
 
-  const handleTwilioConnect = async (data: TwilioCredentials) => {
+  const handleTwilioConnect = async (data: { accountSid: string; authToken: string; label: string }) => {
+    console.log("handleTwilioConnect called with data:", data);
     try {
       // Test credentials before saving
+      console.log("Testing credentials...");
       const isValid = await TwilioCredentialsService.testCredentials(data);
+      console.log("Credentials valid:", isValid);
       if (!isValid) {
         toast({
           title: "Invalid credentials",
           description: "Please check your Twilio credentials and try again.",
           variant: "destructive",
         });
-        return;
+        throw new Error("Invalid credentials");
       }
 
+      console.log("Saving credentials...");
       await TwilioCredentialsService.saveCredentials(data);
+      console.log("Credentials saved successfully");
+      
+      console.log("Loading Twilio credentials...");
       await loadTwilioCredentials();
+      console.log("Twilio credentials loaded");
       
       toast({
         title: "Twilio connected",
-        description: "Your Twilio account has been connected successfully.",
+        description: "Your Twilio account has been connected successfully. A main trunk will be created automatically.",
       });
     } catch (error) {
       console.error("Error connecting Twilio:", error);
@@ -77,6 +85,7 @@ export function ApiIntegrations() {
         description: "Failed to connect your Twilio account. Please try again.",
         variant: "destructive",
       });
+      throw error; // Re-throw to prevent dialog from closing
     }
   };
 

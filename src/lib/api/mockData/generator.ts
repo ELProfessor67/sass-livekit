@@ -7,14 +7,12 @@ import { MockCall, CallTag, ResolutionType } from '../types';
 
 // Generate call data for window replacement company
 export const generateCalls = (count = 94, dateRange?: { from: Date; to: Date }): MockCall[] => {
-  console.log(`Generator: Generating ${count} calls for date range:`, dateRange?.from?.toLocaleDateString() || 'default', 'to', dateRange?.to?.toLocaleDateString() || 'default');
   
   const endDate = dateRange?.to || new Date();
   const startDate = dateRange?.from || subDays(endDate, 30);
   
   // Calculate days in the range
   const daysInRange = differenceInDays(endDate, startDate) + 1;
-  console.log(`Generator: Days in range: ${daysInRange}`);
   
   // Scale call count based on time range
   let targetCallCount = count;
@@ -23,7 +21,6 @@ export const generateCalls = (count = 94, dateRange?: { from: Date; to: Date }):
     targetCallCount = Math.round((count / 30) * daysInRange);
     // Ensure minimum of 3 calls for any range
     targetCallCount = Math.max(3, targetCallCount);
-    console.log(`Generator: Scaled call count to ${targetCallCount} for ${daysInRange} day range`);
   }
 
   // Generate dates with business-like patterns
@@ -172,7 +169,6 @@ export const generateCalls = (count = 94, dateRange?: { from: Date; to: Date }):
     };
   });
   
-  console.log(`Generator: Generated ${calls.length} calls, date range ${calls[calls.length-1]?.date} to ${calls[0]?.date}`);
   
   return calls;
 };

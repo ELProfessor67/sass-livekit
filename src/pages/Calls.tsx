@@ -7,15 +7,18 @@ import CallsToolbar from "@/components/calls/CallsToolbar";
 import { CallsTable } from "@/components/calls/table";
 import CallsPagination from "@/components/calls/CallsPagination";
 import { useCallsFilter } from "@/components/calls/useCallsFilter";
-import { generateCalls } from "@/lib/api/mockData/generator";
+import { fetchCalls } from "@/lib/api/calls/fetchCalls";
 import { useLocation } from "react-router-dom";
 import { ThemeContainer, ThemeSection, ThemeCard } from "@/components/theme";
 import LiveKitDemo from "@/components/calls/LiveKitDemo";
+import { useAuth } from "@/contexts/AuthContext";
+import { useQuery } from "@tanstack/react-query";
 
 export default function Calls() {
   const { toast } = useToast();
   const location = useLocation();
-  
+  const { user, loading: isAuthLoading } = useAuth();
+
   // Get the date range from session storage or location state
   const [filterDateRange, setFilterDateRange] = useState(() => {
     // First, try to get from Recent Calls component which has the most up-to-date range
@@ -31,7 +34,7 @@ export default function Calls() {
     } catch (e) {
       console.error("Error parsing recent calls date range", e);
     }
-    
+
     // Second, try to get from dashboard's last used range
     try {
       const dashboardRange = sessionStorage.getItem('lastDashboardDateRange');
@@ -45,32 +48,33 @@ export default function Calls() {
     } catch (e) {
       console.error("Error parsing dashboard date range", e);
     }
-    
+
     // Third, try from location state (direct navigation)
     if (location.state?.dateRange) {
       return location.state.dateRange;
     }
-    
+
     // Default fallback
     return {
       from: new Date(new Date().setDate(new Date().getDate() - 30)),
       to: new Date()
     };
   });
-  
-  // Generate mock data with the same logic as in Index.tsx for consistency
-  const callsData = useMemo(() => {
-    console.log(`Calls page: Generating mock data for date range: ${filterDateRange.from.toLocaleDateString()} to ${filterDateRange.to.toLocaleDateString()}`);
-    const calls = generateCalls(94, filterDateRange);
-    console.log(`Calls page: Generated ${calls.length} calls`);
-    return {
-      calls,
-      total: calls.length
-    };
-  }, [filterDateRange]);
 
-  const [isLoading, setIsLoading] = useState(false);
-  
+  // Fetch real calls data using React Query
+  const { data: callsData, isLoading, error, refetch: loadCalls } = useQuery({
+    queryKey: ['calls', user?.id, filterDateRange],
+    queryFn: async () => {
+      const response = await fetchCalls();
+      return response;
+    },
+    enabled: !isAuthLoading && !!user?.id,
+    refetchOnMount: true,
+    staleTime: 1000 * 60 * 2, // 2 minutes for calls data
+  });
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const {
     searchQuery,
     setSearchQuery,
@@ -92,12 +96,11 @@ export default function Calls() {
 
   // Update date range and reset page
   const handleDateRangeChange = (range: { from: Date; to: Date }) => {
-    console.log(`Calls page: Date range changed to: ${range.from.toLocaleDateString()} - ${range.to.toLocaleDateString()}`);
-    setIsLoading(true);
+    setIsRefreshing(true);
     setFilterDateRange(range);
     setDateRange(range);
     setCurrentPage(1);
-    
+
     // Store the selected range for dashboard synchronization
     try {
       sessionStorage.setItem('lastDashboardDateRange', JSON.stringify({
@@ -107,15 +110,15 @@ export default function Calls() {
     } catch (e) {
       console.error("Error storing date range", e);
     }
-    
-    // Short timeout to allow state updates and simulate loading
-    setTimeout(() => {
-      setIsLoading(false);
+
+    // Reload calls with new date range
+    loadCalls().finally(() => {
+      setIsRefreshing(false);
       toast({
         title: "Date range updated",
         description: `Showing calls from ${range.from.toLocaleDateString()} to ${range.to.toLocaleDateString()}`,
       });
-    }, 300);
+    });
   };
 
   // Reset page number when filters change
@@ -123,14 +126,66 @@ export default function Calls() {
     setCurrentPage(1);
   }, [searchQuery, resolutionFilter]);
 
+  // Handle loading and error states
+  if (isAuthLoading || isLoading) {
+    return (
+      <DashboardLayout>
+        <ThemeContainer variant="base" className="min-h-screen no-hover-scaling">
+          <CallsHeader />
+          <div className="container mx-auto px-[var(--space-2xl)] py-[var(--space-2xl)]">
+            <ThemeSection spacing="lg">
+              <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                  <p className="text-muted-foreground">Loading calls...</p>
+                </div>
+              </div>
+            </ThemeSection>
+          </div>
+        </ThemeContainer>
+      </DashboardLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <DashboardLayout>
+        <ThemeContainer variant="base" className="min-h-screen no-hover-scaling">
+          <CallsHeader />
+          <div className="container mx-auto px-[var(--space-2xl)] py-[var(--space-2xl)]">
+            <ThemeSection spacing="lg">
+              <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  <div className="text-destructive mb-4">
+                    <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-medium text-foreground mb-2">Error Loading Calls</h3>
+                  <p className="text-muted-foreground mb-4">{error}</p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              </div>
+            </ThemeSection>
+          </div>
+        </ThemeContainer>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <ThemeContainer variant="base" className="min-h-screen no-hover-scaling">
         <CallsHeader />
-        
+
         <div className="container mx-auto px-[var(--space-2xl)] py-[var(--space-2xl)]">
           <ThemeSection spacing="lg">
-            <CallsToolbar 
+            <CallsToolbar
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
               resolutionFilter={resolutionFilter}
@@ -144,16 +199,16 @@ export default function Calls() {
                 <LiveKitDemo />
               </div>
               <ThemeCard variant="glass" className="overflow-hidden">
-                <CallsTable 
+                <CallsTable
                   calls={paginatedCalls}
-                  isLoading={isLoading}
+                  isLoading={isRefreshing}
                   filteredCount={filteredCalls.length}
                   totalCount={callsData?.total || 0}
                 />
               </ThemeCard>
 
               <div className="mt-6">
-                <CallsPagination 
+                <CallsPagination
                   currentPage={currentPage}
                   totalPages={totalPages}
                   onPageChange={setCurrentPage}

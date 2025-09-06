@@ -17,9 +17,6 @@ const twilioFormSchema = z.object({
   authToken: z.string().min(1, {
     message: "Twilio Auth Token is required."
   }),
-  trunkSid: z.string().min(1, {
-    message: "Twilio Trunk SID is required."
-  }),
   label: z.string().min(1, {
     message: "Label is required."
   })
@@ -42,21 +39,24 @@ export function TwilioAuthDialog({
     defaultValues: {
       accountSid: "",
       authToken: "",
-      trunkSid: "",
       label: ""
     }
   });
 
-  function onSubmit(data: TwilioFormValues) {
-    toast({
-      title: "Twilio credentials added",
-      description: "Your Twilio account has been connected successfully."
-    });
-    if (onSuccess) {
-      onSuccess(data);
+  async function onSubmit(data: TwilioFormValues) {
+    console.log("TwilioAuthDialog onSubmit called with data:", data);
+    try {
+      if (onSuccess) {
+        console.log("Calling onSuccess callback...");
+        await onSuccess(data);
+        console.log("onSuccess callback completed successfully");
+      }
+      setOpen(false);
+      form.reset();
+    } catch (error) {
+      // Error handling is done in the parent component
+      console.error("Error in TwilioAuthDialog onSubmit:", error);
     }
-    setOpen(false);
-    form.reset();
   }
 
   return (
@@ -71,7 +71,7 @@ export function TwilioAuthDialog({
         <DialogHeader>
           <DialogTitle className="text-xl font-light tracking-tight">Connect Twilio Account</DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Enter your Twilio credentials to connect your account.
+            Enter your Twilio credentials to connect your account. A main trunk will be created automatically.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -104,24 +104,6 @@ export function TwilioAuthDialog({
                     <Input 
                       type="password"
                       placeholder="Twilio Auth Token"
-                      className="bg-background/50 border-border/60 focus:border-primary/40"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            
-            <FormField
-              control={form.control}
-              name="trunkSid"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="font-normal">Twilio Trunk SID</FormLabel>
-                  <FormControl>
-                    <Input 
-                      placeholder="Twilio Trunk SID"
                       className="bg-background/50 border-border/60 focus:border-primary/40"
                       {...field}
                     />

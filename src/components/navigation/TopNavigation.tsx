@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import { Bell, Search, BarChart3, Phone, Bot, MessageSquare, Users, Megaphone, User, Settings, CreditCard, Zap, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggleMinimal } from "@/components/ThemeToggle";
@@ -14,7 +14,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 export default function TopNavigation() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { isAuthenticated, user, logout } = useAuth();
+  const { user, signOut } = useAuth();
+  const isAuthenticated = !!user;
   const [searchOpen, setSearchOpen] = useState(false);
   const navItems = [{
     icon: <BarChart3 size={16} />,
@@ -155,7 +156,7 @@ export default function TopNavigation() {
                       <DropdownMenuItem 
                         className="cursor-pointer flex items-center gap-3 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                         onClick={() => {
-                          logout();
+                          signOut();
                           navigate('/login');
                         }}
                       >

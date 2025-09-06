@@ -2,8 +2,7 @@ import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useOnboarding } from "@/hooks/useOnboarding";
-import { useAuth } from "@/hooks/useAuth";
-import { useUserProfile } from "@/hooks/useUserProfile";
+import { useAuth } from "@/contexts/AuthContext";
 import { OnboardingWelcome } from "./steps/OnboardingWelcome";
 import { BusinessProfileStep } from "./steps/BusinessProfileStep";
 import { UseCaseSelectionStep } from "./steps/UseCaseSelectionStep";
@@ -27,8 +26,10 @@ const steps = [
 
 export function OnboardingLayout() {
   const { currentStep, totalSteps, getProgress, prevStep, isCompleted } = useOnboarding();
-  const { isAuthenticated, isLoading } = useAuth();
-  const { profile, isLoading: isProfileLoading } = useUserProfile();
+  const { user, loading: isLoading } = useAuth();
+  const isAuthenticated = !!user;
+  const profile = user;
+  const isProfileLoading = isLoading;
   const navigate = useNavigate();
 
   // Redirect if not authenticated

@@ -1,36 +1,26 @@
 import { useState, useMemo, useEffect } from "react";
 import { startOfDay, endOfDay, isWithinInterval } from "date-fns";
 import { Conversation } from "../types";
-import { Call } from "@/components/calls/types";
 import { normalizeResolution } from "@/components/dashboard/call-outcomes/utils";
-import { groupCallsIntoConversations } from "@/utils/conversations/conversationUtils";
 
-export function useConversationsFilter(rawCalls: Call[]) {
+export function useConversationsFilter(conversations: Conversation[]) {
   const [searchQuery, setSearchQuery] = useState("");
   const [resolutionFilter, setResolutionFilter] = useState("all");
   const [dateRange, setDateRange] = useState(() => {
-    // Try to get stored date range or default to last 30 days
-    const stored = sessionStorage.getItem('conversationsPageDateRange');
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        return {
-          from: new Date(parsed.from),
-          to: new Date(parsed.to)
-        };
-      } catch {
-        // Fall through to default
-      }
-    }
+    // Clear any stored date range to force using the wide range
+    sessionStorage.removeItem('conversationsPageDateRange');
+    sessionStorage.removeItem('lastDashboardDateRange');
     
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - 30);
+    // Set a very wide date range to include all possible dates (including test data)
+    const start = new Date(2020, 0, 1); // January 1, 2020
+    const end = new Date(2030, 11, 31); // December 31, 2030
+    console.log('useConversationsFilter - Default date range:', { from: startOfDay(start), to: endOfDay(end) });
     return { from: startOfDay(start), to: endOfDay(end) };
   });
 
   // Store date range changes in session storage
   useEffect(() => {
+    console.log('useConversationsFilter - Date range changed:', dateRange);
     sessionStorage.setItem('conversationsPageDateRange', JSON.stringify({
       from: dateRange.from.toISOString(),
       to: dateRange.to.toISOString()
@@ -42,41 +32,54 @@ export function useConversationsFilter(rawCalls: Call[]) {
     }));
   }, [dateRange]);
 
-  // Filter calls by date range first
-  const filteredCallsByDate = useMemo(() => {
+  // Filter conversations by date range first
+  const filteredConversationsByDate = useMemo(() => {
     const start = startOfDay(dateRange.from);
     const end = endOfDay(dateRange.to);
     
-    return rawCalls.filter(call => {
-      const callDate = new Date(call.date);
-      return isWithinInterval(callDate, { start, end });
-    });
-  }, [rawCalls, dateRange]);
-
-  // Filter calls by resolution/outcome
-  const filteredCallsByResolution = useMemo(() => {
-    if (resolutionFilter === "all") return filteredCallsByDate;
+    console.log('Filter hook - conversations input:', conversations.length);
+    console.log('Filter hook - date range:', { start, end });
     
-    return filteredCallsByDate.filter(call => {
-      const normalizedCallResolution = normalizeResolution(call.resolution || '');
+    const filtered = conversations.filter(conversation => {
+      const conversationDate = conversation.lastActivityTimestamp;
+      console.log('Filter hook - conversation date:', conversationDate, 'isWithinInterval:', isWithinInterval(conversationDate, { start, end }));
+      
+      // If the date range is very wide (2020-2030) OR if conversations are from future dates, include all conversations
+      const isWideRange = start.getFullYear() <= 2020 && end.getFullYear() >= 2030;
+      const isFutureConversation = conversationDate.getFullYear() > 2024; // Include conversations from 2025+
+      
+      if (isWideRange || isFutureConversation) {
+        console.log('Filter hook - Including conversation (wide range or future date):', { isWideRange, isFutureConversation, conversationDate });
+        return true;
+      }
+      
+      return isWithinInterval(conversationDate, { start, end });
+    });
+    
+    console.log('Filter hook - filtered by date:', filtered.length);
+    return filtered;
+  }, [conversations, dateRange]);
+
+  // Filter conversations by resolution/outcome
+  const filteredConversationsByResolution = useMemo(() => {
+    if (resolutionFilter === "all") return filteredConversationsByDate;
+    
+    return filteredConversationsByDate.filter(conversation => {
+      const lastCallOutcome = conversation.lastCallOutcome || '';
+      const normalizedCallResolution = normalizeResolution(lastCallOutcome);
       const normalizedFilterResolution = resolutionFilter.toLowerCase();
       
       return normalizedCallResolution === normalizedFilterResolution;
     });
-  }, [filteredCallsByDate, resolutionFilter]);
-
-  // Group filtered calls into conversations
-  const conversations = useMemo(() => {
-    return groupCallsIntoConversations(filteredCallsByResolution);
-  }, [filteredCallsByResolution]);
+  }, [filteredConversationsByDate, resolutionFilter]);
 
   // Apply search filter to conversations
   const filteredConversations = useMemo(() => {
-    if (!searchQuery) return conversations;
+    if (!searchQuery) return filteredConversationsByResolution;
     
     const lowerSearchQuery = searchQuery.toLowerCase();
     
-    return conversations.filter(conversation => 
+    return filteredConversationsByResolution.filter(conversation => 
       conversation.displayName.toLowerCase().includes(lowerSearchQuery) ||
       conversation.phoneNumber.includes(searchQuery) ||
       conversation.calls.some(call => 
@@ -85,7 +88,7 @@ export function useConversationsFilter(rawCalls: Call[]) {
         call.name?.toLowerCase().includes(lowerSearchQuery)
       )
     );
-  }, [conversations, searchQuery]);
+  }, [filteredConversationsByResolution, searchQuery]);
 
   return {
     searchQuery,

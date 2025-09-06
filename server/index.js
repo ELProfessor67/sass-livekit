@@ -6,6 +6,8 @@ import { twilioAdminRouter } from './twilio-admin.js';
 import { twilioUserRouter } from './twilio-user.js';
 import { livekitSipRouter } from './livekit-sip.js';
 import { livekitPerAssistantTrunkRouter } from './livekit-per-assistant-trunk.js';
+import { recordingWebhookRouter } from './recording-webhook.js';
+
 
 
 
@@ -18,6 +20,7 @@ app.use('/api/v1/twilio', twilioAdminRouter);
 app.use('/api/v1/twilio/user', twilioUserRouter);
 app.use('/api/v1/livekit', livekitSipRouter);
 app.use('/api/v1/livekit', livekitPerAssistantTrunkRouter);
+app.use('/api/v1/recording', recordingWebhookRouter);
 
 
 

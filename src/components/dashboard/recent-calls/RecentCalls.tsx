@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Search, Filter, ChevronLeft, ChevronRight } from "lucide-react";
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { ThemeCard } from "@/components/theme";
 
 interface CallHistory {
@@ -30,6 +31,7 @@ interface RecentCallsProps {
 }
 
 export default function RecentCalls({ callLogs, isLoading }: RecentCallsProps) {
+  const { user, loading: isAuthLoading } = useAuth();
   const [callHistory, setCallHistory] = useState<CallHistory[]>([]);
   const [filteredCalls, setFilteredCalls] = useState<CallHistory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,13 +42,19 @@ export default function RecentCalls({ callLogs, isLoading }: RecentCallsProps) {
 
   useEffect(() => {
     fetchCallHistory();
-  }, []);
+  }, [isAuthLoading, user]);
 
   useEffect(() => {
     filterCalls();
   }, [callHistory, searchTerm, statusFilter]);
 
   const fetchCallHistory = async () => {
+    // Don't fetch data if auth is still loading or user is not authenticated
+    if (isAuthLoading || !user) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -156,7 +164,7 @@ export default function RecentCalls({ callLogs, isLoading }: RecentCallsProps) {
     day: 'numeric'
   });
 
-  if (loading) {
+  if (isAuthLoading || loading) {
     return (
       <Card variant="glass" className="transition-all duration-300 hover:shadow-xl hover:shadow-cyan-500/10">
         <CardHeader className="pb-[var(--space-md)] space-y-0">

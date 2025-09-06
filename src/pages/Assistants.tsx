@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import DashboardLayout from "@/layout/DashboardLayout";
 import { motion, AnimatePresence } from "framer-motion";
 import { ThemeContainer, ThemeSection, ThemeCard } from "@/components/theme";
 import { AssistantsTab } from "@/components/assistants/tabs/AssistantsTab";
 import { PhoneNumbersTab } from "@/components/assistants/tabs/PhoneNumbersTab";
 import { KnowledgeBaseTab } from "@/components/assistants/tabs/KnowledgeBaseTab";
+import { useRouteChangeData } from "@/hooks/useRouteChange";
+import { useAuth } from "@/contexts/AuthContext";
 
 const tabVariants = {
   initial: { opacity: 0, y: 10 },
@@ -14,6 +16,17 @@ const tabVariants = {
 
 export default function Assistants() {
   const [activeTab, setActiveTab] = useState("assistants");
+  const [tabChangeTrigger, setTabChangeTrigger] = useState(0);
+  const { user } = useAuth();
+
+
+
+  // Handle tab changes
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId);
+    // Trigger a refresh by incrementing the trigger counter
+    setTabChangeTrigger(prev => prev + 1);
+  };
 
   const tabs = [
     { id: "assistants", label: "Assistants" },
@@ -42,18 +55,18 @@ export default function Assistants() {
                     {tabs.map((tab) => (
                       <button
                         key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
+                        onClick={() => handleTabChange(tab.id)}
                         className={`
                           relative px-6 py-4 text-sm font-medium transition-all duration-300
-                          ${activeTab === tab.id 
-                            ? 'text-foreground' 
+                          ${activeTab === tab.id
+                            ? 'text-foreground'
                             : 'text-muted-foreground hover:text-foreground/80'
                           }
                         `}
                       >
                         {tab.label}
                         {activeTab === tab.id && (
-                          <motion.div 
+                          <motion.div
                             layoutId="activeTab"
                             className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full"
                             initial={false}
@@ -75,9 +88,9 @@ export default function Assistants() {
                       exit="exit"
                       transition={{ duration: 0.2 }}
                     >
-                      {activeTab === "assistants" && <AssistantsTab />}
-                      {activeTab === "phone-numbers" && <PhoneNumbersTab />}
-                      {activeTab === "knowledge-base" && <KnowledgeBaseTab />}
+                      {activeTab === "assistants" && <AssistantsTab tabChangeTrigger={tabChangeTrigger} />}
+                      {activeTab === "phone-numbers" && <PhoneNumbersTab tabChangeTrigger={tabChangeTrigger} />}
+                      {activeTab === "knowledge-base" && <KnowledgeBaseTab tabChangeTrigger={tabChangeTrigger} />}
                     </motion.div>
                   </AnimatePresence>
                 </div>

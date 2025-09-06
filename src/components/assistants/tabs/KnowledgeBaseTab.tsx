@@ -122,7 +122,11 @@ function SimplifiedKnowledgeBaseCard({
 }
 
 
-export function KnowledgeBaseTab() {
+interface KnowledgeBaseTabProps {
+  tabChangeTrigger?: number;
+}
+
+export function KnowledgeBaseTab({ tabChangeTrigger = 0 }: KnowledgeBaseTabProps) {
   const navigate = useNavigate();
   const [knowledgeBases, setKnowledgeBases] = useState(mockKnowledgeBases);
   const [isCreateKBOpen, setIsCreateKBOpen] = useState(false);

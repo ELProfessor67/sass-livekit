@@ -22,7 +22,7 @@ import { VoiceTab } from "@/components/assistants/wizard/VoiceTab";
 import { AnalysisTab } from "@/components/assistants/wizard/AnalysisTab";
 import { AdvancedTab } from "@/components/assistants/wizard/AdvancedTab";
 import { AssistantFormData } from "@/components/assistants/wizard/types";
-import { useCurrentUser } from "@/hooks/useAuthService";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 
 const tabVariants = {
@@ -40,7 +40,7 @@ const CreateAssistant = () => {
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const user = useCurrentUser();
+  const { user } = useAuth();
 
   const tabs = [
     { id: "model", label: "Model" },

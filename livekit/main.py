@@ -34,6 +34,9 @@ from cal_calendar_api import Calendar, CalComCalendar, AvailableSlot, SlotUnavai
 # Assistant service
 from services.assistant import Assistant
 
+# Recording service
+from services.recording_service import recording_service
+
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 
@@ -122,7 +125,9 @@ async def save_call_history_to_supabase(
     start_time: datetime.datetime,
     end_time: datetime.datetime,
     session_history: list,
-    participant_identity: str = None
+    participant_identity: str = None,
+    recording_sid: str = None,
+    call_sid: str = None
 ) -> bool:
     """Save call history to Supabase with enhanced status detection"""
     try:
@@ -151,6 +156,9 @@ async def save_call_history_to_supabase(
                     "content": item["content"]
                 })
         
+        logging.info("TRANSCRIPTION_PREPARED | items_count=%d | transcription_entries=%d", 
+                    len(session_history), len(transcription))
+        
         # Calculate call duration
         call_duration = int((end_time - start_time).total_seconds())
         
@@ -168,6 +176,8 @@ async def save_call_history_to_supabase(
             "call_duration": call_duration,
             "call_status": call_status,
             "transcription": transcription,
+            "recording_sid": recording_sid,
+            "call_sid": call_sid,
             "created_at": datetime.datetime.now().isoformat()
         }
         
@@ -177,6 +187,10 @@ async def save_call_history_to_supabase(
         if result.data:
             logging.info("CALL_HISTORY_SAVED | call_id=%s | duration=%ds | status=%s | transcription_items=%d", 
                         call_id, call_duration, call_status, len(transcription))
+            # Log a sample of the transcription for debugging
+            if transcription:
+                sample_transcript = transcription[0] if len(transcription) > 0 else {}
+                logging.info("TRANSCRIPTION_SAMPLE | first_entry=%s", sample_transcript)
             return True
         else:
             logging.error("CALL_HISTORY_SAVE_FAILED | call_id=%s", call_id)
@@ -260,6 +274,74 @@ async def entrypoint(ctx: agents.JobContext):
     start_time = datetime.datetime.now()
     call_id = str(uuid.uuid4())
     logging.info("CALL_START | call_id=%s | start_time=%s", call_id, start_time.isoformat())
+    
+    # --- Recording setup --------------------------------------------
+    recording_sid = None
+    call_sid = None
+    
+    # Try to extract call SID from LiveKit room context
+    # The Call SID is available as "Provider ID" in LiveKit SIP calls
+    try:
+        # Debug: Log room attributes to understand the structure
+        logging.info("ROOM_DEBUG | room_attrs=%s", [attr for attr in dir(ctx.room) if not attr.startswith('_')])
+        
+        # Check if this is a SIP call with provider information
+        if hasattr(ctx.room, 'sip') and ctx.room.sip:
+            logging.info("SIP_DEBUG | sip_attrs=%s", [attr for attr in dir(ctx.room.sip) if not attr.startswith('_')])
+            # For SIP calls, the provider ID is the Twilio Call SID
+            call_sid = getattr(ctx.room.sip, 'provider_id', None) or getattr(ctx.room.sip, 'providerId', None)
+            if call_sid:
+                logging.info("CALL_SID_FROM_SIP | call_sid=%s", call_sid)
+        else:
+            logging.info("NO_SIP_CONTEXT | room_has_sip=%s", hasattr(ctx.room, 'sip'))
+            
+        # Alternative: Check room metadata for call information
+        if not call_sid and hasattr(ctx.room, 'metadata') and ctx.room.metadata:
+            logging.info("ROOM_METADATA_DEBUG | metadata=%s", ctx.room.metadata)
+            
+    except Exception as e:
+        logging.warning("Failed to get call_sid from SIP context: %s", str(e))
+    
+    # Fallback: Try to extract call SID from room metadata or participant metadata
+    if not call_sid and hasattr(ctx.room, 'metadata') and ctx.room.metadata:
+        try:
+            room_meta = json.loads(ctx.room.metadata) if isinstance(ctx.room.metadata, str) else ctx.room.metadata
+            call_sid = room_meta.get('call_sid') or room_meta.get('CallSid') or room_meta.get('provider_id')
+        except Exception as e:
+            logging.warning("Failed to parse room metadata for call_sid: %s", str(e))
+    
+    if not call_sid and hasattr(participant, 'metadata') and participant.metadata:
+        try:
+            participant_meta = json.loads(participant.metadata) if isinstance(participant.metadata, str) else participant.metadata
+            call_sid = participant_meta.get('call_sid') or participant_meta.get('CallSid') or participant_meta.get('provider_id')
+        except Exception as e:
+            logging.warning("Failed to parse participant metadata for call_sid: %s", str(e))
+    
+    # Start recording if we have a call SID and recording is enabled
+    if call_sid and recording_service.is_enabled():
+        try:
+            recording_result = await recording_service.start_recording(
+                call_sid=call_sid,
+                recording_options={
+                    "RecordingChannels": "dual",
+                    "RecordingTrack": "both", 
+                    "PlayBeep": True,
+                    "Trim": "do-not-trim",
+                    "Transcribe": True,
+                }
+            )
+            if recording_result:
+                recording_sid = recording_result.get("sid")
+                logging.info("RECORDING_STARTED | call_sid=%s | recording_sid=%s", call_sid, recording_sid)
+            else:
+                logging.warning("RECORDING_START_FAILED | call_sid=%s", call_sid)
+        except Exception as e:
+            logging.exception("RECORDING_ERROR | call_sid=%s | error=%s", call_sid, str(e))
+    else:
+        if not call_sid:
+            logging.warning("RECORDING_SKIPPED | no_call_sid_found")
+        if not recording_service.is_enabled():
+            logging.warning("RECORDING_SKIPPED | service_disabled")
     # ----------------------------------------------------------------
 
     # --- Resolve assistantId (same as before) -----------------------
@@ -275,12 +357,9 @@ async def entrypoint(ctx: agents.JobContext):
     if r_meta_raw:
         r_meta, r_kind = _parse_json_or_b64(r_meta_raw)
 
-    e_meta, e_label = _from_env_json("ASSISTANT_JSON", "DEFAULT_ASSISTANT_JSON")
-
     id_sources: list[tuple[str, dict]] = [
         (f"participant.{p_kind}", p_meta),
         (f"room.{r_kind}", r_meta),
-        (e_label, e_meta),
     ]
 
     assistant_id, id_src = choose_from_sources(
@@ -290,11 +369,7 @@ async def entrypoint(ctx: agents.JobContext):
         default=None,
     )
 
-    if not assistant_id:
-        env_assistant_id = os.getenv("ASSISTANT_ID", "").strip() or None
-        if env_assistant_id:
-            assistant_id = env_assistant_id
-            id_src = "env:ASSISTANT_ID"
+    # No environment variable fallback for assistant_id - must be provided via participant/room metadata or resolver
 
     backend_url = os.getenv("BACKEND_URL", "http://localhost:4000").rstrip("/")
     resolver_path = os.getenv("ASSISTANT_RESOLVER_PATH", "/api/v1/livekit/assistant").lstrip("/")
@@ -339,7 +414,7 @@ async def entrypoint(ctx: agents.JobContext):
             try:
                 sb: Client = create_client(supabase_url, supabase_key)  # type: ignore
                 resp = sb.table("assistant").select(
-                    "id, name, prompt, first_message, cal_api_key, cal_event_type_id, cal_timezone"
+                    "id, name, prompt, first_message, cal_api_key, cal_event_type_id, cal_timezone, llm_provider_setting, llm_model_setting, temperature_setting, max_token_setting"
                 ).eq("id", assistant_id).single().execute()
                 row = resp.data
                 print("row", row)
@@ -350,6 +425,10 @@ async def entrypoint(ctx: agents.JobContext):
                             "name": row.get("name") or "Assistant",
                             "prompt": row.get("prompt") or "",
                             "firstMessage": row.get("first_message") or "",
+                            "llm_provider": row.get("llm_provider_setting") or "OpenAI",
+                            "llm_model": row.get("llm_model_setting") or "gpt-4o-mini",
+                            "temperature": row.get("temperature_setting") or 0.1,
+                            "max_tokens": row.get("max_token_setting") or 250,
                         },
                         "cal_api_key": row.get("cal_api_key"),
                         "cal_event_type_id": row.get("cal_event_type_id"),
@@ -371,6 +450,10 @@ async def entrypoint(ctx: agents.JobContext):
                         "name": a.get("name"),
                         "prompt": a.get("prompt"),
                         "firstMessage": a.get("firstMessage"),
+                        "llm_provider": a.get("llm_provider_setting") or "OpenAI",
+                        "llm_model": a.get("llm_model_setting") or "gpt-4o-mini",
+                        "temperature": a.get("temperature_setting") or 0.1,
+                        "max_tokens": a.get("max_token_setting") or 250,
                     },
                     "cal_api_key": data.get("cal_api_key"),
                     "cal_event_type_id": (
@@ -385,9 +468,28 @@ async def entrypoint(ctx: agents.JobContext):
 
     logging.info("ASSISTANT_ID | value=%s | source=%s | resolver=%s", assistant_id or "<none>", id_src, resolver_label)
 
+    # Check if we have assistant data - if not, we can't proceed
+    if not assistant_id or not resolver_meta.get("assistant"):
+        logging.error("NO_ASSISTANT_FOUND | assistant_id=%s | resolver_meta_present=%s", 
+                     assistant_id or "<none>", bool(resolver_meta.get("assistant")))
+        # For now, we'll use minimal defaults, but in production you might want to fail the call
+        logging.warning("Using minimal defaults - assistant data not found")
+        resolver_meta = {
+            "assistant": {
+                "id": assistant_id or "unknown",
+                "name": "Assistant",
+                "prompt": "You are a helpful voice assistant.",
+                "firstMessage": "",
+                "llm_provider": "OpenAI",
+                "llm_model": "gpt-4o-mini",
+                "temperature": 0.1,
+                "max_tokens": 250,
+            }
+        }
+
     # --- Build instructions strictly from RESOLVED ASSISTANT ONLY ----------
-    assistant_name = (resolver_meta.get("assistant") or {}).get("name") or os.getenv("DEFAULT_ASSISTANT_NAME", "Assistant")
-    prompt = (resolver_meta.get("assistant") or {}).get("prompt") or os.getenv("DEFAULT_INSTRUCTIONS", "You are a helpful voice assistant.")
+    assistant_name = (resolver_meta.get("assistant") or {}).get("name") or "Assistant"
+    prompt = (resolver_meta.get("assistant") or {}).get("prompt") or "You are a helpful voice assistant."
     first_message = (resolver_meta.get("assistant") or {}).get("firstMessage") or ""
 
     # Calendar (from resolver only)
@@ -395,14 +497,9 @@ async def entrypoint(ctx: agents.JobContext):
     cal_event_type_id = resolver_meta.get("cal_event_type_id")
     cal_timezone = resolver_meta.get("cal_timezone") or "UTC"
 
-    # First line
+    # First line - only use the first message from the fetched assistant
     force_first = (os.getenv("FORCE_FIRST_MESSAGE", "true").lower() != "false")
-    if force_first and not first_message:
-        first_message = (
-            f"Hi! You’ve reached {assistant_name}. Thanks for calling. How can I help you today?"
-            if called_did else
-            f"Hi! You’ve reached {assistant_name}. How can I help you today?"
-        )
+    # No fallback first message generation - only use what's in the assistant data
 
     # Softer flow policy
     flow_instructions = """
@@ -446,10 +543,18 @@ GUIDED CALL POLICY (be natural, not rigid):
     if not openai_api_key:
         logging.warning("OPENAI_API_KEY/OPENAI_API not set; OpenAI plugins will fail to auth.")  # plugin reads env too
 
-    llm_model = os.getenv("OPENAI_LLM_MODEL", "gpt-4o-mini")
+    # Get model configuration from assistant data
+    assistant_data = resolver_meta.get("assistant", {})
+    llm_model = assistant_data.get("llm_model", os.getenv("OPENAI_LLM_MODEL", "gpt-4o-mini"))
+    temperature = assistant_data.get("temperature", 0.1)
+    max_tokens = assistant_data.get("max_tokens", 250)
+    
+    # STT and TTS models still use environment variables as they're not configurable per assistant
     stt_model = os.getenv("OPENAI_STT_MODEL", "gpt-4o-transcribe")
     tts_model = os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
     tts_voice = os.getenv("OPENAI_TTS_VOICE", "alloy")
+    
+    logging.info("MODEL_CONFIG | llm_model=%s | temperature=%s | max_tokens=%s", llm_model, temperature, max_tokens)
 
     # Load / reuse VAD (required because OpenAI STT is non-streaming; VAD gates turns)
     vad = ctx.proc.userdata.get("vad") if hasattr(ctx, "proc") else None
@@ -467,7 +572,8 @@ GUIDED CALL POLICY (be natural, not rigid):
         llm=lk_openai.LLM(
             model=llm_model,
             api_key=openai_api_key,
-            temperature=0.1,
+            temperature=temperature,
+            max_tokens=max_tokens,
             parallel_tool_calls=False,  # align with our FSM guard
             tool_choice="auto",
         ),
@@ -492,6 +598,12 @@ GUIDED CALL POLICY (be natural, not rigid):
                 history_dict = session.history.to_dict()
                 if "items" in history_dict:
                     session_history = history_dict["items"]
+                    logging.info("SESSION_HISTORY_RETRIEVED | items_count=%d", len(session_history))
+                else:
+                    logging.warning("SESSION_HISTORY_NO_ITEMS | history_dict_keys=%s", list(history_dict.keys()) if history_dict else "None")
+            else:
+                logging.warning("SESSION_HISTORY_NOT_AVAILABLE | has_history_attr=%s | history_exists=%s", 
+                               hasattr(session, 'history'), bool(getattr(session, 'history', None)))
         except Exception as e:
             logging.warning("Failed to get session history: %s", str(e))
         
@@ -503,7 +615,9 @@ GUIDED CALL POLICY (be natural, not rigid):
             start_time=start_time,
             end_time=end_time,
             session_history=session_history,
-            participant_identity=participant.identity if participant else None
+            participant_identity=participant.identity if participant else None,
+            recording_sid=recording_sid,
+            call_sid=call_sid
         )
     
     ctx.add_shutdown_callback(save_call_on_shutdown)

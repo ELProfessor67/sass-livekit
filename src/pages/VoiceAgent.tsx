@@ -8,10 +8,12 @@ import "@livekit/components-styles";
 import { useLocation, useNavigate } from "react-router-dom";
 import { createLivekitToken } from "@/lib/api/apiService";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function VoiceAgent() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const [token, setToken] = useState<string | null>(null);
   const [serverUrl, setServerUrl] = useState<string>("");
   const [connecting, setConnecting] = useState(false);
@@ -29,6 +31,12 @@ export default function VoiceAgent() {
 
   useEffect(() => {
     const loadAssistant = async () => {
+      if (!user?.id) {
+        console.error("User not authenticated");
+        navigate("/login");
+        return;
+      }
+      
       if (!assistantId) {
         setAssistant(null);
         return;
@@ -37,6 +45,7 @@ export default function VoiceAgent() {
         .from('assistant')
         .select('id, name, prompt, first_message, llm_provider_setting, llm_model_setting, temperature_setting, max_token_setting, voice_provider_setting, voice_model_setting, voice_name_setting, background_sound_setting, wait_seconds, smart_endpointing, cal_api_key, cal_event_type_id, cal_event_type_slug, cal_timezone')
         .eq('id', assistantId)
+        .eq('user_id', user.id) // Ensure user owns this assistant
         .maybeSingle();
       if (error) {
         // eslint-disable-next-line no-console
@@ -47,9 +56,15 @@ export default function VoiceAgent() {
       }
     };
     void loadAssistant();
-  }, [assistantId]);
+  }, [assistantId, navigate]);
 
   const handleConnect = async () => {
+    if (!user?.id) {
+      console.error("User not authenticated");
+      navigate("/login");
+      return;
+    }
+    
     setConnecting(true);
     try {
       const tokenPayload = await createLivekitToken({

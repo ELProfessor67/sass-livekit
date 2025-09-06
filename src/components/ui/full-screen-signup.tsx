@@ -10,8 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 const signUpSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -91,15 +90,24 @@ export const FullScreenSignup = () => {
         return;
       }
 
-      const { user, session } = await (async () => {
-        const res = await signUp(
-          data.name,
-          data.email,
-          data.password,
-          { phone: data.phone, countryCode: data.countryCode }
-        );
-        return { user: res.user, session: res.session };
-      })();
+      const result = await signUp(
+        data.name,
+        data.email,
+        data.password,
+        { phone: data.phone, countryCode: data.countryCode }
+      );
+
+      if (!result.success) {
+        throw new Error(result.message);
+      }
+
+      // For now, just show success message and redirect
+      toast({
+        title: "Account created successfully!",
+        description: "Please check your email to verify your account.",
+      });
+      navigate("/login");
+      return;
 
       if (!user) {
         toast({

@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { subDays, startOfDay, endOfDay } from "date-fns";
 
 interface TimeRange {
@@ -13,18 +13,44 @@ interface TimeRange {
 
 interface UseTimeRangeProps {
   onRangeChange: (range: TimeRange) => void;
+  initialRange?: {
+    from: Date;
+    to: Date;
+  };
 }
 
-export function useTimeRange({ onRangeChange }: UseTimeRangeProps) {
+export function useTimeRange({ onRangeChange, initialRange }: UseTimeRangeProps) {
   const today = new Date();
   const [selectedPreset, setSelectedPreset] = useState("last_30_days");
-  const [dateRange, setDateRange] = useState<TimeRange>({
-    from: subDays(today, 30),
-    to: today
+  const [dateRange, setDateRange] = useState<TimeRange>(() => {
+    if (initialRange) {
+      return {
+        from: initialRange.from,
+        to: initialRange.to
+      };
+    }
+    return {
+      from: subDays(today, 30),
+      to: today
+    };
   });
   const [enableComparison, setEnableComparison] = useState(false);
   const [selectingCompareRange, setSelectingCompareRange] = useState(false);
   const [comparisonType, setComparisonType] = useState("previous_period");
+
+  // Update date range when initialRange changes
+  useEffect(() => {
+    console.log('useTimeRange - initialRange changed:', initialRange);
+    if (initialRange) {
+      const newRange = {
+        from: initialRange.from,
+        to: initialRange.to
+      };
+      console.log('useTimeRange - Setting new range:', newRange);
+      setDateRange(newRange);
+      onRangeChange(newRange);
+    }
+  }, [initialRange, onRangeChange]);
 
   const updateComparisonRange = (mainRange: TimeRange, comparisonType: string) => {
     const daysDiff = Math.floor((mainRange.to.getTime() - mainRange.from.getTime()) / (1000 * 60 * 60 * 24));

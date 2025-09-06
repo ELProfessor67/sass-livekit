@@ -2,13 +2,14 @@
 import express from 'express';
 import Twilio from 'twilio';
 import { createClient } from '@supabase/supabase-js';
+import { createMainTrunkForUser } from './twilio-trunk-service.js';
 
 export const twilioUserRouter = express.Router();
 
 // Supabase client for user credentials
 const supa = createClient(
-  process.env.VITE_SUPABASE_URL, 
-  process.env.VITE_SUPABASE_SERVICE_ROLE
+  process.env.SUPABASE_URL, 
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 /**
@@ -163,6 +164,55 @@ twilioUserRouter.post('/trunk/attach', async (req, res) => {
   } catch (error) {
     console.error('Error attaching phone to trunk:', error);
     res.status(500).json({ success: false, message: 'Failed to attach phone to trunk' });
+  }
+});
+
+/**
+ * Create main trunk for user (auto-generated)
+ * POST /api/v1/twilio/user/create-main-trunk
+ */
+twilioUserRouter.post('/create-main-trunk', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'];
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User ID required' });
+    }
+
+    const { accountSid, authToken, label } = req.body;
+    if (!accountSid || !authToken || !label) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'accountSid, authToken, and label are required' 
+      });
+    }
+
+    // Create main trunk for the user
+    const trunkResult = await createMainTrunkForUser({
+      accountSid,
+      authToken,
+      userId,
+      label
+    });
+
+    if (!trunkResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: trunkResult.message || 'Failed to create main trunk'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Main trunk created successfully',
+      trunkSid: trunkResult.trunkSid,
+      trunkName: trunkResult.trunkName
+    });
+  } catch (error) {
+    console.error('Error creating main trunk:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: `Failed to create main trunk: ${error.message}` 
+    });
   }
 });
 

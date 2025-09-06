@@ -15,7 +15,6 @@ export interface TwilioIntegration {
 export interface TwilioCredentials {
   accountSid: string;
   authToken: string;
-  trunkSid: string;
   label: string;
 }
 

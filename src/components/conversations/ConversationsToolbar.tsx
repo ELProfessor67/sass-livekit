@@ -39,7 +39,7 @@ export default function ConversationsToolbar({
       </div>
       
       <div>
-        <TimeRangeSelector onRangeChange={onDateRangeChange} />
+        <TimeRangeSelector onRangeChange={onDateRangeChange} initialRange={dateRange} />
       </div>
       
       <div>

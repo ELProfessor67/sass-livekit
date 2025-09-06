@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { Search, Edit2, Copy } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ThemeCard } from "@/components/theme/ThemeCard";
@@ -6,38 +6,55 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CardContent } from "@/components/ui/card";
 import { CreateAssistantDialog } from "@/components/assistants/CreateAssistantDialog";
-import { useCurrentUser } from "@/hooks/useAuthService";
+import { AssistantDetailsDialog } from "@/components/assistants/AssistantDetailsDialog";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useRouteChangeData } from "@/hooks/useRouteChange";
 
 interface Assistant {
   id: string;
   name: string;
   description: string;
+  prompt?: string;
+  first_message?: string;
   status: "draft" | "active" | "inactive";
   interactionCount: number;
   userCount: number;
+  cal_api_key?: string;
+  cal_event_type_slug?: string;
+  cal_event_type_id?: string;
+  cal_timezone?: string;
+  cal_enabled?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
-function AssistantCard({ assistant }: { assistant: Assistant }) {
+function AssistantCard({ assistant, onAssistantClick }: { assistant: Assistant; onAssistantClick: (assistant: Assistant) => void }) {
   const navigate = useNavigate();
-  
+
   const statusColors = {
     draft: "hsl(45 93% 47%)", // Professional amber
     active: "hsl(142 76% 36%)", // Deep success green  
     inactive: "hsl(215 28% 17%)" // Neutral charcoal
   };
 
-  const handleEdit = () => {
+  const handleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
     navigate(`/assistants/edit/${assistant.id}`);
   };
 
-  const handleStartCall = () => {
+  const handleStartCall = (e: React.MouseEvent) => {
+    e.stopPropagation();
     navigate(`/voiceagent?assistantId=${encodeURIComponent(assistant.id)}`);
   };
 
+  const handleCardClick = () => {
+    onAssistantClick(assistant);
+  };
+
   return (
-    <ThemeCard variant="default" interactive className="group">
+    <ThemeCard variant="default" interactive className="group cursor-pointer" onClick={handleCardClick}>
       <div className="p-5">
         {/* Header Section */}
         <div className="flex justify-between items-start mb-3">
@@ -46,7 +63,7 @@ function AssistantCard({ assistant }: { assistant: Assistant }) {
               {assistant.name}
             </h3>
             <div className="flex items-center space-x-2">
-              <div 
+              <div
                 className="w-2 h-2 rounded-full"
                 style={{ backgroundColor: statusColors[assistant.status] }}
               />
@@ -115,59 +132,105 @@ function AssistantCard({ assistant }: { assistant: Assistant }) {
   );
 }
 
-export function AssistantsTab() {
+interface AssistantsTabProps {
+  tabChangeTrigger?: number;
+}
+// add: imports
+
+// ...keep the rest
+
+export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [assistants, setAssistants] = useState<Assistant[]>([]);
-  const user = useCurrentUser();
+  const [selectedAssistant, setSelectedAssistant] = useState<Assistant | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
-  useEffect(() => {
-    const loadAssistantsForUser = async () => {
-      if (!user?.id) {
-        setAssistants([]);
-        return;
-      }
+  const loadAssistantsForUser = async () => {
+    if (!user?.id) {
+      setAssistants([]);
+      return;
+    }
 
-      const { data, error } = await supabase
-        .from("assistant")
-        .select("id, name, prompt, first_message")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
+    const { data, error } = await supabase
+      .from("assistant")
+      .select(
+        "id, name, prompt, first_message, cal_api_key, cal_event_type_slug, cal_event_type_id, cal_timezone, created_at, updated_at"
+      )
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
 
-      if (error) {
-        // eslint-disable-next-line no-console
-        console.warn("Failed to load assistants:", error);
-        setAssistants([]);
-        return;
-      }
+    if (error) {
+      console.warn("Failed to load assistants:", error);
+      setAssistants([]);
+      return;
+    }
 
-      type AssistantRow = {
-        id: string;
-        name: string | null;
-        prompt: string | null;
-        first_message: string | null;
-      };
+    type AssistantRow = {
+      id: string;
+      name: string | null;
+      prompt: string | null;
+      first_message: string | null;
+      cal_api_key: string | null;
+      cal_event_type_slug: string | null;
+      cal_event_type_id: string | null;
+      cal_timezone: string | null;
+      created_at: string | null;
+      updated_at: string | null;
+    };
 
-      const mapped: Assistant[] = (data as AssistantRow[] | null)?.map((row) => {
+    const mapped: Assistant[] =
+      (data as AssistantRow[] | null)?.map((row) => {
         const descriptionSource = row.prompt || row.first_message || "";
         return {
           id: row.id,
           name: row.name || "Untitled Assistant",
           description: descriptionSource.substring(0, 200),
+          prompt: row.prompt || undefined,
+          first_message: row.first_message || undefined,
           status: "active",
           interactionCount: 0,
           userCount: 0,
-        } as Assistant;
+          cal_api_key: row.cal_api_key || undefined,
+          cal_event_type_slug: row.cal_event_type_slug || undefined,
+          cal_event_type_id: row.cal_event_type_id || undefined,
+          cal_timezone: row.cal_timezone || undefined,
+          cal_enabled: !!row.cal_api_key,
+          created_at: row.created_at || undefined,
+          updated_at: row.updated_at || undefined,
+        };
       }) || [];
 
-      setAssistants(mapped);
-    };
+    setAssistants(mapped);
+  };
 
-    void loadAssistantsForUser();
-  }, [user?.id]);
+  // Simple: load assistants when user exists or tab changes
+  useEffect(() => {
+    if (user?.id) {
+      setLoading(true);
+      loadAssistantsForUser().finally(() => setLoading(false));
+    }
+  }, [user]);
 
-  const filteredAssistants = assistants.filter(assistant =>
-    assistant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    assistant.description.toLowerCase().includes(searchQuery.toLowerCase())
+  const handleAssistantClick = (assistant: Assistant) => {
+    setSelectedAssistant(assistant);
+    setIsDialogOpen(true);
+  };
+
+  const handleDialogClose = () => {
+    setIsDialogOpen(false);
+    setSelectedAssistant(null);
+  };
+
+  const filteredAssistants = useMemo(
+    () =>
+      assistants.filter(
+        (a) =>
+          a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          a.description.toLowerCase().includes(searchQuery.toLowerCase())
+      ),
+    [assistants, searchQuery]
   );
 
   return (
@@ -198,9 +261,24 @@ export function AssistantsTab() {
 
       {/* Assistants Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredAssistants.length > 0 ? (
+        {loading ? (
+          // Simple skeletons (or swap with your Skeleton component)
+          Array.from({ length: 3 }).map((_, i) => (
+            <ThemeCard key={i} variant="default" className="p-5 animate-pulse">
+              <div className="h-5 w-2/3 bg-muted rounded mb-3" />
+              <div className="h-3 w-1/3 bg-muted rounded mb-4" />
+              <div className="h-3 w-full bg-muted rounded mb-2" />
+              <div className="h-3 w-5/6 bg-muted rounded mb-6" />
+              <div className="h-8 w-full bg-muted rounded" />
+            </ThemeCard>
+          ))
+        ) : filteredAssistants.length > 0 ? (
           filteredAssistants.map((assistant) => (
-            <AssistantCard key={assistant.id} assistant={assistant} />
+            <AssistantCard
+              key={assistant.id}
+              assistant={assistant}
+              onAssistantClick={handleAssistantClick}
+            />
           ))
         ) : (
           <div className="col-span-full">
@@ -210,19 +288,23 @@ export function AssistantsTab() {
                   No assistants found
                 </h3>
                 <p className="text-muted-foreground mb-4">
-                  {searchQuery 
-                    ? "Try adjusting your search criteria" 
-                    : "Get started by creating your first AI assistant"
-                  }
+                  {searchQuery
+                    ? "Try adjusting your search criteria"
+                    : "Get started by creating your first AI assistant"}
                 </p>
-                {!searchQuery && (
-                  <CreateAssistantDialog />
-                )}
+                {!searchQuery && <CreateAssistantDialog />}
               </CardContent>
             </ThemeCard>
           </div>
         )}
       </div>
+
+      {/* Assistant Details Dialog */}
+      <AssistantDetailsDialog
+        assistant={selectedAssistant}
+        isOpen={isDialogOpen}
+        onClose={handleDialogClose}
+      />
     </div>
   );
 }

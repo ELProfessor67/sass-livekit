@@ -808,7 +808,7 @@ livekitSipRouter.get('/assistant/:id', async (req, res) => {
 
     const { data: assistant, error } = await supa
       .from('assistant')
-      .select('id, name, prompt, first_message, cal_api_key, cal_event_type_id, cal_timezone')
+      .select('id, name, prompt, first_message, cal_api_key, cal_event_type_id, cal_timezone, llm_provider_setting, llm_model_setting, temperature_setting, max_token_setting')
       .eq('id', id)
       .single();
     if (error) throw error;
@@ -824,6 +824,10 @@ livekitSipRouter.get('/assistant/:id', async (req, res) => {
         name: assistant.name || 'Assistant',
         prompt: assistant.prompt || '',
         firstMessage: assistant.first_message || '',
+        llm_provider_setting: assistant.llm_provider_setting || 'OpenAI',
+        llm_model_setting: assistant.llm_model_setting || 'gpt-4o-mini',
+        temperature_setting: assistant.temperature_setting || 0.1,
+        max_token_setting: assistant.max_token_setting || 250,
       },
       cal_api_key: assistant.cal_api_key || undefined,
       cal_event_type_id: assistant.cal_event_type_id || undefined,
