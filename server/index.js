@@ -7,6 +7,7 @@ import { twilioUserRouter } from './twilio-user.js';
 import { livekitSipRouter } from './livekit-sip.js';
 import { livekitPerAssistantTrunkRouter } from './livekit-per-assistant-trunk.js';
 import { recordingWebhookRouter } from './recording-webhook.js';
+import { getCallRecordingInfo } from './twilio-trunk-service.js';
 
 
 
@@ -21,6 +22,82 @@ app.use('/api/v1/twilio/user', twilioUserRouter);
 app.use('/api/v1/livekit', livekitSipRouter);
 app.use('/api/v1/livekit', livekitPerAssistantTrunkRouter);
 app.use('/api/v1/recording', recordingWebhookRouter);
+
+// Get recording information for a call
+app.get('/api/v1/call/:callSid/recordings', async (req, res) => {
+  try {
+    const { callSid } = req.params;
+    const { accountSid, authToken } = req.query;
+
+    if (!accountSid || !authToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'accountSid and authToken are required'
+      });
+    }
+
+    const result = await getCallRecordingInfo({ accountSid, authToken, callSid });
+    res.json(result);
+  } catch (error) {
+    console.error('Error getting call recording info:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// Proxy endpoint to serve recording audio files with authentication
+app.get('/api/v1/recording/:recordingSid/audio', async (req, res) => {
+  try {
+    const { recordingSid } = req.params;
+    const { accountSid, authToken } = req.query;
+
+    if (!accountSid || !authToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'accountSid and authToken are required'
+      });
+    }
+
+    // Construct the Twilio recording URL
+    const recordingUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Recordings/${recordingSid}.wav`;
+    
+    // Make authenticated request to Twilio
+    const response = await fetch(recordingUrl, {
+      headers: {
+        'Authorization': `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`
+      }
+    });
+
+    if (!response.ok) {
+      console.error('Failed to fetch recording from Twilio:', response.status, response.statusText);
+      return res.status(response.status).json({
+        success: false,
+        message: `Failed to fetch recording: ${response.statusText}`
+      });
+    }
+
+    // Get the audio data as a buffer
+    const audioBuffer = await response.arrayBuffer();
+    
+    // Set appropriate headers for audio streaming
+    res.setHeader('Content-Type', 'audio/wav');
+    res.setHeader('Content-Length', audioBuffer.byteLength);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+    
+    // Send the audio data
+    res.send(Buffer.from(audioBuffer));
+
+  } catch (error) {
+    console.error('Error proxying recording audio:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
 
 
 

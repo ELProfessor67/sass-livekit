@@ -4,14 +4,11 @@ import { createClient } from '@supabase/supabase-js';
 
 // Supabase client for user credentials
 const supa = createClient(
-  process.env.SUPABASE_URL, 
+  process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-/**
- * Create a main Twilio Elastic SIP Trunk for the user with LiveKit origination
- * This trunk will be used as the primary trunk for all phone numbers
- */
+
 export async function createMainTrunkForUser({ accountSid, authToken, userId, label }) {
   if (!accountSid || !authToken || !userId) {
     throw new Error('accountSid, authToken, and userId are required');
@@ -22,38 +19,65 @@ export async function createMainTrunkForUser({ accountSid, authToken, userId, la
 
   // Generate unique trunk name
   const trunkName = `main-trunk-${userId.slice(0, 8)}-${Date.now()}`;
-  
+
   console.log(`Creating main trunk for user ${userId}: ${trunkName}`);
 
   try {
-    // Create the main trunk
+    // Create the main trunk first
     const trunk = await client.trunking.v1.trunks.create({
-      friendlyName: trunkName,
+      friendlyName: trunkName
       // Optional: secure: true for enhanced security
     });
 
     const trunkSid = trunk.sid;
     console.log(`Created main trunk: ${trunkSid}`);
+    
+    // Enable recording from ringing after trunk creation using direct API call
+    try {
+      // Wait for trunk to be fully created
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Use direct HTTP request to update recording settings
+      const response = await fetch(`https://trunking.twilio.com/v1/Trunks/${trunkSid}/Recording`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: 'Mode=record-from-ringing&Trim=do-not-trim'
+      });
+      
+      if (response.ok) {
+        const recordingData = await response.json();
+        console.log(`✅ Recording enabled: ${recordingData.mode}`);
+      } else {
+        const errorText = await response.text();
+        console.error('Warning: Failed to enable recording from ringing:', errorText);
+      }
+    } catch (recordingError) {
+      console.error('Warning: Failed to enable recording from ringing:', recordingError.message);
+      // Don't fail the entire operation if recording setup fails
+    }
 
     // Add LiveKit origination URL if LIVEKIT_SIP_URI is configured
     const livekitSipUri = process.env.LIVEKIT_SIP_URI;
     console.log(`LIVEKIT_SIP_URI from env: ${livekitSipUri}`);
-    
+
     if (livekitSipUri) {
       // Wait longer for trunk to be fully created
       await new Promise(resolve => setTimeout(resolve, 5000));
-      
+
       try {
         // Use the SIP URI directly if it already has sip: prefix, otherwise add it
         const finalSipUrl = livekitSipUri.startsWith('sip:') ? livekitSipUri : `sip:${livekitSipUri}`;
-        
+
         console.log(`Final SIP URL: ${finalSipUrl}`);
         console.log(`Creating origination URL for trunk: ${trunkSid}`);
-        
+
         // Check if origination URL already exists
         const existingUrls = await client.trunking.v1.trunks(trunkSid).originationUrls.list();
         const alreadyExists = existingUrls.some(url => url.sipUrl === finalSipUrl);
-        
+
         if (alreadyExists) {
           console.log(`✅ LiveKit origination URL already exists: ${finalSipUrl}`);
         } else {
@@ -77,19 +101,19 @@ export async function createMainTrunkForUser({ accountSid, authToken, userId, la
           code: origError.code,
           moreInfo: origError.moreInfo
         });
-        
+
         // Try alternative approach - check if trunk exists and is accessible
         try {
           const trunkInfo = await client.trunking.v1.trunks(trunkSid).fetch();
           console.log(`Trunk exists and is accessible: ${trunkInfo.friendlyName}`);
-          
+
           // Try to list existing origination URLs
           const existingUrls = await client.trunking.v1.trunks(trunkSid).originationUrls.list();
           console.log(`Existing origination URLs:`, existingUrls.map(url => url.sipUrl));
         } catch (checkError) {
           console.error(`Failed to verify trunk:`, checkError.message);
         }
-        
+
         // Don't fail the entire operation if origination URL fails
       }
     } else {
@@ -109,9 +133,10 @@ export async function createMainTrunkForUser({ accountSid, authToken, userId, la
   }
 }
 
-/**
- * Attach a phone number to the user's main trunk
- */
+
+
+
+
 export async function attachPhoneToMainTrunk({ twilio, phoneSid, e164Number, userId, label }) {
   if (!twilio) throw new Error('Twilio client required');
   if (!phoneSid && !e164Number) throw new Error('phoneSid or e164Number required');
@@ -147,7 +172,7 @@ export async function attachPhoneToMainTrunk({ twilio, phoneSid, e164Number, use
   // 4) Attach phone number to the main trunk (idempotent)
   const attachedList = await twilio.trunking.v1.trunks(trunkSid).phoneNumbers.list({ limit: 200 });
   const alreadyAttached = attachedList.some(p => p.phoneNumberSid === pn.sid);
-  
+
   if (!alreadyAttached) {
     await twilio.trunking.v1.trunks(trunkSid).phoneNumbers.create({ phoneNumberSid: pn.sid });
     console.log(`Attached phone number ${e164} to main trunk ${trunkSid}`);
@@ -220,16 +245,16 @@ export async function addLiveKitOriginationToTrunk({ accountSid, authToken, trun
 
   try {
     const client = Twilio(accountSid, authToken);
-    
+
     // Use the SIP URI directly if it already has sip: prefix, otherwise add it
     const finalSipUrl = livekitSipUri.startsWith('sip:') ? livekitSipUri : `sip:${livekitSipUri}`;
-    
+
     console.log(`Adding LiveKit origination URL to trunk ${trunkSid}: ${finalSipUrl}`);
-    
+
     // Check if origination URL already exists
     const existingUrls = await client.trunking.v1.trunks(trunkSid).originationUrls.list();
     const alreadyExists = existingUrls.some(url => url.sipUrl === finalSipUrl);
-    
+
     if (alreadyExists) {
       console.log(`Origination URL already exists: ${finalSipUrl}`);
       return {
@@ -238,7 +263,7 @@ export async function addLiveKitOriginationToTrunk({ accountSid, authToken, trun
         sipUrl: finalSipUrl
       };
     }
-    
+
     // Create origination URL
     const originationUrl = await client.trunking.v1.trunks(trunkSid).originationUrls.create({
       sipUrl: finalSipUrl,
@@ -255,10 +280,86 @@ export async function addLiveKitOriginationToTrunk({ accountSid, authToken, trun
       sipUrl: originationUrl.sipUrl,
       sid: originationUrl.sid
     };
-    
+
   } catch (error) {
     console.error('Error adding LiveKit origination URL:', error);
     throw new Error(`Failed to add LiveKit origination URL: ${error.message}`);
+  }
+}
+
+/**
+ * Enable dual recording from ringing on an existing trunk
+ */
+export async function enableTrunkRecording({ accountSid, authToken, trunkSid }) {
+  if (!accountSid || !authToken || !trunkSid) {
+    throw new Error('accountSid, authToken, and trunkSid are required');
+  }
+
+  try {
+    const client = Twilio(accountSid, authToken);
+
+    // Update the trunk to enable dual recording from ringing
+    const updatedTrunk = await client.trunking.v1.trunks(trunkSid).update({
+      recording: 'dual-record-from-ringing'
+    });
+
+    console.log(`✅ Enabled dual recording from ringing on trunk: ${trunkSid}`);
+    return {
+      success: true,
+      message: 'Dual recording from ringing enabled successfully',
+      trunkSid: updatedTrunk.sid,
+      recording: updatedTrunk.recording
+    };
+  } catch (error) {
+    console.error('Error enabling trunk recording:', error);
+    throw new Error(`Failed to enable trunk recording: ${error.message}`);
+  }
+}
+
+/**
+ * Get recording information for a call
+ */
+export async function getCallRecordingInfo({ accountSid, authToken, callSid }) {
+  if (!accountSid || !authToken || !callSid) {
+    throw new Error('accountSid, authToken, and callSid are required');
+  }
+
+  try {
+    const client = Twilio(accountSid, authToken);
+
+    // Get call details
+    const call = await client.calls(callSid).fetch();
+
+    // Get recordings for this call
+    const recordings = await client.calls(callSid).recordings.list();
+
+    console.log(`Found ${recordings.length} recordings for call ${callSid}`);
+
+    return {
+      success: true,
+      call: {
+        sid: call.sid,
+        status: call.status,
+        direction: call.direction,
+        from: call.from,
+        to: call.to,
+        startTime: call.startTime,
+        endTime: call.endTime,
+        duration: call.duration
+      },
+      recordings: recordings.map(rec => ({
+        sid: rec.sid,
+        status: rec.status,
+        duration: rec.duration,
+        channels: rec.channels,
+        source: rec.source,
+        startTime: rec.startTime,
+        url: rec.uri
+      }))
+    };
+  } catch (error) {
+    console.error('Error getting call recording info:', error);
+    throw new Error(`Failed to get call recording info: ${error.message}`);
   }
 }
 
@@ -273,7 +374,7 @@ export async function deleteMainTrunk({ accountSid, authToken, trunkSid }) {
   try {
     const client = Twilio(accountSid, authToken);
     await client.trunking.v1.trunks(trunkSid).remove();
-    
+
     console.log(`Deleted trunk: ${trunkSid}`);
     return {
       success: true,

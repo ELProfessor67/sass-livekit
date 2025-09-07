@@ -28,6 +28,36 @@ class TwilioRecordingService:
         else:
             logging.info("Call recording is enabled")
 
+    async def get_call_status(self, call_sid: str) -> Optional[Dict[str, Any]]:
+        """
+        Get the status of a Twilio call
+        
+        Args:
+            call_sid: The SID of the call to check
+            
+        Returns:
+            Call information if successful, None if failed
+        """
+        if not call_sid:
+            return None
+            
+        url = f"{self.base_url}/Calls/{call_sid}.json"
+        auth = aiohttp.BasicAuth(self.account_sid, self.auth_token)
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, auth=auth) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    else:
+                        error_text = await response.text()
+                        logging.warning("CALL_STATUS_FAILED | call_sid=%s | status=%d | error=%s", 
+                                      call_sid, response.status, error_text)
+                        return None
+        except Exception as e:
+            logging.warning("CALL_STATUS_ERROR | call_sid=%s | error=%s", call_sid, str(e))
+            return None
+
     async def start_recording(
         self, 
         call_sid: str, 
@@ -50,6 +80,13 @@ class TwilioRecordingService:
         if not call_sid:
             logging.error("Call SID is required to start recording")
             return None
+        
+        # Log our account info for debugging
+        logging.info("RECORDING_ATTEMPT | call_sid=%s | our_account_sid=%s", call_sid, self.account_sid)
+
+        # For SIP trunk calls, skip the call status check and go straight to recording
+        # SIP trunk calls often don't appear in Twilio's call API immediately
+        logging.info("SKIPPING_CALL_STATUS_CHECK | call_sid=%s | reason=sip_trunk_call", call_sid)
 
         # Default recording options
         default_options = {
@@ -83,11 +120,45 @@ class TwilioRecordingService:
                         recording_data = await response.json()
                         logging.info(
                             "RECORDING_STARTED | call_sid=%s | recording_sid=%s | status=%s",
-                            call_sid, 
+                            call_sid,
                             recording_data.get("sid"),
                             recording_data.get("status")
                         )
                         return recording_data
+                    elif response.status == 404:
+                        # For SIP trunk calls, try multiple times with increasing delays
+                        logging.warning("RECORDING_404_RETRY | call_sid=%s | status=404 | reason=sip_trunk_delay", call_sid)
+                        
+                        for attempt in range(3):  # Try up to 3 times
+                            delay = (attempt + 1) * 0.5  # 0.5s, 1s, 1.5s
+                            await asyncio.sleep(delay)
+                            
+                            logging.info("RECORDING_RETRY_ATTEMPT | call_sid=%s | attempt=%d | delay=%.1fs", 
+                                       call_sid, attempt + 1, delay)
+                            
+                            async with session.post(url, data=default_options, auth=auth) as retry_response:
+                                if retry_response.status == 201:
+                                    recording_data = await retry_response.json()
+                                    logging.info(
+                                        "RECORDING_STARTED_RETRY | call_sid=%s | recording_sid=%s | status=%s | attempt=%d",
+                                        call_sid,
+                                        recording_data.get("sid"),
+                                        recording_data.get("status"),
+                                        attempt + 1
+                                    )
+                                    return recording_data
+                                elif retry_response.status != 404:
+                                    # If it's not a 404, stop retrying
+                                    error_text = await retry_response.text()
+                                    logging.error(
+                                        "RECORDING_START_FAILED_RETRY | call_sid=%s | status=%d | error=%s | attempt=%d",
+                                        call_sid, retry_response.status, error_text, attempt + 1
+                                    )
+                                    return None
+                        
+                        # If all retries failed with 404
+                        logging.error("RECORDING_START_FAILED_ALL_RETRIES | call_sid=%s | reason=all_attempts_404", call_sid)
+                        return None
                     else:
                         error_text = await response.text()
                         logging.error(
@@ -95,7 +166,7 @@ class TwilioRecordingService:
                             call_sid, response.status, error_text
                         )
                         return None
-                        
+
         except Exception as e:
             logging.exception("RECORDING_START_ERROR | call_sid=%s | error=%s", call_sid, str(e))
             return None

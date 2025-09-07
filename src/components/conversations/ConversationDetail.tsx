@@ -10,6 +10,7 @@ import { Conversation } from "./types";
 import { Call } from "@/components/calls/types";
 import { normalizeResolution } from "@/components/dashboard/call-outcomes/utils";
 import { CompactAudioPlayer } from "@/components/ui/compact-audio-player";
+import { CallRecordingDisplay } from "./CallRecordingDisplay";
 
 interface ConversationDetailProps {
   conversation: Conversation;
@@ -89,14 +90,10 @@ export function ConversationDetail({ conversation }: ConversationDetailProps) {
               </p>
             )}
             
-            {call.call_recording && (
-              <div className="mt-3">
-                <CompactAudioPlayer
-                  src={call.call_recording}
-                  title={`Call with ${conversation.displayName}`}
-                />
-              </div>
-            )}
+            <CallRecordingDisplay 
+              call={call} 
+              conversationName={conversation.displayName} 
+            />
           </CardContent>
         </Card>
       </div>

@@ -8,7 +8,14 @@ export default defineConfig(({ mode }) => ({
   envPrefix: ["VITE_", "LIVEKIT_", "TOKEN_"],
   server: {
     host: "::",
-    port: 8080
+    port: 8080,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
   },
   plugins: [
     react(),

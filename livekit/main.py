@@ -5,6 +5,7 @@ import urllib.request
 import urllib.parse
 import logging
 import datetime
+import asyncio
 from typing import Optional, Tuple, Iterable
 import base64
 import os
@@ -13,6 +14,10 @@ import hashlib
 import uuid
 
 from dotenv import load_dotenv
+
+# Load environment variables FIRST before any other imports
+load_dotenv()
+
 from zoneinfo import ZoneInfo
 
 from livekit import agents
@@ -36,8 +41,6 @@ from services.assistant import Assistant
 
 # Recording service
 from services.recording_service import recording_service
-
-load_dotenv()
 logging.basicConfig(level=logging.INFO)
 
 # ===================== Utilities =====================
@@ -278,48 +281,61 @@ async def entrypoint(ctx: agents.JobContext):
     # --- Recording setup --------------------------------------------
     recording_sid = None
     call_sid = None
-    
-    # Try to extract call SID from LiveKit room context
-    # The Call SID is available as "Provider ID" in LiveKit SIP calls
+
+    # Extract Call SID from participant attributes
+    # The Call SID is available in participantAttributes as sip.twilio.callSid
     try:
-        # Debug: Log room attributes to understand the structure
-        logging.info("ROOM_DEBUG | room_attrs=%s", [attr for attr in dir(ctx.room) if not attr.startswith('_')])
-        
-        # Check if this is a SIP call with provider information
-        if hasattr(ctx.room, 'sip') and ctx.room.sip:
-            logging.info("SIP_DEBUG | sip_attrs=%s", [attr for attr in dir(ctx.room.sip) if not attr.startswith('_')])
-            # For SIP calls, the provider ID is the Twilio Call SID
-            call_sid = getattr(ctx.room.sip, 'provider_id', None) or getattr(ctx.room.sip, 'providerId', None)
-            if call_sid:
-                logging.info("CALL_SID_FROM_SIP | call_sid=%s", call_sid)
+        logging.info("PARTICIPANT_DEBUG | participant_type=%s | has_attributes=%s",
+                    type(participant).__name__, hasattr(participant, 'attributes'))
+
+        if hasattr(participant, 'attributes') and participant.attributes:
+            logging.info("PARTICIPANT_ATTRIBUTES_DEBUG | attributes=%s", participant.attributes)
+
+            # Check for sip.twilio.callSid in attributes
+            if hasattr(participant.attributes, 'get'):
+                call_sid = participant.attributes.get('sip.twilio.callSid')
+                if call_sid:
+                    logging.info("CALL_SID_FROM_PARTICIPANT_ATTRIBUTES | call_sid=%s", call_sid)
+
+            # Also try direct attribute access
+            if not call_sid and hasattr(participant.attributes, 'sip'):
+                sip_attrs = participant.attributes.sip
+                if hasattr(sip_attrs, 'twilio') and hasattr(sip_attrs.twilio, 'callSid'):
+                    call_sid = sip_attrs.twilio.callSid
+                    if call_sid:
+                        logging.info("CALL_SID_FROM_SIP_ATTRIBUTES | call_sid=%s", call_sid)
         else:
-            logging.info("NO_SIP_CONTEXT | room_has_sip=%s", hasattr(ctx.room, 'sip'))
-            
-        # Alternative: Check room metadata for call information
-        if not call_sid and hasattr(ctx.room, 'metadata') and ctx.room.metadata:
-            logging.info("ROOM_METADATA_DEBUG | metadata=%s", ctx.room.metadata)
-            
+            logging.info("NO_PARTICIPANT_ATTRIBUTES | has_attributes=%s", hasattr(participant, 'attributes'))
+
     except Exception as e:
-        logging.warning("Failed to get call_sid from SIP context: %s", str(e))
-    
+        logging.warning("Failed to get call_sid from participant attributes: %s", str(e))
+
     # Fallback: Try to extract call SID from room metadata or participant metadata
     if not call_sid and hasattr(ctx.room, 'metadata') and ctx.room.metadata:
         try:
             room_meta = json.loads(ctx.room.metadata) if isinstance(ctx.room.metadata, str) else ctx.room.metadata
             call_sid = room_meta.get('call_sid') or room_meta.get('CallSid') or room_meta.get('provider_id')
+            if call_sid:
+                logging.info("CALL_SID_FROM_ROOM_METADATA | call_sid=%s", call_sid)
         except Exception as e:
             logging.warning("Failed to parse room metadata for call_sid: %s", str(e))
-    
+
     if not call_sid and hasattr(participant, 'metadata') and participant.metadata:
         try:
             participant_meta = json.loads(participant.metadata) if isinstance(participant.metadata, str) else participant.metadata
             call_sid = participant_meta.get('call_sid') or participant_meta.get('CallSid') or participant_meta.get('provider_id')
+            if call_sid:
+                logging.info("CALL_SID_FROM_PARTICIPANT_METADATA | call_sid=%s", call_sid)
         except Exception as e:
             logging.warning("Failed to parse participant metadata for call_sid: %s", str(e))
-    
+
     # Start recording if we have a call SID and recording is enabled
     if call_sid and recording_service.is_enabled():
         try:
+            # Start recording immediately - no delay needed
+            # The call might be very short (6 seconds), so we need to act fast
+            logging.info("STARTING_RECORDING_IMMEDIATELY | call_sid=%s", call_sid)
+            
             recording_result = await recording_service.start_recording(
                 call_sid=call_sid,
                 recording_options={
@@ -546,6 +562,19 @@ GUIDED CALL POLICY (be natural, not rigid):
     # Get model configuration from assistant data
     assistant_data = resolver_meta.get("assistant", {})
     llm_model = assistant_data.get("llm_model", os.getenv("OPENAI_LLM_MODEL", "gpt-4o-mini"))
+    
+    # Fix model name format - OpenAI expects lowercase with hyphens
+    original_model = llm_model
+    if llm_model == "GPT-4o Mini":
+        llm_model = "gpt-4o-mini"
+    elif llm_model == "GPT-4o":
+        llm_model = "gpt-4o"
+    elif llm_model == "GPT-4":
+        llm_model = "gpt-4"
+    
+    if original_model != llm_model:
+        logging.info("MODEL_NAME_FIXED | original=%s | fixed=%s", original_model, llm_model)
+    
     temperature = assistant_data.get("temperature", 0.1)
     max_tokens = assistant_data.get("max_tokens", 250)
     
@@ -573,7 +602,6 @@ GUIDED CALL POLICY (be natural, not rigid):
             model=llm_model,
             api_key=openai_api_key,
             temperature=temperature,
-            max_tokens=max_tokens,
             parallel_tool_calls=False,  # align with our FSM guard
             tool_choice="auto",
         ),
