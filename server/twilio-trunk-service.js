@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 
 // Supabase client for user credentials
 const supa = createClient(
-  process.env.SUPABASE_URL,
+  process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
@@ -172,13 +172,15 @@ export async function attachPhoneToMainTrunk({ twilio, phoneSid, e164Number, use
   // 4) Attach phone number to the main trunk (idempotent)
   const attachedList = await twilio.trunking.v1.trunks(trunkSid).phoneNumbers.list({ limit: 200 });
   const alreadyAttached = attachedList.some(p => p.phoneNumberSid === pn.sid);
-
+  
   if (!alreadyAttached) {
     await twilio.trunking.v1.trunks(trunkSid).phoneNumbers.create({ phoneNumberSid: pn.sid });
     console.log(`Attached phone number ${e164} to main trunk ${trunkSid}`);
   } else {
     console.log(`Phone number ${e164} already attached to main trunk ${trunkSid}`);
   }
+
+  // Note: SMS webhook configuration is handled when phone number is assigned to an assistant
 
   // 5) Persist phone number info in database
   await supa.from('phone_number').upsert(
@@ -196,6 +198,7 @@ export async function attachPhoneToMainTrunk({ twilio, phoneSid, e164Number, use
 
   return { trunkSid, phoneSid: pn.sid, e164 };
 }
+
 
 /**
  * Verify that a trunk exists and is accessible

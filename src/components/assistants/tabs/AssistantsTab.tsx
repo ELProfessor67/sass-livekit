@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Search, Edit2, Copy } from "lucide-react";
+import { Search, Edit2, Copy, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ThemeCard } from "@/components/theme/ThemeCard";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useRouteChangeData } from "@/hooks/useRouteChange";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 
 interface Assistant {
   id: string;
@@ -18,6 +20,8 @@ interface Assistant {
   description: string;
   prompt?: string;
   first_message?: string;
+  first_sms?: string;
+  sms_prompt?: string;
   status: "draft" | "active" | "inactive";
   interactionCount: number;
   userCount: number;
@@ -30,7 +34,7 @@ interface Assistant {
   updated_at?: string;
 }
 
-function AssistantCard({ assistant, onAssistantClick }: { assistant: Assistant; onAssistantClick: (assistant: Assistant) => void }) {
+function AssistantCard({ assistant, onAssistantClick, onDeleteAssistant }: { assistant: Assistant; onAssistantClick: (assistant: Assistant) => void; onDeleteAssistant: (assistantId: string) => void }) {
   const navigate = useNavigate();
 
   const statusColors = {
@@ -47,6 +51,11 @@ function AssistantCard({ assistant, onAssistantClick }: { assistant: Assistant; 
   const handleStartCall = (e: React.MouseEvent) => {
     e.stopPropagation();
     navigate(`/voiceagent?assistantId=${encodeURIComponent(assistant.id)}`);
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Don't call onDeleteAssistant here - let the AlertDialog handle it
   };
 
   const handleCardClick = () => {
@@ -106,6 +115,44 @@ function AssistantCard({ assistant, onAssistantClick }: { assistant: Assistant; 
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleDeleteClick}
+                        className="h-7 w-7 p-0 bg-background/80 hover:bg-destructive/20 border-border/50 hover:border-destructive/50"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Assistant</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to delete "{assistant.name}"? This action cannot be undone and all associated data will be permanently removed.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => onDeleteAssistant(assistant.id)}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Delete assistant</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
 
@@ -146,6 +193,7 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
+  const { toast } = useToast();
 
   const loadAssistantsForUser = async () => {
     if (!user?.id) {
@@ -156,7 +204,7 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
     const { data, error } = await supabase
       .from("assistant")
       .select(
-        "id, name, prompt, first_message, cal_api_key, cal_event_type_slug, cal_event_type_id, cal_timezone, created_at, updated_at"
+        "id, name, prompt, first_message, first_sms, sms_prompt, cal_api_key, cal_event_type_slug, cal_event_type_id, cal_timezone, created_at, updated_at"
       )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
@@ -172,6 +220,8 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
       name: string | null;
       prompt: string | null;
       first_message: string | null;
+      first_sms: string | null;
+      sms_prompt: string | null;
       cal_api_key: string | null;
       cal_event_type_slug: string | null;
       cal_event_type_id: string | null;
@@ -189,6 +239,8 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
           description: descriptionSource.substring(0, 200),
           prompt: row.prompt || undefined,
           first_message: row.first_message || undefined,
+          first_sms: row.first_sms || undefined,
+          sms_prompt: row.sms_prompt || undefined,
           status: "active",
           interactionCount: 0,
           userCount: 0,
@@ -203,6 +255,49 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
       }) || [];
 
     setAssistants(mapped);
+  };
+
+  const deleteAssistant = async (assistantId: string) => {
+    if (!user?.id) return;
+
+    try {
+      const { error } = await supabase
+        .from("assistant")
+        .delete()
+        .eq("id", assistantId)
+        .eq("user_id", user.id);
+
+      if (error) {
+        console.error("Failed to delete assistant:", error);
+        toast({
+          title: "Error",
+          description: "Failed to delete assistant. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Remove the assistant from the local state
+      setAssistants(prev => prev.filter(assistant => assistant.id !== assistantId));
+      
+      // Close the detail modal if the deleted assistant is currently being viewed
+      if (selectedAssistant?.id === assistantId) {
+        setIsDialogOpen(false);
+        setSelectedAssistant(null);
+      }
+      
+      toast({
+        title: "Assistant deleted",
+        description: "The assistant has been permanently deleted.",
+      });
+    } catch (error) {
+      console.error("Error deleting assistant:", error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Simple: load assistants when user exists or tab changes
@@ -278,6 +373,7 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
               key={assistant.id}
               assistant={assistant}
               onAssistantClick={handleAssistantClick}
+              onDeleteAssistant={deleteAssistant}
             />
           ))
         ) : (

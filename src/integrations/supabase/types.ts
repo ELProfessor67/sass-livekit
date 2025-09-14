@@ -229,6 +229,8 @@ export type Database = {
           cal_event_type_id: string | null
           cal_event_type_slug: string | null
           cal_timezone: string | null
+          first_sms: string | null
+          sms_prompt: string | null
           company_id: string | null
           created_at: string | null
           end_call_message: string | null
@@ -303,6 +305,8 @@ export type Database = {
           cal_event_type_id?: string | null
           cal_event_type_slug?: string | null
           cal_timezone?: string | null
+          first_sms?: string | null
+          sms_prompt?: string | null
           company_id?: string | null
           created_at?: string | null
           end_call_message?: string | null
@@ -377,6 +381,8 @@ export type Database = {
           cal_event_type_id?: string | null
           cal_event_type_slug?: string | null
           cal_timezone?: string | null
+          first_sms?: string | null
+          sms_prompt?: string | null
           company_id?: string | null
           created_at?: string | null
           end_call_message?: string | null

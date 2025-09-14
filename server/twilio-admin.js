@@ -10,8 +10,8 @@ const twilio = Twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TO
 
 // Optional Supabase client (safe to remove if you don't persist mappings)
 const supa =
-    process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
-        ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+    process.env.VITE_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+        ? createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
         : null;
 
 /** Build our public base URL (works locally & behind tunnels) */
@@ -137,6 +137,24 @@ twilioAdminRouter.post('/assign', async (req, res) => {
             voiceMethod: 'POST',
         });
 
+        // Configure SMS webhook for the phone number when assigned to assistant
+        const baseUrl = process.env.NGROK_URL || process.env.BACKEND_URL;
+        if (baseUrl) {
+            try {
+                await twilio.incomingPhoneNumbers(phoneSid).update({
+                    smsUrl: baseUrl,
+                    smsMethod: 'POST',
+                    statusCallback: baseUrl.replace('/webhook', '/status-callback'),
+                    statusCallbackMethod: 'POST'
+                });
+                console.log(`✅ Configured SMS webhook for assigned phone number ${num.phoneNumber}: ${baseUrl}`);
+            } catch (webhookError) {
+                console.error(`❌ Failed to configure SMS webhook for ${num.phoneNumber}:`, webhookError.message);
+            }
+        } else {
+            console.warn('No base URL configured for SMS webhooks. Set NGROK_URL or BACKEND_URL environment variable.');
+        }
+
         if (supa) {
             try {
                 await supa.from('phone_number').upsert(
@@ -211,10 +229,10 @@ twilioAdminRouter.post('/trunk/attach', async (req, res) => {
 // ⬇️ add to server/twilio-admin.js (near the other routes)
 
 // POST /api/v1/twilio/map
-// body: { phoneSid?: "PNxxx", phoneNumber?: "+19862108561", assistantId: "..." , label? }
+// body: { phoneSid?: "PNxxx", phoneNumber?: "+19862108561", assistantId: "..." , label?, outboundTrunkId?, outboundTrunkName? }
 twilioAdminRouter.post('/map', async (req, res) => {
     try {
-        const { phoneSid, phoneNumber, assistantId, label } = req.body || {};
+        const { phoneSid, phoneNumber, assistantId, label, outboundTrunkId, outboundTrunkName } = req.body || {};
         if (!assistantId || (!phoneSid && !phoneNumber)) {
             return res.status(400).json({ success: false, message: 'assistantId and phoneSid or phoneNumber are required' });
         }
@@ -230,7 +248,7 @@ twilioAdminRouter.post('/map', async (req, res) => {
         // optional persistence (safe no-op if you removed Supabase)
         console.log('Supabase client status:', supa ? 'connected' : 'null');
         console.log('Environment variables:', {
-            SUPABASE_URL: process.env.SUPABASE_URL ? 'set' : 'not set',
+            SUPABASE_URL: process.env.VITE_SUPABASE_URL ? 'set' : 'not set',
             SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'set' : 'not set'
         });
 
@@ -242,6 +260,8 @@ twilioAdminRouter.post('/map', async (req, res) => {
                         number: e164,
                         label: label || null,
                         inbound_assistant_id: assistantId,
+                        outbound_trunk_id: outboundTrunkId || null,
+                        outbound_trunk_name: outboundTrunkName || null,
                         webhook_status: 'configured',
                         status: 'active',
                     },
@@ -258,6 +278,26 @@ twilioAdminRouter.post('/map', async (req, res) => {
             }
         } else {
             console.warn('Supabase client is null - phone number not saved to database');
+        }
+
+        // Configure SMS webhook for the phone number when assigned to assistant
+        const baseUrl = process.env.NGROK_URL || process.env.BACKEND_URL;
+        if (baseUrl && phoneSid) {
+            try {
+                await twilio.incomingPhoneNumbers(phoneSid).update({
+                    smsUrl: baseUrl,
+                    smsMethod: 'POST',
+                    statusCallback: baseUrl.replace('/webhook', '/status-callback'),
+                    statusCallbackMethod: 'POST'
+                });
+                console.log(`✅ Configured SMS webhook for assistant phone number ${e164}: ${baseUrl}`);
+            } catch (webhookError) {
+                console.error(`❌ Failed to configure SMS webhook for ${e164}:`, webhookError.message);
+            }
+        } else if (!baseUrl) {
+            console.warn('No base URL configured for SMS webhooks. Set NGROK_URL or BACKEND_URL environment variable.');
+        } else if (!phoneSid) {
+            console.warn('No phoneSid provided - cannot configure SMS webhook');
         }
 
         res.json({ success: true, mapped: { phoneSid: phoneSid || null, number: e164, assistantId } });

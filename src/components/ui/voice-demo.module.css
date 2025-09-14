@@ -1,0 +1,73 @@
+@keyframes breathingFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-0.5px);
+  }
+}
+
+@keyframes concentricPulse {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+
+@keyframes waveFlow {
+  0%, 100% {
+    transform: translateX(-50px) translateY(0px) scale(1);
+  }
+  25% {
+    transform: translateX(-30px) translateY(-10px) scale(1.02);
+  }
+  50% {
+    transform: translateX(0px) translateY(-5px) scale(1.01);
+  }
+  75% {
+    transform: translateX(30px) translateY(-8px) scale(1.02);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px);
+    opacity: 0.3;
+  }
+  50% {
+    transform: translateY(-20px) translateX(10px);
+    opacity: 0.8;
+  }
+}
+
+.breathingFloat {
+  animation: breathingFloat 12s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+}
+
+.concentricRing {
+  animation: concentricPulse 2s ease-out infinite;
+}
+
+.waveFlow {
+  animation: waveFlow 8s ease-in-out infinite;
+}
+
+.waveFlowReverse {
+  animation: waveFlow 12s ease-in-out infinite reverse;
+}
+
+.waveFlowActive {
+  animation: waveFlow 4s ease-in-out infinite;
+}
+
+.waveFlowActiveReverse {
+  animation: waveFlow 6s ease-in-out infinite reverse;
+}
+
+.floatParticle {
+  animation: float 3s ease-in-out infinite;
+}

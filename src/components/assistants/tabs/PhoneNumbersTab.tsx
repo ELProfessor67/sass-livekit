@@ -224,22 +224,8 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
         throw new Error(attachJson.message || "Failed to attach number to Twilio trunk");
       }
 
-      // Step 2: Map phone number to assistant in database
-      const mapResp = await fetch(`${base}/api/v1/twilio/map`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phoneSid: row.id,
-          assistantId,
-          label: row.label || undefined,
-        }),
-      });
-      const mapJson = await mapResp.json();
-      if (!mapResp.ok || !mapJson.success) {
-        throw new Error(mapJson.message || "Failed to map phone number to assistant");
-      }
-
-      // Step 3: Create dedicated LiveKit trunk for this assistant
+      // Step 2: Create dedicated LiveKit trunk for this assistant (both inbound and outbound)
+      let livekitTrunk = null;
       try {
         const livekitResp = await fetch(`${base}/api/v1/livekit/assistant-trunk`, {
           method: "POST",
@@ -255,11 +241,29 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
           console.warn('LiveKit integration failed:', livekitJson.message);
           // Don't fail the entire operation if LiveKit fails
         } else {
-          console.log('LiveKit trunk created:', livekitJson.trunk);
+          livekitTrunk = livekitJson.trunk;
+          console.log('LiveKit trunk created:', livekitTrunk);
         }
       } catch (livekitError) {
         console.warn('LiveKit integration error:', livekitError);
         // Don't fail the entire operation if LiveKit fails
+      }
+
+      // Step 3: Map phone number to assistant in database (including outbound trunk info)
+      const mapResp = await fetch(`${base}/api/v1/twilio/map`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phoneSid: row.id,
+          assistantId,
+          label: row.label || undefined,
+          outboundTrunkId: livekitTrunk?.outboundTrunkId,
+          outboundTrunkName: livekitTrunk?.outboundTrunkName,
+        }),
+      });
+      const mapJson = await mapResp.json();
+      if (!mapResp.ok || !mapJson.success) {
+        throw new Error(mapJson.message || "Failed to map phone number to assistant");
       }
 
       toast({

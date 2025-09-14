@@ -42,6 +42,10 @@ export interface Call {
   analysis?: CallAnalysis | null;
   address?: string;
   messages?: Message[];
+  created_at?: string;
+  call_sid?: string;
+  recording_info?: any;
+  assistant_id?: string;
 }
 
 export interface CallsData {

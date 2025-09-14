@@ -110,6 +110,34 @@
     --shadow-glass-md: var(--shadow-md), inset 0 1px 0 hsl(var(--foreground) / 0.10);
     --shadow-glass-lg: var(--shadow-lg), inset 0 2px 0 hsl(var(--foreground) / 0.12);
     --shadow-glass-xl: var(--shadow-xl), inset 0 2px 0 hsl(var(--foreground) / 0.15);
+    
+    /* Glass UI Core Colors */
+    --glass-background: 240 5% 98%;
+    --glass-border: 240 5% 90%;
+    --glass-foreground: 240 5% 6%;
+    
+    /* Glass Card Variants */
+    --glass-light: 0 0% 99%;
+    --glass-premium: 240 10% 97%;
+    --glass-ultra: 240 15% 96%;
+    --glass-enterprise: 238 30% 97%;
+    
+    /* Primary Brand Colors */
+    --primary: 238 100% 74%;
+    --primary-foreground: 240 8% 6%;
+    --primary-glow: 238 100% 80%;
+    
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
+    --gradient-glass: linear-gradient(135deg, hsl(0 0% 100% / 0.8), hsl(240 5% 96% / 0.6));
+    --gradient-hero: linear-gradient(180deg, hsl(0 0% 100%), hsl(240 10% 98%));
+    
+    /* Shadows & Glows */
+    --shadow-glass: 0 8px 32px hsl(240 5% 50% / 0.1);
+    --shadow-glass-lg: 0 20px 40px -12px hsl(238 100% 74% / 0.25), 0 0 60px hsl(238 100% 74% / 0.1);
+    --shadow-premium: 0 20px 60px hsl(238 100% 74% / 0.08);
+    --glow-primary: 0 0 60px hsl(238 100% 74% / 0.15);
+    --glow-ambient: 0 0 120px hsl(238 100% 74% / 0.05);
   }
 
   .dark {
@@ -126,6 +154,17 @@
     --shadow-glass-md: var(--shadow-md), inset 0 1px 0 hsl(var(--foreground) / 0.15);
     --shadow-glass-lg: var(--shadow-lg), inset 0 2px 0 hsl(var(--foreground) / 0.18);
     --shadow-glass-xl: var(--shadow-xl), inset 0 2px 0 hsl(var(--foreground) / 0.20);
+    
+    /* Dark Mode Glass UI Colors */
+    --glass-background: 222.2 84% 4.9%;
+    --glass-border: 217.2 32.6% 17.5%;
+    --glass-foreground: 210 40% 98%;
+    
+    /* Dark Mode Glass Card Variants */
+    --glass-light: 217.2 32.6% 17.5%;
+    --glass-premium: 217.2 32.6% 20%;
+    --glass-ultra: 217.2 32.6% 22%;
+    --glass-enterprise: 217.2 32.6% 25%;
   }
 }
 

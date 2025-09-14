@@ -4,10 +4,18 @@ import cors from 'cors';
 import { AccessToken } from 'livekit-server-sdk';
 import { twilioAdminRouter } from './twilio-admin.js';
 import { twilioUserRouter } from './twilio-user.js';
+import { twilioSmsRouter } from './twilio-sms.js';
 import { livekitSipRouter } from './livekit-sip.js';
 import { livekitPerAssistantTrunkRouter } from './livekit-per-assistant-trunk.js';
+import { livekitOutboundCallsRouter } from './livekit-outbound-calls.js';
 import { recordingWebhookRouter } from './recording-webhook.js';
 import { getCallRecordingInfo } from './twilio-trunk-service.js';
+import smsWebhookRouter from './sms-webhook.js';
+import { outboundCallsRouter } from './outbound-calls.js';
+import { campaignManagementRouter } from './campaign-management.js';
+import { livekitRoomRouter } from './livekit-room.js';
+import { campaignEngine } from './campaign-execution-engine.js';
+import { connect } from '@ngrok/ngrok';
 
 
 
@@ -19,9 +27,15 @@ app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 app.use('/api/v1/twilio', twilioAdminRouter);
 app.use('/api/v1/twilio/user', twilioUserRouter);
+app.use('/api/v1/twilio/sms', twilioSmsRouter);
 app.use('/api/v1/livekit', livekitSipRouter);
 app.use('/api/v1/livekit', livekitPerAssistantTrunkRouter);
+app.use('/api/v1/livekit', livekitOutboundCallsRouter);
 app.use('/api/v1/recording', recordingWebhookRouter);
+app.use('/api/v1/sms', smsWebhookRouter);
+app.use('/api/v1/outbound-calls', outboundCallsRouter);
+app.use('/api/v1/campaigns', campaignManagementRouter);
+app.use('/api/v1/livekit', livekitRoomRouter);
 
 // Get recording information for a call
 app.get('/api/v1/call/:callSid/recordings', async (req, res) => {
@@ -62,7 +76,7 @@ app.get('/api/v1/recording/:recordingSid/audio', async (req, res) => {
 
     // Construct the Twilio recording URL
     const recordingUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Recordings/${recordingSid}.wav`;
-    
+
     // Make authenticated request to Twilio
     const response = await fetch(recordingUrl, {
       headers: {
@@ -80,13 +94,13 @@ app.get('/api/v1/recording/:recordingSid/audio', async (req, res) => {
 
     // Get the audio data as a buffer
     const audioBuffer = await response.arrayBuffer();
-    
+
     // Set appropriate headers for audio streaming
     res.setHeader('Content-Type', 'audio/wav');
     res.setHeader('Content-Length', audioBuffer.byteLength);
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
-    
+
     // Send the audio data
     res.send(Buffer.from(audioBuffer));
 
@@ -114,6 +128,9 @@ app.post('/api/v1/livekit/create-token', async (req, res) => {
     const room = `room-${Math.random().toString(36).slice(2, 8)}`;
     const identity = `identity-${Math.random().toString(36).slice(2, 8)}`;
     const metadata = req.body?.metadata ?? {};
+
+    console.log("LIVEKIT_API_KEY", apiKey)
+    console.log("apiSecret", apiSecret)
 
     const grant = {
       room,
@@ -191,8 +208,41 @@ app.post('/api/v1/calendar/setup', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+// Start the server
+app.listen(PORT, async () => {
   console.log(`Backend running on http://localhost:${PORT}`);
+
+  // Start campaign execution engine
+  campaignEngine.start();
+  console.log('🚀 Campaign execution engine started');
+
+  // Start ngrok tunnel for Twilio webhooks
+  if (process.env.NGROK_AUTHTOKEN) {
+    try {
+      const listener = await connect({
+        addr: PORT,
+        authtoken_from_env: true
+      });
+
+      console.log(`🌐 ngrok tunnel established at: ${listener.url()}`);
+      console.log(`📱 Use this URL for Twilio webhooks: ${listener.url()}/api/v1/twilio/sms/webhook`);
+      console.log(`📞 Use this URL for Twilio status callbacks: ${listener.url()}/api/v1/twilio/sms/status-callback`);
+
+      // Store the ngrok URL for use in SMS sending
+      process.env.NGROK_URL = listener.url();
+
+      // SMS webhooks are configured automatically when phone numbers are assigned to assistants
+
+    } catch (error) {
+      console.error('❌ Failed to start ngrok tunnel:', error.message);
+      console.log('💡 Make sure NGROK_AUTHTOKEN is set in your .env file');
+    }
+  } else {
+    console.log('⚠️  NGROK_AUTHTOKEN not set - webhooks will not work with localhost');
+    console.log('💡 Add NGROK_AUTHTOKEN to your .env file to enable ngrok tunnel');
+
+    // SMS webhooks are configured automatically when phone numbers are assigned to assistants
+  }
 });
 
 

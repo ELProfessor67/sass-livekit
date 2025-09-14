@@ -3,6 +3,8 @@ import { Toaster } from "@/components/ui/toaster";
 import TopNavigation from "@/components/navigation/TopNavigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { useLocation } from "react-router-dom";
+import { useTheme } from "@/components/ThemeProvider";
+import { useEffect } from "react";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -10,6 +12,12 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const location = useLocation();
+  const { setUIStyle } = useTheme();
+  
+  // Ensure glass theme is applied when on dashboard
+  useEffect(() => {
+    setUIStyle("glass");
+  }, [setUIStyle]);
   
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden">

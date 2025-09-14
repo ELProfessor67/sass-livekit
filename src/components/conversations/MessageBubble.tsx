@@ -1,17 +1,18 @@
 import React from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Phone, Clock, Download } from "lucide-react";
+import { Phone, Clock, Download, MessageSquare } from "lucide-react";
 import { format } from "date-fns";
 import { Conversation } from "./types";
 import { normalizeResolution } from "@/components/dashboard/call-outcomes/utils";
 import { CompactAudioPlayer } from "@/components/ui/compact-audio-player";
 import { InlineTranscriptView } from "./InlineTranscriptView";
+import { SMSMessage } from "@/lib/api/sms/smsService";
 
 interface MessageBubbleProps {
   message: {
     id: string;
-    type: 'call' | 'transcription';
+    type: 'call' | 'transcription' | 'sms';
     timestamp: Date;
     direction: string;
     duration: string;
@@ -24,6 +25,7 @@ interface MessageBubbleProps {
     time: string;
     isLive?: boolean;
     confidence?: number;
+    smsData?: SMSMessage;
   };
   conversation: Conversation;
   showAvatar?: boolean;
@@ -57,6 +59,7 @@ export function MessageBubble({ message, conversation, showAvatar = true }: Mess
 
   const isIncoming = message.direction === 'inbound';
   const isLiveTranscription = message.type === 'transcription' && message.isLive;
+  const isSMS = message.type === 'sms';
 
   return (
     <div className={`flex ${isIncoming ? 'justify-start' : 'justify-end'} space-x-2`}>
@@ -81,7 +84,7 @@ export function MessageBubble({ message, conversation, showAvatar = true }: Mess
               : 'bg-primary/10 border border-primary/20'
           }`}
         >
-          {/* Call Header */}
+          {/* Message Header */}
           <div className="flex items-center space-x-2 mb-1">
             {message.type === 'transcription' ? (
               <>
@@ -94,6 +97,19 @@ export function MessageBubble({ message, conversation, showAvatar = true }: Mess
                     Live
                   </Badge>
                 )}
+              </>
+            ) : isSMS ? (
+              <>
+                <MessageSquare className="w-3 h-3 text-muted-foreground" />
+                <span className="text-xs font-medium text-foreground">
+                  {isIncoming ? 'Incoming' : 'Outgoing'} SMS
+                </span>
+                <Badge 
+                  variant={message.status === 'delivered' ? 'default' : message.status === 'failed' ? 'destructive' : 'secondary'}
+                  className="text-[10px] ml-auto px-1.5 py-0"
+                >
+                  {message.status}
+                </Badge>
               </>
             ) : (
               <>
@@ -111,7 +127,7 @@ export function MessageBubble({ message, conversation, showAvatar = true }: Mess
             )}
           </div>
 
-          {/* Call Details */}
+          {/* Message Details */}
           <div className="flex items-center space-x-2 text-[11px] text-muted-foreground mb-2">
             {message.type === 'transcription' ? (
               <>
@@ -123,6 +139,19 @@ export function MessageBubble({ message, conversation, showAvatar = true }: Mess
                   <>
                     <span>•</span>
                     <span>Confidence: {Math.round(message.confidence * 100)}%</span>
+                  </>
+                )}
+              </>
+            ) : isSMS ? (
+              <>
+                <div className="flex items-center space-x-1">
+                  <Clock className="w-2.5 h-2.5" />
+                  <span>{message.time}</span>
+                </div>
+                {message.smsData?.numSegments && (
+                  <>
+                    <span>•</span>
+                    <span>{message.smsData.numSegments} segment{message.smsData.numSegments !== '1' ? 's' : ''}</span>
                   </>
                 )}
               </>
@@ -143,6 +172,13 @@ export function MessageBubble({ message, conversation, showAvatar = true }: Mess
             <p className="text-xs text-foreground mb-2 leading-relaxed">
               {message.summary}
             </p>
+          )}
+
+          {/* SMS Message Content */}
+          {isSMS && message.smsData && (
+            <div className="text-xs text-foreground mb-2 leading-relaxed">
+              <p className="whitespace-pre-wrap">{message.smsData.body}</p>
+            </div>
           )}
 
           {/* Live Transcription Text */}

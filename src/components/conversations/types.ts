@@ -1,4 +1,5 @@
 import { Call } from "@/components/calls/types";
+import { SMSMessage } from "@/lib/api/sms/smsService";
 
 export interface Conversation {
   id: string;
@@ -8,11 +9,13 @@ export interface Conversation {
   lastName?: string;
   displayName: string;
   totalCalls: number;
+  totalSMS: number;
   lastActivityDate: string;
   lastActivityTime: string;
   lastActivityTimestamp: Date;
   lastCallOutcome?: string;
   calls: Call[];
+  smsMessages: SMSMessage[];
   totalDuration: string;
   outcomes: {
     appointments: number;

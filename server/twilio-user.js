@@ -8,7 +8,7 @@ export const twilioUserRouter = express.Router();
 
 // Supabase client for user credentials
 const supa = createClient(
-  process.env.SUPABASE_URL, 
+  process.env.VITE_SUPABASE_URL, 
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
@@ -298,3 +298,4 @@ function isStrictlyUnused(n) {
 function isUnusedForOurWebhook(n, userTrunkSid) {
   return n.usage === 'unused' || (n.usage === 'trunk' && n.trunkSid !== userTrunkSid);
 }
+

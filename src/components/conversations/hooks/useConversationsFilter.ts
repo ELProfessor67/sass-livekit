@@ -90,6 +90,13 @@ export function useConversationsFilter(conversations: Conversation[]) {
     );
   }, [filteredConversationsByResolution, searchQuery]);
 
+  // Sort conversations by date and time (most recent first)
+  const sortedConversations = useMemo(() => {
+    return [...filteredConversations].sort((a, b) => {
+      return b.lastActivityTimestamp.getTime() - a.lastActivityTimestamp.getTime();
+    });
+  }, [filteredConversations]);
+
   return {
     searchQuery,
     setSearchQuery,
@@ -97,8 +104,8 @@ export function useConversationsFilter(conversations: Conversation[]) {
     setResolutionFilter,
     dateRange,
     setDateRange,
-    conversations: filteredConversations,
+    conversations: sortedConversations,
     totalConversations: conversations.length,
-    filteredCount: filteredConversations.length
+    filteredCount: sortedConversations.length
   };
 }

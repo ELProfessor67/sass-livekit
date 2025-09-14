@@ -1,32 +1,24 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import DashboardLayout from "@/layout/DashboardLayout";
 import { motion, AnimatePresence } from "framer-motion";
 import { ThemeContainer, ThemeSection, ThemeCard } from "@/components/theme";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Play, Pause, Trash2, Plus, BarChart3 } from "lucide-react";
+import { Play, Pause, Trash2, Plus, BarChart3, Eye } from "lucide-react";
 import { TermsOfUseDialog } from "@/components/campaigns/TermsOfUseDialog";
 import { CampaignSettingsDialog } from "@/components/campaigns/CampaignSettingsDialog";
+import { CampaignDetailsDialog } from "@/components/campaigns/CampaignDetailsDialog";
+import { fetchCampaigns, Campaign } from "@/lib/api/campaigns/fetchCampaigns";
+import { saveCampaign, SaveCampaignRequest } from "@/lib/api/campaigns/saveCampaign";
+import { startCampaign } from "@/lib/api/campaigns/startCampaign";
+import { pauseCampaign } from "@/lib/api/campaigns/pauseCampaign";
+import { resumeCampaign } from "@/lib/api/campaigns/resumeCampaign";
+import { stopCampaign } from "@/lib/api/campaigns/stopCampaign";
+import { getCampaignStatus } from "@/lib/api/campaigns/getCampaignStatus";
+import { useAuth } from "@/contexts/AuthContext";
 
-// Mock data for campaigns
-interface Campaign {
-  id: string;
-  name: string;
-  status: 'active' | 'paused' | 'completed';
-  dailyCap: number;
-  agent: string;
-  list: string;
-  dials: number;
-  pickups: number;
-  doNotCall: number;
-  outcomes: {
-    interested: number;
-    notInterested: number;
-    callback: number;
-  };
-  totalUsage: number;
-}
+// Campaign interface imported from API
 
 const mockCampaigns: Campaign[] = [
   {
@@ -66,9 +58,32 @@ const mockCampaigns: Campaign[] = [
 ];
 
 export default function Campaigns() {
-  const [campaigns, setCampaigns] = useState<Campaign[]>(mockCampaigns);
+  const { user } = useAuth();
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [termsOpen, setTermsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>('');
+  const [selectedCampaignName, setSelectedCampaignName] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+
+  // Load campaigns from database
+  useEffect(() => {
+    const loadCampaigns = async () => {
+      if (!user?.id) return;
+      
+      try {
+        const response = await fetchCampaigns();
+        setCampaigns(response.campaigns);
+      } catch (error) {
+        console.error('Error loading campaigns:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadCampaigns();
+  }, [user?.id]);
 
   const handleNewCampaign = () => {
     setTermsOpen(true);
@@ -79,52 +94,111 @@ export default function Campaigns() {
     setSettingsOpen(true);
   };
 
-  const handleCampaignCreated = (campaignData: any) => {
-    const newCampaign: Campaign = {
-      id: Date.now().toString(),
-      name: campaignData.name,
-      status: 'paused',
-      dailyCap: campaignData.dailyCap,
-      agent: campaignData.agent,
-      list: campaignData.contactList,
-      dials: 0,
-      pickups: 0,
-      doNotCall: 0,
-      outcomes: {
-        interested: 0,
-        notInterested: 0,
-        callback: 0
-      },
-      totalUsage: 0
-    };
+  const handleCampaignCreated = async (campaignData: any) => {
+    if (!user?.id) return;
 
-    setCampaigns(prev => [...prev, newCampaign]);
-    setSettingsOpen(false);
+    try {
+      const saveData: SaveCampaignRequest = {
+        name: campaignData.name,
+        assistantId: campaignData.assistantId,
+        contactSource: campaignData.contactSource,
+        contactListId: campaignData.contactListId,
+        csvFileId: campaignData.csvFileId,
+        dailyCap: campaignData.dailyCap,
+        callingDays: campaignData.callingDays,
+        startHour: campaignData.startHour,
+        endHour: campaignData.endHour,
+        campaignPrompt: campaignData.campaignPrompt,
+        userId: user.id
+      };
+
+      const result = await saveCampaign(saveData);
+      
+      if (result.success) {
+        // Reload campaigns from database
+        const response = await fetchCampaigns();
+        setCampaigns(response.campaigns);
+        setSettingsOpen(false);
+      } else {
+        console.error('Error saving campaign:', result.error);
+        alert('Error saving campaign: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Error creating campaign:', error);
+      alert('Error creating campaign: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
   };
 
-  const toggleCampaignStatus = (id: string) => {
-    setCampaigns(prev => prev.map(campaign => 
-      campaign.id === id 
-        ? { ...campaign, status: campaign.status === 'active' ? 'paused' : 'active' as 'active' | 'paused' }
-        : campaign
-    ));
+  const toggleCampaignStatus = async (id: string) => {
+    const campaign = campaigns.find(c => c.id === id);
+    if (!campaign) return;
+
+    try {
+      if (campaign.execution_status === 'running') {
+        // Pause the campaign
+        const result = await pauseCampaign({ campaignId: id });
+        if (result.success) {
+          setCampaigns(prev => prev.map(c => 
+            c.id === id 
+              ? { ...c, execution_status: 'paused' as const }
+              : c
+          ));
+        } else {
+          console.error('Error pausing campaign:', result.error);
+        }
+      } else if (campaign.execution_status === 'paused') {
+        // Resume the campaign
+        const result = await resumeCampaign({ campaignId: id });
+        if (result.success) {
+          setCampaigns(prev => prev.map(c => 
+            c.id === id 
+              ? { ...c, execution_status: 'running' as const }
+              : c
+          ));
+        } else {
+          console.error('Error resuming campaign:', result.error);
+        }
+      } else if (campaign.execution_status === 'idle') {
+        // Start the campaign
+        const result = await startCampaign({ campaignId: id });
+        if (result.success) {
+          setCampaigns(prev => prev.map(c => 
+            c.id === id 
+              ? { ...c, execution_status: 'running' as const }
+              : c
+          ));
+        } else {
+          console.error('Error starting campaign:', result.error);
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling campaign status:', error);
+    }
   };
 
   const deleteCampaign = (id: string) => {
     setCampaigns(prev => prev.filter(campaign => campaign.id !== id));
   };
 
-  const getStatusBadge = (status: Campaign['status']) => {
+  const openCampaignDetails = (campaignId: string, campaignName: string) => {
+    setSelectedCampaignId(campaignId);
+    setSelectedCampaignName(campaignName);
+    setDetailsOpen(true);
+  };
+
+  const getStatusBadge = (executionStatus: Campaign['execution_status']) => {
     const variants = {
-      active: { variant: 'default' as const, className: 'bg-success/10 text-success border-success/20 hover:bg-success/20' },
+      idle: { variant: 'outline' as const, className: 'bg-muted/10 text-muted-foreground border-muted/30 hover:bg-muted/20' },
+      running: { variant: 'default' as const, className: 'bg-success/10 text-success border-success/20 hover:bg-success/20' },
       paused: { variant: 'secondary' as const, className: 'bg-warning/10 text-warning border-warning/20 hover:bg-warning/20' },
-      completed: { variant: 'outline' as const, className: 'bg-muted/10 text-muted-foreground border-muted/30 hover:bg-muted/20' }
+      completed: { variant: 'outline' as const, className: 'bg-muted/10 text-muted-foreground border-muted/30 hover:bg-muted/20' },
+      error: { variant: 'destructive' as const, className: 'bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/20' }
     };
 
-    const config = variants[status];
+    const config = variants[executionStatus] || variants.idle;
     return (
       <Badge variant={config.variant} className={config.className}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+        {executionStatus.charAt(0).toUpperCase() + executionStatus.slice(1)}
       </Badge>
     );
   };
@@ -210,8 +284,8 @@ export default function Campaigns() {
                         <TableHead className="w-[100px]">Status</TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead>Daily Cap</TableHead>
-                        <TableHead>Agent</TableHead>
-                        <TableHead>List</TableHead>
+                        <TableHead>Assistant</TableHead>
+                        <TableHead>Contact Source</TableHead>
                         <TableHead className="text-right">Dials</TableHead>
                         <TableHead className="text-right">Pickups</TableHead>
                         <TableHead className="text-right">Do Not Call</TableHead>
@@ -221,22 +295,44 @@ export default function Campaigns() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {campaigns.map((campaign) => (
+                      {loading ? (
+                        <TableRow>
+                          <TableCell colSpan={11} className="text-center py-8">
+                            Loading campaigns...
+                          </TableCell>
+                        </TableRow>
+                      ) : campaigns.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={11} className="text-center py-8">
+                            No campaigns found. Create your first campaign to get started.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        campaigns.map((campaign) => (
                         <TableRow key={campaign.id}>
                           <TableCell>
-                            {getStatusBadge(campaign.status)}
+                            {getStatusBadge(campaign.execution_status)}
                           </TableCell>
                           <TableCell className="font-medium">
-                            {campaign.name}
+                            <Button
+                              variant="link"
+                              className="p-0 h-auto font-medium text-left"
+                              onClick={() => openCampaignDetails(campaign.id, campaign.name)}
+                            >
+                              {campaign.name}
+                            </Button>
                           </TableCell>
                           <TableCell>
-                            {campaign.dailyCap}
+                            {campaign.daily_cap}
                           </TableCell>
                           <TableCell>
-                            {campaign.agent}
+                            {campaign.assistant_name || 'Unknown'}
                           </TableCell>
                           <TableCell>
-                            {campaign.list}
+                            {campaign.contact_source === 'contact_list' 
+                              ? (campaign.contact_list_name || 'Unknown List')
+                              : (campaign.csv_file_name || 'Unknown CSV')
+                            }
                           </TableCell>
                           <TableCell className="text-right">
                             {campaign.dials}
@@ -245,27 +341,35 @@ export default function Campaigns() {
                             {campaign.pickups}
                           </TableCell>
                           <TableCell className="text-right">
-                            {campaign.doNotCall}
+                            {campaign.do_not_call}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex flex-col text-xs space-y-1">
-                              <span className="text-success">I: {campaign.outcomes.interested}</span>
-                              <span className="text-destructive">NI: {campaign.outcomes.notInterested}</span>
-                              <span className="text-warning">CB: {campaign.outcomes.callback}</span>
+                              <span className="text-success">I: {campaign.interested}</span>
+                              <span className="text-destructive">NI: {campaign.not_interested}</span>
+                              <span className="text-warning">CB: {campaign.callback}</span>
                             </div>
                           </TableCell>
                           <TableCell className="text-right">
-                            {campaign.totalUsage}
+                            {campaign.total_usage}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-2">
                               <Button
                                 variant="ghost"
                                 size="sm"
+                                onClick={() => openCampaignDetails(campaign.id, campaign.name)}
+                                className="text-theme-secondary hover:text-theme-primary"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => toggleCampaignStatus(campaign.id)}
                                 className="text-theme-secondary hover:text-theme-primary"
                               >
-                                {campaign.status === 'active' ? (
+                                {campaign.execution_status === 'running' ? (
                                   <Pause className="w-4 h-4" />
                                 ) : (
                                   <Play className="w-4 h-4" />
@@ -282,7 +386,8 @@ export default function Campaigns() {
                             </div>
                           </TableCell>
                         </TableRow>
-                      ))}
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </div>
@@ -301,6 +406,13 @@ export default function Campaigns() {
           open={settingsOpen} 
           onOpenChange={setSettingsOpen}
           onSave={handleCampaignCreated}
+        />
+        
+        <CampaignDetailsDialog
+          open={detailsOpen}
+          onOpenChange={setDetailsOpen}
+          campaignId={selectedCampaignId}
+          campaignName={selectedCampaignName}
         />
       </ThemeContainer>
     </DashboardLayout>

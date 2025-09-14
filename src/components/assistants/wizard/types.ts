@@ -71,6 +71,9 @@ export interface AdvancedData {
   numWordsToInterruptAssistant: number;
   maxDurationSeconds: number;
   backgroundSound: string;
+  // SMS fields
+  firstSms: string;
+  smsPrompt: string;
   // Optional Cal.com integration (stored locally for now)
   calApiKey?: string;
   calEventTypeId?: string;

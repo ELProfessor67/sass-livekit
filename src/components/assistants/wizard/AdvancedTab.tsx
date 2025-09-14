@@ -148,6 +148,47 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
           )}
         </div>
       </div>
+
+      {/* SMS Configuration */}
+      <div className="settings-card">
+        <div className="space-y-[var(--space-md)]">
+          <h3 className="settings-card-title">SMS Configuration</h3>
+          <p className="settings-card-description">
+            Configure SMS settings for text-based conversations with your assistant
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-[var(--space-xl)]">
+          {/* First SMS Message */}
+          <div className="space-y-[var(--space-md)]">
+            <Label className="settings-label">First SMS Message</Label>
+            <Textarea
+              placeholder="Hello! I'm your AI assistant. How can I help you today?"
+              value={data.firstSms}
+              onChange={(e) => onChange({ firstSms: e.target.value })}
+              className="min-h-[80px] settings-input"
+            />
+            <p className="text-[var(--text-xs)] text-theme-secondary">
+              This message will be sent automatically when an SMS conversation starts
+            </p>
+          </div>
+
+          {/* SMS Prompt */}
+          <div className="space-y-[var(--space-md)]">
+            <Label className="settings-label">SMS System Prompt</Label>
+            <Textarea
+              placeholder="You are a helpful AI assistant communicating via SMS. Keep responses concise and friendly..."
+              value={data.smsPrompt}
+              onChange={(e) => onChange({ smsPrompt: e.target.value })}
+              className="min-h-[120px] settings-input"
+            />
+            <p className="text-[var(--text-xs)] text-theme-secondary">
+              System instructions for how the assistant should behave in SMS conversations
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Compliance & Recording */}
       <div className="settings-card">
         <div className="space-y-[var(--space-md)]">

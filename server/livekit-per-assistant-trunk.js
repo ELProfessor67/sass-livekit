@@ -15,7 +15,7 @@ const lk = new SipClient(
 );
 
 // Optional Supabase client (not used for creation; kept if you expand lookups later)
-const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supa = (supabaseUrl && supabaseKey)
   ? createSupabaseClient(supabaseUrl, supabaseKey)
@@ -90,6 +90,7 @@ async function deleteDispatchRule(ctx, id) {
 /**
  * Create a brand-new inbound trunk for an assistant and a catch-all rule for that trunk.
  * This avoids per-DID rules; every number placed on this trunk routes to the assistant.
+ * Also creates a corresponding outbound trunk for making calls.
  */
 async function createAssistantTrunk(ctx, { assistantId, assistantName, phoneNumber }) {
   const e164 = toE164(phoneNumber);
@@ -120,6 +121,51 @@ async function createAssistantTrunk(ctx, { assistantId, assistantName, phoneNumb
 
   const trunkId = readId(trunk, 'sip_trunk_id', 'sipTrunkId', 'id');
   log(ctx, 'created assistant trunk', { trunkId, trunkName, numbers: [e164] });
+
+  // Create corresponding outbound trunk for making calls
+  const outboundTrunkName = slug(`ast-outbound-${assistantName}-${Date.now()}`);
+  log(ctx, 'creating outbound trunk', { assistantId, assistantName, phoneNumber: e164, outboundTrunkName });
+
+  // Get Twilio SIP provider configuration
+  // For Twilio, we need to get the trunk SID and construct the proper address
+  let sipAddress = "check.pstn.twilio.com";
+  const destinationCountry = process.env.SIP_DESTINATION_COUNTRY || 'US';
+  const authUsername = "trunkUser";
+  const authPassword = "SuperSecret#2025";
+
+  // Debug Twilio credentials
+  console.log('🔍 Twilio SIP Configuration:', {
+    sipAddress: sipAddress || 'will use pstn.twilio.com',
+    destinationCountry,
+    authUsername: authUsername ? `${authUsername.substring(0, 8)}...` : 'MISSING',
+    authPassword: authPassword ? `${authPassword.substring(0, 8)}...` : 'MISSING'
+  });
+
+
+
+  // Create outbound trunk using the working format from your other project
+  const trunkOptions = {
+    auth_username: authUsername,
+    auth_password: authPassword,
+    destination_country: destinationCountry,
+    metadata: JSON.stringify({
+      kind: 'per-assistant-outbound-trunk',
+      assistantId,
+      assistantName,
+      phoneNumber: e164,
+      createdAt: new Date().toISOString(),
+    }),
+  };
+
+  const outboundTrunk = await lk.createSipOutboundTrunk(
+    outboundTrunkName,
+    sipAddress,
+    [e164], // Use the same phone number for outbound calls
+    trunkOptions
+  );
+
+  const outboundTrunkId = readId(outboundTrunk, 'sip_trunk_id', 'sipTrunkId', 'id');
+  log(ctx, 'created outbound trunk', { outboundTrunkId, outboundTrunkName, numbers: [e164] });
 
   // Minimal agent metadata; worker fetches full prompt by assistantId if needed
   const agentMetadataJson = JSON.stringify({
@@ -155,6 +201,8 @@ async function createAssistantTrunk(ctx, { assistantId, assistantName, phoneNumb
   return {
     trunkId,
     trunkName,
+    outboundTrunkId,
+    outboundTrunkName,
     ruleId,
     phoneNumber: e164,
     assistantId,
@@ -179,8 +227,8 @@ async function findAssistantTrunk(ctx, { assistantId, phoneNumber }) {
   return { trunkId, trunkName: hit.name, phoneNumber: e164, assistantId, existing: true };
 }
 
-async function deleteAssistantTrunk(ctx, { trunkId }) {
-  log(ctx, 'deleting trunk + rules', { trunkId });
+async function deleteAssistantTrunk(ctx, { trunkId, outboundTrunkId }) {
+  log(ctx, 'deleting trunk + rules', { trunkId, outboundTrunkId });
 
   // delete rules referencing this trunk
   const rules = await lk.listSipDispatchRule();
@@ -194,22 +242,48 @@ async function deleteAssistantTrunk(ctx, { trunkId }) {
     if (rid) await deleteDispatchRule(ctx, rid);
   }
 
-  // robust trunk deletion (positional, then object)
+  // Delete inbound trunk
+  let inboundDeleted = false;
   try {
     await lk.deleteSipInboundTrunk(trunkId);
     log(ctx, 'deleteSipInboundTrunk OK (positional)', { trunkId });
-    return true;
+    inboundDeleted = true;
   } catch (e1) {
     logErr(ctx, 'delete trunk positional failed, trying object', e1);
   }
-  try {
-    await lk.deleteSipInboundTrunk({ sipTrunkId: trunkId });
-    log(ctx, 'deleteSipInboundTrunk OK (object)', { trunkId });
-    return true;
-  } catch (e2) {
-    logErr(ctx, 'delete trunk failed', e2);
-    return false;
+  if (!inboundDeleted) {
+    try {
+      await lk.deleteSipInboundTrunk({ sipTrunkId: trunkId });
+      log(ctx, 'deleteSipInboundTrunk OK (object)', { trunkId });
+      inboundDeleted = true;
+    } catch (e2) {
+      logErr(ctx, 'delete inbound trunk failed', e2);
+    }
   }
+
+  // Delete outbound trunk if provided
+  let outboundDeleted = true; // Default to true if no outbound trunk
+  if (outboundTrunkId) {
+    outboundDeleted = false;
+    try {
+      await lk.deleteSipOutboundTrunk(outboundTrunkId);
+      log(ctx, 'deleteSipOutboundTrunk OK (positional)', { outboundTrunkId });
+      outboundDeleted = true;
+    } catch (e1) {
+      logErr(ctx, 'delete outbound trunk positional failed, trying object', e1);
+    }
+    if (!outboundDeleted) {
+      try {
+        await lk.deleteSipOutboundTrunk({ sipTrunkId: outboundTrunkId });
+        log(ctx, 'deleteSipOutboundTrunk OK (object)', { outboundTrunkId });
+        outboundDeleted = true;
+      } catch (e2) {
+        logErr(ctx, 'delete outbound trunk failed', e2);
+      }
+    }
+  }
+
+  return inboundDeleted && outboundDeleted;
 }
 
 /* -------------------------------- routes -------------------------------- */
@@ -261,9 +335,10 @@ livekitPerAssistantTrunkRouter.get('/assistant-trunks', async (req, res) => {
 livekitPerAssistantTrunkRouter.delete('/assistant-trunk/:trunkId', async (req, res) => {
   const ctx = { route: 'DELETE /assistant-trunk/:trunkId', rid: rid() };
   const { trunkId } = req.params;
+  const { outboundTrunkId } = req.query;
 
   try {
-    const ok = await deleteAssistantTrunk(ctx, { trunkId });
+    const ok = await deleteAssistantTrunk(ctx, { trunkId, outboundTrunkId });
     if (ok) res.json({ success: true, message: 'Assistant trunk deleted' });
     else res.status(500).json({ success: false, message: 'Failed to delete assistant trunk' });
   } catch (err) {

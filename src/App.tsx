@@ -10,6 +10,7 @@ import { BusinessUseCaseProvider } from "./components/BusinessUseCaseProvider";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { supabase } from "./integrations/supabase/client";
 import Index from "./pages/Index";
+import LandingPage from "./pages/LandingPage";
 import Assistants from "./pages/Assistants";
 import CreateAssistant from "./pages/CreateAssistant";
 import KnowledgeBaseEditor from "./pages/KnowledgeBaseEditor";
@@ -102,6 +103,11 @@ function AnimatedRoutes() {
       return <Navigate to="/onboarding" replace />;
     }
 
+    // If user is authenticated and on landing page, redirect to dashboard
+    if (user && location.pathname === "/") {
+      return <Navigate to="/dashboard" replace />;
+    }
+
     return <Outlet />;
   }
 
@@ -111,7 +117,7 @@ function AnimatedRoutes() {
       <Route path="/login" element={<Login />} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route element={<RequireOnboarding />}>
-        <Route path="/" element={<Index />} />
+        <Route path="/dashboard" element={<Index />} />
         <Route path="/assistants" element={<Assistants />} />
         <Route path="/assistants/create" element={<CreateAssistant />} />
         <Route path="/assistants/edit/:id" element={<CreateAssistant />} />
@@ -127,6 +133,8 @@ function AnimatedRoutes() {
         <Route path="/integrations" element={<Integrations />} />
         <Route path="/billing" element={<Billing />} />
       </Route>
+      {/* Landing page for unauthenticated users */}
+      <Route path="/" element={<LandingPage />} />
       {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
       <Route path="*" element={<NotFound />} />
     </Routes>

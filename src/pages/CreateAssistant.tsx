@@ -118,7 +118,9 @@ const CreateAssistant = () => {
       llmRequestDelaySeconds: 0.1,
       numWordsToInterruptAssistant: 2,
       maxDurationSeconds: 600,
-      backgroundSound: "office"
+      backgroundSound: "office",
+      firstSms: "",
+      smsPrompt: ""
     }
   });
 
@@ -305,6 +307,10 @@ const CreateAssistant = () => {
       idle_messages: formData.advanced.idleMessages?.length ? formData.advanced.idleMessages : null,
       max_idle_messages: formData.advanced.idleMessageMaxSpokenCount,
       wait_seconds: formData.voice.waitSeconds,
+
+      // SMS fields
+      first_sms: formData.advanced.firstSms || null,
+      sms_prompt: formData.advanced.smsPrompt || null,
 
       // Cal.com Integration
       cal_api_key: (formData.advanced as any).calApiKey || null,

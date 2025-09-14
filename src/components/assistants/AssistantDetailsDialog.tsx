@@ -13,6 +13,8 @@ interface Assistant {
   description: string;
   prompt?: string;
   first_message?: string;
+  first_sms?: string;
+  sms_prompt?: string;
   status: "draft" | "active" | "inactive";
   interactionCount: number;
   userCount: number;
@@ -143,6 +145,24 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
                   <h4 className="font-medium text-sm text-muted-foreground mb-1">First Message</h4>
                   <p className="text-sm bg-muted p-3 rounded-md">
                     {assistant.first_message}
+                  </p>
+                </div>
+              )}
+
+              {assistant.first_sms && (
+                <div>
+                  <h4 className="font-medium text-sm text-muted-foreground mb-1">First SMS Message</h4>
+                  <p className="text-sm bg-muted p-3 rounded-md">
+                    {assistant.first_sms}
+                  </p>
+                </div>
+              )}
+
+              {assistant.sms_prompt && (
+                <div>
+                  <h4 className="font-medium text-sm text-muted-foreground mb-1">SMS System Prompt</h4>
+                  <p className="text-sm bg-muted p-3 rounded-md max-h-32 overflow-y-auto">
+                    {assistant.sms_prompt}
                   </p>
                 </div>
               )}

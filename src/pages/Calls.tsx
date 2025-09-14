@@ -10,7 +10,6 @@ import { useCallsFilter } from "@/components/calls/useCallsFilter";
 import { fetchCalls } from "@/lib/api/calls/fetchCalls";
 import { useLocation } from "react-router-dom";
 import { ThemeContainer, ThemeSection, ThemeCard } from "@/components/theme";
-import LiveKitDemo from "@/components/calls/LiveKitDemo";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 
@@ -196,7 +195,7 @@ export default function Calls() {
 
             <div className="relative w-full">
               <div className="mb-6">
-                <LiveKitDemo />
+                {/* <LiveKitDemo /> */}
               </div>
               <ThemeCard variant="glass" className="overflow-hidden">
                 <CallsTable

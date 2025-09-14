@@ -2,6 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from 'date-fns';
 import { Conversation } from "@/components/conversations/types";
 import { fetchRecordingUrlCached, RecordingInfo } from "../recordings/fetchRecordingUrl";
+import { SMSMessage } from "@/lib/api/sms/smsService";
 
 export interface CallHistoryRecord {
   id: string;
@@ -49,6 +50,48 @@ export const fetchConversations = async (): Promise<ConversationsResponse> => {
 
     // Group calls by phone number to create conversations
     const conversationsMap = new Map<string, Conversation>();
+
+    // Fetch SMS messages for all phone numbers
+    const phoneNumbers = [...new Set(callHistory.map(call => call.phone_number))];
+    const smsMessagesMap = new Map<string, SMSMessage[]>();
+    
+    if (phoneNumbers.length > 0) {
+      try {
+        const { data: smsMessages, error: smsError } = await supabase
+          .from('sms_messages')
+          .select('*')
+          .or(`to_number.in.(${phoneNumbers.join(',')}),from_number.in.(${phoneNumbers.join(',')})`)
+          .order('date_created', { ascending: false });
+
+        if (!smsError && smsMessages) {
+          smsMessages.forEach(sms => {
+            // Determine which phone number this SMS belongs to
+            const phoneNumber = sms.direction === 'inbound' ? sms.from_number : sms.to_number;
+            if (!smsMessagesMap.has(phoneNumber)) {
+              smsMessagesMap.set(phoneNumber, []);
+            }
+            smsMessagesMap.get(phoneNumber)!.push({
+              messageSid: sms.message_sid,
+              to: sms.to_number,
+              from: sms.from_number,
+              body: sms.body,
+              direction: sms.direction,
+              status: sms.status,
+              dateCreated: sms.date_created,
+              dateSent: sms.date_sent,
+              dateUpdated: sms.date_updated,
+              errorCode: sms.error_code,
+              errorMessage: sms.error_message,
+              numSegments: sms.num_segments,
+              price: sms.price,
+              priceUnit: sms.price_unit
+            });
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching SMS messages:', error);
+      }
+    }
 
     // Process calls with async recording fetches
     const processedCalls = await Promise.all(
@@ -102,7 +145,8 @@ export const fetchConversations = async (): Promise<ConversationsResponse> => {
             call_outcome: determineCallResolution(call.transcription, call.call_status),
             created_at: call.start_time,
             call_sid: call.call_sid,
-            recording_info: recordingInfo
+            recording_info: recordingInfo,
+            assistant_id: call.assistant_id
           };
 
           return { callData, phoneNumber, participantName };
@@ -127,11 +171,13 @@ export const fetchConversations = async (): Promise<ConversationsResponse> => {
             lastName: participantName.split(' ').slice(1).join(' ') || '',
             displayName: participantName,
             totalCalls: 0,
+            totalSMS: smsMessagesMap.get(phoneNumber)?.length || 0,
             lastActivityDate: '',
             lastActivityTime: '',
             lastActivityTimestamp: new Date(),
             lastCallOutcome: undefined,
             calls: [],
+            smsMessages: smsMessagesMap.get(phoneNumber) || [],
             totalDuration: '0:00',
             outcomes: {
               appointments: 0,
@@ -173,6 +219,42 @@ export const fetchConversations = async (): Promise<ConversationsResponse> => {
         // Update total duration
         conversation.totalDuration = calculateTotalDuration(conversation.calls);
       });
+
+    // Create conversations for phone numbers that only have SMS messages (no calls)
+    smsMessagesMap.forEach((smsMessages, phoneNumber) => {
+      if (!conversationsMap.has(phoneNumber)) {
+        // Create conversation from SMS messages only
+        const firstSms = smsMessages[0];
+        const displayName = firstSms.direction === 'inbound' ? 
+          `Contact ${phoneNumber}` : 
+          `Contact ${phoneNumber}`;
+
+        const conversation: Conversation = {
+          id: `conv_${phoneNumber}`,
+          contactId: `contact_${phoneNumber}`,
+          phoneNumber: phoneNumber,
+          firstName: displayName.split(' ')[0] || 'Unknown',
+          lastName: displayName.split(' ').slice(1).join(' ') || '',
+          displayName: displayName,
+          totalCalls: 0,
+          totalSMS: smsMessages.length,
+          lastActivityDate: format(new Date(firstSms.dateCreated), 'yyyy-MM-dd'),
+          lastActivityTime: format(new Date(firstSms.dateCreated), 'HH:mm'),
+          lastActivityTimestamp: new Date(firstSms.dateCreated),
+          lastCallOutcome: undefined,
+          calls: [],
+          smsMessages: smsMessages,
+          totalDuration: '0:00',
+          outcomes: {
+            appointments: 0,
+            qualified: 0,
+            notQualified: 0,
+            spam: 0
+          }
+        };
+        conversationsMap.set(phoneNumber, conversation);
+      }
+    });
 
     // Convert map to array and sort by last activity
     const conversations = Array.from(conversationsMap.values())
