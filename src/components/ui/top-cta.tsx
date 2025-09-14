@@ -23,26 +23,29 @@ export const TopCTA = () => {
   return (
     <div className="fixed top-4 right-8 z-50 flex items-center gap-3 backdrop-blur-md bg-white/20 border border-white/30 rounded-full px-4 py-2 shadow-lg">
       {user ? (
-        <button 
+        <button
           onClick={handleDashboardClick}
           className="text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors px-3 py-1 rounded-full hover:bg-white/20"
         >
           Dashboard
         </button>
       ) : (
-        <button 
-          onClick={handleLoginClick}
-          className="text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors px-3 py-1 rounded-full hover:bg-white/20"
-        >
-          Log In
-        </button>
+        <>
+          <button
+            onClick={handleLoginClick}
+            className="text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors px-3 py-1 rounded-full hover:bg-white/20"
+          >
+            Log In
+          </button>
+          <button
+            onClick={scrollToPricing}
+            className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-4 py-2 rounded-full shadow-md hover:shadow-lg transition-all duration-300 backdrop-blur-sm"
+          >
+            Free Trial
+          </button>
+        </>
       )}
-      <button
-        onClick={scrollToPricing}
-        className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-4 py-2 rounded-full shadow-md hover:shadow-lg transition-all duration-300 backdrop-blur-sm"
-      >
-        Free Trial
-      </button>
+
     </div>
   )
 }

@@ -142,12 +142,12 @@ twilioAdminRouter.post('/assign', async (req, res) => {
         if (baseUrl) {
             try {
                 await twilio.incomingPhoneNumbers(phoneSid).update({
-                    smsUrl: baseUrl,
+                    smsUrl: `${baseUrl}/api/v1/twilio/sms/webhook`,
                     smsMethod: 'POST',
-                    statusCallback: baseUrl.replace('/webhook', '/status-callback'),
+                    statusCallback: `${baseUrl}/api/v1/twilio/sms/status-callback`,
                     statusCallbackMethod: 'POST'
                 });
-                console.log(`✅ Configured SMS webhook for assigned phone number ${num.phoneNumber}: ${baseUrl}`);
+                console.log(`✅ Configured SMS webhook for assigned phone number ${num.phoneNumber}: ${baseUrl}/api/v1/twilio/sms/webhook`);
             } catch (webhookError) {
                 console.error(`❌ Failed to configure SMS webhook for ${num.phoneNumber}:`, webhookError.message);
             }
@@ -285,12 +285,12 @@ twilioAdminRouter.post('/map', async (req, res) => {
         if (baseUrl && phoneSid) {
             try {
                 await twilio.incomingPhoneNumbers(phoneSid).update({
-                    smsUrl: baseUrl,
+                    smsUrl: `${baseUrl}/api/v1/twilio/sms/webhook`,
                     smsMethod: 'POST',
-                    statusCallback: baseUrl.replace('/webhook', '/status-callback'),
+                    statusCallback: `${baseUrl}/api/v1/twilio/sms/status-callback`,
                     statusCallbackMethod: 'POST'
                 });
-                console.log(`✅ Configured SMS webhook for assistant phone number ${e164}: ${baseUrl}`);
+                console.log(`✅ Configured SMS webhook for assistant phone number ${e164}: ${baseUrl}/api/v1/twilio/sms/webhook`);
             } catch (webhookError) {
                 console.error(`❌ Failed to configure SMS webhook for ${e164}:`, webhookError.message);
             }
