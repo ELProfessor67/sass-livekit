@@ -10,8 +10,8 @@ const twilio = Twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TO
 
 // Optional Supabase client (safe to remove if you don't persist mappings)
 const supa =
-    process.env.VITE_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
-        ? createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+    process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+        ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
         : null;
 
 /** Build our public base URL (works locally & behind tunnels) */
@@ -248,7 +248,7 @@ twilioAdminRouter.post('/map', async (req, res) => {
         // optional persistence (safe no-op if you removed Supabase)
         console.log('Supabase client status:', supa ? 'connected' : 'null');
         console.log('Environment variables:', {
-            SUPABASE_URL: process.env.VITE_SUPABASE_URL ? 'set' : 'not set',
+            SUPABASE_URL: process.env.SUPABASE_URL ? 'set' : 'not set',
             SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'set' : 'not set'
         });
 

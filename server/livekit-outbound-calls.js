@@ -14,7 +14,7 @@ const lk = new SipClient(
 );
 
 const supabase = createSupabaseClient(
-  process.env.VITE_SUPABASE_URL,
+  process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 

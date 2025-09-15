@@ -82,22 +82,21 @@ export class TwilioCredentialsService {
         throw new Error(trunkResult.message || 'Failed to create main trunk');
       }
 
-      const { data, error } = await supabase
-        .from("user_twilio_credentials")
-        .insert({
-          user_id: user.id,
-          account_sid: credentials.accountSid,
-          auth_token: credentials.authToken,
-          trunk_sid: trunkResult.trunkSid,
-          label: credentials.label,
-          is_active: true
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      return data;
+      // Backend already saved all credentials with SIP configuration
+      // Just return the result from the backend
+      return {
+        user_id: user.id,
+        account_sid: credentials.accountSid,
+        auth_token: credentials.authToken,
+        trunk_sid: trunkResult.trunkSid,
+        label: credentials.label,
+        is_active: true,
+        domain_name: trunkResult.domainName,
+        domain_prefix: trunkResult.domainPrefix,
+        credential_list_sid: trunkResult.credentialListSid,
+        sip_username: trunkResult.sipUsername,
+        sip_password: trunkResult.sipPassword
+      };
     } catch (error) {
       console.error("Error saving Twilio credentials:", error);
       throw error;

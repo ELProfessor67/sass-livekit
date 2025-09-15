@@ -1107,10 +1107,9 @@ You are a concise, friendly **campaign dialer** (NOT the full assistant). Rules:
 - Personalize by name when possible: use "{name}".
 - Follow the campaign script briefly; keep turns short (1–2 sentences).
 - If not interested / wrong number: apologize and end gracefully.
-- If they ask to schedule: say you'll send a booking link via SMS/email and end. Do NOT collect PII beyond a first name.
 - Do NOT use any tools or calendars. No side effects.
 
-If they don't speak: say once, "Hi {name}, this is a quick call regarding something we sent you."
+If they don't speak: say once, "Hi {name}, "
 
 CAMPAIGN SCRIPT (use naturally, don’t read verbatim if awkward):
 {(script if script else "(no campaign script provided)")}
@@ -1153,7 +1152,28 @@ async def entrypoint(ctx: agents.JobContext):
     if phone_number is not None:
         logging.info("🔥 OUTBOUND_CALL_DETECTED | phone_number=%s", phone_number)
         try:
-            sip_trunk_id = os.getenv("SIP_TRUNK_ID")
+            # Get trunk ID from job metadata (passed by campaign execution engine)
+            sip_trunk_id = None
+            try:
+                # Parse job metadata to get campaign info and outbound trunk ID
+                job_metadata = json.loads(ctx.job.metadata) if isinstance(ctx.job.metadata, str) else ctx.job.metadata
+                campaign_id = job_metadata.get('campaignId')
+                assistant_id = job_metadata.get('agentId')
+                sip_trunk_id = job_metadata.get('outbound_trunk_id')
+                
+                logging.info("🔍 JOB_METADATA | campaign_id=%s | assistant_id=%s | outbound_trunk_id=%s", campaign_id, assistant_id, sip_trunk_id)
+                
+                if not sip_trunk_id:
+                    logging.error("❌ No outbound_trunk_id found in job metadata")
+                    
+            except Exception as metadata_error:
+                logging.error("❌ Metadata parsing failed: %s", str(metadata_error))
+            
+            # Fallback to environment variable if metadata lookup failed
+            if not sip_trunk_id:
+                sip_trunk_id = os.getenv("SIP_TRUNK_ID")
+                logging.info("🔄 FALLBACK_TO_ENV | sip_trunk_id=%s", sip_trunk_id)
+            
             logging.info("🔍 SIP_TRUNK_ID_CHECK | sip_trunk_id=%s", sip_trunk_id)
             if not sip_trunk_id:
                 logging.error("❌ SIP_TRUNK_ID not configured - cannot make outbound call")
@@ -1690,10 +1710,14 @@ if __name__ == "__main__":
     livekit_url = os.getenv("LIVEKIT_URL")
     agent_name = os.getenv("LK_AGENT_NAME", "ai")
     sip_trunk_id = os.getenv("SIP_TRUNK_ID")
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    
     logging.info("🚀 Starting LiveKit agent")
     logging.info("📡 LiveKit URL: %s", livekit_url)
     logging.info("🤖 Agent name: %s", agent_name)
-    logging.info("📞 SIP_TRUNK_ID: %s", sip_trunk_id)
+    logging.info("📞 SIP_TRUNK_ID (fallback): %s", sip_trunk_id)
+    logging.info("📋 Metadata-driven trunk selection: ENABLED")
     logging.info("🔍 Environment check: LIVEKIT_URL=%s, LIVEKIT_API_KEY=%s, LIVEKIT_API_SECRET=%s",
                  bool(os.getenv("LIVEKIT_URL")), bool(os.getenv("LIVEKIT_API_KEY")), bool(os.getenv("LIVEKIT_API_SECRET")))
 

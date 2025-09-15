@@ -13,6 +13,7 @@ import { getCallRecordingInfo } from './twilio-trunk-service.js';
 import smsWebhookRouter from './sms-webhook.js';
 import { outboundCallsRouter } from './outbound-calls.js';
 import { campaignManagementRouter } from './campaign-management.js';
+import { csvManagementRouter } from './csv-management.js';
 import { livekitRoomRouter } from './livekit-room.js';
 import { campaignEngine } from './campaign-execution-engine.js';
 import { connect } from '@ngrok/ngrok';
@@ -35,6 +36,7 @@ app.use('/api/v1/recording', recordingWebhookRouter);
 app.use('/api/v1/sms', smsWebhookRouter);
 app.use('/api/v1/outbound-calls', outboundCallsRouter);
 app.use('/api/v1/campaigns', campaignManagementRouter);
+app.use('/api/v1/csv', csvManagementRouter);
 app.use('/api/v1/livekit', livekitRoomRouter);
 
 // Get recording information for a call

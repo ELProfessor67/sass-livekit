@@ -5,6 +5,7 @@ import express from 'express';
 import crypto from 'crypto';
 import { SipClient } from 'livekit-server-sdk';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { getSipConfigForLiveKit } from './twilio-trunk-service.js';
 
 export const livekitPerAssistantTrunkRouter = express.Router();
 
@@ -15,7 +16,7 @@ const lk = new SipClient(
 );
 
 // Optional Supabase client (not used for creation; kept if you expand lookups later)
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
+const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supa = (supabaseUrl && supabaseKey)
   ? createSupabaseClient(supabaseUrl, supabaseKey)
@@ -92,7 +93,7 @@ async function deleteDispatchRule(ctx, id) {
  * This avoids per-DID rules; every number placed on this trunk routes to the assistant.
  * Also creates a corresponding outbound trunk for making calls.
  */
-async function createAssistantTrunk(ctx, { assistantId, assistantName, phoneNumber }) {
+async function createAssistantTrunk(ctx, { assistantId, assistantName, phoneNumber, userId }) {
   const e164 = toE164(phoneNumber);
   const agentName = process.env.LK_AGENT_NAME || 'ai';
 
@@ -122,49 +123,74 @@ async function createAssistantTrunk(ctx, { assistantId, assistantName, phoneNumb
   const trunkId = readId(trunk, 'sip_trunk_id', 'sipTrunkId', 'id');
   log(ctx, 'created assistant trunk', { trunkId, trunkName, numbers: [e164] });
 
+  // Get dynamic Twilio SIP configuration from database
+  console.log(`🔍 Getting SIP config for user ${userId} to create outbound trunk`);
+  const sipConfig = await getSipConfigForLiveKit(userId);
+  console.log(`📊 Retrieved SIP config:`, {
+    domainName: sipConfig.domainName,
+    sipUsername: sipConfig.sipUsername,
+    hasPassword: !!sipConfig.sipPassword,
+    trunkSid: sipConfig.trunkSid,
+    credentialListSid: sipConfig.credentialListSid
+  });
+  
   // Create corresponding outbound trunk for making calls
-  const outboundTrunkName = slug(`ast-outbound-${assistantName}-${Date.now()}`);
+  // Use the domain name from Twilio trunk as the LiveKit trunk name
+  const outboundTrunkName = sipConfig.domainName.replace('.pstn.twilio.com', ''); // Remove .pstn.twilio.com suffix
   log(ctx, 'creating outbound trunk', { assistantId, assistantName, phoneNumber: e164, outboundTrunkName });
-
-  // Get Twilio SIP provider configuration
-  // For Twilio, we need to get the trunk SID and construct the proper address
-  let sipAddress = "check.pstn.twilio.com";
-  const destinationCountry = process.env.SIP_DESTINATION_COUNTRY || 'US';
-  const authUsername = "trunkUser";
-  const authPassword = "SuperSecret#2025";
-
-  // Debug Twilio credentials
-  console.log('🔍 Twilio SIP Configuration:', {
-    sipAddress: sipAddress || 'will use pstn.twilio.com',
-    destinationCountry,
-    authUsername: authUsername ? `${authUsername.substring(0, 8)}...` : 'MISSING',
-    authPassword: authPassword ? `${authPassword.substring(0, 8)}...` : 'MISSING'
+  log(ctx, 'retrieved SIP config', { 
+    domainName: sipConfig.domainName,
+    sipUsername: sipConfig.sipUsername,
+    trunkSid: sipConfig.trunkSid 
   });
 
+  const destinationCountry = process.env.SIP_DESTINATION_COUNTRY || 'US';
 
+  // Debug Twilio credentials
+  console.log('🔍 Dynamic Twilio SIP Configuration:', {
+    domainName: sipConfig.domainName,
+    destinationCountry,
+    sipUsername: sipConfig.sipUsername ? `${sipConfig.sipUsername.substring(0, 8)}...` : 'MISSING',
+    sipPassword: sipConfig.sipPassword ? `${sipConfig.sipPassword.substring(0, 8)}...` : 'MISSING'
+  });
 
-  // Create outbound trunk using the working format from your other project
+  // Create outbound trunk using dynamic configuration
   const trunkOptions = {
-    auth_username: authUsername,
-    auth_password: authPassword,
+    auth_username: sipConfig.sipUsername,
+    auth_password: sipConfig.sipPassword,
     destination_country: destinationCountry,
     metadata: JSON.stringify({
       kind: 'per-assistant-outbound-trunk',
       assistantId,
       assistantName,
       phoneNumber: e164,
+      domainName: sipConfig.domainName,
+      trunkSid: sipConfig.trunkSid,
       createdAt: new Date().toISOString(),
     }),
   };
 
+  console.log(`🚀 Creating LiveKit outbound trunk with:`, {
+    outboundTrunkName,
+    domainName: sipConfig.domainName,
+    phoneNumber: e164,
+    trunkOptions
+  });
+  
   const outboundTrunk = await lk.createSipOutboundTrunk(
     outboundTrunkName,
-    sipAddress,
+    sipConfig.domainName,  // Dynamic domain name
     [e164], // Use the same phone number for outbound calls
     trunkOptions
   );
 
   const outboundTrunkId = readId(outboundTrunk, 'sip_trunk_id', 'sipTrunkId', 'id');
+  console.log(`✅ Created LiveKit outbound trunk:`, {
+    outboundTrunkId,
+    outboundTrunkName,
+    phoneNumber: e164,
+    fullResponse: outboundTrunk
+  });
   log(ctx, 'created outbound trunk', { outboundTrunkId, outboundTrunkName, numbers: [e164] });
 
   // Minimal agent metadata; worker fetches full prompt by assistantId if needed
@@ -299,11 +325,17 @@ livekitPerAssistantTrunkRouter.post('/assistant-trunk', async (req, res) => {
 
   try {
     const { assistantId, assistantName, phoneNumber } = req.body || {};
+    const userId = req.body.userId || req.headers['x-user-id'];
+    
     if (!assistantId || !assistantName || !phoneNumber) {
       return res.status(400).json({ success: false, message: 'assistantId, assistantName, phoneNumber are required' });
     }
+    
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId is required' });
+    }
 
-    const trunk = await createAssistantTrunk(ctx, { assistantId, assistantName, phoneNumber });
+    const trunk = await createAssistantTrunk(ctx, { assistantId, assistantName, phoneNumber, userId });
     res.json({ success: true, message: `Created trunk for ${assistantName}`, trunk, created: true });
   } catch (err) {
     logErr(ctx, 'failed to create assistant trunk', err);

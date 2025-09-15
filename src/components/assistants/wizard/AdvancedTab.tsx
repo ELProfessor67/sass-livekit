@@ -149,6 +149,45 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
         </div>
       </div>
 
+      {/* WhatsApp Business Configuration */}
+      <div className="settings-card">
+        <div className="space-y-[var(--space-md)]">
+          <h3 className="settings-card-title">WhatsApp Business Configuration</h3>
+          <p className="settings-card-description">
+            Configure WhatsApp Business settings for messaging conversations with your assistant
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-xl)]">
+          <div className="space-y-[var(--space-md)]">
+            <Label className="settings-label">WhatsApp Business Number</Label>
+            <Input
+              type="tel"
+              placeholder="+1234567890"
+              value={data.whatsappNumber}
+              onChange={(e) => onChange({ whatsappNumber: e.target.value })}
+              className="settings-input"
+            />
+            <p className="text-[var(--text-xs)] text-theme-secondary">
+              Your WhatsApp Business phone number (include country code)
+            </p>
+          </div>
+          <div className="space-y-[var(--space-md)]">
+            <Label className="settings-label">WhatsApp Business API Key</Label>
+            <Input
+              type="password"
+              placeholder="Enter your WhatsApp Business API key"
+              value={data.whatsappKey}
+              onChange={(e) => onChange({ whatsappKey: e.target.value })}
+              className="settings-input"
+            />
+            <p className="text-[var(--text-xs)] text-theme-secondary">
+              Your WhatsApp Business API access token
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* SMS Configuration */}
       <div className="settings-card">
         <div className="space-y-[var(--space-md)]">

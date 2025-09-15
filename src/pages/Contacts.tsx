@@ -18,6 +18,8 @@ import { saveCsvFile, SaveCsvFileRequest } from "@/lib/api/csv/saveCsvFile";
 import { saveCsvContacts, SaveCsvContactsRequest } from "@/lib/api/csv/saveCsvContacts";
 import { fetchCsvFiles, CsvFile as DbCsvFile } from "@/lib/api/csv/fetchCsvFiles";
 import { fetchCsvContacts, CsvContact as DbCsvContact } from "@/lib/api/csv/fetchCsvContacts";
+import { deleteCsvFile as deleteCsvFileAPI } from "@/lib/api/csv/deleteCsvFile";
+import { DeleteCsvFileDialog } from "@/components/contacts/dialogs/DeleteCsvFileDialog";
 import { useAuth } from "@/contexts/AuthContext";
 
 // Mock data structures
@@ -179,6 +181,11 @@ export default function Contacts() {
   const [showCsvPreview, setShowCsvPreview] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // CSV delete states
+  const [deleteCsvOpen, setDeleteCsvOpen] = useState(false);
+  const [csvToDelete, setCsvToDelete] = useState<{ id: string; name: string; contactCount: number; campaigns?: Array<{ id: string; name: string }> } | null>(null);
+  const [deletingCsv, setDeletingCsv] = useState(false);
 
   const filteredContacts = contacts.filter(contact => {
     const matchesSearch = searchQuery === "" || 
@@ -348,10 +355,47 @@ export default function Contacts() {
   };
 
   const handleRemoveCsvFile = (csvId: string) => {
-    setCsvFiles(prev => prev.filter(file => file.id !== csvId));
-    if (selectedCsvFile === csvId) {
-      setSelectedCsvFile(null);
-      setShowCsvPreview(false);
+    const file = csvFiles.find(f => f.id === csvId);
+    if (file) {
+      setCsvToDelete({
+        id: file.id,
+        name: file.name,
+        contactCount: file.rowCount
+      });
+      setDeleteCsvOpen(true);
+    }
+  };
+
+  const confirmDeleteCsvFile = async () => {
+    if (!csvToDelete) return;
+
+    setDeletingCsv(true);
+    try {
+      const result = await deleteCsvFileAPI({ csvFileId: csvToDelete.id });
+      
+      if (result.success) {
+        // Remove from local state
+        setCsvFiles(prev => prev.filter(file => file.id !== csvToDelete.id));
+        if (selectedCsvFile === csvToDelete.id) {
+          setSelectedCsvFile(null);
+          setShowCsvPreview(false);
+        }
+        setDeleteCsvOpen(false);
+        setCsvToDelete(null);
+      } else {
+        console.error('Error deleting CSV file:', result.error);
+        // Update the CSV to delete with campaigns data if provided
+        if (result.campaigns) {
+          setCsvToDelete(prev => prev ? { ...prev, campaigns: result.campaigns } : null);
+        } else {
+          alert('Error deleting CSV file: ' + result.error);
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting CSV file:', error);
+      alert('Error deleting CSV file: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setDeletingCsv(false);
     }
   };
 
@@ -770,6 +814,16 @@ export default function Contacts() {
         open={uploadContactsOpen}
         onOpenChange={setUploadContactsOpen}
         contactLists={contactLists}
+      />
+      
+      <DeleteCsvFileDialog
+        open={deleteCsvOpen}
+        onOpenChange={setDeleteCsvOpen}
+        onConfirm={confirmDeleteCsvFile}
+        csvFileName={csvToDelete?.name || ''}
+        contactCount={csvToDelete?.contactCount || 0}
+        campaigns={csvToDelete?.campaigns || []}
+        loading={deletingCsv}
       />
     </DashboardLayout>
   );

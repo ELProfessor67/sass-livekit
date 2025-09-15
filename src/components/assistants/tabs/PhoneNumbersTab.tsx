@@ -229,7 +229,10 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
       try {
         const livekitResp = await fetch(`${base}/api/v1/livekit/assistant-trunk`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            'x-user-id': user?.id || ''
+          },
           body: JSON.stringify({
             assistantId,
             assistantName,

@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import Twilio from 'twilio';
 
 const supabase = createClient(
-  process.env.VITE_SUPABASE_URL,
+  process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
@@ -83,7 +83,7 @@ class CampaignExecutionEngine {
   }
 
   /**
-   * Execute a single campaign
+   * Execute a single campaign - processes all calls immediately and continuously
    */
   async executeCampaign(campaign) {
     try {
@@ -95,24 +95,201 @@ class CampaignExecutionEngine {
         return;
       }
 
-      // Get next call from queue
-      const nextCall = await this.getNextCallFromQueue(campaign.id);
-      if (!nextCall) {
-        console.log(`No more calls in queue for campaign: ${campaign.name}`);
-        await this.completeCampaign(campaign.id);
-        return;
-      }
-
-      // Execute the call
-      await this.executeCall(campaign, nextCall);
-
-      // Update next call time based on campaign settings
-      await this.updateNextCallTime(campaign);
+      // Process all calls immediately and continuously (like urban-new system)
+      await this.processAllCalls(campaign);
 
     } catch (error) {
       console.error(`Error executing campaign ${campaign.id}:`, error);
       await this.pauseCampaign(campaign.id, `Execution error: ${error.message}`);
     }
+  }
+
+  /**
+   * Process all calls immediately and continuously (like urban-new system)
+   */
+  async processAllCalls(campaign) {
+    console.log(`🔄 Starting continuous processing for campaign: ${campaign.name}`);
+    
+    // Get all contacts for this campaign
+    const contacts = await this.getCampaignContacts(campaign);
+    if (!contacts || contacts.length === 0) {
+      console.log(`No contacts found for campaign: ${campaign.name}`);
+      await this.completeCampaign(campaign.id);
+      return;
+    }
+
+    console.log(`📞 Found ${contacts.length} contacts to process`);
+
+    // Process each contact immediately
+    for (let i = 0; i < contacts.length; i++) {
+      const contact = contacts[i];
+      
+      // Check if campaign should continue (daily cap, calling hours, etc.)
+      if (!this.shouldExecuteCampaign(campaign)) {
+        console.log(`Campaign ${campaign.name} reached daily cap or outside calling hours, pausing`);
+        await this.pauseCampaign(campaign.id, 'Daily cap reached or outside calling hours');
+        return;
+      }
+
+      // Check if campaign is still running
+      const { data: currentCampaign } = await supabase
+        .from('campaigns')
+        .select('execution_status')
+        .eq('id', campaign.id)
+        .single();
+
+      if (!currentCampaign || currentCampaign.execution_status !== 'running') {
+        console.log(`Campaign ${campaign.name} is no longer running, stopping`);
+        return;
+      }
+
+      console.log(`📞 Processing contact ${i + 1}/${contacts.length}: ${contact.name || 'Unknown'} - ${contact.phone_number}`);
+
+      try {
+        // Execute the call immediately (don't wait for completion)
+        console.log(`🔄 Starting call ${i + 1}/${contacts.length} for ${contact.name} - ${contact.phone_number}`);
+        
+        await this.executeCallDirect(campaign, contact, i + 1);
+        
+        // Update campaign metrics immediately
+        await supabase
+          .from('campaigns')
+          .update({
+            dials: campaign.dials + 1,
+            current_daily_calls: campaign.current_daily_calls + 1,
+            total_calls_made: campaign.total_calls_made + 1,
+            last_execution_at: new Date().toISOString()
+          })
+          .eq('id', campaign.id);
+
+        // Update campaign object for next iteration
+        campaign.dials = campaign.dials + 1;
+        campaign.current_daily_calls = campaign.current_daily_calls + 1;
+        campaign.total_calls_made = campaign.total_calls_made + 1;
+
+        console.log(`✅ Call ${i + 1} initiated for campaign: ${campaign.name}`);
+
+        // Add a small delay between calls (optional)
+        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+
+      } catch (callError) {
+        console.error(`❌ Call ${i + 1} failed for campaign ${campaign.name}:`, callError);
+        
+        // Mark call as failed but continue with next call
+        await this.createFailedCallRecord(campaign, contact, callError.message);
+        continue;
+      }
+    }
+
+    // All calls completed
+    console.log(`🎉 All calls completed for campaign: ${campaign.name}`);
+    await this.completeCampaign(campaign.id);
+  }
+
+  /**
+   * Get all contacts for a campaign (like urban-new system)
+   */
+  async getCampaignContacts(campaign) {
+    let contacts = [];
+
+    // Get contacts based on campaign source
+    if (campaign.contact_source === 'contact_list' && campaign.contact_list_id) {
+      const { data: contactList, error } = await supabase
+        .from('contact_lists')
+        .select(`
+          contacts(*)
+        `)
+        .eq('id', campaign.contact_list_id)
+        .single();
+
+      if (contactList && contactList.contacts) {
+        contacts = contactList.contacts;
+      }
+    } else if (campaign.contact_source === 'csv_file' && campaign.csv_file_id) {
+      const { data: csvContacts, error } = await supabase
+        .from('csv_contacts')
+        .select('*')
+        .eq('csv_file_id', campaign.csv_file_id)
+        .eq('do_not_call', false);
+
+      if (csvContacts) {
+        contacts = csvContacts;
+      }
+    }
+
+    // Format contacts consistently
+    return contacts.map(contact => {
+      let phoneNumber = contact.phone_number || contact.phone;
+      const contactName = contact.name || contact.first_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unknown';
+
+      // Fix phone number formatting
+      if (phoneNumber && typeof phoneNumber === 'number') {
+        phoneNumber = phoneNumber.toString();
+      }
+
+      // Ensure phone number has proper format
+      if (phoneNumber && !phoneNumber.startsWith('+')) {
+        if (phoneNumber.startsWith('44')) {
+          phoneNumber = '+' + phoneNumber;
+        } else if (phoneNumber.startsWith('0')) {
+          phoneNumber = '+44' + phoneNumber.substring(1);
+        } else if (phoneNumber.length === 10 && phoneNumber.startsWith('4')) {
+          phoneNumber = '+44' + phoneNumber;
+        }
+      }
+
+      return {
+        id: contact.id,
+        name: contactName,
+        phone_number: phoneNumber,
+        email: contact.email || contact.email_address || ''
+      };
+    }).filter(contact => contact.phone_number && contact.phone_number.length >= 10);
+  }
+
+  /**
+   * Execute call directly (like urban-new system)
+   */
+  async executeCallDirect(campaign, contact, callNumber) {
+    // Create campaign call record
+    const { data: campaignCall, error: callError } = await supabase
+      .from('campaign_calls')
+      .insert({
+        campaign_id: campaign.id,
+        contact_id: campaign.contact_source === 'contact_list' ? contact.id : null,
+        phone_number: contact.phone_number,
+        contact_name: contact.name,
+        status: 'calling',
+        started_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (callError) {
+      throw new Error(`Failed to create campaign call record: ${callError.message}`);
+    }
+
+    // Execute the call using existing LiveKit logic
+    await this.executeCall(campaign, { campaign_calls: campaignCall });
+  }
+
+
+  /**
+   * Create failed call record
+   */
+  async createFailedCallRecord(campaign, contact, errorMessage) {
+    await supabase
+      .from('campaign_calls')
+      .insert({
+        campaign_id: campaign.id,
+        contact_id: campaign.contact_source === 'contact_list' ? contact.id : null,
+        phone_number: contact.phone_number,
+        contact_name: contact.name,
+        status: 'failed',
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+        notes: errorMessage
+      });
   }
 
   /**
@@ -169,64 +346,6 @@ class CampaignExecutionEngine {
     return true;
   }
 
-  /**
-   * Get next call from queue for a campaign
-   */
-  async getNextCallFromQueue(campaignId) {
-    console.log(`🔍 Looking for calls in queue for campaign ${campaignId}`);
-
-    // First, get all queued items for this campaign
-    const { data: queueItems, error: queueError } = await supabase
-      .from('call_queue')
-      .select('*')
-      .eq('campaign_id', campaignId)
-      .eq('status', 'queued')
-      .lte('scheduled_for', new Date().toISOString())
-      .order('priority', { ascending: false })
-      .order('scheduled_for', { ascending: true });
-
-    if (queueError) {
-      console.log(`  ❌ Error fetching queue: ${queueError.message}`);
-      return null;
-    }
-
-    if (!queueItems || queueItems.length === 0) {
-      console.log(`  ❌ No calls found in queue`);
-
-      // Let's check what's actually in the queue
-      const { data: allQueueItems } = await supabase
-        .from('call_queue')
-        .select('*')
-        .eq('campaign_id', campaignId);
-
-      console.log(`  📊 Total queue items for this campaign: ${allQueueItems?.length || 0}`);
-      if (allQueueItems && allQueueItems.length > 0) {
-        console.log(`  📋 Queue items:`, allQueueItems.map(item => ({
-          id: item.id,
-          status: item.status,
-          scheduled_for: item.scheduled_for
-        })));
-      }
-
-      return null;
-    }
-
-    // Get the first item and its associated campaign call
-    const queueItem = queueItems[0];
-    const { data: campaignCall, error: callError } = await supabase
-      .from('campaign_calls')
-      .select('*')
-      .eq('id', queueItem.campaign_call_id)
-      .single();
-
-    if (callError) {
-      console.log(`  ❌ Error fetching campaign call: ${callError.message}`);
-      return null;
-    }
-
-    console.log(`  ✅ Found call in queue: ${queueItem.id}`);
-    return { ...queueItem, campaign_calls: campaignCall };
-  }
 
   /**
    * Execute a single call using LiveKit SIP participant
@@ -667,6 +786,7 @@ class CampaignExecutionEngine {
           campaignId: campaign.id,
           contactName: campaignCall.contact_name || 'Unknown',
           campaignPrompt: campaign.campaign_prompt || '',  // Add campaign prompt
+          outbound_trunk_id: outboundTrunkId,  // Add outbound trunk ID
         }),
       };
       
@@ -681,6 +801,7 @@ class CampaignExecutionEngine {
           campaignId: campaign.id,
           contactName: campaignCall.contact_name || 'Unknown',
           campaignPrompt: campaign.campaign_prompt || '',  // Add campaign prompt
+          outbound_trunk_id: outboundTrunkId,  // Add outbound trunk ID
         }),
       };
       
@@ -741,13 +862,27 @@ class CampaignExecutionEngine {
 
       console.log(`🎉 LiveKit SIP call initiated for ${campaign.name}: ${campaignCall.phone_number}`);
     } catch (error) {
-      console.error(`❌ Error executing call for campaign ${campaign.id}:`, error);
-      await supabase.from('campaign_calls').update({
-        status: 'failed',
-        completed_at: new Date().toISOString(),
-        notes: error.message,
-      }).eq('id', queueItem.campaign_calls.id);
-      await supabase.from('call_queue').update({ status: 'failed', updated_at: new Date().toISOString() }).eq('id', queueItem.id);
+      console.error(`Error executing call for campaign ${campaign.id}:`, error);
+
+      // Mark call as failed
+      await supabase
+        .from('campaign_calls')
+        .update({ 
+          status: 'failed',
+          completed_at: new Date().toISOString(),
+          notes: error.message
+        })
+        .eq('id', queueItem.campaign_calls.id);
+
+      // Mark queue item as failed
+      await supabase
+        .from('call_queue')
+        .update({ 
+          status: 'failed',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', queueItem.id);
+
       throw error;
     }
   }
@@ -794,6 +929,7 @@ class CampaignExecutionEngine {
   }
 
 
+
   async startCampaign(campaignId) {
     try {
       // Get campaign details
@@ -807,11 +943,8 @@ class CampaignExecutionEngine {
         throw new Error('Campaign not found');
       }
 
-      // Create call queue from contacts
-      await this.createCallQueue(campaign);
-
-      // Update campaign status
-      await supabase
+      // Update campaign status to running (no queue needed - we process directly)
+      const { error: updateError } = await supabase
         .from('campaigns')
         .update({
           execution_status: 'running',
@@ -820,7 +953,12 @@ class CampaignExecutionEngine {
         })
         .eq('id', campaignId);
 
-      console.log(`Campaign ${campaignId} started`);
+      if (updateError) {
+        console.error('Error updating campaign status:', updateError);
+        throw updateError;
+      }
+
+      console.log(`✅ Campaign ${campaignId} started with status: running, next_call_at: ${new Date().toISOString()}`);
 
     } catch (error) {
       console.error(`Error starting campaign ${campaignId}:`, error);
@@ -829,139 +967,6 @@ class CampaignExecutionEngine {
   }
 
 
-  async createCallQueue(campaign) {
-    try {
-      console.log(`  🔍 Creating call queue for campaign:`, {
-        id: campaign.id,
-        name: campaign.name,
-        contact_source: campaign.contact_source,
-        contact_list_id: campaign.contact_list_id,
-        csv_file_id: campaign.csv_file_id
-      });
-
-      let contacts = [];
-
-      // Get contacts based on campaign source
-      if (campaign.contact_source === 'contact_list' && campaign.contact_list_id) {
-        const { data: contactList, error } = await supabase
-          .from('contact_lists')
-          .select(`
-            contacts(*)
-          `)
-          .eq('id', campaign.contact_list_id)
-          .single();
-
-        if (contactList && contactList.contacts) {
-          contacts = contactList.contacts;
-        }
-      } else if (campaign.contact_source === 'csv_file' && campaign.csv_file_id) {
-        // Get CSV contacts from csv_contacts table
-        const { data: csvContacts, error } = await supabase
-          .from('csv_contacts')
-          .select('*')
-          .eq('csv_file_id', campaign.csv_file_id)
-          .eq('do_not_call', false);
-
-        if (csvContacts) {
-          contacts = csvContacts;
-          console.log(`  📊 Found ${csvContacts.length} CSV contacts`);
-          console.log(`  📋 CSV contacts:`, csvContacts.map(c => ({
-            id: c.id,
-            name: c.first_name,
-            phone: c.phone,
-            status: c.status,
-            do_not_call: c.do_not_call
-          })));
-        } else {
-          console.log(`  ❌ No CSV contacts found for file ${campaign.csv_file_id}`);
-        }
-      }
-
-      if (contacts.length === 0) {
-        throw new Error('No contacts found for campaign');
-      }
-
-      console.log(`  📊 Processing ${contacts.length} contacts for campaign ${campaign.id}`);
-
-      // Create campaign calls and queue items
-      const campaignCalls = [];
-      const queueItems = [];
-
-      for (const contact of contacts) {
-        let phoneNumber = contact.phone_number || contact.phone;
-        const contactName = contact.name || contact.first_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unknown';
-
-        // Fix phone number formatting (handle scientific notation)
-        if (phoneNumber && typeof phoneNumber === 'number') {
-          phoneNumber = phoneNumber.toString();
-        }
-
-        // Ensure phone number has proper format
-        if (phoneNumber && !phoneNumber.startsWith('+')) {
-          // If it's a UK number without country code, add it
-          if (phoneNumber.startsWith('44')) {
-            phoneNumber = '+' + phoneNumber;
-          } else if (phoneNumber.startsWith('0')) {
-            phoneNumber = '+44' + phoneNumber.substring(1);
-          } else if (phoneNumber.length === 10 && phoneNumber.startsWith('4')) {
-            phoneNumber = '+44' + phoneNumber;
-          }
-        }
-
-        if (!phoneNumber || phoneNumber.length < 10) {
-          console.warn(`Skipping contact without valid phone number: ${contactName} (${phoneNumber})`);
-          continue;
-        }
-
-        console.log(`  📞 Processing contact: ${contactName} - ${phoneNumber}`);
-
-        // Create campaign call
-        const { data: campaignCall, error: callError } = await supabase
-          .from('campaign_calls')
-          .insert({
-            campaign_id: campaign.id,
-            contact_id: campaign.contact_source === 'contact_list' ? contact.id : null,
-            phone_number: phoneNumber,
-            contact_name: contactName,
-            status: 'pending'
-          })
-          .select()
-          .single();
-
-        if (callError) {
-          console.error('Error creating campaign call:', callError);
-          continue;
-        }
-
-        // Create queue item
-        queueItems.push({
-          campaign_id: campaign.id,
-          campaign_call_id: campaignCall.id,
-          phone_number: phoneNumber,
-          priority: 0,
-          scheduled_for: new Date().toISOString(),
-          status: 'queued'
-        });
-      }
-
-      // Insert queue items
-      if (queueItems.length > 0) {
-        const { error: queueError } = await supabase
-          .from('call_queue')
-          .insert(queueItems);
-
-        if (queueError) {
-          throw queueError;
-        }
-      }
-
-      console.log(`Created ${queueItems.length} calls in queue for campaign ${campaign.id}`);
-
-    } catch (error) {
-      console.error('Error creating call queue:', error);
-      throw error;
-    }
-  }
 }
 
 // Export singleton instance

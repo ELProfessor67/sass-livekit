@@ -8,7 +8,7 @@ export const twilioUserRouter = express.Router();
 
 // Supabase client for user credentials
 const supa = createClient(
-  process.env.VITE_SUPABASE_URL, 
+  process.env.SUPABASE_URL, 
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
@@ -205,7 +205,12 @@ twilioUserRouter.post('/create-main-trunk', async (req, res) => {
       success: true,
       message: 'Main trunk created successfully',
       trunkSid: trunkResult.trunkSid,
-      trunkName: trunkResult.trunkName
+      trunkName: trunkResult.trunkName,
+      domainName: trunkResult.domainName,
+      domainPrefix: trunkResult.domainPrefix,
+      credentialListSid: trunkResult.credentialListSid,
+      sipUsername: trunkResult.sipUsername,
+      sipPassword: trunkResult.sipPassword
     });
   } catch (error) {
     console.error('Error creating main trunk:', error);

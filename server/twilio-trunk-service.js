@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 
 // Supabase client for user credentials
 const supa = createClient(
-  process.env.VITE_SUPABASE_URL,
+  process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
@@ -17,26 +17,130 @@ export async function createMainTrunkForUser({ accountSid, authToken, userId, la
   // Create Twilio client
   const client = Twilio(accountSid, authToken);
 
-  // Generate unique trunk name
+  // Generate unique trunk name and domain
   const trunkName = `main-trunk-${userId.slice(0, 8)}-${Date.now()}`;
+  const domainPrefix = `user-${userId.slice(0, 8)}-${Date.now()}`;
+  const domainName = `${domainPrefix}.pstn.twilio.com`;
 
   console.log(`Creating main trunk for user ${userId}: ${trunkName}`);
+  console.log(`Domain name: ${domainName}`);
 
   try {
-    // Create the main trunk first
-    const trunk = await client.trunking.v1.trunks.create({
-      friendlyName: trunkName
-      // Optional: secure: true for enhanced security
+    // 1. Create credential list using Programmable Voice SIP API
+    const credentialListResponse = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/SIP/CredentialLists.json`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: `FriendlyName=SIP-Credentials-${userId.slice(0, 8)}`
     });
 
+    if (!credentialListResponse.ok) {
+      const errorText = await credentialListResponse.text();
+      throw new Error(`Failed to create credential list: ${credentialListResponse.statusText} - ${errorText}`);
+    }
+
+    const credentialList = await credentialListResponse.json();
+    console.log(`Created credential list: ${credentialList.sid}`);
+
+    // 2. Add credentials to the list using Programmable Voice SIP API
+    const sipUsername = `sip-${userId.slice(0, 8)}`;
+    const sipPassword = generateSecurePassword();
+
+    const credentialResponse = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/SIP/CredentialLists/${credentialList.sid}/Credentials.json`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: `Username=${sipUsername}&Password=${sipPassword}`
+    });
+
+    if (!credentialResponse.ok) {
+      const errorText = await credentialResponse.text();
+      throw new Error(`Failed to create credentials: ${credentialResponse.statusText} - ${errorText}`);
+    }
+
+    const credential = await credentialResponse.json();
+    console.log(`Created SIP credentials: ${credential.username}`);
+
+    // 3. Create the main trunk with domain name using REST API
+    const trunkResponse = await fetch('https://trunking.twilio.com/v1/Trunks', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: `FriendlyName=${trunkName}&DomainName=${domainName}&TransferMode=enable-all`
+    });
+
+    if (!trunkResponse.ok) {
+      throw new Error(`Failed to create trunk: ${trunkResponse.statusText}`);
+    }
+
+    const trunk = await trunkResponse.json();
     const trunkSid = trunk.sid;
     console.log(`Created main trunk: ${trunkSid}`);
-    
+
+    // 4. Associate credential list with trunk using REST API
+    const associateResponse = await fetch(`https://trunking.twilio.com/v1/Trunks/${trunkSid}/CredentialLists`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: `CredentialListSid=${credentialList.sid}`
+    });
+
+    if (!associateResponse.ok) {
+      throw new Error(`Failed to associate credential list: ${associateResponse.statusText}`);
+    }
+
+    console.log(`Associated credential list with trunk`);
+
+    // 5. Store SIP configuration in database
+    console.log(`Storing SIP configuration in database for user ${userId}`);
+
+    // First deactivate any existing active credentials for this user
+    const { error: deactivateError } = await supa.from('user_twilio_credentials')
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('is_active', true);
+
+    if (deactivateError) {
+      console.error('Error deactivating existing credentials:', deactivateError);
+      throw new Error(`Failed to deactivate existing credentials: ${deactivateError.message}`);
+    }
+
+    // Then insert the new active configuration
+    const { error: insertError } = await supa.from('user_twilio_credentials').insert({
+      user_id: userId,
+      account_sid: accountSid,
+      auth_token: authToken,
+      trunk_sid: trunkSid,
+      label: label || 'default',
+      domain_name: domainName,
+      domain_prefix: domainPrefix,
+      credential_list_sid: credentialList.sid,
+      sip_username: sipUsername,
+      sip_password: sipPassword,
+      is_active: true,
+      created_at: new Date().toISOString()
+    });
+
+    if (insertError) {
+      console.error('Error inserting SIP configuration:', insertError);
+      throw new Error(`Failed to insert SIP configuration: ${insertError.message}`);
+    }
+
+    console.log(`✅ Stored SIP configuration in database successfully`);
+
     // Enable recording from ringing after trunk creation using direct API call
     try {
       // Wait for trunk to be fully created
       await new Promise(resolve => setTimeout(resolve, 3000));
-      
+
       // Use direct HTTP request to update recording settings
       const response = await fetch(`https://trunking.twilio.com/v1/Trunks/${trunkSid}/Recording`, {
         method: 'POST',
@@ -46,7 +150,7 @@ export async function createMainTrunkForUser({ accountSid, authToken, userId, la
         },
         body: 'Mode=record-from-ringing&Trim=do-not-trim'
       });
-      
+
       if (response.ok) {
         const recordingData = await response.json();
         console.log(`✅ Recording enabled: ${recordingData.mode}`);
@@ -74,24 +178,41 @@ export async function createMainTrunkForUser({ accountSid, authToken, userId, la
         console.log(`Final SIP URL: ${finalSipUrl}`);
         console.log(`Creating origination URL for trunk: ${trunkSid}`);
 
-        // Check if origination URL already exists
-        const existingUrls = await client.trunking.v1.trunks(trunkSid).originationUrls.list();
-        const alreadyExists = existingUrls.some(url => url.sipUrl === finalSipUrl);
+        // Check if origination URL already exists using REST API
+        const existingUrlsResponse = await fetch(`https://trunking.twilio.com/v1/Trunks/${trunkSid}/OriginationUrls`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`
+          }
+        });
 
-        if (alreadyExists) {
-          console.log(`✅ LiveKit origination URL already exists: ${finalSipUrl}`);
+        if (existingUrlsResponse.ok) {
+          const existingUrls = await existingUrlsResponse.json();
+          const alreadyExists = existingUrls.origination_urls.some(url => url.sip_url === finalSipUrl);
+
+          if (alreadyExists) {
+            console.log(`✅ LiveKit origination URL already exists: ${finalSipUrl}`);
+          } else {
+            // Create origination URL for LiveKit using REST API
+            const originationResponse = await fetch(`https://trunking.twilio.com/v1/Trunks/${trunkSid}/OriginationUrls`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+                'Content-Type': 'application/x-www-form-urlencoded'
+              },
+              body: `SipUrl=${finalSipUrl}&Priority=1&Weight=10&Enabled=true&FriendlyName=livekit-${livekitSipUri.replace('sip:', '')}`
+            });
+
+            if (originationResponse.ok) {
+              const originationUrl = await originationResponse.json();
+              console.log(`✅ Successfully added LiveKit origination URL: ${originationUrl.sip_url}`);
+              console.log(`Origination URL SID: ${originationUrl.sid}`);
+            } else {
+              throw new Error(`Failed to create origination URL: ${originationResponse.statusText}`);
+            }
+          }
         } else {
-          // Create origination URL for LiveKit
-          const originationUrl = await client.trunking.v1.trunks(trunkSid).originationUrls.create({
-            sipUrl: finalSipUrl,
-            priority: 1,
-            weight: 10,
-            enabled: true,
-            friendlyName: `livekit-${livekitSipUri.replace('sip:', '')}`,
-          });
-
-          console.log(`✅ Successfully added LiveKit origination URL: ${originationUrl.sipUrl}`);
-          console.log(`Origination URL SID: ${originationUrl.sid}`);
+          throw new Error(`Failed to check existing origination URLs: ${existingUrlsResponse.statusText}`);
         }
       } catch (origError) {
         console.error(`❌ Failed to add LiveKit origination URL:`, origError);
@@ -104,12 +225,34 @@ export async function createMainTrunkForUser({ accountSid, authToken, userId, la
 
         // Try alternative approach - check if trunk exists and is accessible
         try {
-          const trunkInfo = await client.trunking.v1.trunks(trunkSid).fetch();
-          console.log(`Trunk exists and is accessible: ${trunkInfo.friendlyName}`);
+          const trunkInfoResponse = await fetch(`https://trunking.twilio.com/v1/Trunks/${trunkSid}`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`
+            }
+          });
 
-          // Try to list existing origination URLs
-          const existingUrls = await client.trunking.v1.trunks(trunkSid).originationUrls.list();
-          console.log(`Existing origination URLs:`, existingUrls.map(url => url.sipUrl));
+          if (trunkInfoResponse.ok) {
+            const trunkInfo = await trunkInfoResponse.json();
+            console.log(`Trunk exists and is accessible: ${trunkInfo.friendly_name}`);
+          } else {
+            console.log(`Trunk check failed: ${trunkInfoResponse.statusText}`);
+          }
+
+          // Try to list existing origination URLs using REST API
+          const existingUrlsResponse = await fetch(`https://trunking.twilio.com/v1/Trunks/${trunkSid}/OriginationUrls`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`
+            }
+          });
+
+          if (existingUrlsResponse.ok) {
+            const existingUrls = await existingUrlsResponse.json();
+            console.log(`Existing origination URLs:`, existingUrls.origination_urls.map(url => url.sip_url));
+          } else {
+            console.log(`Failed to list origination URLs: ${existingUrlsResponse.statusText}`);
+          }
         } catch (checkError) {
           console.error(`Failed to verify trunk:`, checkError.message);
         }
@@ -124,11 +267,22 @@ export async function createMainTrunkForUser({ accountSid, authToken, userId, la
       success: true,
       trunkSid,
       trunkName,
-      message: 'Main trunk created successfully'
+      domainName,
+      domainPrefix,
+      credentialListSid: credentialList.sid,
+      sipUsername,
+      message: 'Main trunk created successfully with SIP configuration'
     };
 
   } catch (error) {
     console.error('Error creating main trunk:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      userId,
+      accountSid: accountSid ? `${accountSid.substring(0, 8)}...` : 'MISSING',
+      authToken: authToken ? `${authToken.substring(0, 8)}...` : 'MISSING'
+    });
     throw new Error(`Failed to create main trunk: ${error.message}`);
   }
 }
@@ -149,12 +303,17 @@ export async function attachPhoneToMainTrunk({ twilio, phoneSid, e164Number, use
   const e164 = pn.phoneNumber;
 
   // 2) Get the user's main trunk SID from credentials
-  const { data: credentials } = await supa
+  const { data: credentials, error: credentialsError } = await supa
     .from('user_twilio_credentials')
     .select('trunk_sid')
     .eq('user_id', userId)
     .eq('is_active', true)
     .single();
+
+  if (credentialsError) {
+    console.error('Error fetching user credentials:', credentialsError);
+    throw new Error('No main trunk found for user. Please create Twilio credentials first.');
+  }
 
   if (!credentials?.trunk_sid) {
     throw new Error('No main trunk found for user. Please create Twilio credentials first.');
@@ -172,7 +331,7 @@ export async function attachPhoneToMainTrunk({ twilio, phoneSid, e164Number, use
   // 4) Attach phone number to the main trunk (idempotent)
   const attachedList = await twilio.trunking.v1.trunks(trunkSid).phoneNumbers.list({ limit: 200 });
   const alreadyAttached = attachedList.some(p => p.phoneNumberSid === pn.sid);
-  
+
   if (!alreadyAttached) {
     await twilio.trunking.v1.trunks(trunkSid).phoneNumbers.create({ phoneNumberSid: pn.sid });
     console.log(`Attached phone number ${e164} to main trunk ${trunkSid}`);
@@ -387,4 +546,104 @@ export async function deleteMainTrunk({ accountSid, authToken, trunkSid }) {
     console.error('Error deleting trunk:', error);
     throw new Error(`Failed to delete trunk: ${error.message}`);
   }
+}
+
+/**
+ * Generate secure password for SIP credentials
+ */
+export function generateSecurePassword() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+  let password = '';
+  for (let i = 0; i < 16; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return password;
+}
+
+/**
+ * Get user's Twilio SIP configuration
+ */
+export async function getUserTwilioConfig(userId) {
+  const { data, error } = await supa
+    .from('user_twilio_credentials')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .single();
+
+  if (error) {
+    console.error('Error getting user Twilio config:', error);
+    return null;
+  }
+
+  return data;
+}
+
+/**
+ * Get SIP configuration for LiveKit outbound trunk
+ */
+export async function getSipConfigForLiveKit(userId) {
+  console.log(`🔍 Getting SIP config for user: ${userId}`);
+
+  const config = await getUserTwilioConfig(userId);
+  console.log(`📊 Retrieved config:`, {
+    hasConfig: !!config,
+    domainName: config?.domain_name,
+    sipUsername: config?.sip_username,
+    hasPassword: !!config?.sip_password,
+    trunkSid: config?.trunk_sid
+  });
+
+  if (!config) {
+    throw new Error('No active Twilio configuration found for user');
+  }
+
+  // Check if SIP configuration is missing (old record)
+  if (!config.domain_name || !config.sip_username || !config.sip_password) {
+    console.log('⚠️ SIP configuration missing, creating dynamic configuration for existing user');
+
+    // Create dynamic SIP configuration for existing user
+    const trunkResult = await createMainTrunkForUser({
+      accountSid: config.account_sid,
+      authToken: config.auth_token,
+      userId: config.user_id,
+      label: config.label || 'updated'
+    });
+
+    if (!trunkResult.success) {
+      throw new Error(`Failed to create SIP configuration: ${trunkResult.message}`);
+    }
+
+    // Return the updated configuration
+    const updatedConfig = await getUserTwilioConfig(userId);
+    console.log(`✅ Updated SIP config:`, {
+      domainName: updatedConfig.domain_name,
+      sipUsername: updatedConfig.sip_username,
+      hasPassword: !!updatedConfig.sip_password,
+      trunkSid: updatedConfig.trunk_sid
+    });
+
+    return {
+      domainName: updatedConfig.domain_name,
+      sipUsername: updatedConfig.sip_username,
+      sipPassword: updatedConfig.sip_password,
+      trunkSid: updatedConfig.trunk_sid,
+      credentialListSid: updatedConfig.credential_list_sid
+    };
+  }
+
+  console.log(`✅ Using existing SIP config:`, {
+    domainName: config.domain_name,
+    sipUsername: config.sip_username,
+    hasPassword: !!config.sip_password,
+    trunkSid: config.trunk_sid
+  });
+
+  return {
+    domainName: config.domain_name,
+    sipUsername: config.sip_username,
+    sipPassword: config.sip_password,
+    trunkSid: config.trunk_sid,
+    credentialListSid: config.credential_list_sid
+  };
 }

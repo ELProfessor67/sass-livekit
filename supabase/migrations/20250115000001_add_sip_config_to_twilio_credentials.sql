@@ -21,3 +21,4 @@ COMMENT ON COLUMN user_twilio_credentials.domain_prefix IS 'Domain prefix withou
 COMMENT ON COLUMN user_twilio_credentials.credential_list_sid IS 'Twilio credential list SID for SIP authentication';
 COMMENT ON COLUMN user_twilio_credentials.sip_username IS 'SIP authentication username';
 COMMENT ON COLUMN user_twilio_credentials.sip_password IS 'SIP authentication password';
+

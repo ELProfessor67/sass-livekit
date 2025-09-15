@@ -6,7 +6,7 @@ import { campaignEngine } from './campaign-execution-engine.js';
 export const campaignManagementRouter = express.Router();
 
 const supabase = createClient(
-  process.env.VITE_SUPABASE_URL,
+  process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
@@ -377,6 +377,61 @@ campaignManagementRouter.post('/:id/reset-daily', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to reset daily counters'
+    });
+  }
+});
+
+/**
+ * Delete a campaign
+ * DELETE /api/v1/campaigns/:id
+ */
+campaignManagementRouter.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get campaign details first to check if it exists
+    const { data: campaign, error: fetchError } = await supabase
+      .from('campaigns')
+      .select('id, execution_status')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !campaign) {
+      return res.status(404).json({
+        success: false,
+        message: 'Campaign not found'
+      });
+    }
+
+    // Check if campaign is currently running
+    if (campaign.execution_status === 'running') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete a running campaign. Please stop the campaign first.'
+      });
+    }
+
+    // Delete the campaign (this will cascade delete related records due to foreign key constraints)
+    const { error: deleteError } = await supabase
+      .from('campaigns')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    res.json({
+      success: true,
+      message: 'Campaign deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Error deleting campaign:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete campaign',
+      error: error.message
     });
   }
 });

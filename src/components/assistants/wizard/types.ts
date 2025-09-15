@@ -74,6 +74,9 @@ export interface AdvancedData {
   // SMS fields
   firstSms: string;
   smsPrompt: string;
+  // WhatsApp Business fields
+  whatsappNumber: string;
+  whatsappKey: string;
   // Optional Cal.com integration (stored locally for now)
   calApiKey?: string;
   calEventTypeId?: string;

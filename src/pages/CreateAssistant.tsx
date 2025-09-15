@@ -120,7 +120,9 @@ const CreateAssistant = () => {
       maxDurationSeconds: 600,
       backgroundSound: "office",
       firstSms: "",
-      smsPrompt: ""
+      smsPrompt: "",
+      whatsappNumber: "",
+      whatsappKey: ""
     }
   });
 
@@ -228,7 +230,11 @@ const CreateAssistant = () => {
               llmRequestDelaySeconds: 0.1,
               numWordsToInterruptAssistant: 2,
               maxDurationSeconds: 600,
-              backgroundSound: "office"
+              backgroundSound: "office",
+              firstSms: data.first_sms || "",
+              smsPrompt: data.sms_prompt || "",
+              whatsappNumber: data.whatsapp_number || "",
+              whatsappKey: data.whatsapp_key || ""
             }
           });
 
@@ -311,6 +317,10 @@ const CreateAssistant = () => {
       // SMS fields
       first_sms: formData.advanced.firstSms || null,
       sms_prompt: formData.advanced.smsPrompt || null,
+
+      // WhatsApp Business fields
+      whatsapp_number: formData.advanced.whatsappNumber || null,
+      whatsapp_key: formData.advanced.whatsappKey || null,
 
       // Cal.com Integration
       cal_api_key: (formData.advanced as any).calApiKey || null,

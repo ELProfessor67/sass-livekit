@@ -9,12 +9,14 @@ import { Play, Pause, Trash2, Plus, BarChart3, Eye } from "lucide-react";
 import { TermsOfUseDialog } from "@/components/campaigns/TermsOfUseDialog";
 import { CampaignSettingsDialog } from "@/components/campaigns/CampaignSettingsDialog";
 import { CampaignDetailsDialog } from "@/components/campaigns/CampaignDetailsDialog";
+import { DeleteCampaignDialog } from "@/components/campaigns/DeleteCampaignDialog";
 import { fetchCampaigns, Campaign } from "@/lib/api/campaigns/fetchCampaigns";
 import { saveCampaign, SaveCampaignRequest } from "@/lib/api/campaigns/saveCampaign";
 import { startCampaign } from "@/lib/api/campaigns/startCampaign";
 import { pauseCampaign } from "@/lib/api/campaigns/pauseCampaign";
 import { resumeCampaign } from "@/lib/api/campaigns/resumeCampaign";
 import { stopCampaign } from "@/lib/api/campaigns/stopCampaign";
+import { deleteCampaign as deleteCampaignAPI } from "@/lib/api/campaigns/deleteCampaign";
 import { getCampaignStatus } from "@/lib/api/campaigns/getCampaignStatus";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -63,9 +65,11 @@ export default function Campaigns() {
   const [termsOpen, setTermsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('');
   const [selectedCampaignName, setSelectedCampaignName] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
   // Load campaigns from database
   useEffect(() => {
@@ -176,8 +180,35 @@ export default function Campaigns() {
     }
   };
 
-  const deleteCampaign = (id: string) => {
-    setCampaigns(prev => prev.filter(campaign => campaign.id !== id));
+  const handleDeleteCampaign = (id: string, name: string) => {
+    setSelectedCampaignId(id);
+    setSelectedCampaignName(name);
+    setDeleteOpen(true);
+  };
+
+  const confirmDeleteCampaign = async () => {
+    if (!selectedCampaignId) return;
+
+    setDeleting(true);
+    try {
+      const result = await deleteCampaignAPI({ campaignId: selectedCampaignId });
+      
+      if (result.success) {
+        // Remove from local state
+        setCampaigns(prev => prev.filter(campaign => campaign.id !== selectedCampaignId));
+        setDeleteOpen(false);
+        setSelectedCampaignId('');
+        setSelectedCampaignName('');
+      } else {
+        console.error('Error deleting campaign:', result.error);
+        alert('Error deleting campaign: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Error deleting campaign:', error);
+      alert('Error deleting campaign: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const openCampaignDetails = (campaignId: string, campaignName: string) => {
@@ -378,7 +409,7 @@ export default function Campaigns() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => deleteCampaign(campaign.id)}
+                                onClick={() => handleDeleteCampaign(campaign.id, campaign.name)}
                                 className="text-destructive hover:text-destructive/80"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -413,6 +444,15 @@ export default function Campaigns() {
           onOpenChange={setDetailsOpen}
           campaignId={selectedCampaignId}
           campaignName={selectedCampaignName}
+        />
+        
+        <DeleteCampaignDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          onConfirm={confirmDeleteCampaign}
+          campaignName={selectedCampaignName}
+          isRunning={campaigns.find(c => c.id === selectedCampaignId)?.execution_status === 'running'}
+          loading={deleting}
         />
       </ThemeContainer>
     </DashboardLayout>
