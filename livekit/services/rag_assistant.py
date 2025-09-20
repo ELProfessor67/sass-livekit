@@ -33,7 +33,7 @@ class RAGAssistant(Agent):
         
         # RAG configuration
         self.rag_enabled = bool(knowledge_base_id)
-        self.max_context_length = 4000
+        self.max_context_length = 8000  # Increased to handle larger snippets
         self.rag_threshold = 0.3  # Minimum relevance score for context
         
         # Booking state (FSM) - inherited from original Assistant
@@ -146,6 +146,7 @@ class RAGAssistant(Agent):
                 return self._rag_cache[cache_key]
             
             # Get context from knowledge base
+            logging.info(f"RAG_ASSISTANT | Requesting context for query: '{query}'")
             context = await rag_service.get_enhanced_context(
                 knowledge_base_id=self.knowledge_base_id,
                 query=query,
@@ -153,6 +154,7 @@ class RAGAssistant(Agent):
             )
             
             if context:
+                logging.info(f"RAG_ASSISTANT | Received context: {len(context)} characters")
                 # Cache the result
                 self._rag_cache[cache_key] = context
                 self._last_rag_query = query.strip().lower()
@@ -163,6 +165,8 @@ class RAGAssistant(Agent):
                     # Remove oldest entry
                     oldest_key = next(iter(self._rag_cache))
                     del self._rag_cache[oldest_key]
+            else:
+                logging.warning(f"RAG_ASSISTANT | No context returned for query: '{query}'")
             
             return context
             

@@ -184,7 +184,7 @@ class RAGService:
         self, 
         knowledge_base_id: str, 
         query: str,
-        max_context_length: int = 4000
+        max_context_length: int = 8000
     ) -> Optional[str]:
         """
         Get enhanced context from knowledge base, formatted for LLM consumption
@@ -205,9 +205,18 @@ class RAGService:
         context_parts = []
         current_length = 0
         
+        logging.info(f"RAG_SERVICE | Processing {len(rag_context.snippets)} snippets for context generation")
+        
         for i, snippet in enumerate(rag_context.snippets):
+            # Handle both direct content and nested content structure
             content = snippet.get("content", "")
+            if not content and "content" in snippet:
+                content = snippet["content"]
+            
+            logging.info(f"RAG_SERVICE | Snippet {i+1}: content_length={len(content) if content else 0}, score={snippet.get('score', 'N/A')}")
+            
             if not content:
+                logging.warning(f"RAG_SERVICE | Skipping snippet {i+1} - no content found")
                 continue
             
             # Add snippet with reference info
@@ -219,14 +228,19 @@ class RAGService:
                 file_name = file_info.get("name", "Unknown")
                 snippet_text += f" (Source: {file_name})"
             
+            logging.info(f"RAG_SERVICE | Snippet {i+1} formatted: length={len(snippet_text)}, current_total={current_length}, max_allowed={max_context_length}")
+            
             # Check if adding this snippet would exceed max length
             if current_length + len(snippet_text) > max_context_length:
+                logging.warning(f"RAG_SERVICE | Snippet {i+1} would exceed max length, breaking")
                 break
             
             context_parts.append(snippet_text)
             current_length += len(snippet_text)
+            logging.info(f"RAG_SERVICE | Added snippet {i+1} to context parts. New total length: {current_length}")
         
         if not context_parts:
+            logging.warning("RAG_SERVICE | No context parts generated - returning None")
             return None
         
         # Combine all context parts
@@ -237,13 +251,14 @@ class RAGService:
         full_context += metadata
         
         logging.info(f"RAG_SERVICE | Generated context: {len(full_context)} chars from {len(context_parts)} snippets")
+        logging.debug(f"RAG_SERVICE | Context preview: {full_context[:200]}...")
         return full_context
     
     async def search_multiple_queries(
         self, 
         knowledge_base_id: str, 
         queries: List[str],
-        max_context_length: int = 4000
+        max_context_length: int = 8000
     ) -> Optional[str]:
         """
         Search knowledge base with multiple queries and combine results
@@ -287,7 +302,10 @@ class RAGService:
         current_length = 0
         
         for i, snippet in enumerate(unique_snippets):
+            # Handle both direct content and nested content structure
             content = snippet.get("content", "")
+            if not content and "content" in snippet:
+                content = snippet["content"]
             if not content:
                 continue
             
