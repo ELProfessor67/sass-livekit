@@ -17,6 +17,15 @@ export default defineConfig(({ mode }) => ({
       }
     }
   },
+  preview: {
+    host: "::",
+    port: 8080,
+    allowedHosts: [
+      "frontend.ultratalkai.com",
+      "localhost",
+      "127.0.0.1"
+    ]
+  },
   plugins: [
     react(),
     mode === 'development' &&
