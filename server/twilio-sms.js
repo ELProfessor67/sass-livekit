@@ -251,12 +251,17 @@ router.post('/webhook', async (req, res) => {
       DateUpdated
     } = req.body;
 
-    console.log('Received SMS webhook:', {
+    console.log('🔔 SMS WEBHOOK TRIGGERED:', {
       MessageSid,
       From,
       To,
-      Body,
-      MessageStatus
+      Body: Body?.substring(0, 100) + '...',
+      MessageStatus,
+      ErrorCode,
+      ErrorMessage,
+      DateCreated,
+      DateSent,
+      DateUpdated
     });
 
     // Process the SMS using our new SMS assistant service

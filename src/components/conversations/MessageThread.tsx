@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -24,15 +24,35 @@ import {
 
 interface MessageThreadProps {
   conversation: Conversation;
+  messageFilter: 'all' | 'calls' | 'sms';
+  onMessageFilterChange: (filter: 'all' | 'calls' | 'sms') => void;
 }
 
-export function MessageThread({ conversation }: MessageThreadProps) {
+export function MessageThread({ conversation, messageFilter, onMessageFilterChange }: MessageThreadProps) {
   const [showTranscription, setShowTranscription] = useState(false);
+  
+  // Debug: Log when conversation prop changes
+  useEffect(() => {
+    console.log('📱 MessageThread received conversation update:', {
+      conversationId: conversation.id,
+      phoneNumber: conversation.phoneNumber,
+      totalSMS: conversation.totalSMS,
+      totalCalls: conversation.totalCalls,
+      smsMessagesCount: conversation.smsMessages?.length || 0,
+      callsCount: conversation.calls?.length || 0,
+      lastActivity: conversation.lastActivityTimestamp?.toISOString()
+    });
+  }, [conversation]);
   const [liveTranscription, setLiveTranscription] = useState<TranscriptionSegment[]>([]);
   const [assistants, setAssistants] = useState<Assistant[]>([]);
   const [loadingAssistants, setLoadingAssistants] = useState(false);
   const [phoneMappings, setPhoneMappings] = useState<PhoneNumberMapping[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("all");
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const [scrollPosition, setScrollPosition] = useState(0);
+  const [shouldPreserveScroll, setShouldPreserveScroll] = useState(false);
+  const lastScrollPositionRef = useRef(0);
+  const wasAtBottomRef = useRef(false);
 
   // Load assistants and phone mappings on component mount
   useEffect(() => {
@@ -55,6 +75,119 @@ export function MessageThread({ conversation }: MessageThreadProps) {
     loadData();
   }, []);
 
+  // Debug message filter changes - moved after allMessages declaration
+
+  // Preserve scroll position when conversation data updates
+  useEffect(() => {
+    if (shouldPreserveScroll && scrollAreaRef.current) {
+      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollContainer) {
+        setTimeout(() => {
+          scrollContainer.scrollTop = scrollPosition;
+          setShouldPreserveScroll(false);
+          console.log('📱 Restored scroll position to:', scrollPosition);
+        }, 100);
+      }
+    }
+  }, [conversation, shouldPreserveScroll, scrollPosition]);
+
+  // Check if user is near bottom of scroll area
+  const isNearBottom = () => {
+    if (scrollAreaRef.current) {
+      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollContainer) {
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+        return scrollHeight - scrollTop - clientHeight < 100; // 100px threshold
+      }
+    }
+    return false;
+  };
+
+  // Auto-scroll to bottom for new messages if user is near bottom
+  useEffect(() => {
+    if (conversation.smsMessages && conversation.smsMessages.length > 0) {
+      // Use a timeout to ensure the DOM has updated
+      setTimeout(() => {
+        console.log('📱 Scroll handling for new messages:', {
+          smsCount: conversation.smsMessages.length,
+          wasAtBottom: wasAtBottomRef.current,
+          lastScrollPosition: lastScrollPositionRef.current
+        });
+        
+        if (wasAtBottomRef.current && scrollAreaRef.current) {
+          const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+          if (scrollContainer) {
+            scrollContainer.scrollTop = scrollContainer.scrollHeight;
+            console.log('📱 Auto-scrolled to bottom for new messages');
+          }
+        } else if (!wasAtBottomRef.current && lastScrollPositionRef.current > 0) {
+          // Restore previous scroll position
+          const scrollContainer = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+          if (scrollContainer) {
+            scrollContainer.scrollTop = lastScrollPositionRef.current;
+            console.log('📱 Restored scroll position to:', lastScrollPositionRef.current);
+          }
+        }
+      }, 200); // Increased timeout to ensure DOM is ready
+    }
+  }, [conversation.smsMessages?.length, conversation.calls?.length]);
+
+  // Helper function to scroll to bottom
+  const scrollToBottom = () => {
+    if (scrollAreaRef.current) {
+      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        console.log('📱 Scrolled to bottom');
+        
+        // Update scroll tracking state
+        wasAtBottomRef.current = true;
+        lastScrollPositionRef.current = scrollContainer.scrollHeight;
+      }
+    }
+  };
+
+  // Auto-scroll to bottom when conversation changes (new conversation selected)
+  useEffect(() => {
+    // Use a timeout to ensure the DOM has updated with new messages
+    setTimeout(() => {
+      scrollToBottom();
+      console.log('📱 Auto-scrolled to bottom for new conversation selection');
+    }, 300); // Slightly longer timeout to ensure all messages are rendered
+  }, [conversation.id]); // Trigger when conversation ID changes
+
+  // Auto-scroll to bottom when message filter changes (to show latest messages)
+  useEffect(() => {
+    // Use a timeout to ensure the DOM has updated with filtered messages
+    setTimeout(() => {
+      scrollToBottom();
+      console.log('📱 Auto-scrolled to bottom for message filter change');
+    }, 200);
+  }, [messageFilter, selectedAgentId]); // Trigger when filter changes
+
+  // Save scroll position when user scrolls
+  const handleScroll = () => {
+    if (scrollAreaRef.current) {
+      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollContainer) {
+        const currentScrollTop = scrollContainer.scrollTop;
+        const { scrollHeight, clientHeight } = scrollContainer;
+        const isAtBottom = scrollHeight - currentScrollTop - clientHeight < 100;
+        
+        setScrollPosition(currentScrollTop);
+        lastScrollPositionRef.current = currentScrollTop;
+        wasAtBottomRef.current = isAtBottom;
+        
+        console.log('📱 Scroll position updated:', {
+          scrollTop: currentScrollTop,
+          isAtBottom,
+          scrollHeight,
+          clientHeight
+        });
+      }
+    }
+  };
+
   const getInitials = (name: string) => {
     return name
       .split(' ')
@@ -75,7 +208,7 @@ export function MessageThread({ conversation }: MessageThreadProps) {
     if (selectedAgentId === "all" || !selectedAgentId) {
       return null; // Use default phone number selection
     }
-    
+
     const mapping = phoneMappings.find(m => m.inbound_assistant_id === selectedAgentId);
     return mapping?.number || null;
   };
@@ -144,31 +277,68 @@ export function MessageThread({ conversation }: MessageThreadProps) {
     confidence: segment.confidence
   }));
 
-  // Filter messages by selected agent if one is selected
-  const filteredMessages = selectedAgentId !== "all"
-    ? messages.filter(message => {
-        // For call messages, check if the call was handled by the selected agent
-        if (message.type === 'call') {
-          const call = conversation.calls.find(c => c.id === message.id);
-          return call?.assistant_id === selectedAgentId;
-        }
-        // For SMS messages, check if the phone number is mapped to the selected agent
-        if (message.type === 'sms' && message.smsData) {
-          const sms = message.smsData;
-          // Check both from and to phone numbers for assistant mapping
-          const fromAssistantId = getAssistantIdForPhoneNumber(sms.from);
-          const toAssistantId = getAssistantIdForPhoneNumber(sms.to);
-          
-          // Include SMS if either the sender or recipient phone number is mapped to the selected agent
-          return fromAssistantId === selectedAgentId || toAssistantId === selectedAgentId;
-        }
-        return false;
-      })
-    : messages;
+  // Filter messages by selected agent and message type
+  const filteredMessages = messages.filter(message => {
+    // First filter by message type
+    if (messageFilter === 'calls' && message.type !== 'call') {
+      return false;
+    }
+    if (messageFilter === 'sms' && message.type !== 'sms') {
+      return false;
+    }
+
+    // Then filter by selected agent if one is selected
+    if (selectedAgentId !== "all") {
+      // For call messages, check if the call was handled by the selected agent
+      if (message.type === 'call') {
+        const call = conversation.calls.find(c => c.id === message.id);
+        return call?.assistant_id === selectedAgentId;
+      }
+      // For SMS messages, check if the phone number is mapped to the selected agent
+      if (message.type === 'sms' && message.smsData) {
+        const sms = message.smsData;
+        // Check both from and to phone numbers for assistant mapping
+        const fromAssistantId = getAssistantIdForPhoneNumber(sms.from);
+        const toAssistantId = getAssistantIdForPhoneNumber(sms.to);
+
+        // Include SMS if either the sender or recipient phone number is mapped to the selected agent
+        return fromAssistantId === selectedAgentId || toAssistantId === selectedAgentId;
+      }
+      return false;
+    }
+
+    return true;
+  });
 
   // Combine and sort all messages by created_at timestamp (WhatsApp style - newest at bottom)
   const allMessages = [...filteredMessages, ...liveTranscriptionMessages]
     .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+  // Debug message filter changes
+  useEffect(() => {
+    console.log('📱 Message filtering debug:', {
+      totalMessages: messages.length,
+      filteredMessages: filteredMessages.length,
+      allMessages: allMessages.length,
+      messageFilter,
+      selectedAgentId,
+      smsMessages: messages.filter(m => m.type === 'sms').length,
+      callMessages: messages.filter(m => m.type === 'call').length,
+      filteredSMS: filteredMessages.filter(m => m.type === 'sms').length,
+      filteredCalls: filteredMessages.filter(m => m.type === 'call').length,
+      conversationSMS: conversation.smsMessages?.length || 0,
+      conversationCalls: conversation.calls?.length || 0
+    });
+  }, [messageFilter, allMessages.length, messages.length, filteredMessages.length, conversation.smsMessages?.length, conversation.calls?.length]);
+
+  // Debug button rendering
+  useEffect(() => {
+    console.log('MessageThread rendered with conversation:', {
+      totalCalls: conversation.totalCalls,
+      totalSMS: conversation.totalSMS,
+      messageFilter
+    });
+  }, [conversation.totalCalls, conversation.totalSMS, messageFilter]);
 
   // Group messages by date
   const groupedMessages = allMessages.reduce((groups, message) => {
@@ -185,10 +355,26 @@ export function MessageThread({ conversation }: MessageThreadProps) {
     .sort(([dateA], [dateB]) => new Date(dateA).getTime() - new Date(dateB).getTime());
 
   return (
-    <div className="h-full flex flex-col">
+    <div
+      className="h-full flex flex-col"
+      onClick={(e) => {
+        console.log('MessageThread container clicked', e.target);
+      }}
+    >
+
       {/* Thread Header */}
-      <div className="p-3 border-b border-border/50">
-        <div className="flex items-center justify-between">
+      <div
+        className="p-3 border-b border-border/50"
+        onClick={(e) => {
+          console.log('Header clicked', e.target);
+        }}
+      >
+        <div
+          className="flex items-center justify-between"
+          onClick={(e) => {
+            console.log('Header content clicked', e.target);
+          }}
+        >
           <div className="flex items-center space-x-3">
             <Avatar className="h-8 w-8 bg-primary/10">
               <AvatarFallback className="bg-primary/20 text-primary text-xs font-medium">
@@ -203,16 +389,59 @@ export function MessageThread({ conversation }: MessageThreadProps) {
                 {conversation.phoneNumber}
               </p>
             </div>
-            <div className="flex items-center space-x-2">
-              <Badge variant="outline" className="text-[11px]">
+            <div className="flex items-center space-x-2 relative">
+              {/* Test button to verify clicks work */}
+
+
+
+              <button
+                type="button"
+                className={`inline-flex items-center rounded-full border-2 px-2.5 py-0.5 text-[11px] font-semibold transition-all duration-200 cursor-pointer hover:scale-105 select-none active:scale-95 z-10 relative hover:border-blue-400 ${messageFilter === 'calls'
+                    ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                    : 'border-gray-300 text-foreground hover:bg-blue-50 hover:border-blue-400 hover:shadow-sm'
+                  }`}
+                onMouseDown={() => console.log('Call button mouse down')}
+                onMouseUp={() => console.log('Call button mouse up')}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('Call badge clicked, current filter:', messageFilter);
+                  onMessageFilterChange(messageFilter === 'calls' ? 'all' : 'calls');
+                }}
+                style={{ pointerEvents: 'auto', position: 'relative', zIndex: 1000 }}
+              >
                 {conversation.totalCalls} call{conversation.totalCalls !== 1 ? 's' : ''}
-              </Badge>
-              <Badge variant="outline" className="text-[11px]">
+              </button>
+              <button
+                type="button"
+                className={`inline-flex items-center rounded-full border-2 px-2.5 py-0.5 text-[11px] font-semibold transition-all duration-200 cursor-pointer hover:scale-105 select-none active:scale-95 z-10 relative hover:border-blue-400 ${messageFilter === 'sms'
+                    ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                    : 'border-gray-300 text-foreground hover:bg-blue-50 hover:border-blue-400 hover:shadow-sm'
+                  }`}
+                onClick={() => {
+                  console.log('SMS badge clicked, current filter:', messageFilter);
+                  onMessageFilterChange(messageFilter === 'sms' ? 'all' : 'sms');
+                }}
+                style={{ pointerEvents: 'auto' }}
+              >
                 {conversation.totalSMS || 0} SMS
-              </Badge>
+              </button>
+              {messageFilter !== 'all' && (
+                <button
+                  type="button"
+                  className="inline-flex items-center rounded-full border-2 px-2.5 py-0.5 text-[11px] font-semibold transition-all duration-200 cursor-pointer hover:scale-105 select-none active:scale-95 z-10 relative border-gray-300 bg-secondary text-secondary-foreground hover:bg-blue-50 hover:border-blue-400 hover:shadow-sm"
+                  onClick={() => {
+                    console.log('Show All clicked');
+                    onMessageFilterChange('all');
+                  }}
+                  style={{ pointerEvents: 'auto' }}
+                >
+                  Show All
+                </button>
+              )}
             </div>
           </div>
-          
+
           <div className="flex items-center space-x-2">
             <Select
               value={selectedAgentId}
@@ -233,7 +462,17 @@ export function MessageThread({ conversation }: MessageThreadProps) {
                 ))}
               </SelectContent>
             </Select>
-            
+
+            {/* Filter status indicator */}
+            {messageFilter !== 'all' && (
+              <div className="flex items-center space-x-1 text-xs text-muted-foreground">
+                <div className="w-1 h-1 bg-primary rounded-full"></div>
+                <span>
+                  {messageFilter === 'calls' ? 'Calls only' : 'SMS only'}
+                </span>
+              </div>
+            )}
+
             <Button
               variant={showTranscription ? "default" : "outline"}
               size="sm"
@@ -266,8 +505,21 @@ export function MessageThread({ conversation }: MessageThreadProps) {
             />
           </div>
         )}
-        
-        <ScrollArea className="flex-1">
+
+        <ScrollArea
+          ref={scrollAreaRef}
+          className="flex-1"
+          onScrollCapture={handleScroll}
+        >
+          {/* Message count indicator */}
+          {messageFilter !== 'all' && (
+            <div className="px-3 pt-2 pb-1">
+              <div className="text-xs text-muted-foreground">
+                Showing {allMessages.length} {messageFilter === 'calls' ? 'call' : 'SMS'} message{allMessages.length !== 1 ? 's' : ''}
+              </div>
+            </div>
+          )}
+
           <div className="p-3 space-y-4">
             {sortedDateGroups.map(([dateKey, dayMessages]) => (
               <div key={dateKey} className="space-y-2">
@@ -294,9 +546,9 @@ export function MessageThread({ conversation }: MessageThreadProps) {
 
         {/* Message Input */}
         <div className="border-t border-border/50">
-          <ModernMessageInput 
-            conversation={conversation} 
-            selectedAgentPhoneNumber={getPhoneNumberForSelectedAgent() || undefined}
+          <ModernMessageInput
+            conversation={conversation}
+            selectedAgentPhoneNumber={getPhoneNumberForSelectedAgent()}
             isDisabled={selectedAgentId === "all"}
           />
         </div>

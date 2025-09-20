@@ -29,8 +29,7 @@ interface TimeRangeSelectorProps {
 
 export default function TimeRangeSelector({ onRangeChange, initialRange }: TimeRangeSelectorProps) {
   const [open, setOpen] = useState(false);
-  
-  console.log('TimeRangeSelector - initialRange:', initialRange);
+
   const {
     selectedPreset,
     dateRange,
@@ -57,7 +56,7 @@ export default function TimeRangeSelector({ onRangeChange, initialRange }: TimeR
 
     if (selectingCompareRange) {
       const compareRange = dateRange.compareWith || { from: date, to: date };
-      
+
       if (!compareRange.from || isSameDay(compareRange.from, date)) {
         compareRange.from = date;
         compareRange.to = date;
@@ -141,17 +140,17 @@ export default function TimeRangeSelector({ onRangeChange, initialRange }: TimeR
       <PopoverContent className="popover-glass w-auto p-0 shadow-2xl" align="end">
         <div className="flex flex-col md:flex-row">
           <div className="border-b md:border-b-0 md:border-r border-[hsl(var(--glass-border-periwinkle))] dark:border-[hsl(var(--glass-border-bluish))] p-6 bg-[hsl(var(--glass-periwinkle-light))] dark:bg-[hsl(var(--glass-bluish-light))]">
-            <PresetSelector 
-              selectedPreset={selectedPreset} 
-              onPresetChange={handlePresetSelect} 
+            <PresetSelector
+              selectedPreset={selectedPreset}
+              onPresetChange={handlePresetSelect}
             />
           </div>
-          
+
           <div className="p-6 space-y-6">
-            <Calendar 
-              initialFocus 
-              mode="range" 
-              defaultMonth={dateRange.from} 
+            <Calendar
+              initialFocus
+              mode="range"
+              defaultMonth={dateRange.from}
               selected={selectingCompareRange ? {
                 from: dateRange.compareWith?.from,
                 to: dateRange.compareWith?.to
@@ -167,11 +166,11 @@ export default function TimeRangeSelector({ onRangeChange, initialRange }: TimeR
               className="pointer-events-auto liquid-rounded-lg"
               disabled={date => date > new Date()}
             />
-            
+
             <div className="border-t border-[hsl(var(--glass-border-periwinkle))] dark:border-[hsl(var(--glass-border-bluish))] pt-6">
               <div className="flex items-center space-x-3">
-                <Checkbox 
-                  id="compare" 
+                <Checkbox
+                  id="compare"
                   checked={enableComparison}
                   onCheckedChange={handleToggleComparison}
                   className="border-primary/60 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground liquid-rounded-sm"
@@ -180,7 +179,7 @@ export default function TimeRangeSelector({ onRangeChange, initialRange }: TimeR
                   Compare with previous period
                 </Label>
               </div>
-              
+
               {enableComparison && (
                 <ComparisonSelector
                   comparisonType={comparisonType}
@@ -191,7 +190,7 @@ export default function TimeRangeSelector({ onRangeChange, initialRange }: TimeR
                 />
               )}
             </div>
-            
+
             <div className="flex justify-between pt-4 border-t border-[hsl(var(--glass-border-periwinkle))] dark:border-[hsl(var(--glass-border-bluish))]">
               <p className="text-xs text-muted-foreground/70 self-center">
                 Dates are shown in local time

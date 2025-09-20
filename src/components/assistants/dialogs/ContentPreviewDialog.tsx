@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { FileText, Link, Type, Download, ExternalLink } from 'lucide-react';
+import { FileText, Link, Type, Download, ExternalLink, Upload } from 'lucide-react';
 import { SubKnowledgeBase, FileMetadata } from '../types/knowledgeBase';
 
 interface ContentPreviewDialogProps {
@@ -16,6 +16,7 @@ interface ContentPreviewDialogProps {
 const getContentIcon = (type: string) => {
   if (type === 'website') return <Link className="h-5 w-5" />;
   if (type === 'text') return <Type className="h-5 w-5" />;
+  if (type === 'document') return <Upload className="h-5 w-5" />;
   return <FileText className="h-5 w-5" />;
 };
 
@@ -91,6 +92,36 @@ export const ContentPreviewDialog: React.FC<ContentPreviewDialogProps> = ({
                   {subKB.content}
                 </p>
               </ScrollArea>
+            </div>
+          )}
+
+          {/* Document Content */}
+          {subKB.type === 'document' && subKB.files && subKB.files.length > 0 && (
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium text-theme-primary">
+                Uploaded Documents ({subKB.files.length})
+              </h4>
+              <div className="space-y-2">
+                {subKB.files.map((file) => (
+                  <div 
+                    key={file.id}
+                    className="flex items-center justify-between p-3 surface-elevated border-theme-light rounded-lg"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <FileText className="h-4 w-4 text-theme-secondary" />
+                      <div>
+                        <p className="text-sm font-medium text-theme-primary">{file.name}</p>
+                        <p className="text-xs text-theme-secondary">
+                          {(file.size / 1024).toFixed(1)} KB • {new Date(file.uploadedAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="sm">
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

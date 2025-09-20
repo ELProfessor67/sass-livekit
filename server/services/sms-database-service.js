@@ -153,6 +153,14 @@ class SMSDatabaseService {
    */
   async saveIncomingSMS(smsData) {
     try {
+      console.log('💾 SMS DATABASE SERVICE: Saving incoming SMS:', {
+        messageSid: smsData.messageSid,
+        toNumber: smsData.toNumber,
+        fromNumber: smsData.fromNumber,
+        messageBody: smsData.messageBody?.substring(0, 50) + '...',
+        userId: smsData.userId
+      });
+      
       const { data, error } = await this.supabase
         .from('sms_messages')
         .insert({
@@ -170,9 +178,15 @@ class SMSDatabaseService {
         .single();
 
       if (error) {
-        console.error('Error saving incoming SMS:', error);
+        console.error('❌ Error saving incoming SMS:', error);
         return null;
       }
+
+      console.log('✅ SMS saved successfully:', {
+        messageSid: data.message_sid,
+        id: data.id,
+        direction: data.direction
+      });
 
       return data;
     } catch (error) {

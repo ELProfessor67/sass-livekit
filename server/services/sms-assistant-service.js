@@ -10,7 +10,12 @@ class SMSAssistantService {
    */
   async processIncomingSMS(smsData) {
     try {
-      console.log('Processing incoming SMS:', smsData);
+      console.log('🔔 SMS ASSISTANT SERVICE: Processing incoming SMS:', {
+        fromNumber: smsData.fromNumber,
+        toNumber: smsData.toNumber,
+        messageBody: smsData.messageBody?.substring(0, 100) + '...',
+        messageSid: smsData.messageSid
+      });
       
       const { fromNumber, toNumber, messageBody, messageSid } = smsData;
 

@@ -1,24 +1,13 @@
-export interface FileMetadata {
-  id: string;
-  name: string;
-  size: number;
-  type: string;
-  uploadedAt: string;
-  content?: string;
-}
 
-export interface SubKnowledgeBase {
-  id: string;
-  name: string;
-  description: string;
-  type: "document" | "website" | "text";
-  status: "processing" | "ready" | "error";
-  url?: string;
-  content?: string;
-  scrapedContent?: string;
-  files?: FileMetadata[];
-  createdAt: string;
-  progress?: number;
+
+export interface Document {
+  doc_id: string;
+  original_filename: string;
+  file_size: number;
+  file_type?: string;
+  status: string;
+  upload_timestamp: string;
+  created_at: string;
 }
 
 export interface KnowledgeBase {
@@ -26,7 +15,7 @@ export interface KnowledgeBase {
   name: string;
   description: string;
   createdAt: string;
-  subKnowledgeBases: SubKnowledgeBase[];
+  documents: Document[];
   isDeployed?: boolean;
   deployedAt?: string;
   totalFiles?: number;

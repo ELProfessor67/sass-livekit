@@ -145,8 +145,8 @@ outboundCallsRouter.post('/initiate', async (req, res) => {
       })
       .eq('id', campaignCall.id);
 
-    // Update campaign metrics
-    await supabase
+    // Update campaign metrics atomically to prevent race conditions
+    const { error: updateError } = await supabase
       .from('campaigns')
       .update({
         dials: campaign.dials + 1,
@@ -155,6 +155,11 @@ outboundCallsRouter.post('/initiate', async (req, res) => {
         last_execution_at: new Date().toISOString()
       })
       .eq('id', campaignId);
+
+    if (updateError) {
+      console.error('Error updating campaign metrics:', updateError);
+      // Don't fail the call initiation, just log the error
+    }
 
     res.json({
       success: true,
@@ -219,23 +224,33 @@ outboundCallsRouter.post('/status-callback', async (req, res) => {
         newStatus = 'calling';
         break;
       case 'in-progress':
-        newStatus = 'answered';
+        // Don't assume this is a human pickup - wait for LiveKit analysis
+        newStatus = 'calling'; // Keep as calling until we know more
         break;
       case 'completed':
         newStatus = 'completed';
-        // Determine outcome based on duration and other factors
-        if (CallDuration && parseInt(CallDuration) < 10) {
+        // Determine outcome based on call duration and LiveKit analysis
+        if (CallDuration && parseInt(CallDuration) > 0) {
+          // Call was answered by something (human, voicemail, etc.)
+          if (parseInt(CallDuration) < 10) {
+            outcome = 'voicemail'; // Very short = likely voicemail
+          } else if (parseInt(CallDuration) < 30) {
+            outcome = 'voicemail'; // Short = likely voicemail or quick hangup
+          } else {
+            // Longer call - could be human, but we need LiveKit analysis
+            outcome = 'answered'; // Tentative - will be updated by LiveKit
+          }
+        } else {
+          // No duration = no answer
           outcome = 'no_answer';
-        } else if (CallDuration && parseInt(CallDuration) > 10) {
-          outcome = 'answered';
         }
         break;
       case 'busy':
-        newStatus = 'failed';
+        newStatus = 'busy';
         outcome = 'busy';
         break;
       case 'no-answer':
-        newStatus = 'failed';
+        newStatus = 'no_answer';
         outcome = 'no_answer';
         break;
       case 'failed':
@@ -259,15 +274,24 @@ outboundCallsRouter.post('/status-callback', async (req, res) => {
       .update(updateData)
       .eq('id', campaignCall.id);
 
-    // Update campaign metrics
-    if (newStatus === 'answered') {
-      await supabase
+    // Update campaign metrics atomically
+    // Only count as pickup if it's a confirmed human answer (not voicemail)
+    if (outcome === 'answered' && CallDuration && parseInt(CallDuration) >= 30) {
+      const { error: pickupError } = await supabase
         .from('campaigns')
         .update({
           pickups: campaign.pickups + 1,
           total_calls_answered: campaign.total_calls_answered + 1
         })
         .eq('id', campaign.id);
+
+      if (pickupError) {
+        console.error('Error updating pickup metrics:', pickupError);
+      } else {
+        console.log(`📞 Human pickup recorded for campaign ${campaign.id}: ${campaignCall.phone_number} (${CallDuration}s)`);
+      }
+    } else if (outcome === 'voicemail') {
+      console.log(`📞 Voicemail detected for campaign ${campaign.id}: ${campaignCall.phone_number} (${CallDuration}s) - not counted as pickup`);
     }
 
     // Update outcome-specific metrics
@@ -341,6 +365,94 @@ outboundCallsRouter.get('/campaign/:campaignId', async (req, res) => {
       success: false,
       message: 'Failed to fetch campaign calls'
     });
+  }
+});
+
+/**
+ * LiveKit webhook to update call outcome based on conversation analysis
+ * POST /api/v1/outbound-calls/livekit-callback
+ */
+outboundCallsRouter.post('/livekit-callback', async (req, res) => {
+  try {
+    const {
+      call_sid,
+      call_status,
+      call_duration,
+      transcription,
+      conversation_analysis
+    } = req.body;
+
+    console.log('LiveKit callback received:', {
+      call_sid,
+      call_status,
+      call_duration,
+      has_transcription: !!transcription,
+      conversation_analysis
+    });
+
+    // Find the campaign call by call SID
+    const { data: campaignCall, error: callError } = await supabase
+      .from('campaign_calls')
+      .select('*, campaigns(*)')
+      .eq('call_sid', call_sid)
+      .single();
+
+    if (callError || !campaignCall) {
+      console.error('Campaign call not found for SID:', call_sid);
+      return res.status(404).json({ success: false, message: 'Campaign call not found' });
+    }
+
+    const campaign = campaignCall.campaigns;
+    let newOutcome = campaignCall.outcome;
+    let newStatus = campaignCall.status;
+
+    // Analyze the conversation to determine if it was a human pickup
+    if (conversation_analysis) {
+      const { is_human, confidence, conversation_quality } = conversation_analysis;
+      
+      if (is_human && confidence > 0.7) {
+        newOutcome = 'answered';
+        newStatus = 'answered';
+        
+        // Update pickup count only for confirmed human conversations
+        const { error: pickupError } = await supabase
+          .from('campaigns')
+          .update({
+            pickups: campaign.pickups + 1,
+            total_calls_answered: campaign.total_calls_answered + 1
+          })
+          .eq('id', campaign.id);
+
+        if (pickupError) {
+          console.error('Error updating pickup metrics:', pickupError);
+        } else {
+          console.log(`📞 LiveKit confirmed human pickup for campaign ${campaign.id}: ${campaignCall.phone_number}`);
+        }
+      } else if (is_human === false || confidence < 0.3) {
+        newOutcome = 'voicemail';
+        console.log(`📞 LiveKit confirmed voicemail for campaign ${campaign.id}: ${campaignCall.phone_number}`);
+      }
+    }
+
+    // Update campaign call with LiveKit analysis
+    const updateData = {
+      status: newStatus,
+      outcome: newOutcome,
+      call_duration: call_duration || campaignCall.call_duration,
+      transcription: transcription || campaignCall.transcription,
+      completed_at: new Date().toISOString()
+    };
+
+    await supabase
+      .from('campaign_calls')
+      .update(updateData)
+      .eq('id', campaignCall.id);
+
+    res.json({ success: true });
+
+  } catch (error) {
+    console.error('Error processing LiveKit callback:', error);
+    res.status(500).json({ success: false, message: 'Failed to process LiveKit callback' });
   }
 });
 

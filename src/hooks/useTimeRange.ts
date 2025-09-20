@@ -40,13 +40,11 @@ export function useTimeRange({ onRangeChange, initialRange }: UseTimeRangeProps)
 
   // Update date range when initialRange changes
   useEffect(() => {
-    console.log('useTimeRange - initialRange changed:', initialRange);
     if (initialRange) {
       const newRange = {
         from: initialRange.from,
         to: initialRange.to
       };
-      console.log('useTimeRange - Setting new range:', newRange);
       setDateRange(newRange);
       onRangeChange(newRange);
     }
@@ -91,7 +89,7 @@ export function useTimeRange({ onRangeChange, initialRange }: UseTimeRangeProps)
         to: compareTo
       }
     };
-    
+
     setDateRange(newRange);
     onRangeChange(newRange);
     if (comparisonType !== "custom" || !selectingCompareRange) {
@@ -164,7 +162,7 @@ export function useTimeRange({ onRangeChange, initialRange }: UseTimeRangeProps)
     const newRange = { from: newFrom, to: newTo };
     setDateRange(newRange);
     onRangeChange(newRange);
-    
+
     if (enableComparison) {
       updateComparisonRange(newRange, comparisonType);
     }

@@ -29,7 +29,7 @@ export interface ConversationsResponse {
 /**
  * Fetch conversations from call_history table
  */
-export const fetchConversations = async (): Promise<ConversationsResponse> => {
+export const fetchConversations = async (shouldSort: boolean = true): Promise<ConversationsResponse> => {
   try {
     const { data: callHistory, error } = await supabase
       .from('call_history')
@@ -51,46 +51,65 @@ export const fetchConversations = async (): Promise<ConversationsResponse> => {
     // Group calls by phone number to create conversations
     const conversationsMap = new Map<string, Conversation>();
 
-    // Fetch SMS messages for all phone numbers
-    const phoneNumbers = [...new Set(callHistory.map(call => call.phone_number))];
+    // Fetch ALL SMS messages first (not just for existing call numbers)
     const smsMessagesMap = new Map<string, SMSMessage[]>();
     
-    if (phoneNumbers.length > 0) {
-      try {
-        const { data: smsMessages, error: smsError } = await supabase
-          .from('sms_messages')
-          .select('*')
-          .or(`to_number.in.(${phoneNumbers.join(',')}),from_number.in.(${phoneNumbers.join(',')})`)
-          .order('date_created', { ascending: false });
+    try {
+      console.log('📱 Fetching all SMS messages...');
+      const { data: smsMessages, error: smsError } = await supabase
+        .from('sms_messages')
+        .select('*')
+        .order('date_created', { ascending: false });
 
-        if (!smsError && smsMessages) {
-          smsMessages.forEach(sms => {
-            // Determine which phone number this SMS belongs to
-            const phoneNumber = sms.direction === 'inbound' ? sms.from_number : sms.to_number;
-            if (!smsMessagesMap.has(phoneNumber)) {
-              smsMessagesMap.set(phoneNumber, []);
-            }
-            smsMessagesMap.get(phoneNumber)!.push({
-              messageSid: sms.message_sid,
-              to: sms.to_number,
-              from: sms.from_number,
-              body: sms.body,
-              direction: sms.direction,
-              status: sms.status,
-              dateCreated: sms.date_created,
-              dateSent: sms.date_sent,
-              dateUpdated: sms.date_updated,
-              errorCode: sms.error_code,
-              errorMessage: sms.error_message,
-              numSegments: sms.num_segments,
-              price: sms.price,
-              priceUnit: sms.price_unit
-            });
-          });
+      if (!smsError && smsMessages) {
+        console.log(`📱 Found ${smsMessages.length} SMS messages`);
+        if (smsMessages.length > 0) {
+          console.log('📱 SMS messages details:', smsMessages.map(sms => ({
+            messageSid: sms.message_sid,
+            from: sms.from_number,
+            to: sms.to_number,
+            body: sms.body?.substring(0, 50) + '...',
+            direction: sms.direction,
+            dateCreated: sms.date_created
+          })));
+        } else {
+          console.log('⚠️ NO SMS MESSAGES FOUND IN DATABASE!');
         }
-      } catch (error) {
-        console.error('Error fetching SMS messages:', error);
+        smsMessages.forEach(sms => {
+          // Determine which phone number this SMS belongs to
+          const phoneNumber = sms.direction === 'inbound' ? sms.from_number : sms.to_number;
+          console.log(`📱 Grouping SMS: ${sms.direction} from ${sms.from_number} to ${sms.to_number} -> phoneNumber: ${phoneNumber}`);
+          if (!smsMessagesMap.has(phoneNumber)) {
+            smsMessagesMap.set(phoneNumber, []);
+          }
+          smsMessagesMap.get(phoneNumber)!.push({
+            messageSid: sms.message_sid,
+            to: sms.to_number,
+            from: sms.from_number,
+            body: sms.body,
+            direction: sms.direction,
+            status: sms.status,
+            dateCreated: sms.date_created,
+            dateSent: sms.date_sent,
+            dateUpdated: sms.date_updated,
+            errorCode: sms.error_code,
+            errorMessage: sms.error_message,
+            numSegments: sms.num_segments,
+            price: sms.price,
+            priceUnit: sms.price_unit
+          });
+        });
+        console.log(`📱 Grouped SMS messages for ${smsMessagesMap.size} phone numbers`);
+        console.log('📱 SMS grouping details:', Array.from(smsMessagesMap.entries()).map(([phone, messages]) => ({
+          phoneNumber: phone,
+          messageCount: messages.length,
+          messageSids: messages.map(m => m.messageSid)
+        })));
+      } else {
+        console.error('Error fetching SMS messages:', smsError);
       }
+    } catch (error) {
+      console.error('Error fetching SMS messages:', error);
     }
 
     // Process calls with async recording fetches
@@ -202,6 +221,18 @@ export const fetchConversations = async (): Promise<ConversationsResponse> => {
           conversation.lastCallOutcome = callData.resolution;
         }
 
+        // Also check if SMS messages have more recent activity
+        const smsMessages = conversation.smsMessages || [];
+        if (smsMessages.length > 0) {
+          const latestSMS = smsMessages[0]; // SMS messages are ordered by date_created desc
+          const smsTime = new Date(latestSMS.dateCreated);
+          if (smsTime > conversation.lastActivityTimestamp) {
+            conversation.lastActivityDate = format(smsTime, 'yyyy-MM-dd');
+            conversation.lastActivityTime = format(smsTime, 'HH:mm');
+            conversation.lastActivityTimestamp = smsTime;
+          }
+        }
+
         // Update outcomes
         if (callData.resolution) {
           const resolution = callData.resolution.toLowerCase();
@@ -224,10 +255,12 @@ export const fetchConversations = async (): Promise<ConversationsResponse> => {
     smsMessagesMap.forEach((smsMessages, phoneNumber) => {
       if (!conversationsMap.has(phoneNumber)) {
         // Create conversation from SMS messages only
-        const firstSms = smsMessages[0];
+        const firstSms = smsMessages[0]; // Most recent SMS
         const displayName = firstSms.direction === 'inbound' ? 
           `Contact ${phoneNumber}` : 
           `Contact ${phoneNumber}`;
+
+        console.log(`📱 Creating SMS-only conversation for ${phoneNumber} with ${smsMessages.length} messages`);
 
         const conversation: Conversation = {
           id: `conv_${phoneNumber}`,
@@ -256,9 +289,37 @@ export const fetchConversations = async (): Promise<ConversationsResponse> => {
       }
     });
 
-    // Convert map to array and sort by last activity
-    const conversations = Array.from(conversationsMap.values())
-      .sort((a, b) => b.lastActivityTimestamp.getTime() - a.lastActivityTimestamp.getTime());
+    // Convert map to array and conditionally sort by last activity
+    const conversations = Array.from(conversationsMap.values());
+    
+    if (shouldSort) {
+      conversations.sort((a, b) => b.lastActivityTimestamp.getTime() - a.lastActivityTimestamp.getTime());
+    }
+
+    console.log('📊 Final conversations summary:', {
+      totalConversations: conversations.length,
+      conversationsWithSMS: conversations.filter(c => c.totalSMS > 0).length,
+      conversationsWithCalls: conversations.filter(c => c.totalCalls > 0).length,
+      smsOnlyConversations: conversations.filter(c => c.totalSMS > 0 && c.totalCalls === 0).length,
+      totalSMSMessages: conversations.reduce((sum, c) => sum + c.totalSMS, 0),
+      conversations: conversations.map(c => ({
+        id: c.id,
+        phoneNumber: c.phoneNumber,
+        totalSMS: c.totalSMS,
+        totalCalls: c.totalCalls,
+        lastActivity: c.lastActivityTimestamp.toISOString()
+      }))
+    });
+
+    // Debug: Show which conversations have the specific phone number from the SMS
+    const smsPhoneNumber = '+12017656193';
+    const matchingConversation = conversations.find(c => c.phoneNumber === smsPhoneNumber);
+    console.log(`🔍 Looking for conversation with phone number ${smsPhoneNumber}:`, {
+      found: !!matchingConversation,
+      conversationId: matchingConversation?.id,
+      totalSMS: matchingConversation?.totalSMS,
+      totalCalls: matchingConversation?.totalCalls
+    });
 
     return {
       conversations,

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Database, Plus, Pencil, Trash2 } from "lucide-react";
+import { Database, Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ThemeCard } from "@/components/theme/ThemeCard";
 import { Button } from "@/components/ui/button";
@@ -8,79 +8,62 @@ import { useToast } from "@/components/ui/use-toast";
 import { CreateKnowledgeBaseDialog } from "../dialogs/CreateKnowledgeBaseDialog";
 import { KnowledgeBase } from "../types/knowledgeBase";
 import { motion } from "framer-motion";
+import { useKnowledgeBase } from "@/hooks/useKnowledgeBase";
+import { Document, KnowledgeBase as APIKnowledgeBase } from "@/lib/api/knowledgeBase";
 import { PageHeading, PageSubtext, SubHeading, SecondaryText } from "@/components/ui/typography";
 
-const mockKnowledgeBases: KnowledgeBase[] = [
-  {
-    id: "1",
-    name: "Product Documentation",
-    description: "All product-related documentation and manuals",
-    createdAt: "2024-01-15",
-    subKnowledgeBases: [
-      {
-        id: "1-1",
-        name: "User Manual",
-        description: "Complete user guide",
-        type: "document",
-        status: "ready",
-        files: [
-          {
-            id: "file-1",
-            name: "user-manual.pdf",
-            size: 2516582,
-            type: "application/pdf",
-            uploadedAt: "2024-01-15T10:00:00Z"
-          }
-        ],
-        createdAt: "2024-01-15"
-      },
-      {
-        id: "1-2",
-        name: "API Documentation",
-        description: "Technical API reference",
-        type: "website",
-        url: "https://docs.example.com/api",
-        status: "ready",
-        createdAt: "2024-01-14"
-      }
-    ]
-  },
-  {
-    id: "2",
-    name: "Customer Support",
-    description: "FAQ, support articles, and customer communication templates",
-    createdAt: "2024-01-10",
-    subKnowledgeBases: [
-      {
-        id: "2-1",
-        name: "FAQ Responses",
-        description: "Common customer questions and answers",
-        type: "text",
-        content: "Sample FAQ content...",
-        status: "ready",
-        createdAt: "2024-01-13"
-      }
-    ]
-  }
-];
+// Convert API KnowledgeBase to display format
+const convertAPIKnowledgeBaseToDisplay = (apiKB: APIKnowledgeBase): KnowledgeBase => {
+  return {
+    id: apiKB.id,
+    name: apiKB.name,
+    description: apiKB.description,
+    createdAt: apiKB.created_at.split('T')[0],
+    subKnowledgeBases: (apiKB.knowledge_documents || []).map((doc) => ({
+      id: doc.doc_id,
+      name: doc.original_filename,
+      description: `File size: ${(doc.file_size / 1024 / 1024).toFixed(2)} MB`,
+      type: "document" as const,
+      status: doc.status === 'EMBEDDED' ? 'ready' as const : 
+              doc.status === 'ERROR' ? 'error' as const : 'processing' as const,
+      files: [{
+        id: doc.doc_id,
+        name: doc.original_filename,
+        size: doc.file_size,
+        type: doc.original_filename.split('.').pop() || 'unknown',
+        uploadedAt: doc.upload_timestamp
+      }],
+      createdAt: doc.created_at?.split('T')[0] || new Date().toISOString().split('T')[0]
+    }))
+  };
+};
 
 function SimplifiedKnowledgeBaseCard({ 
   knowledgeBase, 
   onEdit,
-  onDelete
+  onDelete,
+  onClick
 }: { 
   knowledgeBase: KnowledgeBase;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
+  onClick: (id: string) => void;
 }) {
   return (
-    <ThemeCard variant="default" className="group relative p-[var(--space-2xl)] transition-theme-base hover:shadow-[var(--shadow-glass-lg)]">
+    <ThemeCard 
+      variant="default" 
+      className="group relative p-[var(--space-2xl)] transition-theme-base hover:shadow-[var(--shadow-glass-lg)] cursor-pointer"
+      onClick={() => onClick(knowledgeBase.id)}
+    >
       {/* Hover Actions */}
       <div className="absolute top-[var(--space-lg)] right-[var(--space-lg)] opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex space-x-[var(--space-xs)]">
         <Button
           size="sm"
           variant="ghost"
-          onClick={() => onEdit(knowledgeBase.id)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit(knowledgeBase.id);
+          }}
           className="h-8 w-8 p-0 hover:bg-primary/10"
         >
           <Pencil className="h-4 w-4 text-primary" />
@@ -88,7 +71,10 @@ function SimplifiedKnowledgeBaseCard({
         <Button
           size="sm"
           variant="ghost"
-          onClick={() => onDelete(knowledgeBase.id)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(knowledgeBase.id);
+          }}
           className="h-8 w-8 p-0 hover:bg-destructive/10"
         >
           <Trash2 className="h-4 w-4 text-destructive" />
@@ -128,37 +114,51 @@ interface KnowledgeBaseTabProps {
 
 export function KnowledgeBaseTab({ tabChangeTrigger = 0 }: KnowledgeBaseTabProps) {
   const navigate = useNavigate();
-  const [knowledgeBases, setKnowledgeBases] = useState(mockKnowledgeBases);
   const [isCreateKBOpen, setIsCreateKBOpen] = useState(false);
   const { toast } = useToast();
+  
+  // Use the knowledge base hook
+  const {
+    knowledgeBases: apiKnowledgeBases,
+    loading,
+    error,
+    stats,
+    uploadDocument,
+    deleteDocument,
+    createKnowledgeBase,
+    deleteKnowledgeBase,
+    refresh
+  } = useKnowledgeBase({ autoRefresh: true });
+  
+  // Convert API knowledge bases to display format
+  const knowledgeBases = apiKnowledgeBases.map(convertAPIKnowledgeBaseToDisplay);
 
-  const handleCreateKnowledgeBase = (newKB: Omit<KnowledgeBase, "id" | "createdAt" | "subKnowledgeBases">) => {
-    const knowledgeBase: KnowledgeBase = {
-      id: Date.now().toString(),
-      ...newKB,
-      createdAt: new Date().toISOString().split('T')[0],
-      subKnowledgeBases: []
-    };
-    
-    setKnowledgeBases(prev => [...prev, knowledgeBase]);
-    
-    toast({
-      title: "Knowledge base created",
-      description: `"${newKB.name}" has been created successfully.`,
-    });
+  const handleCreateKnowledgeBase = async (newKB: Omit<KnowledgeBase, "id" | "createdAt" | "subKnowledgeBases">) => {
+    try {
+      const createdKB = await createKnowledgeBase(newKB.name, newKB.description);
+      return createdKB.id;
+    } catch (error) {
+      // Error handling is done in the hook
+      console.error('Failed to create knowledge base:', error);
+      throw error;
+    }
+  };
+
+  const handleViewKnowledgeBase = (knowledgeBaseId: string) => {
+    navigate(`/assistants/knowledge-base/${knowledgeBaseId}/edit`);
   };
 
   const handleEditKnowledgeBase = (knowledgeBaseId: string) => {
     navigate(`/assistants/knowledge-base/${knowledgeBaseId}/edit`);
   };
 
-  const handleDeleteKnowledgeBase = (knowledgeBaseId: string) => {
-    setKnowledgeBases(prev => prev.filter(kb => kb.id !== knowledgeBaseId));
-    toast({
-      title: "Knowledge base deleted",
-      description: "The knowledge base and all its content has been removed.",
-      variant: "destructive",
-    });
+  const handleDeleteKnowledgeBase = async (knowledgeBaseId: string) => {
+    try {
+      await deleteKnowledgeBase(knowledgeBaseId);
+    } catch (error) {
+      // Error handling is done in the hook
+      console.error('Failed to delete knowledge base:', error);
+    }
   };
 
   return (
@@ -170,18 +170,56 @@ export function KnowledgeBaseTab({ tabChangeTrigger = 0 }: KnowledgeBaseTabProps
             Knowledge Base
           </PageHeading>
           <PageSubtext>
-            Create and manage hierarchical knowledge bases with organized content
+            Upload and manage documents for your AI assistants
           </PageSubtext>
+          {stats && (
+            <div className="flex gap-4 text-sm text-muted-foreground">
+              <span>{stats.documents.total} documents</span>
+              <span>{stats.chunks.total_chunks} chunks</span>
+              <span>{stats.documents.embedded} ready</span>
+            </div>
+          )}
         </div>
-        <Button onClick={() => setIsCreateKBOpen(true)} className="flex-shrink-0">
-          <Plus className="h-4 w-4 mr-2" />
-          Add Knowledge Base
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            onClick={() => refresh()} 
+            variant="outline" 
+            size="sm"
+            disabled={loading}
+          >
+            {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+            Refresh
+          </Button>
+          <Button onClick={() => setIsCreateKBOpen(true)} className="flex-shrink-0">
+            <Plus className="h-4 w-4 mr-2" />
+            Create Knowledge Base
+          </Button>
+        </div>
       </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
+          <p className="text-destructive text-sm">{error}</p>
+          <Button 
+            onClick={() => refresh()} 
+            variant="outline" 
+            size="sm" 
+            className="mt-2"
+          >
+            Try Again
+          </Button>
+        </div>
+      )}
 
       {/* Knowledge Base Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-[var(--space-2xl)]">
-        {knowledgeBases.length > 0 ? (
+        {loading && knowledgeBases.length === 0 ? (
+          <div className="col-span-full flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin mr-2" />
+            <span>Loading documents...</span>
+          </div>
+        ) : knowledgeBases.length > 0 ? (
           knowledgeBases.map((kb) => (
             <motion.div
               key={kb.id}
@@ -193,6 +231,7 @@ export function KnowledgeBaseTab({ tabChangeTrigger = 0 }: KnowledgeBaseTabProps
                 knowledgeBase={kb}
                 onEdit={handleEditKnowledgeBase}
                 onDelete={handleDeleteKnowledgeBase}
+                onClick={handleViewKnowledgeBase}
               />
             </motion.div>
           ))

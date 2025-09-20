@@ -23,6 +23,9 @@ export interface Conversation {
     notQualified: number;
     spam: number;
   };
+  hasNewMessages?: boolean;
+  hasNewSMS?: boolean;
+  hasNewCalls?: boolean;
 }
 
 export interface ConversationsData {

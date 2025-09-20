@@ -132,7 +132,7 @@ export function ModernMessageInput({ conversation, selectedAgentPhoneNumber, isD
                 }
               }}
               placeholder={isDisabled ? "Select a specific agent to send messages" : `Message ${conversation.displayName}...`}
-              className="min-h-[2.25rem] max-h-32 resize-none text-sm bg-background/80 border-border/40 focus:border-border/60 rounded-[var(--radius-md)] transition-all duration-200"
+              className="min-h-[2.25rem] max-h-32 resize-none text-sm bg-background/80 border-border/40 focus:border-border/60 rounded-[var(--radius-md)] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               rows={3}
               disabled={isDisabled}
             />
@@ -145,7 +145,7 @@ export function ModernMessageInput({ conversation, selectedAgentPhoneNumber, isD
               onKeyDown={handleKeyPress}
               onFocus={handleFocus}
               placeholder={isDisabled ? "Select a specific agent to send messages" : `Message ${conversation.displayName}...`}
-              className="h-9 text-sm bg-background/80 border-border/40 focus:border-border/60 rounded-[var(--radius-md)] transition-all duration-200"
+              className="h-9 text-sm bg-background/80 border-border/40 focus:border-border/60 rounded-[var(--radius-md)] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isDisabled}
             />
           )}
@@ -205,10 +205,15 @@ export function ModernMessageInput({ conversation, selectedAgentPhoneNumber, isD
 
       {/* Helper Text */}
       <div className="mt-2 text-[10px] text-muted-foreground">
-        {messageType === 'sms' 
-          ? 'Press Enter to send SMS, Shift+Enter for new line'
-          : 'Press Enter to initiate call, Shift+Enter for new line'
-        }
+        {isDisabled ? (
+          <span className="text-amber-600 dark:text-amber-400">
+            Select a specific agent from the dropdown above to send messages
+          </span>
+        ) : messageType === 'sms' ? (
+          'Press Enter to send SMS, Shift+Enter for new line'
+        ) : (
+          'Press Enter to initiate call, Shift+Enter for new line'
+        )}
       </div>
     </div>
   );

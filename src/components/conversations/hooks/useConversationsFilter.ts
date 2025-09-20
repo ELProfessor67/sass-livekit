@@ -10,17 +10,15 @@ export function useConversationsFilter(conversations: Conversation[]) {
     // Clear any stored date range to force using the wide range
     sessionStorage.removeItem('conversationsPageDateRange');
     sessionStorage.removeItem('lastDashboardDateRange');
-    
+
     // Set a very wide date range to include all possible dates (including test data)
     const start = new Date(2020, 0, 1); // January 1, 2020
     const end = new Date(2030, 11, 31); // December 31, 2030
-    console.log('useConversationsFilter - Default date range:', { from: startOfDay(start), to: endOfDay(end) });
     return { from: startOfDay(start), to: endOfDay(end) };
   });
 
   // Store date range changes in session storage
   useEffect(() => {
-    console.log('useConversationsFilter - Date range changed:', dateRange);
     sessionStorage.setItem('conversationsPageDateRange', JSON.stringify({
       from: dateRange.from.toISOString(),
       to: dateRange.to.toISOString()
@@ -36,39 +34,35 @@ export function useConversationsFilter(conversations: Conversation[]) {
   const filteredConversationsByDate = useMemo(() => {
     const start = startOfDay(dateRange.from);
     const end = endOfDay(dateRange.to);
-    
-    console.log('Filter hook - conversations input:', conversations.length);
-    console.log('Filter hook - date range:', { start, end });
-    
+
+
+
     const filtered = conversations.filter(conversation => {
       const conversationDate = conversation.lastActivityTimestamp;
-      console.log('Filter hook - conversation date:', conversationDate, 'isWithinInterval:', isWithinInterval(conversationDate, { start, end }));
-      
+
       // If the date range is very wide (2020-2030) OR if conversations are from future dates, include all conversations
       const isWideRange = start.getFullYear() <= 2020 && end.getFullYear() >= 2030;
       const isFutureConversation = conversationDate.getFullYear() > 2024; // Include conversations from 2025+
-      
+
       if (isWideRange || isFutureConversation) {
-        console.log('Filter hook - Including conversation (wide range or future date):', { isWideRange, isFutureConversation, conversationDate });
         return true;
       }
-      
+
       return isWithinInterval(conversationDate, { start, end });
     });
-    
-    console.log('Filter hook - filtered by date:', filtered.length);
+
     return filtered;
   }, [conversations, dateRange]);
 
   // Filter conversations by resolution/outcome
   const filteredConversationsByResolution = useMemo(() => {
     if (resolutionFilter === "all") return filteredConversationsByDate;
-    
+
     return filteredConversationsByDate.filter(conversation => {
       const lastCallOutcome = conversation.lastCallOutcome || '';
       const normalizedCallResolution = normalizeResolution(lastCallOutcome);
       const normalizedFilterResolution = resolutionFilter.toLowerCase();
-      
+
       return normalizedCallResolution === normalizedFilterResolution;
     });
   }, [filteredConversationsByDate, resolutionFilter]);
@@ -76,13 +70,13 @@ export function useConversationsFilter(conversations: Conversation[]) {
   // Apply search filter to conversations
   const filteredConversations = useMemo(() => {
     if (!searchQuery) return filteredConversationsByResolution;
-    
+
     const lowerSearchQuery = searchQuery.toLowerCase();
-    
-    return filteredConversationsByResolution.filter(conversation => 
+
+    return filteredConversationsByResolution.filter(conversation =>
       conversation.displayName.toLowerCase().includes(lowerSearchQuery) ||
       conversation.phoneNumber.includes(searchQuery) ||
-      conversation.calls.some(call => 
+      conversation.calls.some(call =>
         call.summary?.toLowerCase().includes(lowerSearchQuery) ||
         normalizeResolution(call.resolution || '').toLowerCase().includes(lowerSearchQuery) ||
         call.name?.toLowerCase().includes(lowerSearchQuery)

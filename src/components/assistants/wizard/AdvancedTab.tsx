@@ -150,41 +150,59 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
       </div>
 
       {/* WhatsApp Business Configuration */}
-      <div className="settings-card">
+      <div className="settings-card border-dashed border-muted-foreground/20">
         <div className="space-y-[var(--space-md)]">
-          <h3 className="settings-card-title">WhatsApp Business Configuration</h3>
+          <h3 className="settings-card-title">
+            WhatsApp Business Configuration
+            <span className="ml-2 text-sm font-normal text-muted-foreground">(Optional)</span>
+          </h3>
           <p className="settings-card-description">
-            Configure WhatsApp Business settings for messaging conversations with your assistant
+            Configure WhatsApp Business settings for messaging conversations with your assistant. 
+            Leave blank to disable WhatsApp integration.
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-xl)]">
           <div className="space-y-[var(--space-md)]">
-            <Label className="settings-label">WhatsApp Business Number</Label>
+            <Label className="settings-label">
+              WhatsApp Business Number
+              <span className="ml-1 text-xs text-muted-foreground font-normal">(Optional)</span>
+            </Label>
             <Input
               type="tel"
-              placeholder="+1234567890"
+              placeholder="+1234567890 (leave blank to disable)"
               value={data.whatsappNumber}
               onChange={(e) => onChange({ whatsappNumber: e.target.value })}
               className="settings-input"
             />
             <p className="text-[var(--text-xs)] text-theme-secondary">
-              Your WhatsApp Business phone number (include country code)
+              Your WhatsApp Business phone number (include country code). Leave blank to disable WhatsApp integration.
             </p>
           </div>
           <div className="space-y-[var(--space-md)]">
-            <Label className="settings-label">WhatsApp Business API Key</Label>
+            <Label className="settings-label">
+              WhatsApp Business API Key
+              <span className="ml-1 text-xs text-muted-foreground font-normal">(Optional)</span>
+            </Label>
             <Input
               type="password"
-              placeholder="Enter your WhatsApp Business API key"
+              placeholder="Enter your WhatsApp Business API key (leave blank to disable)"
               value={data.whatsappKey}
               onChange={(e) => onChange({ whatsappKey: e.target.value })}
               className="settings-input"
             />
             <p className="text-[var(--text-xs)] text-theme-secondary">
-              Your WhatsApp Business API access token
+              Your WhatsApp Business API access token. Leave blank to disable WhatsApp integration.
             </p>
           </div>
+        </div>
+        
+        {/* Optional Integration Note */}
+        <div className="mt-4 p-3 bg-muted/30 rounded-md border border-muted-foreground/10">
+          <p className="text-xs text-muted-foreground">
+            <strong>Note:</strong> WhatsApp Business integration is completely optional. 
+            Your assistant will work perfectly without it. Only configure these fields if you want to enable WhatsApp messaging capabilities.
+          </p>
         </div>
       </div>
 

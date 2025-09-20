@@ -5,7 +5,7 @@ import { ThemeContainer, ThemeSection, ThemeCard } from "@/components/theme";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Play, Pause, Trash2, Plus, BarChart3, Eye } from "lucide-react";
+import { Play, Pause, Trash2, Plus, BarChart3, Eye, Download } from "lucide-react";
 import { TermsOfUseDialog } from "@/components/campaigns/TermsOfUseDialog";
 import { CampaignSettingsDialog } from "@/components/campaigns/CampaignSettingsDialog";
 import { CampaignDetailsDialog } from "@/components/campaigns/CampaignDetailsDialog";
@@ -19,6 +19,8 @@ import { stopCampaign } from "@/lib/api/campaigns/stopCampaign";
 import { deleteCampaign as deleteCampaignAPI } from "@/lib/api/campaigns/deleteCampaign";
 import { getCampaignStatus } from "@/lib/api/campaigns/getCampaignStatus";
 import { useAuth } from "@/contexts/AuthContext";
+import { exportAllCampaignsData } from "@/lib/api/campaigns/exportCampaignData";
+import { exportAllCampaignDataToExcel } from "@/lib/utils/excelExport";
 
 // Campaign interface imported from API
 
@@ -70,6 +72,7 @@ export default function Campaigns() {
   const [selectedCampaignName, setSelectedCampaignName] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // Load campaigns from database
   useEffect(() => {
@@ -217,6 +220,24 @@ export default function Campaigns() {
     setDetailsOpen(true);
   };
 
+  const handleExportAllCampaigns = async () => {
+    setExporting(true);
+    try {
+      const result = await exportAllCampaignsData();
+      if (result.success && result.calls && result.stats) {
+        exportAllCampaignDataToExcel(result.calls, result.stats, 'All_Campaigns');
+      } else {
+        console.error('Error exporting campaigns:', result.error);
+        alert('Error exporting campaigns: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Error exporting campaigns:', error);
+      alert('Error exporting campaigns: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const getStatusBadge = (executionStatus: Campaign['execution_status']) => {
     const variants = {
       idle: { variant: 'outline' as const, className: 'bg-muted/10 text-muted-foreground border-muted/30 hover:bg-muted/20' },
@@ -301,10 +322,21 @@ export default function Campaigns() {
                   </p>
                 </div>
                 
-                <Button onClick={handleNewCampaign} className="px-6">
-                  <Plus className="w-4 h-4 mr-2" />
-                  New Campaign
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    onClick={handleExportAllCampaigns} 
+                    variant="outline"
+                    disabled={exporting}
+                    className="px-4"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    {exporting ? 'Exporting...' : 'Export All'}
+                  </Button>
+                  <Button onClick={handleNewCampaign} className="px-6">
+                    <Plus className="w-4 h-4 mr-2" />
+                    New Campaign
+                  </Button>
+                </div>
               </div>
 
               <ThemeCard variant="glass" className="overflow-hidden">
@@ -389,7 +421,6 @@ export default function Campaigns() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => openCampaignDetails(campaign.id, campaign.name)}
                                 className="text-theme-secondary hover:text-theme-primary"
                               >
                                 <Eye className="w-4 h-4" />

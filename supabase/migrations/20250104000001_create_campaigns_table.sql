@@ -19,6 +19,7 @@ CREATE TABLE public.campaigns (
   not_interested INTEGER NOT NULL DEFAULT 0,
   callback INTEGER NOT NULL DEFAULT 0,
   total_usage INTEGER NOT NULL DEFAULT 0,
+  campaign_prompt TEXT DEFAULT '',
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );

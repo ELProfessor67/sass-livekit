@@ -2,6 +2,7 @@
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { campaignEngine } from './campaign-execution-engine.js';
+import { createLiveKitRoomTwiml } from './utils/livekit-room-helper.js';
 
 export const campaignManagementRouter = express.Router();
 
@@ -43,6 +44,14 @@ campaignManagementRouter.post('/:id/start', async (req, res) => {
       });
     }
 
+    // Check if campaign can be started
+    if (campaign.execution_status === 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot start a completed campaign'
+      });
+    }
+
     // Start the campaign
     await campaignEngine.startCampaign(id);
 
@@ -69,11 +78,34 @@ campaignManagementRouter.post('/:id/pause', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Update campaign status
+    // Get campaign details first
+    const { data: campaign, error: fetchError } = await supabase
+      .from('campaigns')
+      .select('execution_status')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !campaign) {
+      return res.status(404).json({
+        success: false,
+        message: 'Campaign not found'
+      });
+    }
+
+    // Check if campaign can be paused
+    if (campaign.execution_status !== 'running') {
+      return res.status(400).json({
+        success: false,
+        message: 'Campaign is not currently running'
+      });
+    }
+
+    // Update campaign status (both fields for consistency)
     const { error } = await supabase
       .from('campaigns')
       .update({
         execution_status: 'paused',
+        status: 'paused',
         updated_at: new Date().toISOString()
       })
       .eq('id', id);
@@ -104,11 +136,34 @@ campaignManagementRouter.post('/:id/resume', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Update campaign status
+    // Get campaign details first
+    const { data: campaign, error: fetchError } = await supabase
+      .from('campaigns')
+      .select('execution_status')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !campaign) {
+      return res.status(404).json({
+        success: false,
+        message: 'Campaign not found'
+      });
+    }
+
+    // Check if campaign can be resumed
+    if (campaign.execution_status !== 'paused') {
+      return res.status(400).json({
+        success: false,
+        message: 'Campaign is not currently paused'
+      });
+    }
+
+    // Update campaign status (both fields for consistency)
     const { error } = await supabase
       .from('campaigns')
       .update({
         execution_status: 'running',
+        status: 'active',
         next_call_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
@@ -140,11 +195,12 @@ campaignManagementRouter.post('/:id/stop', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Update campaign status
+    // Update campaign status (both fields for consistency)
     const { error } = await supabase
       .from('campaigns')
       .update({
         execution_status: 'completed',
+        status: 'completed',
         updated_at: new Date().toISOString()
       })
       .eq('id', id);
@@ -246,21 +302,24 @@ campaignManagementRouter.get('/:id/status', async (req, res) => {
     res.json({
       success: true,
       campaign: {
-        id: campaign.id,
-        name: campaign.name,
-        execution_status: campaign.execution_status,
-        daily_cap: campaign.daily_cap,
-        current_daily_calls: campaign.current_daily_calls,
-        total_calls_made: campaign.total_calls_made,
-        total_calls_answered: campaign.total_calls_answered,
-        last_execution_at: campaign.last_execution_at,
-        next_call_at: campaign.next_call_at,
-        calling_days: campaign.calling_days,
-        start_hour: campaign.start_hour,
-        end_hour: campaign.end_hour
-      },
-      stats,
-      queueStatus
+        campaign: {
+          id: campaign.id,
+          name: campaign.name,
+          execution_status: campaign.execution_status,
+          daily_cap: campaign.daily_cap,
+          current_daily_calls: campaign.current_daily_calls,
+          total_calls_made: campaign.total_calls_made,
+          total_calls_answered: campaign.total_calls_answered,
+          last_execution_at: campaign.last_execution_at,
+          next_call_at: campaign.next_call_at,
+          calling_days: campaign.calling_days,
+          start_hour: campaign.start_hour,
+          end_hour: campaign.end_hour,
+          campaign_prompt: campaign.campaign_prompt
+        },
+        stats,
+        queueStatus
+      }
     });
 
   } catch (error) {
@@ -512,32 +571,27 @@ campaignManagementRouter.post('/webhook/:roomName', async (req, res) => {
     // Clean up metadata
     campaignMetadataStore.delete(roomName);
 
-    // Redirect to LiveKit room creation with metadata
-    const baseUrl = process.env.NGROK_URL || process.env.BACKEND_URL;
-    const livekitRoomUrl = `${baseUrl}/api/v1/livekit/room/${roomName}`;
-
-    // Make internal request to LiveKit room creation
-    const response = await fetch(livekitRoomUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
+    // Create LiveKit room directly without HTTP request
+    try {
+      const twiml = await createLiveKitRoomTwiml({
+        roomName,
         assistantId: metadata.assistantId,
         phoneNumber: metadata.contactInfo.phone,
         campaignId: metadata.campaignId,
         campaignPrompt: metadata.campaignPrompt,
         contactInfo: metadata.contactInfo
-      })
-    });
+      });
 
-    if (!response.ok) {
-      throw new Error(`LiveKit room creation failed: ${response.status}`);
+      res.set('Content-Type', 'text/xml');
+      res.send(twiml);
+    } catch (error) {
+      console.error('Error creating LiveKit room:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to create LiveKit room',
+        error: error.message
+      });
     }
-
-    const twiml = await response.text();
-    res.set('Content-Type', 'text/xml');
-    res.send(twiml);
 
   } catch (error) {
     console.error('Error in campaign webhook:', error);

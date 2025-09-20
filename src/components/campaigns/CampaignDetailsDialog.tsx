@@ -1,10 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Play, Pause, Square, RefreshCw, Phone, PhoneCall, PhoneOff, Clock, CheckCircle, XCircle } from "lucide-react";
 import { getCampaignStatus, CampaignStatus } from "@/lib/api/campaigns/getCampaignStatus";
 import { getCampaignCalls, CampaignCall } from "@/lib/api/campaigns/getCampaignCalls";
@@ -21,110 +19,251 @@ interface CampaignDetailsDialogProps {
   campaignName: string;
 }
 
+// Deep comparison utility functions
+const deepEqual = (obj1: any, obj2: any): boolean => {
+  if (obj1 === obj2) return true;
+  if (obj1 == null || obj2 == null) return false;
+  if (typeof obj1 !== typeof obj2) return false;
+  
+  if (typeof obj1 !== 'object') return obj1 === obj2;
+  
+  if (Array.isArray(obj1) !== Array.isArray(obj2)) return false;
+  
+  if (Array.isArray(obj1)) {
+    if (obj1.length !== obj2.length) return false;
+    for (let i = 0; i < obj1.length; i++) {
+      if (!deepEqual(obj1[i], obj2[i])) return false;
+    }
+    return true;
+  }
+  
+  const keys1 = Object.keys(obj1);
+  const keys2 = Object.keys(obj2);
+  
+  if (keys1.length !== keys2.length) return false;
+  
+  for (let key of keys1) {
+    if (!keys2.includes(key)) return false;
+    if (!deepEqual(obj1[key], obj2[key])) return false;
+  }
+  
+  return true;
+};
+
+const compareCampaignStatus = (oldStatus: CampaignStatus | null, newStatus: CampaignStatus | null): boolean => {
+  if (!oldStatus || !newStatus) return oldStatus === newStatus;
+  
+  return deepEqual(oldStatus.campaign, newStatus.campaign) && 
+         deepEqual(oldStatus.stats, newStatus.stats) && 
+         deepEqual(oldStatus.queueStatus, newStatus.queueStatus);
+};
+
+const compareCalls = (oldCalls: CampaignCall[], newCalls: CampaignCall[]): boolean => {
+  if (oldCalls.length !== newCalls.length) return false;
+  
+  // Create maps for efficient comparison
+  const oldCallsMap = new Map(oldCalls.map(call => [call.id, call]));
+  const newCallsMap = new Map(newCalls.map(call => [call.id, call]));
+  
+  // Check if all calls exist and are equal
+  for (const [id, oldCall] of oldCallsMap) {
+    const newCall = newCallsMap.get(id);
+    if (!newCall || !deepEqual(oldCall, newCall)) return false;
+  }
+  
+  return true;
+};
+
 export function CampaignDetailsDialog({ open, onOpenChange, campaignId, campaignName }: CampaignDetailsDialogProps) {
   const [campaignStatus, setCampaignStatus] = useState<CampaignStatus | null>(null);
   const [calls, setCalls] = useState<CampaignCall[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [assistantPhoneNumber, setAssistantPhoneNumber] = useState<string>('');
+  
+  // Refs to store previous data for comparison
+  const previousStatusRef = useRef<CampaignStatus | null>(null);
+  const previousCallsRef = useRef<CampaignCall[]>([]);
+  const lastRefreshTimeRef = useRef<number>(0);
 
-  // Load campaign status and calls
-  const loadCampaignData = async () => {
+  // Load campaign status only
+  const loadCampaignStatus = useCallback(async () => {
+    if (!campaignId) return false;
+
+    try {
+      const statusResult = await getCampaignStatus(campaignId);
+      
+      if (statusResult.success && statusResult.campaign) {
+        const newStatus = statusResult.campaign;
+        const hasStatusChanged = !compareCampaignStatus(previousStatusRef.current, newStatus);
+        
+        if (hasStatusChanged) {
+          setCampaignStatus(newStatus);
+          previousStatusRef.current = newStatus;
+          
+          // Get assistant phone number only if status changed
+          if (newStatus.campaign?.assistant_id) {
+            try {
+              const { data: assistantPhone } = await supabase
+                .from('phone_number')
+                .select('number')
+                .eq('inbound_assistant_id', newStatus.campaign.assistant_id)
+                .eq('status', 'active')
+                .single();
+              
+              if (assistantPhone) {
+                setAssistantPhoneNumber(assistantPhone.number);
+              }
+            } catch (error) {
+              console.error('Error fetching assistant phone number:', error);
+            }
+          }
+        }
+        return hasStatusChanged;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error loading campaign status:', error);
+      return false;
+    }
+  }, [campaignId]);
+
+  // Load campaign calls only
+  const loadCampaignCalls = useCallback(async () => {
+    if (!campaignId) return false;
+
+    try {
+      const callsResult = await getCampaignCalls({ campaignId, limit: 50 });
+      
+      if (callsResult.success && callsResult.calls) {
+        const newCalls = callsResult.calls;
+        const hasCallsChanged = !compareCalls(previousCallsRef.current, newCalls);
+        
+        if (hasCallsChanged) {
+          setCalls(newCalls);
+          previousCallsRef.current = newCalls;
+        }
+        return hasCallsChanged;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error loading campaign calls:', error);
+      return false;
+    }
+  }, [campaignId]);
+
+  // Load all campaign data (initial load)
+  const loadCampaignData = useCallback(async () => {
     if (!campaignId) return;
 
     setLoading(true);
     try {
-      const [statusResult, callsResult] = await Promise.all([
-        getCampaignStatus(campaignId),
-        getCampaignCalls({ campaignId, limit: 50 })
+      const [statusChanged, callsChanged] = await Promise.all([
+        loadCampaignStatus(),
+        loadCampaignCalls()
       ]);
-
-      if (statusResult.success && statusResult.campaign) {
-        setCampaignStatus(statusResult.campaign);
-        
-        // Get assistant phone number
-        if (statusResult.campaign.campaign?.assistant_id) {
-          try {
-            const { data: assistantPhone } = await supabase
-              .from('phone_number')
-              .select('number')
-              .eq('inbound_assistant_id', statusResult.campaign.campaign.assistant_id)
-              .eq('status', 'active')
-              .single();
-            
-            if (assistantPhone) {
-              setAssistantPhoneNumber(assistantPhone.number);
-            }
-          } catch (error) {
-            console.error('Error fetching assistant phone number:', error);
-          }
-        }
-      }
-
-      if (callsResult.success && callsResult.calls) {
-        setCalls(callsResult.calls);
+      
+      // Only log if there were actual changes
+      if (statusChanged || callsChanged) {
+        console.log('Campaign data updated:', { statusChanged, callsChanged });
       }
     } catch (error) {
       console.error('Error loading campaign data:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [campaignId, loadCampaignStatus, loadCampaignCalls]);
 
-  // Refresh data
-  const refreshData = async () => {
+  // Optimized refresh data - only updates if there are changes
+  const refreshData = useCallback(async () => {
+    if (!open) return;
+    
     setRefreshing(true);
-    await loadCampaignData();
-    setRefreshing(false);
-  };
+    try {
+      const [statusChanged, callsChanged] = await Promise.all([
+        loadCampaignStatus(),
+        loadCampaignCalls()
+      ]);
+      
+      // Only log if there were actual changes
+      if (statusChanged || callsChanged) {
+        console.log('Campaign data refreshed with changes:', { statusChanged, callsChanged });
+      } else {
+        console.log('Campaign data refreshed - no changes detected');
+      }
+    } catch (error) {
+      console.error('Error refreshing campaign data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [open, loadCampaignStatus, loadCampaignCalls]);
 
   // Load data when dialog opens
   useEffect(() => {
     if (open) {
+      // Reset refs when dialog opens
+      previousStatusRef.current = null;
+      previousCallsRef.current = [];
+      lastRefreshTimeRef.current = 0;
       loadCampaignData();
     }
-  }, [open, campaignId]);
+  }, [open, campaignId, loadCampaignData]);
 
-  // Auto-refresh every 10 seconds when dialog is open
+  // Optimized auto-refresh every 10 seconds when dialog is open
   useEffect(() => {
     if (!open) return;
 
-    const interval = setInterval(refreshData, 10000);
+    const interval = setInterval(() => {
+      const now = Date.now();
+      // Only refresh if at least 10 seconds have passed since last refresh
+      if (now - lastRefreshTimeRef.current >= 10000) {
+        lastRefreshTimeRef.current = now;
+        refreshData();
+      }
+    }, 10000);
+    
     return () => clearInterval(interval);
-  }, [open]);
+  }, [open, refreshData]);
 
   const handleStartCampaign = async () => {
     const result = await startCampaign({ campaignId });
     if (result.success) {
-      await refreshData();
+      // Force refresh after action since we know status changed
+      await loadCampaignStatus();
     }
   };
 
   const handlePauseCampaign = async () => {
     const result = await pauseCampaign({ campaignId });
     if (result.success) {
-      await refreshData();
+      // Force refresh after action since we know status changed
+      await loadCampaignStatus();
     }
   };
 
   const handleResumeCampaign = async () => {
     const result = await resumeCampaign({ campaignId });
     if (result.success) {
-      await refreshData();
+      // Force refresh after action since we know status changed
+      await loadCampaignStatus();
     }
   };
 
   const handleStopCampaign = async () => {
     const result = await stopCampaign({ campaignId });
     if (result.success) {
-      await refreshData();
+      // Force refresh after action since we know status changed
+      await loadCampaignStatus();
     }
   };
+
 
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'pending':
         return <Clock className="w-4 h-4 text-yellow-500" />;
+      case 'queued':
+        return <Clock className="w-4 h-4 text-orange-500" />;
       case 'calling':
         return <PhoneCall className="w-4 h-4 text-blue-500" />;
       case 'answered':
@@ -132,9 +271,13 @@ export function CampaignDetailsDialog({ open, onOpenChange, campaignId, campaign
       case 'completed':
         return <CheckCircle className="w-4 h-4 text-green-500" />;
       case 'failed':
-      case 'no_answer':
-      case 'busy':
         return <XCircle className="w-4 h-4 text-red-500" />;
+      case 'no_answer':
+        return <PhoneOff className="w-4 h-4 text-gray-500" />;
+      case 'busy':
+        return <PhoneOff className="w-4 h-4 text-orange-500" />;
+      case 'do_not_call':
+        return <XCircle className="w-4 h-4 text-gray-500" />;
       default:
         return <Clock className="w-4 h-4 text-gray-500" />;
     }
@@ -149,7 +292,10 @@ export function CampaignDetailsDialog({ open, onOpenChange, campaignId, campaign
       callback: { variant: 'secondary' as const, className: 'bg-yellow-100 text-yellow-800' },
       do_not_call: { variant: 'outline' as const, className: 'bg-gray-100 text-gray-800' },
       voicemail: { variant: 'secondary' as const, className: 'bg-blue-100 text-blue-800' },
-      wrong_number: { variant: 'outline' as const, className: 'bg-orange-100 text-orange-800' }
+      wrong_number: { variant: 'outline' as const, className: 'bg-orange-100 text-orange-800' },
+      answered: { variant: 'default' as const, className: 'bg-green-100 text-green-800' },
+      no_answer: { variant: 'outline' as const, className: 'bg-gray-100 text-gray-800' },
+      busy: { variant: 'destructive' as const, className: 'bg-orange-100 text-orange-800' }
     };
 
     const config = variants[outcome as keyof typeof variants] || variants.do_not_call;
@@ -181,10 +327,10 @@ export function CampaignDetailsDialog({ open, onOpenChange, campaignId, campaign
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
-        <DialogHeader className="space-y-3">
+      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
           <div className="flex items-center justify-between">
-            <DialogTitle className="text-[var(--text-xl)] font-[var(--font-semibold)] text-theme-primary">
+            <DialogTitle className="text-xl font-semibold">
               {campaignName}
             </DialogTitle>
             <div className="flex items-center gap-2">
@@ -193,6 +339,7 @@ export function CampaignDetailsDialog({ open, onOpenChange, campaignId, campaign
                 size="sm"
                 onClick={refreshData}
                 disabled={refreshing}
+                title="Refresh data"
               >
                 <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
               </Button>
@@ -235,294 +382,153 @@ export function CampaignDetailsDialog({ open, onOpenChange, campaignId, campaign
             <span className="ml-2">Loading campaign data...</span>
           </div>
         ) : campaignStatus?.campaign ? (
-          <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="calls">Calls</TabsTrigger>
-              <TabsTrigger value="metrics">Metrics</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="overview" className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Status</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Badge 
-                      variant={campaignStatus.campaign?.execution_status === 'running' ? 'default' : 'secondary'}
-                      className={campaignStatus.campaign?.execution_status === 'running' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-gray-100 text-gray-800'
-                      }
-                    >
-                      {campaignStatus.campaign?.execution_status || 'unknown'}
-                    </Badge>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Daily Progress</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {campaignStatus.campaign?.current_daily_calls || 0} / {campaignStatus.campaign?.daily_cap || 0}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      calls today
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Total Calls</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {campaignStatus.campaign?.total_calls_made || 0}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      calls made
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Answer Rate</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {(campaignStatus.campaign?.total_calls_made || 0) > 0 
-                        ? Math.round(((campaignStatus.campaign?.total_calls_answered || 0) / (campaignStatus.campaign?.total_calls_made || 1)) * 100)
-                        : 0}%
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      answered
-                    </div>
-                  </CardContent>
-                </Card>
+          <div className="space-y-6">
+            {/* Basic Info */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center p-4 border rounded">
+                <div className="text-2xl font-bold text-blue-600">
+                  {campaignStatus.campaign?.total_calls_made || 0}
+                </div>
+                <div className="text-sm text-gray-600">Total Calls</div>
               </div>
-
-              {/* Campaign Prompt Section */}
-              {campaignStatus.campaign?.campaign_prompt && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm font-medium">Campaign Prompt</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="text-sm text-gray-700 whitespace-pre-wrap">
-                        {campaignStatus.campaign.campaign_prompt}
-                      </div>
-                    </div>
-                    <div className="mt-2 text-xs text-gray-500">
-                      This is the script your AI agent will follow during outbound calls.
-                      Placeholders like {`{name}`}, {`{email}`}, and {`{phone}`} will be replaced with actual contact information.
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm font-medium">Calling Schedule</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Days:</span>
-                      <span className="text-sm font-medium">
-                        {campaignStatus.campaign?.calling_days?.join(', ') || 'Not set'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Hours:</span>
-                      <span className="text-sm font-medium">
-                        {(campaignStatus.campaign?.start_hour === 0 && campaignStatus.campaign?.end_hour === 0) 
-                          ? '24/7' 
-                          : `${formatHour(campaignStatus.campaign?.start_hour || 0)} - ${formatHour(campaignStatus.campaign?.end_hour || 0)}`
-                        }
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Calling From:</span>
-                      <span className="text-sm font-medium">
-                        {assistantPhoneNumber || 'Not configured'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Next Call:</span>
-                      <span className="text-sm font-medium">
-                        {campaignStatus.campaign?.next_call_at 
-                          ? formatDateTime(campaignStatus.campaign.next_call_at)
-                          : 'Not scheduled'
-                        }
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm font-medium">Queue Status</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Queued:</span>
-                      <span className="text-sm font-medium">{campaignStatus.queueStatus?.queued || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Processing:</span>
-                      <span className="text-sm font-medium">{campaignStatus.queueStatus?.processing || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Completed:</span>
-                      <span className="text-sm font-medium">{campaignStatus.queueStatus?.completed || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Failed:</span>
-                      <span className="text-sm font-medium">{campaignStatus.queueStatus?.failed || 0}</span>
-                    </div>
-                  </CardContent>
-                </Card>
+              <div className="text-center p-4 border rounded">
+                <div className="text-2xl font-bold text-green-600">
+                  {campaignStatus.campaign?.total_calls_answered || 0}
+                </div>
+                <div className="text-sm text-gray-600">Answered</div>
               </div>
-            </TabsContent>
+              <div className="text-center p-4 border rounded">
+                <div className="text-2xl font-bold text-orange-600">
+                  {campaignStatus.campaign?.current_daily_calls || 0} / {campaignStatus.campaign?.daily_cap || 0}
+                </div>
+                <div className="text-sm text-gray-600">Today's Progress</div>
+              </div>
+              <div className="text-center p-4 border rounded">
+                <div className="text-2xl font-bold text-purple-600">
+                  {(campaignStatus.campaign?.total_calls_made || 0) > 0 
+                    ? Math.round(((campaignStatus.campaign?.total_calls_answered || 0) / (campaignStatus.campaign?.total_calls_made || 1)) * 100)
+                    : 0}%
+                </div>
+                <div className="text-sm text-gray-600">Answer Rate</div>
+              </div>
+            </div>
 
-            <TabsContent value="calls" className="space-y-4">
-              <div className="border rounded-lg">
+            {/* Status */}
+            <div className="flex items-center gap-4">
+              <div>
+                <span className="text-sm text-gray-600">Status:</span>
+                <Badge 
+                  variant={campaignStatus.campaign?.execution_status === 'running' ? 'default' : 'secondary'}
+                  className={`ml-2 ${
+                    campaignStatus.campaign?.execution_status === 'running' 
+                      ? 'bg-green-100 text-green-800' 
+                      : campaignStatus.campaign?.execution_status === 'paused'
+                      ? 'bg-yellow-100 text-yellow-800'
+                      : campaignStatus.campaign?.execution_status === 'completed'
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}
+                >
+                  {campaignStatus.campaign?.execution_status || 'unknown'}
+                </Badge>
+              </div>
+              <div>
+                <span className="text-sm text-gray-600">Calling From:</span>
+                <span className="ml-2 text-sm font-medium">
+                  {assistantPhoneNumber || 'Not configured'}
+                </span>
+              </div>
+            </div>
+
+            {/* Campaign Script */}
+            {campaignStatus.campaign?.campaign_prompt && (
+              <div>
+                <h3 className="text-lg font-medium mb-2">Campaign Script</h3>
+                <div className="bg-gray-50 p-4 rounded border">
+                  <div className="text-sm text-gray-700 whitespace-pre-wrap">
+                    {campaignStatus.campaign.campaign_prompt}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Recent Calls */}
+            <div>
+              <h3 className="text-lg font-medium mb-3">Recent Calls ({calls.length})</h3>
+              <div className="border rounded">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Status</TableHead>
                       <TableHead>Contact</TableHead>
                       <TableHead>Phone</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead>Duration</TableHead>
                       <TableHead>Outcome</TableHead>
                       <TableHead>Time</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {calls.map((call) => (
-                      <TableRow key={call.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {getStatusIcon(call.status)}
-                            <span className="text-sm capitalize">{call.status}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {call.contact_name || 'Unknown'}
-                        </TableCell>
-                        <TableCell>
-                          {call.phone_number}
-                        </TableCell>
-                        <TableCell>
-                          {call.call_duration > 0 ? formatDuration(call.call_duration) : '-'}
-                        </TableCell>
-                        <TableCell>
-                          {getOutcomeBadge(call.outcome)}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {formatDateTime(call.started_at)}
+                    {calls.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                          No calls found
                         </TableCell>
                       </TableRow>
-                    ))}
+                    ) : (
+                      calls.slice(0, 10).map((call) => (
+                        <TableRow key={call.id}>
+                          <TableCell className="font-medium">
+                            {call.contact_name || 'Unknown'}
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-mono text-sm">{call.phone_number}</span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {getStatusIcon(call.status)}
+                              <span className="text-sm capitalize">{call.status}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {call.call_duration > 0 ? formatDuration(call.call_duration) : '-'}
+                          </TableCell>
+                          <TableCell>
+                            {getOutcomeBadge(call.outcome)}
+                          </TableCell>
+                          <TableCell className="text-sm text-gray-500">
+                            {call.completed_at ? formatDateTime(call.completed_at) : formatDateTime(call.started_at)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </div>
-            </TabsContent>
+            </div>
 
-            <TabsContent value="metrics" className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Call Statistics</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Total:</span>
-                      <span className="text-sm font-medium">{campaignStatus.stats?.total || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Completed:</span>
-                      <span className="text-sm font-medium">{campaignStatus.stats?.completed || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Failed:</span>
-                      <span className="text-sm font-medium">{campaignStatus.stats?.failed || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">No Answer:</span>
-                      <span className="text-sm font-medium">{campaignStatus.stats?.noAnswer || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Busy:</span>
-                      <span className="text-sm font-medium">{campaignStatus.stats?.busy || 0}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Outcomes</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Interested:</span>
-                      <span className="text-sm font-medium text-green-600">{campaignStatus.stats?.interested || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Not Interested:</span>
-                      <span className="text-sm font-medium text-red-600">{campaignStatus.stats?.notInterested || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Callback:</span>
-                      <span className="text-sm font-medium text-yellow-600">{campaignStatus.stats?.callback || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Do Not Call:</span>
-                      <span className="text-sm font-medium text-gray-600">{campaignStatus.stats?.doNotCall || 0}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Performance</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Answer Rate:</span>
-                      <span className="text-sm font-medium">
-                        {(campaignStatus.stats?.total || 0) > 0 
-                          ? Math.round(((campaignStatus.stats?.answered || 0) / (campaignStatus.stats?.total || 1)) * 100)
-                          : 0}%
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Success Rate:</span>
-                      <span className="text-sm font-medium">
-                        {(campaignStatus.stats?.total || 0) > 0 
-                          ? Math.round(((campaignStatus.stats?.completed || 0) / (campaignStatus.stats?.total || 1)) * 100)
-                          : 0}%
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Interest Rate:</span>
-                      <span className="text-sm font-medium">
-                        {(campaignStatus.stats?.answered || 0) > 0 
-                          ? Math.round(((campaignStatus.stats?.interested || 0) / (campaignStatus.stats?.answered || 1)) * 100)
-                          : 0}%
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
+            {/* Call Outcomes Summary */}
+            <div>
+              <h3 className="text-lg font-medium mb-3">Call Outcomes</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-3 border rounded">
+                  <div className="text-xl font-bold text-green-600">{campaignStatus.stats?.interested || 0}</div>
+                  <div className="text-sm text-gray-600">Interested</div>
+                </div>
+                <div className="text-center p-3 border rounded">
+                  <div className="text-xl font-bold text-red-600">{campaignStatus.stats?.notInterested || 0}</div>
+                  <div className="text-sm text-gray-600">Not Interested</div>
+                </div>
+                <div className="text-center p-3 border rounded">
+                  <div className="text-xl font-bold text-yellow-600">{campaignStatus.stats?.callback || 0}</div>
+                  <div className="text-sm text-gray-600">Callback</div>
+                </div>
+                <div className="text-center p-3 border rounded">
+                  <div className="text-xl font-bold text-gray-600">{campaignStatus.stats?.doNotCall || 0}</div>
+                  <div className="text-sm text-gray-600">Do Not Call</div>
+                </div>
               </div>
-            </TabsContent>
-          </Tabs>
+            </div>
+          </div>
         ) : (
           <div className="flex items-center justify-center py-8">
             <span>Failed to load campaign data</span>

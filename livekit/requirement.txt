@@ -3,3 +3,4 @@ livekit-agents[openai]>=1.2,<2
 python-dotenv
 aiohttp
 supabase>=2.4.0
+pinecone>=7.0.0

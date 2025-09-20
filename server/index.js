@@ -17,6 +17,7 @@ import { csvManagementRouter } from './csv-management.js';
 import { livekitRoomRouter } from './livekit-room.js';
 import { campaignEngine } from './campaign-execution-engine.js';
 import { connect } from '@ngrok/ngrok';
+import knowledgeBaseRouter from './routes/knowledge-base.js';
 
 
 
@@ -38,6 +39,8 @@ app.use('/api/v1/outbound-calls', outboundCallsRouter);
 app.use('/api/v1/campaigns', campaignManagementRouter);
 app.use('/api/v1/csv', csvManagementRouter);
 app.use('/api/v1/livekit', livekitRoomRouter);
+app.use('/api/v1/knowledge-base', knowledgeBaseRouter);
+console.log('Knowledge base routes registered at /api/v1/knowledge-base');
 
 // Get recording information for a call
 app.get('/api/v1/call/:callSid/recordings', async (req, res) => {

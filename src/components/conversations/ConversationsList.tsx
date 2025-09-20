@@ -66,7 +66,8 @@ export function ConversationsList({
                 "p-3 rounded-[var(--radius-md)] cursor-pointer transition-all duration-200 border",
                 selectedConversationId === conversation.id 
                   ? "bg-accent/80 text-accent-foreground border-accent/30" 
-                  : "hover:bg-muted/30 border-transparent hover:border-border/20"
+                  : "hover:bg-muted/30 border-transparent hover:border-border/20",
+                conversation.hasNewMessages && selectedConversationId !== conversation.id && "bg-blue-50/10 border-blue-200/20"
               )}
             >
               <div className="flex items-start gap-3">
@@ -91,15 +92,26 @@ export function ConversationsList({
                       {conversation.phoneNumber}
                     </p>
                     
-                    {conversation.lastCallOutcome && (
-                      <div className={cn(
-                        "w-1.5 h-1.5 rounded-full ml-2",
-                        getOutcomeBadgeColor(conversation.lastCallOutcome) === 'default' && "bg-green-500",
-                        getOutcomeBadgeColor(conversation.lastCallOutcome) === 'secondary' && "bg-blue-500",
-                        getOutcomeBadgeColor(conversation.lastCallOutcome) === 'destructive' && "bg-red-500",
-                        getOutcomeBadgeColor(conversation.lastCallOutcome) === 'outline' && "bg-gray-400"
-                      )} />
-                    )}
+                    <div className="flex items-center gap-1">
+                      {/* New message indicators */}
+                      {conversation.hasNewSMS && (
+                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" title="New SMS message" />
+                      )}
+                      {conversation.hasNewCalls && (
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" title="New call activity" />
+                      )}
+                      
+                      {/* Call outcome indicator */}
+                      {conversation.lastCallOutcome && (
+                        <div className={cn(
+                          "w-1.5 h-1.5 rounded-full ml-2",
+                          getOutcomeBadgeColor(conversation.lastCallOutcome) === 'default' && "bg-green-500",
+                          getOutcomeBadgeColor(conversation.lastCallOutcome) === 'secondary' && "bg-blue-500",
+                          getOutcomeBadgeColor(conversation.lastCallOutcome) === 'destructive' && "bg-red-500",
+                          getOutcomeBadgeColor(conversation.lastCallOutcome) === 'outline' && "bg-gray-400"
+                        )} />
+                      )}
+                    </div>
                   </div>
                   
                   <div className="flex items-center justify-between mt-2">

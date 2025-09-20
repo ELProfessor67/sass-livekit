@@ -68,13 +68,26 @@ class CampaignExecutionEngine {
       }
 
       if (!campaigns || campaigns.length === 0) {
+        console.log('No campaigns ready to execute');
         return;
       }
 
       console.log(`Found ${campaigns.length} campaigns ready to execute`);
 
       for (const campaign of campaigns) {
-        await this.executeCampaign(campaign);
+        try {
+          await this.executeCampaign(campaign);
+        } catch (campaignError) {
+          console.error(`Error executing campaign ${campaign.id}:`, campaignError);
+          // Mark campaign as error status
+          await supabase
+            .from('campaigns')
+            .update({
+              execution_status: 'error',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', campaign.id);
+        }
       }
 
     } catch (error) {
@@ -105,12 +118,22 @@ class CampaignExecutionEngine {
   }
 
   /**
-   * Process all calls immediately and continuously (like urban-new system)
+   * Process all calls with proper queue management and rate limiting
    */
   async processAllCalls(campaign) {
-    console.log(`🔄 Starting continuous processing for campaign: ${campaign.name}`);
+    console.log(`🔄 Starting queue-based processing for campaign: ${campaign.name}`);
     
-    // Get all contacts for this campaign
+    // First, queue all contacts for this campaign
+    await this.queueCampaignCalls(campaign);
+    
+    // Process calls from the queue with proper rate limiting
+    await this.processCallQueue(campaign);
+  }
+
+  /**
+   * Queue all contacts for a campaign
+   */
+  async queueCampaignCalls(campaign) {
     const contacts = await this.getCampaignContacts(campaign);
     if (!contacts || contacts.length === 0) {
       console.log(`No contacts found for campaign: ${campaign.name}`);
@@ -118,13 +141,136 @@ class CampaignExecutionEngine {
       return;
     }
 
-    console.log(`📞 Found ${contacts.length} contacts to process`);
+    console.log(`📞 Queuing ${contacts.length} contacts for campaign: ${campaign.name}`);
 
-    // Process each contact immediately
-    for (let i = 0; i < contacts.length; i++) {
-      const contact = contacts[i];
-      
-      // Check if campaign should continue (daily cap, calling hours, etc.)
+    for (const contact of contacts) {
+      try {
+        // Check if campaign call already exists for this contact in this campaign
+        const { data: existingCall, error: checkError } = await supabase
+          .from('campaign_calls')
+          .select('id, status')
+          .eq('campaign_id', campaign.id)
+          .eq('phone_number', contact.phone_number)
+          .eq('contact_name', contact.name)
+          .single();
+
+        let campaignCall;
+
+        if (existingCall) {
+          // Update existing call if it's not already completed
+          if (existingCall.status === 'completed' || existingCall.status === 'failed') {
+            console.log(`⏭️ Skipping contact ${contact.name} - already completed/failed`);
+            continue;
+          }
+
+          // Update existing call to pending
+          const { data: updatedCall, error: updateError } = await supabase
+            .from('campaign_calls')
+            .update({
+              status: 'pending',
+              scheduled_at: new Date().toISOString()
+            })
+            .eq('id', existingCall.id)
+            .select()
+            .single();
+
+          if (updateError) {
+            console.error(`Failed to update existing campaign call:`, updateError);
+            continue;
+          }
+
+          campaignCall = updatedCall;
+          console.log(`🔄 Updated existing call for ${contact.name}`);
+        } else {
+          // Create new campaign call record
+          const { data: newCall, error: callError } = await supabase
+            .from('campaign_calls')
+            .insert({
+              campaign_id: campaign.id,
+              contact_id: campaign.contact_source === 'contact_list' ? contact.id : null,
+              phone_number: contact.phone_number,
+              contact_name: contact.name,
+              status: 'pending',
+              scheduled_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+          if (callError) {
+            console.error(`Failed to create campaign call record:`, callError);
+            continue;
+          }
+
+          campaignCall = newCall;
+          console.log(`➕ Created new call for ${contact.name}`);
+        }
+
+        // Check if queue item already exists
+        const { data: existingQueue, error: queueCheckError } = await supabase
+          .from('call_queue')
+          .select('id, status')
+          .eq('campaign_id', campaign.id)
+          .eq('campaign_call_id', campaignCall.id)
+          .single();
+
+        if (existingQueue) {
+          // Update existing queue item if it's not already completed
+          if (existingQueue.status === 'completed' || existingQueue.status === 'failed') {
+            console.log(`⏭️ Skipping queue item for ${contact.name} - already completed/failed`);
+            continue;
+          }
+
+          const { error: queueUpdateError } = await supabase
+            .from('call_queue')
+            .update({
+              status: 'queued',
+              scheduled_for: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingQueue.id);
+
+          if (queueUpdateError) {
+            console.error(`Failed to update existing queue item:`, queueUpdateError);
+          } else {
+            console.log(`🔄 Updated existing queue item for ${contact.name}`);
+          }
+        } else {
+          // Add new item to call queue
+          const { error: queueError } = await supabase
+            .from('call_queue')
+            .insert({
+              campaign_id: campaign.id,
+              campaign_call_id: campaignCall.id,
+              phone_number: contact.phone_number,
+              scheduled_for: new Date().toISOString(),
+              status: 'queued',
+              priority: 0
+            });
+
+          if (queueError) {
+            console.error(`Failed to add to call queue:`, queueError);
+          } else {
+            console.log(`➕ Added new queue item for ${contact.name}`);
+          }
+        }
+      } catch (error) {
+        console.error(`Error queuing contact ${contact.name}:`, error);
+      }
+    }
+  }
+
+  /**
+   * Process calls from the queue with proper rate limiting
+   */
+  async processCallQueue(campaign) {
+    const batchSize = 5; // Process 5 calls at a time
+    let processedCount = 0;
+    const maxCallsPerExecution = campaign.daily_cap - campaign.current_daily_calls;
+
+    console.log(`🔄 Processing call queue for campaign: ${campaign.name}, max calls: ${maxCallsPerExecution}`);
+
+    while (processedCount < maxCallsPerExecution) {
+      // Check if campaign should continue
       if (!this.shouldExecuteCampaign(campaign)) {
         console.log(`Campaign ${campaign.name} reached daily cap or outside calling hours, pausing`);
         await this.pauseCampaign(campaign.id, 'Daily cap reached or outside calling hours');
@@ -143,47 +289,80 @@ class CampaignExecutionEngine {
         return;
       }
 
-      console.log(`📞 Processing contact ${i + 1}/${contacts.length}: ${contact.name || 'Unknown'} - ${contact.phone_number}`);
+      // Get next batch of queued calls
+      const { data: queueItems, error } = await supabase
+        .from('call_queue')
+        .select(`
+          *,
+          campaign_calls(*)
+        `)
+        .eq('campaign_id', campaign.id)
+        .eq('status', 'queued')
+        .order('scheduled_for', { ascending: true })
+        .limit(batchSize);
 
-      try {
-        // Execute the call immediately (don't wait for completion)
-        console.log(`🔄 Starting call ${i + 1}/${contacts.length} for ${contact.name} - ${contact.phone_number}`);
-        
-        await this.executeCallDirect(campaign, contact, i + 1);
-        
-        // Update campaign metrics immediately
-        await supabase
-          .from('campaigns')
-          .update({
-            dials: campaign.dials + 1,
-            current_daily_calls: campaign.current_daily_calls + 1,
-            total_calls_made: campaign.total_calls_made + 1,
-            last_execution_at: new Date().toISOString()
-          })
-          .eq('id', campaign.id);
+      if (error) {
+        console.error('Error fetching queue items:', error);
+        break;
+      }
 
-        // Update campaign object for next iteration
-        campaign.dials = campaign.dials + 1;
-        campaign.current_daily_calls = campaign.current_daily_calls + 1;
-        campaign.total_calls_made = campaign.total_calls_made + 1;
+      if (!queueItems || queueItems.length === 0) {
+        console.log(`No more queued calls for campaign: ${campaign.name}`);
+        await this.completeCampaign(campaign.id);
+        return;
+      }
 
-        console.log(`✅ Call ${i + 1} initiated for campaign: ${campaign.name}`);
+      // Process batch
+      for (const queueItem of queueItems) {
+        try {
+          console.log(`📞 Processing call ${processedCount + 1}/${maxCallsPerExecution}: ${queueItem.phone_number}`);
+          
+          await this.executeCall(campaign, queueItem);
+          processedCount++;
 
-        // Add a small delay between calls (optional)
-        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+          // Update campaign metrics (only daily calls and execution time - dials updated in outbound-calls.js)
+          await supabase
+            .from('campaigns')
+            .update({
+              current_daily_calls: campaign.current_daily_calls + 1,
+              last_execution_at: new Date().toISOString()
+            })
+            .eq('id', campaign.id);
 
-      } catch (callError) {
-        console.error(`❌ Call ${i + 1} failed for campaign ${campaign.name}:`, callError);
-        
-        // Mark call as failed but continue with next call
-        await this.createFailedCallRecord(campaign, contact, callError.message);
-        continue;
+          // Update campaign object for next iteration
+          campaign.current_daily_calls = campaign.current_daily_calls + 1;
+
+          console.log(`✅ Call ${processedCount} completed for campaign: ${campaign.name}`);
+
+        } catch (callError) {
+          console.error(`❌ Call failed for campaign ${campaign.name}:`, callError);
+          
+          // Mark call as failed
+          await supabase
+            .from('campaign_calls')
+            .update({ 
+              status: 'failed',
+              completed_at: new Date().toISOString(),
+              notes: callError.message
+            })
+            .eq('id', queueItem.campaign_call_id);
+
+          // Mark queue item as failed
+          await supabase
+            .from('call_queue')
+            .update({ 
+              status: 'failed',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', queueItem.id);
+        }
+
+        // Add delay between calls
+        await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay
       }
     }
 
-    // All calls completed
-    console.log(`🎉 All calls completed for campaign: ${campaign.name}`);
-    await this.completeCampaign(campaign.id);
+    console.log(`🎉 Completed processing ${processedCount} calls for campaign: ${campaign.name}`);
   }
 
   /**
@@ -247,31 +426,6 @@ class CampaignExecutionEngine {
     }).filter(contact => contact.phone_number && contact.phone_number.length >= 10);
   }
 
-  /**
-   * Execute call directly (like urban-new system)
-   */
-  async executeCallDirect(campaign, contact, callNumber) {
-    // Create campaign call record
-    const { data: campaignCall, error: callError } = await supabase
-      .from('campaign_calls')
-      .insert({
-        campaign_id: campaign.id,
-        contact_id: campaign.contact_source === 'contact_list' ? contact.id : null,
-        phone_number: contact.phone_number,
-        contact_name: contact.name,
-        status: 'calling',
-        started_at: new Date().toISOString()
-      })
-      .select()
-      .single();
-
-    if (callError) {
-      throw new Error(`Failed to create campaign call record: ${callError.message}`);
-    }
-
-    // Execute the call using existing LiveKit logic
-    await this.executeCall(campaign, { campaign_calls: campaignCall });
-  }
 
 
   /**
@@ -694,7 +848,7 @@ class CampaignExecutionEngine {
       if (!outboundTrunkId) throw new Error('No outbound trunk configured for this assistant.');
 
       // 3) build room & metadata
-      const baseUrl = process.env.NGROK_URL || process.env.BACKEND_URL || '';
+      const baseUrl = process.env.NGROK_URL || process.env.BACKEND_URL || 'http://localhost:8080';
       const callId = `campaign-${campaign.id}-${campaignCall.id}-${Date.now()}`;
       const toNumber = campaignCall.phone_number.startsWith('+')
         ? campaignCall.phone_number
@@ -715,10 +869,15 @@ class CampaignExecutionEngine {
       };
 
       // persist metadata for your webhooks (non-blocking)
-      if (baseUrl) {
+      if (baseUrl && baseUrl.startsWith('http')) {
         try {
           const metadataUrl = `${baseUrl}/api/v1/campaigns/metadata/${roomName}`;
-          await fetch(metadataUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(campaignMetadata) });
+          await fetch(metadataUrl, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify(campaignMetadata),
+            timeout: 5000 // 5 second timeout
+          });
         } catch (e) {
           console.log('⚠️ metadata post failed:', e?.message);
         }
@@ -758,102 +917,49 @@ class CampaignExecutionEngine {
       at.addGrant({ room: roomName, roomJoin: true, canPublish: true, canSubscribe: true });
       const jwt = await at.toJwt();
 
-      // Try different dispatch URL formats
-      const dispatchUrl = `${LK_HTTP_URL}/twirp/livekit.AgentService/CreateAgentDispatch`;
-      const alternativeUrl = `${LK_HTTP_URL}/twirp/livekit.AgentService/CreateAgentDispatchRequest`;
-      
-      console.log('🔍 Dispatch URL check:', {
-        LK_HTTP_URL,
-        dispatchUrl,
-        alternativeUrl,
-        expectedFormat: 'https://your-livekit-host/twirp/livekit.AgentService/CreateAgentDispatch'
-      });
       const agentName = process.env.LK_AGENT_NAME || 'ai';
-      console.log('🔍 Agent name check:', { 
+      console.log('🔍 Agent configuration:', { 
         LK_AGENT_NAME: process.env.LK_AGENT_NAME, 
         agentName, 
         fallback: 'ai' 
       });
       
-      // Try different dispatch body formats
+      // Simplified dispatch body
       const dispatchBody = {
         agent_name: agentName,
         room: roomName,
-        metadata: JSON.stringify({
-          phone_number: toNumber,  // Add phone number for outbound calling
-          agentId: campaign.assistant_id,
-          callType: 'campaign',
-          campaignId: campaign.id,
-          contactName: campaignCall.contact_name || 'Unknown',
-          campaignPrompt: campaign.campaign_prompt || '',  // Add campaign prompt
-          outbound_trunk_id: outboundTrunkId,  // Add outbound trunk ID
-        }),
-      };
-      
-      // Alternative format that might work
-      const alternativeBody = {
-        agentName: agentName,
-        roomName: roomName,
         metadata: JSON.stringify({
           phone_number: toNumber,
           agentId: campaign.assistant_id,
           callType: 'campaign',
           campaignId: campaign.id,
           contactName: campaignCall.contact_name || 'Unknown',
-          campaignPrompt: campaign.campaign_prompt || '',  // Add campaign prompt
-          outbound_trunk_id: outboundTrunkId,  // Add outbound trunk ID
+          campaignPrompt: campaign.campaign_prompt || '',
+          outbound_trunk_id: outboundTrunkId,
         }),
       };
       
-      console.log('🔍 Dispatch body formats:', {
-        primary: dispatchBody,
-        alternative: alternativeBody
+      console.log('🔍 Dispatch configuration:', dispatchBody);
+
+      // Use the AgentDispatchClient method
+      console.log('🤖 Dispatching agent via AgentDispatchClient:', {
+        agent_name: agentName,
+        room: roomName,
+        metadata: dispatchBody.metadata
       });
-
-      // Use the correct AgentDispatchClient method
-      try {
-        console.log('🤖 Dispatching agent via AgentDispatchClient:', {
-          agent_name: agentName,
-          room: roomName,
-          metadata: dispatchBody.metadata
-        });
-        
-        const dispatchResult = await agentDispatchClient.createDispatch(roomName, agentName, {
-          metadata: dispatchBody.metadata,
-        });
-        
-        console.log('✅ Agent dispatch successful via AgentDispatchClient:', dispatchResult);
-      } catch (sdkError) {
-        console.log('⚠️ AgentDispatchClient failed, trying HTTP method:', sdkError.message);
-        
-        // Fallback to HTTP method
-        console.log('🤖 Dispatching agent via HTTP:', {
-          url: dispatchUrl,
-          agent_name: dispatchBody.agent_name,
-          room: roomName,
-          jwt_len: jwt.length,
-          dispatchBody: dispatchBody,
-        });
-        
-        const dispatchRes = await fetch(dispatchUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
-          body: JSON.stringify(dispatchBody),
-        });
-        const dispatchTxt = await dispatchRes.text();
-        console.log(`🤖 HTTP Dispatch response: ${dispatchRes.status} ${dispatchTxt}`);
-
-        if (!dispatchRes.ok) {
-          throw new Error(`Agent dispatch failed: ${dispatchRes.status} ${dispatchTxt}`);
-        }
-      }
+      
+      const dispatchResult = await agentDispatchClient.createDispatch(roomName, agentName, {
+        metadata: dispatchBody.metadata,
+      });
+      
+      console.log('✅ Agent dispatch successful:', dispatchResult);
 
       console.log('✅ Agent dispatched successfully - Python agent will handle outbound calling');
 
       // 10) bookkeeping
       await supabase.from('campaign_calls').update({ call_sid: callId, room_name: roomName }).eq('id', campaignCall.id);
       await supabase.from('campaigns').update({
-        dials: campaign.dials + 1,
+        // dials: campaign.dials + 1, // Removed - dials are updated in outbound-calls.js
         current_daily_calls: campaign.current_daily_calls + 1,
         total_calls_made: campaign.total_calls_made + 1,
         last_execution_at: new Date().toISOString(),
@@ -909,6 +1015,7 @@ class CampaignExecutionEngine {
       .from('campaigns')
       .update({
         execution_status: 'paused',
+        status: 'paused',
         updated_at: new Date().toISOString()
       })
       .eq('id', campaignId);
@@ -921,6 +1028,7 @@ class CampaignExecutionEngine {
       .from('campaigns')
       .update({
         execution_status: 'completed',
+        status: 'completed',
         updated_at: new Date().toISOString()
       })
       .eq('id', campaignId);
@@ -943,13 +1051,21 @@ class CampaignExecutionEngine {
         throw new Error('Campaign not found');
       }
 
-      // Update campaign status to running (no queue needed - we process directly)
+      // Check if campaign is already running
+      if (campaign.execution_status === 'running') {
+        console.log(`Campaign ${campaignId} is already running`);
+        return;
+      }
+
+      // Update campaign status to running
       const { error: updateError } = await supabase
         .from('campaigns')
         .update({
           execution_status: 'running',
+          status: 'active',
           next_call_at: new Date().toISOString(),
-          current_daily_calls: 0
+          current_daily_calls: 0,
+          last_execution_at: new Date().toISOString()
         })
         .eq('id', campaignId);
 
