@@ -84,6 +84,16 @@ export interface AdvancedData {
   calTimezone?: string;
 }
 
+export interface N8nWebhookField {
+  name: string;
+  description: string;
+}
+
+export interface N8nData {
+  webhookUrl: string;
+  webhookFields: N8nWebhookField[];
+}
+
 export interface AssistantFormData {
   name: string;
   id: string;
@@ -91,4 +101,5 @@ export interface AssistantFormData {
   voice: VoiceData;
   analysis: AnalysisData;
   advanced: AdvancedData;
+  n8n: N8nData;
 }

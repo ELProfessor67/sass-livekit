@@ -21,6 +21,7 @@ import { ModelTab } from "@/components/assistants/wizard/ModelTab";
 import { VoiceTab } from "@/components/assistants/wizard/VoiceTab";
 import { AnalysisTab } from "@/components/assistants/wizard/AnalysisTab";
 import { AdvancedTab } from "@/components/assistants/wizard/AdvancedTab";
+import { N8nTab } from "@/components/assistants/wizard/N8nTab";
 import { AssistantFormData } from "@/components/assistants/wizard/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -42,11 +43,21 @@ const CreateAssistant = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
 
+  // Debug logging
+  console.log('CreateAssistant rendered', { isEditing, id, isLoading, activeTab });
+  
+  // Debug tab switching
+  const handleTabClick = (tabId: string) => {
+    console.log('Tab clicked:', tabId);
+    setActiveTab(tabId);
+  };
+
   const tabs = [
     { id: "model", label: "Model" },
     { id: "voice", label: "Voice" },
     { id: "analysis", label: "Analysis" },
-    { id: "advanced", label: "Advanced" }
+    { id: "advanced", label: "Advanced" },
+    { id: "n8n", label: "n8n" }
   ];
   
   const searchParams = new URLSearchParams(location.search);
@@ -123,10 +134,15 @@ const CreateAssistant = () => {
       smsPrompt: "",
       whatsappNumber: "",
       whatsappKey: ""
+    },
+    n8n: {
+      webhookUrl: "",
+      webhookFields: []
     }
   });
 
   const handleFormDataChange = (section: keyof AssistantFormData, data: any) => {
+    console.log('Form data change:', section, data);
     setFormData(prev => ({
       ...prev,
       [section]: { ...(prev[section] as object), ...data }
@@ -143,7 +159,10 @@ const CreateAssistant = () => {
       setIsLoading(true);
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        if (!user) {
+          setIsLoading(false);
+          return;
+        }
 
         const { data, error } = await supabase
           .from('assistant')
@@ -159,6 +178,7 @@ const CreateAssistant = () => {
             description: 'Failed to load assistant data. Please try again.',
             variant: 'destructive',
           });
+          setIsLoading(false);
           return;
         }
 
@@ -233,8 +253,12 @@ const CreateAssistant = () => {
               backgroundSound: "office",
               firstSms: data.first_sms || "",
               smsPrompt: data.sms_prompt || "",
-              whatsappNumber: data.whatsapp_number || "",
-              whatsappKey: data.whatsapp_key || ""
+              whatsappNumber: (data as any).whatsapp_number || "",
+              whatsappKey: (data as any).whatsapp_key || ""
+            },
+            n8n: {
+              webhookUrl: (data as any).n8n_webhook_url || "",
+              webhookFields: Array.isArray((data as any).n8n_webhook_fields) ? (data as any).n8n_webhook_fields : []
             }
           });
 
@@ -327,6 +351,10 @@ const CreateAssistant = () => {
       cal_event_type_id: (formData.advanced as any).calEventTypeId || null,
       cal_event_type_slug: (formData.advanced as any).calEventTypeSlug || null,
       cal_timezone: (formData.advanced as any).calTimezone || null,
+
+      // n8n Integration
+      n8n_webhook_url: formData.n8n.webhookUrl || null,
+      n8n_webhook_fields: formData.n8n.webhookFields?.length ? formData.n8n.webhookFields : null,
     } as any;
   };
 
@@ -488,7 +516,7 @@ const CreateAssistant = () => {
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => handleTabClick(tab.id)}
                     className={`
                       relative px-6 py-4 text-sm font-medium transition-all duration-300
                       ${activeTab === tab.id 
@@ -513,6 +541,7 @@ const CreateAssistant = () => {
 
             {/* Tab Content */}
             <div className="p-8">
+             
               {isLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="text-center">
@@ -529,6 +558,8 @@ const CreateAssistant = () => {
                     animate="animate"
                     exit="exit"
                     transition={{ duration: 0.2 }}
+                    style={{ pointerEvents: 'auto' }}
+                    className="pointer-events-auto"
                   >
                     {activeTab === "model" && (
                       <ModelTab 
@@ -552,6 +583,12 @@ const CreateAssistant = () => {
                       <AdvancedTab 
                         data={formData.advanced} 
                         onChange={(data) => handleFormDataChange('advanced', data)} 
+                      />
+                    )}
+                    {activeTab === "n8n" && (
+                      <N8nTab 
+                        data={formData.n8n} 
+                        onChange={(data) => handleFormDataChange('n8n', data)} 
                       />
                     )}
                   </motion.div>

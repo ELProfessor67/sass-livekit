@@ -7,7 +7,7 @@ import re
 from typing import Optional
 
 from livekit.agents import Agent, RunContext, function_tool
-from cal_calendar_api import Calendar, AvailableSlot, SlotUnavailableError
+from integrations.calendar_api import Calendar, AvailableSlot, SlotUnavailableError
 
 
 class Assistant(Agent):
@@ -26,6 +26,9 @@ class Assistant(Agent):
         self._email: Optional[str] = None
         self._phone: Optional[str] = None
         self._confirmed: bool = False
+
+        # Webhook data collection
+        self._webhook_data: dict[str, str] = {}
 
         # one-tool-per-utterance guard
         self._last_speech_id: Optional[str] = None
@@ -328,3 +331,37 @@ class Assistant(Agent):
         notes: Optional[str] = None,
     ) -> str:
         return "We'll confirm details, then I'll book it for you."
+
+    # ---------- Webhook data collection ----------
+    @function_tool
+    async def collect_webhook_data(self, ctx: RunContext, field_name: str, field_value: str, collection_method: str = "user_provided") -> str:
+        """Collect webhook data with flexible collection methods for n8n integration"""
+        print(f"DEBUG: collect_webhook_data CALLED | field_name={field_name} | field_value={field_value} | method={collection_method}")
+        logging.info("DEBUG: collect_webhook_data CALLED | field_name=%s | field_value=%s | method=%s", field_name, field_value, collection_method)
+        
+        gate = self._turn_gate(ctx)
+        if gate: return gate
+
+        if not field_name or not field_value:
+            return "I need both the field name and value to collect this information."
+
+        # Validate collection method
+        valid_methods = ["user_provided", "analyzed", "observed"]
+        if collection_method not in valid_methods:
+            collection_method = "user_provided"
+
+        # Store the webhook data with metadata
+        self._webhook_data[field_name.strip()] = {
+            "value": field_value.strip(),
+            "method": collection_method,
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+
+        logging.info("WEBHOOK_DATA_COLLECTED | field=%s | method=%s | total_fields=%d",
+                    field_name, collection_method, len(self._webhook_data))
+
+        return f"Collected {field_name} via {collection_method}. Thank you!"
+
+    def get_webhook_data(self) -> dict:
+        """Get all collected webhook data"""
+        return self._webhook_data.copy()

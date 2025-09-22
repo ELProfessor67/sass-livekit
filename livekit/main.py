@@ -39,7 +39,7 @@ except Exception:  # pragma: no cover
     Client = object  # type: ignore
 
 # Calendar integration (your module)
-from cal_calendar_api import Calendar, CalComCalendar, AvailableSlot, SlotUnavailableError
+from integrations.calendar_api import Calendar, CalComCalendar, AvailableSlot, SlotUnavailableError
 
 # Assistant service (used for INBOUND only)
 from services.assistant import Assistant
@@ -389,6 +389,198 @@ def extract_called_did(room_name: str) -> str | None:
     """Find the first +E.164 sequence anywhere in the room name."""
     m = re.search(r'\+\d{7,}', room_name)
     return m.group(0) if m else None
+
+async def fetch_assistant_n8n_config(assistant_id: str) -> dict | None:
+    """Fetch assistant n8n configuration from database"""
+    try:
+        if not create_client:
+            logging.warning("Supabase client not available, skipping n8n config fetch")
+            return None
+
+        supabase_url = os.getenv("SUPABASE_URL", "").strip()
+        supabase_key = (
+            os.getenv("SUPABASE_SERVICE_ROLE", "").strip()
+            or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+        )
+
+        if not supabase_url or not supabase_key:
+            logging.warning("Supabase credentials not configured, skipping n8n config fetch")
+            return None
+
+        sb: Client = create_client(supabase_url, supabase_key)
+
+        # Fetch assistant n8n webhook configuration
+        result = sb.table("assistant").select(
+            "id, name, n8n_webhooks"
+        ).eq("id", assistant_id).execute()
+
+        if result.data and len(result.data) > 0:
+            assistant = result.data[0]
+            webhooks = assistant.get("n8n_webhooks", [])
+            if webhooks and len(webhooks) > 0:
+                logging.info("N8N_WEBHOOKS_FETCHED | assistant_id=%s | webhooks_count=%d", 
+                           assistant_id, len(webhooks))
+                return {
+                    "assistant_id": assistant_id,
+                    "assistant_name": assistant.get("name"),
+                    "webhooks": webhooks
+                }
+            else:
+                logging.info("N8N_WEBHOOKS_EMPTY | assistant_id=%s", assistant_id)
+                return None
+        else:
+            logging.warning("N8N_CONFIG_NOT_FOUND | assistant_id=%s", assistant_id)
+            return None
+
+    except Exception as e:
+        logging.error("N8N_CONFIG_FETCH_ERROR | assistant_id=%s | error=%s", assistant_id, str(e))
+        return None
+
+def generate_dynamic_collection_instructions(webhook_fields: list) -> str:
+    """Generate dynamic LLM-driven data collection instructions based on webhook fields"""
+    if not webhook_fields:
+        return ""
+    
+    field_descriptions = []
+    for field in webhook_fields:
+        name = field.get("name", "")
+        description = field.get("description", "")
+        field_descriptions.append(f"- {name}: {description}")
+    
+    return f"""
+🚨 DATA COLLECTION REQUIRED 🚨
+You need to collect the following information during the call:
+{chr(10).join(field_descriptions)}
+
+ANALYSIS APPROACH:
+For each field, determine the best collection method based on the description:
+1. ASK the user directly (for personal info like name, email, company)
+2. ANALYZE from conversation context (for derived info like mood, intent, summary)
+3. OBSERVE from call behavior (for technical info like call quality, satisfaction)
+
+COLLECTION RULES:
+- Use collect_webhook_data(field_name, value, collection_method) to store any collected data
+- You can collect data at any point during the conversation
+- For analysis-based fields, observe the conversation and make intelligent inferences
+- For user-provided fields, ask naturally in context
+- Collection methods: "user_provided", "analyzed", "observed"
+
+EXAMPLES:
+- "company_name" → Ask: "What company do you work for?" → collect_webhook_data("company_name", "Acme Corp", "user_provided")
+- "call_summary" → Analyze conversation → collect_webhook_data("call_summary", "Discussed pricing for enterprise plan", "analyzed")
+- "caller_mood" → Observe tone → collect_webhook_data("caller_mood", "Frustrated initially, became positive", "observed")
+
+You have full autonomy to decide how to collect each piece of data based on the field descriptions.
+"""
+
+
+def build_n8n_payload(assistant_config: dict, call_data: dict, session_history: list, webhook_configs: list, agent=None) -> dict:
+    """Build JSON payload for n8n webhook with collected user details"""
+    try:
+        # Extract assistant info
+        assistant_info = {
+            "id": assistant_config.get("assistant_id"),
+            "name": assistant_config.get("assistant_name"),
+        }
+
+        # Extract call info
+        call_info = {
+            "id": call_data.get("call_id"),
+            "from": call_data.get("from_number"),
+            "to": call_data.get("to_number"),
+            "duration": call_data.get("call_duration"),
+            "transcript_url": call_data.get("transcript_url"),
+            "recording_url": call_data.get("recording_url"),
+            "direction": call_data.get("call_direction"),
+            "status": call_data.get("call_status"),
+            "start_time": call_data.get("start_time"),
+            "end_time": call_data.get("end_time"),
+            "participant_identity": call_data.get("participant_identity")
+        }
+
+        # Get collected details from agent (LLM-collected data only)
+        collected_details = {}
+        if hasattr(agent, 'get_webhook_data'):
+            webhook_data = agent.get_webhook_data()
+            # Extract just the values for backward compatibility
+            for field_name, field_data in webhook_data.items():
+                if isinstance(field_data, dict) and "value" in field_data:
+                    collected_details[field_name] = field_data["value"]
+                else:
+                    # Handle legacy format
+                    collected_details[field_name] = str(field_data)
+
+        # Build conversation summary
+        conversation_summary = ""
+        if session_history:
+            user_messages = []
+            for item in session_history:
+                if isinstance(item, dict) and item.get("role") == "user" and item.get("content"):
+                    content = item["content"]
+                    if isinstance(content, list):
+                        content = " ".join([str(c) for c in content if c])
+                    user_messages.append(str(content).strip())
+            
+            if user_messages:
+                conversation_summary = " ".join(user_messages)
+
+        # Build the complete payload
+        payload = {
+            "assistant": assistant_info,
+            "call": call_info,
+            "webhook_configs": webhook_configs,
+            "collected_details": collected_details,
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+
+        logging.info("N8N_PAYLOAD_BUILT | assistant_id=%s | call_id=%s | details_collected=%s", 
+                   assistant_info.get("id"), call_info.get("id"), list(collected_details.keys()))
+        
+        return payload
+
+    except Exception as e:
+        logging.error("N8N_PAYLOAD_BUILD_ERROR | error=%s", str(e))
+        return {}
+
+async def send_n8n_webhook(webhook_url: str, payload: dict) -> dict | None:
+    """Send data to n8n webhook and return response"""
+    try:
+        import aiohttp
+        
+        # Convert payload to JSON
+        json_data = json.dumps(payload, default=str)
+        
+        logging.info("N8N_WEBHOOK_SENDING | url=%s | payload_size=%d", webhook_url, len(json_data))
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                webhook_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                response_text = await response.text()
+                
+                if response.status == 200:
+                    logging.info("N8N_WEBHOOK_SUCCESS | status=%d | response_size=%d", 
+                               response.status, len(response_text))
+                    
+                    # Try to parse response as JSON
+                    try:
+                        response_data = json.loads(response_text)
+                        return response_data
+                    except json.JSONDecodeError:
+                        logging.warning("N8N_WEBHOOK_RESPONSE_NOT_JSON | response=%s", response_text)
+                        return {"success": True, "message": response_text}
+                else:
+                    logging.error("N8N_WEBHOOK_ERROR | status=%d | response=%s", 
+                                response.status, response_text)
+                    return None
+
+    except Exception as e:
+        logging.error("N8N_WEBHOOK_SEND_ERROR | url=%s | error=%s", webhook_url, str(e))
+        return None
+
 
 def _parse_json_or_b64(raw: str) -> tuple[dict, str]:
     """Try JSON; if that fails, base64(JSON). Return (dict, source_kind)."""
@@ -772,6 +964,49 @@ async def entrypoint(ctx: agents.JobContext):
                 call_sid=call_sid
             )
 
+            # Send n8n webhook if assistant has n8n config
+            if assistant_id and assistant_id != "campaign":
+                try:
+                    # Fetch assistant n8n configuration
+                    n8n_config = await fetch_assistant_n8n_config(assistant_id)
+                    if n8n_config:
+                        # Build call data for n8n payload
+                        call_data = {
+                            "call_id": call_id,
+                            "from_number": phone_number or "unknown",
+                            "to_number": called_did or "unknown",
+                            "call_duration": int((end_time - start_time).total_seconds()),
+                            "transcript_url": None,  # Can be added if available
+                            "recording_url": None,   # Can be added if available
+                            "call_direction": "outbound",
+                            "call_status": "completed",
+                            "start_time": start_time.isoformat(),
+                            "end_time": end_time.isoformat(),
+                            "participant_identity": participant.identity if participant else None
+                        }
+
+                        # Build and send n8n payload
+                        webhook_configs = n8n_config.get("webhooks", [])
+                        payload = build_n8n_payload(n8n_config, call_data, session_history, webhook_configs, agent)
+                        if payload and webhook_configs:
+                            # Send to each configured webhook
+                            for webhook_config in webhook_configs:
+                                webhook_url = webhook_config.get("param")  # This should contain the actual URL
+                                if webhook_url:
+                                    response = await send_n8n_webhook(webhook_url, payload)
+                                    
+                                    if response:
+                                        logging.info("N8N_WEBHOOK_COMPLETED | assistant_id=%s | call_id=%s | webhook_name=%s", 
+                                                   assistant_id, call_id, webhook_config.get("name", "Unknown"))
+                                    else:
+                                        logging.warning("N8N_WEBHOOK_FAILED | assistant_id=%s | call_id=%s | webhook_name=%s", 
+                                                      assistant_id, call_id, webhook_config.get("name", "Unknown"))
+                    else:
+                        logging.info("N8N_CONFIG_NOT_FOUND | assistant_id=%s | skipping webhook", assistant_id)
+                except Exception as e:
+                    logging.error("N8N_WEBHOOK_ERROR | assistant_id=%s | call_id=%s | error=%s", 
+                                 assistant_id, call_id, str(e))
+
         ctx.add_shutdown_callback(save_call_on_shutdown_outbound)
 
         logging.info("STARTING_SESSION_RUN (OUTBOUND) | user_input=empty")
@@ -848,7 +1083,8 @@ async def entrypoint(ctx: agents.JobContext):
             try:
                 sb: Client = create_client(supabase_url, supabase_key)  # type: ignore
                 resp = sb.table("assistant").select(
-                    "id, name, prompt, first_message, cal_api_key, cal_event_type_id, cal_timezone, llm_provider_setting, llm_model_setting, temperature_setting, max_token_setting, knowledge_base_id"
+                    "id, name, prompt, first_message, cal_api_key, cal_event_type_id, cal_timezone, llm_provider_setting, llm_model_setting, temperature_setting, max_token_setting, knowledge_base_id, "
+                    "n8n_webhook_url, n8n_webhook_fields"
                 ).eq("id", assistant_id).single().execute()
                 row = resp.data
                 print("row", row)
@@ -868,6 +1104,9 @@ async def entrypoint(ctx: agents.JobContext):
                         "cal_event_type_id": row.get("cal_event_type_id"),
                         "cal_timezone": row.get("cal_timezone") or "UTC",
                         "knowledge_base_id": row.get("knowledge_base_id"),
+                        # N8N webhook configuration
+                        "n8n_webhook_url": row.get("n8n_webhook_url"),
+                        "n8n_webhook_fields": row.get("n8n_webhook_fields", []),
                     }
                     resolver_label = "resolver.supabase"
                     used_supabase = True
@@ -946,6 +1185,42 @@ CONTACT INFORMATION:
         logging.info("NO_CAMPAIGN_CONTEXT | campaign_prompt=%s | contact_info=%s", campaign_prompt, contact_info)
         prompt = base_prompt
 
+    # Check N8N webhook configuration for data collection requirements
+    n8n_config = None
+    print(f"DEBUG: N8N_CONFIG_CHECK | webhook_url={resolver_meta.get('n8n_webhook_url') if resolver_meta else None} | webhook_fields={resolver_meta.get('n8n_webhook_fields') if resolver_meta else None}")
+    logging.info("N8N_CONFIG_CHECK | webhook_url=%s | webhook_fields=%s", 
+                resolver_meta.get("n8n_webhook_url") if resolver_meta else None,
+                resolver_meta.get("n8n_webhook_fields") if resolver_meta else None)
+    
+    if resolver_meta and resolver_meta.get("n8n_webhook_url") and resolver_meta.get("n8n_webhook_fields"):
+        webhook_url = resolver_meta.get("n8n_webhook_url")
+        webhook_fields = resolver_meta.get("n8n_webhook_fields", [])
+        if webhook_url and webhook_fields and len(webhook_fields) > 0:
+            n8n_config = {
+                "assistant_id": assistant_id,
+                "assistant_name": resolver_meta.get("assistant", {}).get("name", "Assistant"),
+                "webhook_url": webhook_url,
+                "webhook_fields": webhook_fields
+            }
+            print(f"DEBUG: N8N_CONFIG_CREATED | webhook_url={webhook_url} | fields_count={len(webhook_fields)}")
+            logging.info("N8N_CONFIG_CREATED | webhook_url=%s | fields_count=%d", webhook_url, len(webhook_fields))
+    
+    # Build data collection instructions based on N8N webhook settings
+    data_collection_instructions = ""
+    if n8n_config and n8n_config.get("webhook_fields"):
+        # Extract webhook field names and descriptions to understand what data to collect
+        webhook_fields = n8n_config.get("webhook_fields", [])
+        field_descriptions = [field.get("description", "") for field in webhook_fields if field.get("description")]
+        field_names = [field.get("name", "") for field in webhook_fields if field.get("name")]
+        
+        logging.info("N8N_FIELDS_PROCESSING | field_names=%s | field_descriptions=%s", field_names, field_descriptions)
+        
+        if field_descriptions and field_names:
+            # Use the new dynamic instruction generation
+            data_collection_instructions = generate_dynamic_collection_instructions(webhook_fields)
+            print(f"DEBUG: N8N_DATA_COLLECTION_INSTRUCTIONS_CREATED | length={len(data_collection_instructions)}")
+            logging.info("N8N_DATA_COLLECTION_INSTRUCTIONS_CREATED | length=%d", len(data_collection_instructions))
+
     flow_instructions = """
 GUIDED CALL POLICY (be natural, not rigid):
 - Prefer one tool call per caller turn. (Parallel tool calls are disabled.)
@@ -960,6 +1235,11 @@ GUIDED CALL POLICY (be natural, not rigid):
 """.strip()
 
     instructions = prompt + "\n\n" + flow_instructions
+    
+    # Debug: Print the final instructions to see what the agent is getting
+    print(f"DEBUG: FINAL_INSTRUCTIONS_LENGTH | length={len(instructions)}")
+    print(f"DEBUG: FINAL_INSTRUCTIONS_PREVIEW | preview={instructions[:500]}...")
+    logging.info("FINAL_INSTRUCTIONS_LENGTH | length=%d", len(instructions))
 
     # Calendar (INBOUND ONLY)
     cal_api_key = resolver_meta.get("cal_api_key")
@@ -979,17 +1259,47 @@ GUIDED CALL POLICY (be natural, not rigid):
             logging.info("CALENDAR_READY | event_type_id=%s | tz=%s", cal_event_type_id, cal_timezone)
         except Exception:
             logging.exception("Failed to initialize Cal.com calendar")
+    
+    # Add data collection tools if N8N is configured
+    if n8n_config and n8n_config.get("webhook_fields"):
+        instructions += " Additional tools for data collection: collect_webhook_data(field_name, field_value) - use this to store each piece of information you collect from the caller."
+        instructions += " CRITICAL: You MUST ask for webhook data FIRST before doing any RAG searches or knowledge base queries!"
+        print(f"DEBUG: N8N_TOOLS_ADDED | webhook_tools_added=true")
+        logging.info("N8N_TOOLS_ADDED | webhook_tools_added=true")
+    else:
+        print(f"DEBUG: N8N_TOOLS_ADDED | webhook_tools_added=false")
+        logging.info("N8N_TOOLS_ADDED | webhook_tools_added=false")
 
     # Add RAG tools if knowledge base is available
     knowledge_base_id = resolver_meta.get("knowledge_base_id")
     if knowledge_base_id:
         instructions += " Additional tools available: search_knowledge, get_detailed_info (for knowledge base queries)."
         logging.info("RAG_TOOLS | Knowledge base tools added to instructions")
+    
+    # Add webhook data collection instructions LAST (highest priority)
+    if data_collection_instructions:
+        instructions += "\n\n" + data_collection_instructions
+        # Add a final, very explicit instruction
+        instructions += "\n\n🚨 FINAL REMINDER: After saying your first message, when the user responds, you MUST ask for their company name using collect_webhook_data tool! 🚨"
+        print(f"DEBUG: N8N_INSTRUCTIONS_ADDED | data_collection_added=true")
+        logging.info("N8N_INSTRUCTIONS_ADDED | data_collection_added=true")
+    else:
+        print(f"DEBUG: N8N_INSTRUCTIONS_ADDED | data_collection_added=false")
+        logging.info("N8N_INSTRUCTIONS_ADDED | data_collection_added=false")
+    
+    # Debug: Print the final instructions with webhook data collection
+    print(f"DEBUG: FINAL_INSTRUCTIONS_WITH_WEBHOOK | length={len(instructions)}")
+    print(f"DEBUG: FINAL_INSTRUCTIONS_END | end={instructions[-500:]}")
+    logging.info("FINAL_INSTRUCTIONS_WITH_WEBHOOK | length=%d", len(instructions))
 
     # First message (INBOUND greets)
     force_first = (os.getenv("FORCE_FIRST_MESSAGE", "true").lower() != "false")
     if force_first and first_message:
-        instructions += f' IMPORTANT: Begin the call by saying: "{first_message}"'
+        if data_collection_instructions:
+            # If webhook data collection is required, modify the first message instruction
+            instructions += f' IMPORTANT: Begin the call by saying: "{first_message}" Then IMMEDIATELY ask for the webhook data as specified above.'
+        else:
+            instructions += f' IMPORTANT: Begin the call by saying: "{first_message}"'
         logging.info("INBOUND_FIRST_MESSAGE_SET | first_message=%s", first_message)
 
     logging.info("PROMPT_TRACE_FINAL (INBOUND) | sha256=%s | len=%d | preview=%s",
@@ -1082,6 +1392,53 @@ GUIDED CALL POLICY (be natural, not rigid):
             recording_sid=recording_sid,
             call_sid=call_sid
         )
+
+        # Send n8n webhook if assistant has n8n config
+        if assistant_id and assistant_id != "unknown" and n8n_config:
+            try:
+                # Build call data for n8n payload
+                call_data = {
+                    "call_id": call_id,
+                    "from_number": called_did or "unknown",
+                    "to_number": "inbound",  # Inbound calls don't have a specific "to" number
+                    "call_duration": int((end_time - start_time).total_seconds()),
+                    "transcript_url": None,  # Can be added if available
+                    "recording_url": None,   # Can be added if available
+                    "call_direction": "inbound",
+                    "call_status": "completed",
+                    "start_time": start_time.isoformat(),
+                    "end_time": end_time.isoformat(),
+                    "participant_identity": participant.identity if participant else None
+                }
+
+                # Get collected webhook data from agent
+                webhook_data = {}
+                if hasattr(agent, 'get_webhook_data'):
+                    webhook_data = agent.get_webhook_data()
+                    logging.info("WEBHOOK_DATA_RETRIEVED | data=%s", webhook_data)
+
+                # Build and send n8n payload using the new system
+                webhook_url = n8n_config.get("webhook_url")
+                webhook_fields = n8n_config.get("webhook_fields", [])
+                
+                if webhook_url and webhook_data:
+                    payload = build_n8n_payload(n8n_config, call_data, session_history, webhook_fields, agent)
+                    
+                    response = await send_n8n_webhook(webhook_url, payload)
+                    
+                    if response:
+                        logging.info("N8N_WEBHOOK_COMPLETED | assistant_id=%s | call_id=%s | webhook_url=%s", 
+                                   assistant_id, call_id, webhook_url)
+                    else:
+                        logging.warning("N8N_WEBHOOK_FAILED | assistant_id=%s | call_id=%s | webhook_url=%s", 
+                                      assistant_id, call_id, webhook_url)
+                else:
+                    logging.info("N8N_WEBHOOK_SKIPPED | webhook_url=%s | webhook_data=%s", webhook_url, webhook_data)
+            except Exception as e:
+                logging.error("N8N_WEBHOOK_ERROR | assistant_id=%s | call_id=%s | error=%s", 
+                             assistant_id, call_id, str(e))
+        else:
+            logging.info("N8N_CONFIG_NOT_FOUND | assistant_id=%s | skipping webhook", assistant_id)
 
     ctx.add_shutdown_callback(save_call_on_shutdown_inbound)
 

@@ -12,7 +12,7 @@ import re
 from typing import Optional, Dict, Any
 
 from livekit.agents import Agent, RunContext, function_tool, ChatContext, ChatMessage
-from cal_calendar_api import Calendar, AvailableSlot, SlotUnavailableError
+from integrations.calendar_api import Calendar, AvailableSlot, SlotUnavailableError
 from .rag_service import rag_service, RAGContext
 
 
@@ -43,10 +43,21 @@ class RAGAssistant(Agent):
         self._slots_map: dict[str, AvailableSlot] = {}
         self._selected_slot: Optional[AvailableSlot] = None
 
+        # General contact information (for all calls, not just booking)
         self._name: Optional[str] = None
         self._email: Optional[str] = None
         self._phone: Optional[str] = None
         self._confirmed: bool = False
+
+        # Webhook data collection
+        self._webhook_data: dict[str, str] = {}
+        
+        # Data collection state
+        self._data_collection_intent: bool = False
+        self._data_collection_step: str = "none"  # none, name, email, phone, complete
+        
+        # Collected data for N8N integration
+        self._collected_data: Dict[str, Any] = {}
 
         # one-tool-per-utterance guard
         self._last_speech_id: Optional[str] = None
@@ -287,6 +298,13 @@ class RAGAssistant(Agent):
         
         if not self.rag_enabled:
             return "I don't have access to a knowledge base right now."
+        
+        # Check if webhook data has been collected first
+        if hasattr(self, '_webhook_data') and self._webhook_data:
+            webhook_fields_count = len(self._webhook_data)
+            logging.info(f"RAG_ASSISTANT | Webhook data collected: {webhook_fields_count} fields")
+        else:
+            logging.info("RAG_ASSISTANT | No webhook data collected yet, proceeding with RAG search")
         
         try:
             logging.info(f"RAG_ASSISTANT | Knowledge search requested: '{query}'")
@@ -543,3 +561,123 @@ class RAGAssistant(Agent):
         notes: Optional[str] = None,
     ) -> str:
         return "We'll confirm details, then I'll book it for you."
+
+    # ---------- General Data Collection Tools (for N8N integration) ----------
+    
+    @function_tool
+    async def start_data_collection(self, ctx: RunContext) -> str:
+        """
+        Start collecting contact information for N8N integration
+        """
+        gate = self._turn_gate(ctx)
+        if gate: return gate
+        
+        self._data_collection_intent = True
+        self._data_collection_step = "name"
+        return "I'd like to get some contact information from you. What's your full name?"
+
+    @function_tool
+    async def collect_name(self, ctx: RunContext, name: str) -> str:
+        """
+        Collect the caller's name for N8N integration
+        """
+        gate = self._turn_gate(ctx)
+        if gate: return gate
+        
+        if self._looks_like_prompt(name) or len(name.strip()) < 2:
+            return "Please tell me your full name."
+        
+        self._name = name.strip()
+        self._collected_data["name"] = self._name
+        self._data_collection_step = "email"
+        return "Thank you! What's your email address?"
+
+    @function_tool
+    async def collect_email(self, ctx: RunContext, email: str) -> str:
+        """
+        Collect the caller's email for N8N integration
+        """
+        gate = self._turn_gate(ctx)
+        if gate: return gate
+        
+        if not self._name:
+            return "Let me get your name first. What's your full name?"
+        
+        if self._looks_like_prompt(email) or not self._email_ok(email):
+            return "That email doesn't look valid. Could you repeat it?"
+        
+        self._email = email.strip()
+        self._collected_data["email"] = self._email
+        self._data_collection_step = "phone"
+        return "Great! And what's your phone number?"
+
+    @function_tool
+    async def collect_phone(self, ctx: RunContext, phone: str) -> str:
+        """
+        Collect the caller's phone number for N8N integration
+        """
+        gate = self._turn_gate(ctx)
+        if gate: return gate
+        
+        if not self._name or not self._email:
+            return "Let me get your name and email first."
+        
+        if self._looks_like_prompt(phone) or not self._phone_ok(phone):
+            return "That phone number doesn't look right. Please say it with digits."
+        
+        self._phone = phone.strip()
+        self._collected_data["phone"] = self._phone
+        self._data_collection_step = "complete"
+        return f"Perfect! I have your information: {self._name}, {self._email}, {self._phone}. Is there anything else I can help you with?"
+
+    @function_tool
+    async def skip_data_collection(self, ctx: RunContext) -> str:
+        """
+        Skip data collection if the caller doesn't want to provide information
+        """
+        gate = self._turn_gate(ctx)
+        if gate: return gate
+        
+        self._data_collection_intent = False
+        self._data_collection_step = "none"
+        return "No problem! Is there anything else I can help you with?"
+
+    def get_collected_data(self) -> Dict[str, Any]:
+        """
+        Get the collected contact information for N8N integration
+        """
+        return self._collected_data.copy()
+
+    # ---------- Webhook data collection ----------
+    @function_tool
+    async def collect_webhook_data(self, ctx: RunContext, field_name: str, field_value: str, collection_method: str = "user_provided") -> str:
+        """Collect webhook data with flexible collection methods for n8n integration"""
+        print(f"DEBUG: collect_webhook_data CALLED | field_name={field_name} | field_value={field_value} | method={collection_method}")
+        logging.info("DEBUG: collect_webhook_data CALLED | field_name=%s | field_value=%s | method=%s", field_name, field_value, collection_method)
+        
+        gate = self._turn_gate(ctx)
+        if gate: return gate
+
+        if not field_name or not field_value:
+            return "I need both the field name and value to collect this information."
+
+        # Validate collection method
+        valid_methods = ["user_provided", "analyzed", "observed"]
+        if collection_method not in valid_methods:
+            collection_method = "user_provided"
+
+        # Store the webhook data with metadata
+        self._webhook_data[field_name.strip()] = {
+            "value": field_value.strip(),
+            "method": collection_method,
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+
+        logging.info("WEBHOOK_DATA_COLLECTED | field=%s | method=%s | total_fields=%d",
+                    field_name, collection_method, len(self._webhook_data))
+
+        return f"Collected {field_name} via {collection_method}. Thank you!"
+
+    def get_webhook_data(self) -> dict:
+        """Get all collected webhook data"""
+        return self._webhook_data.copy()
