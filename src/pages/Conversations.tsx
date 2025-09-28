@@ -552,9 +552,9 @@ export default function Conversations() {
                   </div>
                 </ThemeCard>
               ) : (
-                <ThemeCard variant="glass" className="h-[calc(100vh-8rem)] grid grid-cols-[15rem_minmax(0,1fr)_20rem] rounded-[var(--radius-lg)] overflow-hidden">
+                <ThemeCard variant="glass" className="h-[calc(100vh-8rem)] overflow-y-auto grid grid-cols-[15rem_minmax(0,1fr)_20rem] rounded-[var(--radius-lg)] ">
                   {/* Left Panel - Conversations List */}
-                  <div className=" border-r border-border/50">
+                  <div className=" border-r border-border/50 overflow-y-auto">
                     <ConversationsList
                       conversations={displayItems}
                       selectedConversationId={selectedConversation?.id}
@@ -563,9 +563,9 @@ export default function Conversations() {
                   </div>
 
                   {/* Middle Panel - Message Thread */}
-                  <div className=" border-r overflow-y-auto border-border/50">
+                  <div className="border-r border-border/50 flex flex-col min-h-0 h-full overflow-y-auto">
                     {isLoadingConversation ? (
-                      <div className="h-full flex items-center justify-center">
+                      <div className="flex-1 flex items-center justify-center">
                         <div className="text-center text-muted-foreground">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
                           <div className="text-lg font-medium mb-2">
@@ -584,7 +584,7 @@ export default function Conversations() {
                         onMessageFilterChange={setMessageFilter}
                       />
                     ) : (
-                      <div className="h-full flex items-center justify-center">
+                      <div className="flex-1 flex items-center justify-center">
                         <div className="text-center text-muted-foreground">
                           <div className="text-lg font-medium mb-2">
                             Select a conversation
@@ -598,7 +598,7 @@ export default function Conversations() {
                   </div>
 
                   {/* Right Panel - Contact Info */}
-                  <div className="">
+                  <div className=" overflow-y-auto">
                     {selectedConversation ? (
                       <ContactInfoPanel conversation={selectedConversation} />
                     ) : (

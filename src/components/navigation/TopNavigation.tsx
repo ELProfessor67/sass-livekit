@@ -24,7 +24,7 @@ export default function TopNavigation() {
   const navItems = [{
     icon: <BarChart3 size={16} />,
     label: "Dashboard",
-    to: "/"
+    to: "/dashboard"
   }, {
     icon: <Bot size={16} />,
     label: "Assistants",

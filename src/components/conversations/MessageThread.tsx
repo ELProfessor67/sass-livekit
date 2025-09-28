@@ -456,46 +456,49 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
           </div>
         )}
 
-        <ScrollArea
-          ref={scrollAreaRef}
-          className="flex-1"
-          onScrollCapture={handleScroll}
-        >
-          {/* Message count indicator */}
-          {messageFilter !== 'all' && (
-            <div className="px-3 pt-2 pb-1">
-              <div className="text-xs text-muted-foreground">
-                Showing {allMessages.length} {messageFilter === 'calls' ? 'call' : 'SMS'} message{allMessages.length !== 1 ? 's' : ''}
-              </div>
-            </div>
-          )}
-
-          <div className="p-3 space-y-4">
-            {sortedDateGroups.map(([dateKey, dayMessages]) => (
-              <div key={dateKey} className="space-y-2">
-                {/* Date Separator */}
-                <div className="flex items-center justify-center">
-                  <div className="px-2 py-0.5 bg-muted/50 rounded-full text-[11px] text-muted-foreground">
-                    {format(new Date(dateKey), 'MMM d, yyyy')}
-                  </div>
+        {/* scrollable messages */}
+        <div className="flex-1 min-h-0">
+          <ScrollArea
+            ref={scrollAreaRef}
+            className="h-full"
+            onScrollCapture={handleScroll}
+          >
+            {/* Message count indicator */}
+            {messageFilter !== 'all' && (
+              <div className="px-3 pt-2 pb-1">
+                <div className="text-xs text-muted-foreground">
+                  Showing {allMessages.length} {messageFilter === 'calls' ? 'call' : 'SMS'} message{allMessages.length !== 1 ? 's' : ''}
                 </div>
-
-                {/* Messages for this day */}
-                {dayMessages.map((message, index) => (
-                  <MessageBubble
-                    key={message.id}
-                    message={message}
-                    conversation={conversation}
-                    showAvatar={index === 0 || dayMessages[index - 1]?.direction !== message.direction}
-                  />
-                ))}
               </div>
-            ))}
-          </div>
-        </ScrollArea>
+            )}
 
-        {/* Message Input */}
-        <div className="border-t border-border/50">
+            <div className="p-3 space-y-4">
+              {sortedDateGroups.map(([dateKey, dayMessages]) => (
+                <div key={dateKey} className="space-y-2">
+                  {/* Date Separator */}
+                  <div className="flex items-center justify-center">
+                    <div className="px-2 py-0.5 bg-muted/50 rounded-full text-[11px] text-muted-foreground">
+                      {format(new Date(dateKey), 'MMM d, yyyy')}
+                    </div>
+                  </div>
+
+                  {/* Messages for this day */}
+                  {dayMessages.map((message, index) => (
+                    <MessageBubble
+                      key={message.id}
+                      message={message}
+                      conversation={conversation}
+                      showAvatar={index === 0 || dayMessages[index - 1]?.direction !== message.direction}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
+
+        {/* input pinned to bottom */}
+        <div className="shrink-0 border-t border-border/50">
           <ModernMessageInput
             conversation={conversation}
             selectedAgentPhoneNumber={getPhoneNumberForSelectedAgent()}

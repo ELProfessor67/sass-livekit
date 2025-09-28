@@ -37,7 +37,7 @@ export function Sidebar() {
   const location = useLocation();
 
   const links = [
-    { icon: <BarChart3 size={20} className="text-primary/80" />, label: "Dashboard", to: "/" },
+    { icon: <BarChart3 size={20} className="text-primary/80" />, label: "Dashboard", to: "/dashboard" },
     { icon: <Bot size={20} className="text-primary/80" />, label: "Assistants", to: "/assistants" },
     { icon: <Phone size={20} className="text-primary/80" />, label: "Calls", to: "/calls" },
     { icon: <MessageSquare size={20} className="text-primary/80" />, label: "Conversations", to: "/conversations" },
