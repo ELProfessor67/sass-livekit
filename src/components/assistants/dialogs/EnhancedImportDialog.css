@@ -1,0 +1,43 @@
+/* Force white text for import dialog */
+[data-radix-dialog-content] {
+  color: #ffffff !important;
+}
+
+[data-radix-dialog-content] * {
+  color: #ffffff !important;
+}
+
+[data-radix-dialog-content] h1,
+[data-radix-dialog-content] h2,
+[data-radix-dialog-content] h3,
+[data-radix-dialog-content] h4,
+[data-radix-dialog-content] h5,
+[data-radix-dialog-content] h6,
+[data-radix-dialog-content] p,
+[data-radix-dialog-content] span,
+[data-radix-dialog-content] div,
+[data-radix-dialog-content] label,
+[data-radix-dialog-content] button,
+[data-radix-dialog-content] input,
+[data-radix-dialog-content] select,
+[data-radix-dialog-content] textarea {
+  color: #ffffff !important;
+}
+
+[data-radix-dialog-title],
+[data-radix-dialog-description] {
+  color: #ffffff !important;
+}
+
+/* Override any theme colors */
+.dark [data-radix-dialog-content] *,
+.light [data-radix-dialog-content] *,
+.glass-ui [data-radix-dialog-content] *,
+.minimal-ui [data-radix-dialog-content] * {
+  color: #ffffff !important;
+}
+
+/* Maximum specificity */
+html body [data-radix-dialog-content] * {
+  color: #ffffff !important;
+}

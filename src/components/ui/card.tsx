@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement> & {
-    variant?: "default" | "glass" | "glass-light" | "glass-heavy" | "glass-reading" | "premium" | "ultra-premium" | "enterprise" | "liquid" | "frosted-premium" | "transparent"
+    variant?: "default" | "glass" | "glass-light" | "glass-heavy" | "glass-reading" | "premium" | "ultra-premium" | "enterprise" | "liquid" | "frosted-premium" | "transparent" | "elevated" | "premium-enhanced"
   }
 >(({ className, variant = "default", ...props }, ref) => {
   const { uiStyle } = useTheme()
@@ -37,6 +37,10 @@ const Card = React.forwardRef<
     } else {
       // minimal theme
       switch (variant) {
+        case "elevated":
+          return "card-elevated-minimal"
+        case "premium-enhanced":
+          return "card-premium-enhanced-minimal"
         case "premium":
         case "ultra-premium":
         case "enterprise":

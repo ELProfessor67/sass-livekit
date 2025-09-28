@@ -21,6 +21,7 @@ interface DashboardContentProps {
     avgDuration: number;
     appointments: number;
     bookingRate: number;
+    successfulTransfers: number;
   };
   callOutcomesData: Record<string, number>;
 }
@@ -71,12 +72,6 @@ export default function DashboardContent({
             animate="show"
             transition={{ duration: 0.6, delay: 0.3 }}
           >
-            <div className="mb-[var(--space-2xl)]">
-              <h2 className="text-[var(--text-xl)] font-[var(--font-extralight)] flex items-center liquid-space-md mb-[var(--space-2xl)]">
-                <LineChart className="text-primary/80" size={20} />
-                <span className="text-liquid tracking-wide">Call Analytics</span>
-              </h2>
-            </div>
             <CallAnalytics dateRange={dateRange} callLogs={callLogs} />
           </motion.section>
 

@@ -1,72 +1,68 @@
+.settings-container {
+  @apply bg-card/50 border border-border/50
+         shadow-lg backdrop-blur-sm
+         transition-all duration-300
+         hover:bg-card/60;
+}
 
-@layer components {
-  .settings-container {
-    @apply surface-elevated border-theme-medium
-           shadow-[var(--shadow-glass-md)]
-           transition-theme-slow
-           hover-theme-accent;
-  }
-  
-  .settings-card {
-    @apply liquid-glass-medium liquid-rounded-lg
-           shadow-[var(--shadow-glass-sm)]
-           p-[var(--space-2xl)]
-           transition-theme-slow
-           hover:shadow-[var(--shadow-glass-lg)]
-           border-theme-light
-           space-y-[var(--space-xl)];
-  }
+.settings-card {
+  @apply bg-card/40 rounded-lg
+         shadow-md backdrop-blur-sm
+         p-6
+         transition-all duration-300
+         hover:shadow-lg
+         border border-border/30
+         space-y-6;
+}
 
-  .settings-card-title {
-    @apply text-[var(--text-xl)]
-           font-[var(--font-medium)]
-           text-theme-primary
-           tracking-tight;
-  }
+.settings-card-title {
+  @apply text-xl
+         font-medium
+         text-foreground
+         tracking-tight;
+}
 
-  .settings-card-description {
-    @apply text-[var(--text-sm)]
-           text-theme-secondary
-           font-[var(--font-normal)];
-  }
+.settings-card-description {
+  @apply text-sm
+         text-muted-foreground;
+}
 
-  .settings-input {
-    @apply surface-base border-theme-medium
-           focus:border-primary/40 
-           focus:ring-primary/20
-           text-theme-primary
-           placeholder:text-theme-secondary
-           shadow-[var(--shadow-xs)]
-           transition-theme-fast;
-  }
+.settings-input {
+  @apply bg-background border border-border
+         focus:border-primary/40 
+         focus:ring-1 focus:ring-primary/20
+         text-foreground
+         placeholder:text-muted-foreground
+         shadow-sm
+         transition-colors;
+}
 
-  .settings-label {
-    @apply text-[var(--text-sm)]
-           font-[var(--font-medium)]
-           text-theme-primary
-           mb-[var(--space-md)];
-  }
+.settings-label {
+  @apply text-sm
+         font-medium
+         text-foreground
+         mb-3;
+}
 
-  /* Tab styling for horizontal tabs */
-  .settings-tab {
-    @apply relative 
-           py-[var(--space-lg)] 
-           px-[var(--space-lg)]
-           text-[var(--text-base)]
-           font-[var(--font-light)]
-           transition-theme-base
-           text-theme-secondary
-           hover:text-theme-primary;
-  }
+/* Tab styling for horizontal tabs */
+.settings-tab {
+  @apply relative 
+         py-3 
+         px-4
+         text-base
+         font-light
+         transition-colors
+         text-muted-foreground
+         hover:text-foreground;
+}
 
-  .settings-tab-active {
-    @apply text-theme-primary 
-           font-[var(--font-medium)];
-  }
+.settings-tab-active {
+  @apply text-foreground 
+         font-medium;
+}
 
-  .settings-tab-underline {
-    @apply absolute bottom-0 left-0 right-0 
-           h-[2px] 
-           bg-primary;
-  }
+.settings-tab-underline {
+  @apply absolute bottom-0 left-0 right-0 
+         h-0.5 
+         bg-primary;
 }

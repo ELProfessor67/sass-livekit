@@ -39,22 +39,22 @@ export default function ConversationsToolbar({
       </div>
       
       <div>
-        <TimeRangeSelector onRangeChange={onDateRangeChange} initialRange={dateRange} />
+        <TimeRangeSelector onRangeChange={onDateRangeChange} />
       </div>
       
       <div>
         <Select value={resolutionFilter} onValueChange={onResolutionChange}>
-          <SelectTrigger>
+          <SelectTrigger className="bg-background/50 border-border/50 text-foreground">
             <SelectValue placeholder="Conversation Outcome: All" />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Outcomes</SelectItem>
-            <SelectItem value="booked appointment">Booked Appointment</SelectItem>
-            <SelectItem value="qualified">Qualified</SelectItem>
-            <SelectItem value="not qualified">Not Qualified</SelectItem>
-            <SelectItem value="spam">Spam</SelectItem>
-            <SelectItem value="escalated">Escalated</SelectItem>
-            <SelectItem value="call dropped">Call Dropped</SelectItem>
+          <SelectContent className="bg-background/95 border-border/50 backdrop-blur-sm">
+            <SelectItem value="all" className="text-foreground hover:bg-accent/50">All Outcomes</SelectItem>
+            <SelectItem value="booked appointment" className="text-foreground hover:bg-accent/50">Booked Appointment</SelectItem>
+            <SelectItem value="qualified" className="text-foreground hover:bg-accent/50">Qualified</SelectItem>
+            <SelectItem value="not qualified" className="text-foreground hover:bg-accent/50">Not Qualified</SelectItem>
+            <SelectItem value="spam" className="text-foreground hover:bg-accent/50">Spam</SelectItem>
+            <SelectItem value="escalated" className="text-foreground hover:bg-accent/50">Escalated</SelectItem>
+            <SelectItem value="call dropped" className="text-foreground hover:bg-accent/50">Call Dropped</SelectItem>
           </SelectContent>
         </Select>
       </div>

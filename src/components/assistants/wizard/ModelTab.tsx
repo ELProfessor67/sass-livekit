@@ -2,12 +2,32 @@ import React, { useState, useEffect } from "react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronRight, Loader2, Plus, ExternalLink } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ChevronDown, ChevronRight, Loader2, Plus, ExternalLink, X, Search, Phone } from "lucide-react";
 import { ModelData } from "./types";
 import { WizardSlider } from "./WizardSlider";
 import { Input } from "@/components/ui/input";
 import { getKnowledgeBases, type KnowledgeBase } from "@/lib/api/knowledgeBase";
+
+// Predefined idle message options
+const IDLE_MESSAGE_OPTIONS = [
+  "Are you still there?",
+  "Can you hear me?",
+  "Hello?",
+  "I'm still here if you need anything",
+  "Did you have any other questions?",
+  "Let me know if you need help with anything else",
+  "Are we still connected?",
+  "I'm listening whenever you're ready",
+  "Take your time, I'll wait",
+  "Is everything okay?",
+  "Would you like me to repeat anything?",
+  "I'm here when you're ready to continue"
+];
 
 interface ModelTabProps {
   data: ModelData;
@@ -16,9 +36,43 @@ interface ModelTabProps {
 
 export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
   const [isTranscriberOpen, setIsTranscriberOpen] = React.useState(false);
+  const [isCallManagementOpen, setIsCallManagementOpen] = React.useState(false);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [loadingKnowledgeBases, setLoadingKnowledgeBases] = useState(false);
   const [knowledgeBaseError, setKnowledgeBaseError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  // Debug logging
+  console.log('ModelTab data:', { provider: data.provider, model: data.model });
+
+  // Idle message helper functions
+  const removeIdleMessage = (index: number) => {
+    const updated = data.idleMessages.filter((_, i) => i !== index);
+    onChange({ idleMessages: updated });
+  };
+
+  const toggleIdleMessage = (message: string) => {
+    const updated = data.idleMessages.includes(message)
+      ? data.idleMessages.filter(msg => msg !== message)
+      : [...data.idleMessages, message];
+    onChange({ idleMessages: updated });
+  };
+
+  const selectAllIdleMessages = () => {
+    const filteredOptions = IDLE_MESSAGE_OPTIONS.filter(option =>
+      option.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    onChange({ idleMessages: [...filteredOptions] });
+  };
+
+  const clearAllIdleMessages = () => {
+    onChange({ idleMessages: [] });
+  };
+
+  const filteredIdleOptions = IDLE_MESSAGE_OPTIONS.filter(option =>
+    option.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   // Fetch knowledge bases on component mount
   useEffect(() => {
@@ -94,7 +148,19 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
             {/* Provider */}
             <div>
               <Label className="block text-sm font-medium mb-2">Provider</Label>
-              <Select value={data.provider} onValueChange={(value) => onChange({ provider: value })}>
+              <Select value={data.provider} onValueChange={(value) => {
+                // Reset model when provider changes
+                const defaultModels = {
+                  "OpenAI": "GPT-4o Mini",
+                  "Anthropic": "Claude 3.5 Sonnet",
+                  "Google": "Gemini Pro",
+                  "Groq": "openai/gpt-oss-120b",
+                  "Cerebras": "cerebras-llama-2-7b"
+                };
+                const newModel = defaultModels[value as keyof typeof defaultModels] || "";
+                console.log('Provider changed:', { from: data.provider, to: value, newModel });
+                onChange({ provider: value, model: newModel });
+              }}>
                 <SelectTrigger className="h-10">
                   <SelectValue />
                 </SelectTrigger>
@@ -102,6 +168,8 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                   <SelectItem value="OpenAI">OpenAI</SelectItem>
                   <SelectItem value="Anthropic">Anthropic</SelectItem>
                   <SelectItem value="Google">Google</SelectItem>
+                  <SelectItem value="Groq">Groq</SelectItem>
+                  <SelectItem value="Cerebras">Cerebras</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -109,17 +177,53 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
             {/* Model */}
             <div>
               <Label className="block text-sm font-medium mb-2">Model</Label>
-              <Select value={data.model} onValueChange={(value) => onChange({ model: value })}>
+              <Select value={data.model} onValueChange={(value) => {
+                console.log('Model changed:', { from: data.model, to: value, provider: data.provider });
+                onChange({ model: value });
+              }}>
                 <SelectTrigger className="h-10">
-                  <SelectValue />
+                  <SelectValue placeholder="Select a model" />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
-                  <SelectItem value="GPT-4o Mini">GPT-4o Mini</SelectItem>
-                  <SelectItem value="GPT-4o">GPT-4o</SelectItem>
-                  <SelectItem value="GPT-4 Turbo">GPT-4 Turbo</SelectItem>
+                  {data.provider === "OpenAI" && (
+                    <>
+                      <SelectItem value="GPT-4o Mini">GPT-4o Mini</SelectItem>
+                      <SelectItem value="GPT-4o">GPT-4o</SelectItem>
+                      <SelectItem value="GPT-4 Turbo">GPT-4 Turbo</SelectItem>
+                    </>
+                  )}
+                  {data.provider === "Anthropic" && (
+                    <>
+                      <SelectItem value="Claude 3.5 Sonnet">Claude 3.5 Sonnet</SelectItem>
+                      <SelectItem value="Claude 3 Opus">Claude 3 Opus</SelectItem>
+                      <SelectItem value="Claude 3 Haiku">Claude 3 Haiku</SelectItem>
+                    </>
+                  )}
+                  {data.provider === "Google" && (
+                    <>
+                      <SelectItem value="Gemini Pro">Gemini Pro</SelectItem>
+                      <SelectItem value="Gemini Pro Vision">Gemini Pro Vision</SelectItem>
+                    </>
+                  )}
+                  {data.provider === "Groq" && (
+                    <>
+                      <SelectItem value="openai/gpt-oss-120b">OpenAI GPT-OSS 120B</SelectItem>
+                      <SelectItem value="openai/gpt-oss-20b">OpenAI GPT-OSS 20B</SelectItem>
+                    </>
+                  )}
+                  {data.provider === "Cerebras" && (
+                    <>
+                      <SelectItem value="cerebras-llama-2-7b">Cerebras Llama 2 7B</SelectItem>
+                      <SelectItem value="cerebras-llama-2-13b">Cerebras Llama 2 13B</SelectItem>
+                      <SelectItem value="cerebras-gpt-13b">Cerebras GPT 13B</SelectItem>
+                      <SelectItem value="cerebras-gpt-6.7b">Cerebras GPT 6.7B</SelectItem>
+                      <SelectItem value="cerebras-gpt-2.7b">Cerebras GPT 2.7B</SelectItem>
+                    </>
+                  )}
                 </SelectContent>
               </Select>
             </div>
+
 
             {/* Knowledge Base */}
             <div>
@@ -267,6 +371,27 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                 placeholder="2048"
               />
             </div>
+
+            {/* Language */}
+            <div>
+              <Label className="block text-sm font-medium mb-2">Language</Label>
+              <Select value={data.language} onValueChange={(value) => onChange({ language: value })}>
+                <SelectTrigger className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-60">
+                  <SelectItem value="en-es">English & Spanish</SelectItem>
+                  <SelectItem value="en">English</SelectItem>
+                  <SelectItem value="es">Spanish</SelectItem>
+                  <SelectItem value="pt">Portuguese</SelectItem>
+                  <SelectItem value="fr">French</SelectItem>
+                  <SelectItem value="de">German</SelectItem>
+                  <SelectItem value="nl">Dutch</SelectItem>
+                  <SelectItem value="no">Norwegian</SelectItem>
+                  <SelectItem value="ar">Arabic</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </div>
@@ -334,6 +459,214 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
             </div>
           </CollapsibleContent>
         </Collapsible>
+      </div>
+
+      {/* Call Management Settings */}
+      <div className="lg:col-span-12 mt-[var(--space-xl)]">
+        <Card variant="default" className="overflow-hidden">
+          <Collapsible open={isCallManagementOpen} onOpenChange={setIsCallManagementOpen}>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors p-[var(--space-lg)]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-[var(--space-md)]">
+                    <Phone className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <CardTitle className="text-base font-medium">Call Management</CardTitle>
+                      <CardDescription className="text-sm">
+                        Configure call handling, idle messages, and timeout settings
+                      </CardDescription>
+                    </div>
+                  </div>
+                  {isCallManagementOpen ? (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </div>
+              </CardHeader>
+            </CollapsibleTrigger>
+            
+            <CollapsibleContent>
+              <CardContent className="pt-0 pb-[var(--space-lg)] px-[var(--space-lg)]">
+                <div className="space-y-[var(--space-xl)]">
+                  {/* End Call Message */}
+                  <div className="space-y-[var(--space-sm)]">
+                    <Label className="text-sm font-medium">End Call Message</Label>
+                    <p className="text-xs text-muted-foreground">
+                      This message will be spoken by the assistant when the call is ended.
+                    </p>
+                    <Input
+                      placeholder="Thank you for calling. Have a great day!"
+                      value={data.endCallMessage}
+                      onChange={(e) => onChange({ endCallMessage: e.target.value })}
+                      className="w-full"
+                    />
+                  </div>
+
+                  {/* Idle Messages */}
+                  <div className="space-y-[var(--space-sm)]">
+                    <Label className="text-sm font-medium">Idle Messages</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Select predefined messages that the assistant will use when the user hasn't responded
+                    </p>
+                    
+                    {/* Message Pills */}
+                    {data.idleMessages.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {data.idleMessages.map((message, index) => (
+                          <div
+                            key={index}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-sm"
+                          >
+                            <span className="text-foreground">{message}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeIdleMessage(index)}
+                              className="h-4 w-4 p-0 hover:bg-destructive/20 rounded-full"
+                            >
+                              <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Dropdown Selector */}
+                    <Popover open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={isDropdownOpen}
+                          className="w-full justify-between text-left font-normal"
+                        >
+                          {data.idleMessages.length > 0 
+                            ? `${data.idleMessages.length} message${data.idleMessages.length > 1 ? 's' : ''} selected`
+                            : "Select idle messages..."
+                          }
+                          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      
+                      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                        <div className="max-h-80 overflow-hidden rounded-md">
+                          {/* Search */}
+                          <div className="flex items-center border-b border-border px-3 py-3 bg-popover">
+                            <Search className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                            <Input
+                              placeholder="Search messages..."
+                              value={searchTerm}
+                              onChange={(e) => setSearchTerm(e.target.value)}
+                              className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent h-6 px-0 text-sm placeholder:text-muted-foreground"
+                            />
+                          </div>
+                          
+                          {/* Select All / Clear All */}
+                          <div className="flex justify-between items-center p-3 bg-muted/30 border-b border-border">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={selectAllIdleMessages}
+                              className="h-7 px-2 text-xs"
+                            >
+                              Select All
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={clearAllIdleMessages}
+                              className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                            >
+                              Clear All
+                            </Button>
+                          </div>
+                          
+                          {/* Options List */}
+                          <div className="max-h-48 overflow-auto">
+                            {filteredIdleOptions.length > 0 ? (
+                              filteredIdleOptions.map((option) => (
+                                <div
+                                  key={option}
+                                  className="flex items-center space-x-3 px-3 py-2 hover:bg-muted/50 cursor-pointer"
+                                  onClick={() => toggleIdleMessage(option)}
+                                >
+                                  <Checkbox
+                                    checked={data.idleMessages.includes(option)}
+                                    onChange={() => {}}
+                                    className="pointer-events-none"
+                                  />
+                                  <span className="flex-1 text-sm text-foreground">{option}</span>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="px-3 py-4 text-center text-sm text-muted-foreground">
+                                No messages found
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-[var(--space-lg)]">
+                    {/* Max Idle Messages */}
+                    <div className="space-y-[var(--space-sm)]">
+                      <Label className="text-sm font-medium">Max Idle Messages</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Maximum number of idle messages before ending call
+                      </p>
+                      <Input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={data.idleMessageMaxSpokenCount}
+                        onChange={(e) => onChange({ idleMessageMaxSpokenCount: parseInt(e.target.value) || 3 })}
+                        className="text-center"
+                        placeholder="3"
+                      />
+                    </div>
+
+                    {/* Idle Timeout */}
+                    <div className="space-y-[var(--space-sm)]">
+                      <Label className="text-sm font-medium">Idle Timeout (seconds)</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Time to wait before sending idle message
+                      </p>
+                      <Input
+                        type="number"
+                        min="5"
+                        max="60"
+                        value={data.silenceTimeoutSeconds}
+                        onChange={(e) => onChange({ silenceTimeoutSeconds: parseInt(e.target.value) || 10 })}
+                        className="text-center"
+                        placeholder="10"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Maximum Call Duration */}
+                  <div className="space-y-[var(--space-sm)]">
+                    <Label className="text-sm font-medium">Maximum Call Duration (minutes)</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Automatically end calls after this duration to prevent excessive charges
+                    </p>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="120"
+                      value={data.maxCallDuration}
+                      onChange={(e) => onChange({ maxCallDuration: parseInt(e.target.value) || 30 })}
+                      className="w-32 text-center"
+                      placeholder="30"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
       </div>
     </div>
   );

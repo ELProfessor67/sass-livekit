@@ -258,7 +258,7 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
   // Add live transcription segments as messages
   const liveTranscriptionMessages = liveTranscription.map(segment => ({
     id: `live_${segment.id}`,
-    type: 'transcription' as const,
+    type: 'call' as const,
     timestamp: new Date(segment.timestamp),
     direction: segment.speaker === 'customer' ? 'inbound' : 'outbound',
     duration: '0:00',
@@ -390,42 +390,8 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
               </p>
             </div>
             <div className="flex items-center space-x-2 relative">
-              {/* Test button to verify clicks work */}
-
-
-
-              <button
-                type="button"
-                className={`inline-flex items-center rounded-full border-2 px-2.5 py-0.5 text-[11px] font-semibold transition-all duration-200 cursor-pointer hover:scale-105 select-none active:scale-95 z-10 relative hover:border-blue-400 ${messageFilter === 'calls'
-                    ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                    : 'border-gray-300 text-foreground hover:bg-blue-50 hover:border-blue-400 hover:shadow-sm'
-                  }`}
-                onMouseDown={() => console.log('Call button mouse down')}
-                onMouseUp={() => console.log('Call button mouse up')}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  console.log('Call badge clicked, current filter:', messageFilter);
-                  onMessageFilterChange(messageFilter === 'calls' ? 'all' : 'calls');
-                }}
-                style={{ pointerEvents: 'auto', position: 'relative', zIndex: 1000 }}
-              >
-                {conversation.totalCalls} call{conversation.totalCalls !== 1 ? 's' : ''}
-              </button>
-              <button
-                type="button"
-                className={`inline-flex items-center rounded-full border-2 px-2.5 py-0.5 text-[11px] font-semibold transition-all duration-200 cursor-pointer hover:scale-105 select-none active:scale-95 z-10 relative hover:border-blue-400 ${messageFilter === 'sms'
-                    ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                    : 'border-gray-300 text-foreground hover:bg-blue-50 hover:border-blue-400 hover:shadow-sm'
-                  }`}
-                onClick={() => {
-                  console.log('SMS badge clicked, current filter:', messageFilter);
-                  onMessageFilterChange(messageFilter === 'sms' ? 'all' : 'sms');
-                }}
-                style={{ pointerEvents: 'auto' }}
-              >
-                {conversation.totalSMS || 0} SMS
-              </button>
+              
+          
               {messageFilter !== 'all' && (
                 <button
                   type="button"
@@ -447,16 +413,16 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
               value={selectedAgentId}
               onValueChange={setSelectedAgentId}
             >
-              <SelectTrigger className="w-48 h-8 text-xs">
+              <SelectTrigger className="w-48 h-8 text-xs bg-gray-800/90 border-gray-700/60 text-white hover:bg-gray-700/90 hover:border-gray-600/80">
                 <div className="flex items-center space-x-2">
-                  <Users className="w-3 h-3" />
+                  <Users className="w-3 h-3 text-gray-300" />
                   <SelectValue placeholder="Filter by Agent" />
                 </div>
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Agents</SelectItem>
+              <SelectContent className="bg-gray-800/95 border-gray-700/60 backdrop-blur-sm">
+                <SelectItem value="all" className="text-white hover:bg-gray-700/50">All Agents</SelectItem>
                 {assistants.map((assistant) => (
-                  <SelectItem key={assistant.id} value={assistant.id}>
+                  <SelectItem key={assistant.id} value={assistant.id} className="text-white hover:bg-gray-700/50">
                     {assistant.name}
                   </SelectItem>
                 ))}
@@ -473,23 +439,7 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
               </div>
             )}
 
-            <Button
-              variant={showTranscription ? "default" : "outline"}
-              size="sm"
-              onClick={() => setShowTranscription(!showTranscription)}
-            >
-              {showTranscription ? (
-                <>
-                  <MessageSquare className="w-4 h-4 mr-2" />
-                  Hide Live
-                </>
-              ) : (
-                <>
-                  <Mic className="w-4 h-4 mr-2" />
-                  Live Transcribe
-                </>
-              )}
-            </Button>
+           
           </div>
         </div>
       </div>

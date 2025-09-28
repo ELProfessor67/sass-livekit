@@ -1,5 +1,6 @@
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { CardTitle } from "@/components/ui/typography";
 import { LineChart } from "lucide-react";
 import CallVolumeChart from "./call-analytics/CallVolumeChart";
 import { useCallVolumeData } from "./call-analytics/useCallVolumeData";
@@ -19,11 +20,11 @@ export default function CallAnalytics({ dateRange, callLogs = [] }: CallAnalytic
   return (
     <Card variant="glass" className="overflow-hidden">
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center liquid-space-md text-lg font-extralight">
+        <div className="flex items-center liquid-space-md">
           <div className="w-1 h-6 bg-gradient-to-b from-primary to-primary/60 liquid-rounded-sm
                         shadow-[0_0_12px_rgba(255,74,113,0.4)]"></div>
-          <span className="text-liquid">Call Volume</span>
-        </CardTitle>
+          <CardTitle>Call Volume</CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="h-[350px] pt-4">
         <CallVolumeChart chartData={chartData} />

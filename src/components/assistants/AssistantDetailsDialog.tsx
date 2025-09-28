@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from "react";
-import { X, Phone, Calendar, MessageSquare, Settings } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Phone, Users, TrendingUp, Settings } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  ThemedDialog,
+  ThemedDialogContent,
+  ThemedDialogHeader,
+} from "@/components/ui/themed-dialog";
 
 interface Assistant {
   id: string;
@@ -26,6 +29,23 @@ interface Assistant {
   created_at?: string;
   updated_at?: string;
 }
+
+// Utility functions
+const formatPhoneNumber = (number: string) => {
+  const cleaned = number.replace(/\D/g, '');
+  if (cleaned.length === 11 && cleaned.startsWith('1')) {
+    return `+1 (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
+  }
+  return number;
+};
+
+const formatDateTime = (dateString: string) => {
+  const date = new Date(dateString);
+  return {
+    date: date.toLocaleDateString(),
+    time: date.toLocaleTimeString()
+  };
+};
 
 interface PhoneNumber {
   id: string;
@@ -78,221 +98,191 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
     }
   };
 
-  const formatPhoneNumber = (number: string) => {
-    // Format phone number for display
-    const cleaned = number.replace(/\D/g, '');
-    if (cleaned.length === 11 && cleaned.startsWith('1')) {
-      return `+1 (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
-    }
-    return number;
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "active":
-        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
-      case "inactive":
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
-      case "draft":
-        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
-      default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
-    }
-  };
-
   if (!assistant) return null;
 
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <DialogTitle className="text-2xl font-semibold">
-              {assistant.name}
-            </DialogTitle>
+  const statusColors = {
+    draft: "hsl(45 93% 47%)",
+    active: "hsl(142 76% 36%)",
+    inactive: "hsl(215 28% 17%)"
+  };
 
-          </div>
-        </DialogHeader>
+  const phoneStatusColors = {
+    active: "hsl(142 76% 36%)",
+    inactive: "hsl(215 28% 17%)",
+    pending: "hsl(45 93% 47%)"
+  };
+
+  return (
+    <ThemedDialog open={isOpen} onOpenChange={onClose}>
+      <ThemedDialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <ThemedDialogHeader
+          title={assistant.name}
+          description={assistant.description}
+        />
 
         <div className="space-y-6">
-          {/* Assistant Overview */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Assistant Overview</CardTitle>
-                <Badge className={getStatusColor(assistant.status)}>
-                  {assistant.status.charAt(0).toUpperCase() + assistant.status.slice(1)}
-                </Badge>
+          {/* Status Header */}
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2">
+              <div 
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: statusColors[assistant.status] }}
+              />
+              <span className="text-sm text-muted-foreground capitalize">
+                {assistant.status}
+              </span>
+            </div>
+            <Separator orientation="vertical" className="h-4" />
+            <span className="text-sm text-muted-foreground">
+              Created {assistant.created_at ? formatDateTime(assistant.created_at).date : "Unknown"}
+            </span>
+          </div>
+
+          {/* Performance Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-muted/30 rounded-lg p-4">
+              <div className="flex items-center space-x-2 mb-1">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Users</span>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h4 className="font-medium text-sm text-muted-foreground mb-1">Description</h4>
-                <p className="text-sm">{assistant.description || "No description provided"}</p>
+              <div className="text-2xl font-light text-foreground">
+                {assistant.userCount.toLocaleString()}
               </div>
-
-              {assistant.prompt && (
-                <div>
-                  <h4 className="font-medium text-sm text-muted-foreground mb-1">System Prompt</h4>
-                  <p className="text-sm bg-muted p-3 rounded-md max-h-32 overflow-y-auto">
-                    {assistant.prompt}
-                  </p>
-                </div>
-              )}
-
-              {assistant.first_message && (
-                <div>
-                  <h4 className="font-medium text-sm text-muted-foreground mb-1">First Message</h4>
-                  <p className="text-sm bg-muted p-3 rounded-md">
-                    {assistant.first_message}
-                  </p>
-                </div>
-              )}
-
-              {assistant.first_sms && (
-                <div>
-                  <h4 className="font-medium text-sm text-muted-foreground mb-1">First SMS Message</h4>
-                  <p className="text-sm bg-muted p-3 rounded-md">
-                    {assistant.first_sms}
-                  </p>
-                </div>
-              )}
-
-              {assistant.sms_prompt && (
-                <div>
-                  <h4 className="font-medium text-sm text-muted-foreground mb-1">SMS System Prompt</h4>
-                  <p className="text-sm bg-muted p-3 rounded-md max-h-32 overflow-y-auto">
-                    {assistant.sms_prompt}
-                  </p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">{assistant.interactionCount.toLocaleString()}</div>
-                  <div className="text-sm text-muted-foreground">Interactions</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">{assistant.userCount.toLocaleString()}</div>
-                  <div className="text-sm text-muted-foreground">Users</div>
-                </div>
+            </div>
+            <div className="bg-muted/30 rounded-lg p-4">
+              <div className="flex items-center space-x-2 mb-1">
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Interactions</span>
               </div>
-            </CardContent>
-          </Card>
+              <div className="text-2xl font-light text-foreground">
+                {assistant.interactionCount.toLocaleString()}
+              </div>
+            </div>
+            <div className="bg-muted/30 rounded-lg p-4">
+              <div className="flex items-center space-x-2 mb-1">
+                <Phone className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Total Calls</span>
+              </div>
+              <div className="text-2xl font-light text-foreground">
+                {phoneNumbers.length.toLocaleString()}
+              </div>
+            </div>
+          </div>
 
-          {/* Calendar Integration */}
-          {assistant.cal_enabled && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Calendar className="h-5 w-5" />
-                  Calendar Integration
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <h4 className="font-medium text-sm text-muted-foreground mb-1">Event Type</h4>
-                    <p className="text-sm">{assistant.cal_event_type_slug || "Not configured"}</p>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-sm text-muted-foreground mb-1">Timezone</h4>
-                    <p className="text-sm">{assistant.cal_timezone || "UTC"}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Assigned Phone Numbers */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Phone className="h-5 w-5" />
-                Assigned Phone Numbers
-                {phoneNumbers.length > 0 && (
-                  <Badge variant="secondary">{phoneNumbers.length}</Badge>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="text-center py-4">
-                  <div className="text-sm text-muted-foreground">Loading phone numbers...</div>
-                </div>
-              ) : phoneNumbers.length === 0 ? (
-                <div className="text-center py-8">
-                  <Phone className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-foreground mb-2">No Phone Numbers Assigned</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    This assistant doesn't have any phone numbers assigned yet.
-                  </p>
-                  <Button variant="outline" size="sm">
-                    Assign Phone Number
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {phoneNumbers.map((phone) => (
-                    <div
-                      key={phone.id}
-                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                          <Phone className="h-5 w-5 text-primary" />
-                        </div>
-                        <div>
-                          <div className="font-medium">{formatPhoneNumber(phone.number)}</div>
-                          {phone.label && (
-                            <div className="text-sm text-muted-foreground">{phone.label}</div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant={phone.status === "active" ? "default" : "secondary"}
-                          className="text-xs"
-                        >
-                          {phone.status}
-                        </Badge>
-                        <Badge
-                          variant={phone.webhook_status === "configured" ? "default" : "outline"}
-                          className="text-xs"
-                        >
-                          {phone.webhook_status}
-                        </Badge>
+          {/* Connected Phone Numbers */}
+          <div>
+            <div className="flex items-center space-x-2 mb-4">
+              <Phone className="h-5 w-5" style={{ color: 'white !important' }} />
+              <div 
+                className="text-lg font-medium"
+                style={{ 
+                  color: '#ffffff !important',
+                  fontSize: '18px',
+                  fontWeight: '500'
+                }}
+              >
+                Connected Phone Numbers
+              </div>
+              <Badge variant="secondary" className="ml-auto">
+                {phoneNumbers.length} connected
+              </Badge>
+            </div>
+            
+            {loading ? (
+              <div className="text-center py-6 bg-muted/20 rounded-lg border border-dashed">
+                <div className="text-sm text-muted-foreground">Loading phone numbers...</div>
+              </div>
+            ) : phoneNumbers.length > 0 ? (
+              <div className="space-y-3">
+                {phoneNumbers.map((phoneNumber) => (
+                  <div 
+                    key={phoneNumber.id}
+                    className="flex items-center justify-between p-3 bg-muted/20 rounded-lg border"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="flex flex-col">
+                        <span className="font-medium text-foreground">
+                          {formatPhoneNumber(phoneNumber.number)}
+                        </span>
+                        {phoneNumber.label && (
+                          <span className="text-sm text-muted-foreground">
+                            {phoneNumber.label}
+                          </span>
+                        )}
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    <div className="flex items-center space-x-2">
+                      <Badge 
+                        variant={phoneNumber.status === 'active' ? 'default' : 'secondary'}
+                        className="text-xs"
+                      >
+                        {phoneNumber.status}
+                      </Badge>
+                      <div className="flex items-center space-x-1">
+                        <div 
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: phoneStatusColors[phoneNumber.status as keyof typeof phoneStatusColors] || phoneStatusColors.inactive }}
+                        />
+                        <span className="text-xs text-muted-foreground capitalize">
+                          {phoneNumber.webhook_status}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-6 bg-muted/20 rounded-lg border border-dashed">
+                <Phone className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  No phone numbers connected to this assistant
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Assign phone numbers in the Phone Numbers tab
+                </p>
+              </div>
+            )}
+          </div>
 
-          {/* Metadata */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Settings className="h-5 w-5" />
-                Metadata
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <h4 className="font-medium text-muted-foreground mb-1">Created</h4>
-                  <p>{assistant.created_at ? new Date(assistant.created_at).toLocaleDateString() : "Unknown"}</p>
-                </div>
-                <div>
-                  <h4 className="font-medium text-muted-foreground mb-1">Last Updated</h4>
-                  <p>{assistant.updated_at ? new Date(assistant.updated_at).toLocaleDateString() : "Unknown"}</p>
+          {/* Configuration Details */}
+          <div>
+            <div className="flex items-center space-x-2 mb-4">
+              <Settings className="h-5 w-5" style={{ color: 'white !important' }} />
+              <div 
+                className="text-lg font-medium"
+                style={{ 
+                  color: '#ffffff !important',
+                  fontSize: '18px',
+                  fontWeight: '500'
+                }}
+              >
+                Configuration
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <span className="text-sm text-muted-foreground">Model</span>
+                <div className="text-sm font-medium text-foreground bg-muted/20 px-3 py-2 rounded">
+                  Not configured
                 </div>
               </div>
-            </CardContent>
-          </Card>
+              <div className="space-y-2">
+                <span className="text-sm text-muted-foreground">Voice</span>
+                <div className="text-sm font-medium text-foreground bg-muted/20 px-3 py-2 rounded">
+                  Not configured
+                </div>
+              </div>
+              <div className="space-y-2">
+                <span className="text-sm text-muted-foreground">Last Modified</span>
+                <div className="text-sm font-medium text-foreground bg-muted/20 px-3 py-2 rounded">
+                  {assistant.updated_at ? formatDateTime(assistant.updated_at).date : "Not configured"}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </ThemedDialogContent>
+    </ThemedDialog>
   );
 }

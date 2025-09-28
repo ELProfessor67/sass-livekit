@@ -1,5 +1,9 @@
 
-import { Dialog, DialogContent, DialogHeader, DialogDescription } from "@/components/ui/dialog";
+import { 
+  ThemedDialog,
+  ThemedDialogContent, 
+  ThemedDialogHeader 
+} from "@/components/ui/themed-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, MessageSquare, Headphones } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -16,43 +20,38 @@ interface CallDialogContentProps {
 
 export function CallDialogContent({ call }: CallDialogContentProps) {
   return (
-    <DialogContent className="max-w-2xl mx-4 sm:mx-0 bg-background border border-border/40">
-      <DialogHeader className="space-y-4">
-        <h2 className="text-xl font-light tracking-tight text-theme-primary">
-          Call with {getCustomerName(call)}
-        </h2>
-        <DialogDescription asChild>
-          <div className="space-y-4">
-            {/* Call Details Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <ThemedDialogContent className="max-w-2xl">
+      <ThemedDialogHeader
+        title={`Call with ${getCustomerName(call)}`}
+      />
+      
+      {/* Call Details Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <ThemeCard variant="default" className="p-3">
                 <div className="text-center">
                   <p className="text-xs text-theme-secondary mb-1">Phone</p>
-                  <p className="text-sm font-medium text-theme-primary">{call.phone_number || call.phoneNumber}</p>
+                  <p className="text-sm text-theme-primary">{call.phone_number || call.phoneNumber}</p>
                 </div>
               </ThemeCard>
               
               <ThemeCard variant="default" className="p-3">
                 <div className="text-center">
                   <p className="text-xs text-theme-secondary mb-1">Time</p>
-                  <p className="text-sm font-medium text-theme-primary">{new Date(call.created_at || `${call.date}T${call.time}`).toLocaleTimeString()}</p>
+                  <p className="text-sm text-theme-primary">{new Date(call.created_at || `${call.date}T${call.time}`).toLocaleTimeString()}</p>
                 </div>
               </ThemeCard>
               
               <ThemeCard variant="default" className="p-3">
                 <div className="text-center">
                   <p className="text-xs text-theme-secondary mb-1">Duration</p>
-                  <p className="text-sm font-medium text-theme-primary">{formatCallDuration(call.duration || '0s')}</p>
+                  <p className="text-sm text-theme-primary">{formatCallDuration(call.duration || '0s')}</p>
                 </div>
               </ThemeCard>
               
               <ThemeCard variant="default" className="p-3 flex items-center justify-center">
                 {getOutcomeBadge(call.call_outcome || call.resolution)}
               </ThemeCard>
-            </div>
-          </div>
-        </DialogDescription>
-      </DialogHeader>
+        </div>
       
       <Tabs defaultValue="summary" className="mt-6">
         <TabsList className="bg-muted/50 border border-border/40">
@@ -103,6 +102,6 @@ export function CallDialogContent({ call }: CallDialogContentProps) {
           </ThemeCard>
         </TabsContent>
       </Tabs>
-    </DialogContent>
+    </ThemedDialogContent>
   );
 }

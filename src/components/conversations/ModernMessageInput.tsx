@@ -2,6 +2,9 @@ import React, { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { EmojiSelector } from "@/components/ui/emoji-selector";
+import { ChannelSelector, MessageChannel } from "./ChannelSelector";
 import { Send, Paperclip, Phone, Smile, MessageSquare } from "lucide-react";
 import { Conversation } from "./types";
 import { sendSMS, formatPhoneNumber, isValidPhoneNumber } from "@/lib/api/sms/smsService";
@@ -17,10 +20,20 @@ export function ModernMessageInput({ conversation, selectedAgentPhoneNumber, isD
   const [message, setMessage] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [messageType, setMessageType] = useState<'sms' | 'call'>('sms');
+  const [isEmojiOpen, setIsEmojiOpen] = useState(false);
+  const [selectedChannel, setSelectedChannel] = useState<MessageChannel>('imessage');
   const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
+
+  // Debug logging
+  console.log('ModernMessageInput render:', { 
+    isDisabled, 
+    isEmojiOpen, 
+    selectedAgentPhoneNumber,
+    conversationId: conversation.id,
+    messageLength: message.length
+  });
 
   const handleSendMessage = async () => {
     if (!message.trim() || isSending || isDisabled) return;
@@ -28,7 +41,7 @@ export function ModernMessageInput({ conversation, selectedAgentPhoneNumber, isD
     try {
       setIsSending(true);
 
-      if (messageType === 'sms') {
+      if (selectedChannel === 'sms' || selectedChannel === 'imessage' || selectedChannel === 'whatsapp') {
         // Validate phone number
         if (!isValidPhoneNumber(conversation.phoneNumber)) {
           toast({
@@ -49,15 +62,15 @@ export function ModernMessageInput({ conversation, selectedAgentPhoneNumber, isD
 
         if (result.success) {
           toast({
-            title: "SMS Sent",
-            description: "Your message has been sent successfully.",
+            title: selectedChannel === 'imessage' ? "iMessage Sent" : selectedChannel === 'whatsapp' ? "WhatsApp Sent" : "SMS Sent",
+            description: `Your message has been sent via ${selectedChannel === 'imessage' ? 'iMessage (fallback to SMS)' : selectedChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'}.`,
           });
           setMessage("");
           setIsExpanded(false);
         } else {
-          throw new Error(result.message || 'Failed to send SMS');
+          throw new Error(result.message || 'Failed to send message');
         }
-      } else {
+      } else if (selectedChannel === 'call') {
         // Handle call logic here
         console.log("Initiating call to:", conversation.phoneNumber);
         toast({
@@ -106,9 +119,31 @@ export function ModernMessageInput({ conversation, selectedAgentPhoneNumber, isD
     }
   };
 
+  const handleEmojiSelect = (emoji: string) => {
+    const newMessage = message + emoji;
+    setMessage(newMessage);
+    setIsEmojiOpen(false);
+    
+    // Focus back to input after emoji selection
+    setTimeout(() => {
+      if (isExpanded && textareaRef.current) {
+        textareaRef.current.focus();
+      } else if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    }, 0);
+  };
+
   return (
     <div className="p-[var(--space-lg)] border-t border-white/[0.08] bg-background/30">
       <div className="flex items-end gap-3">
+        {/* Channel Selector */}
+        <ChannelSelector
+          selectedChannel={selectedChannel}
+          onChannelChange={setSelectedChannel}
+          availableChannels={['imessage', 'sms', 'whatsapp', 'call']}
+        />
+
         {/* Attachment Button */}
         <Button
           variant="ghost"
@@ -153,39 +188,31 @@ export function ModernMessageInput({ conversation, selectedAgentPhoneNumber, isD
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
-          {/* Message Type Toggle */}
-          <div className="flex items-center bg-muted/30 rounded-[var(--radius-md)] p-1">
-            <Button
-              variant={messageType === 'sms' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setMessageType('sms')}
-              className="h-7 px-2 text-xs"
-              disabled={isDisabled}
-            >
-              <MessageSquare className="h-3 w-3 mr-1" />
-              SMS
-            </Button>
-            <Button
-              variant={messageType === 'call' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setMessageType('call')}
-              className="h-7 px-2 text-xs"
-              disabled={isDisabled}
-            >
-              <Phone className="h-3 w-3 mr-1" />
-              Call
-            </Button>
-          </div>
-
           {/* Emoji Button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-9 w-9 p-0 text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-[var(--radius-md)]"
-            disabled={isDisabled}
-          >
-            <Smile className="h-4 w-4" />
-          </Button>
+          <Popover open={isEmojiOpen} onOpenChange={setIsEmojiOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 w-9 p-0 text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-[var(--radius-md)]"
+                disabled={false}
+              >
+                <Smile className="h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent 
+              className="p-0 border-0 shadow-none z-50" 
+              align="end"
+              sideOffset={8}
+            >
+              <EmojiSelector 
+                onEmojiSelect={(emoji) => {
+                  console.log('Emoji selected:', emoji);
+                  handleEmojiSelect(emoji);
+                }}
+              />
+            </PopoverContent>
+          </Popover>
 
           {/* Send Button */}
           <Button
@@ -200,19 +227,20 @@ export function ModernMessageInput({ conversation, selectedAgentPhoneNumber, isD
               <Send className="h-4 w-4" />
             )}
           </Button>
+
         </div>
       </div>
 
       {/* Helper Text */}
-      <div className="mt-2 text-[10px] text-muted-foreground">
+      <div className="mt-2 text-[10px] text-center text-muted-foreground">
         {isDisabled ? (
-          <span className="text-amber-600 dark:text-amber-400">
+          <span className="text-white dark:text-white ">
             Select a specific agent from the dropdown above to send messages
           </span>
-        ) : messageType === 'sms' ? (
-          'Press Enter to send SMS, Shift+Enter for new line'
-        ) : (
+        ) : selectedChannel === 'call' ? (
           'Press Enter to initiate call, Shift+Enter for new line'
+        ) : (
+          `Press Enter to send ${selectedChannel === 'imessage' ? 'iMessage (fallback to SMS)' : selectedChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'}, Shift+Enter for new line`
         )}
       </div>
     </div>

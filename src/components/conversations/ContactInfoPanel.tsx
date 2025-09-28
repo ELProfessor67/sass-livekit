@@ -82,7 +82,7 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
             <h3 className="text-sm font-medium text-foreground">Contact Details</h3>
             <div className="space-y-[var(--space-sm)]">
               <ContactProperty label="Email" value="john.doe@company.com" icon={Mail} />
-              <ContactProperty label="Company" value="Acme Corp" icon={Building} />
+              {conversation.company && <ContactProperty label="Company" value={conversation.company} icon={Building} />}
               <ContactProperty label="Location" value="San Francisco, CA" icon={MapPin} />
               <ContactProperty label="Last Contact" value={conversation.lastActivityDate} icon={Calendar} />
             </div>

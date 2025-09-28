@@ -1,5 +1,6 @@
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { CardTitle } from "@/components/ui/typography";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CustomLegend } from "./call-outcomes/CustomLegend";
@@ -25,7 +26,7 @@ export default function CallOutcomes({ callOutcomes = {}, isLoading = false }: C
         <div className="flex items-center gap-3">
           <div className="w-1 h-6 bg-gradient-to-b from-primary to-primary/60 rounded-sm
                         shadow-[0_0_12px_rgba(255,74,113,0.4)]" />
-          <CardTitle className="text-lg font-extralight tracking-tight text-liquid">
+          <CardTitle className="text-lg font-extralight tracking-tight">
             {config.chartTitles.callOutcomes}
           </CardTitle>
         </div>
@@ -96,7 +97,7 @@ export default function CallOutcomes({ callOutcomes = {}, isLoading = false }: C
                       {item.name}
                     </span>
                   </div>
-                  <span className="text-foreground text-lg font-semibold tabular-nums">
+                  <span className="text-foreground text-lg font-light tabular-nums">
                     {item.value}%
                   </span>
                 </div>

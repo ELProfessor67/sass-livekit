@@ -9,8 +9,7 @@ export function MainHeading({ children, className }: TypographyProps) {
   return (
     <h1 
       className={cn(
-        "text-4xl font-thin tracking-wide leading-tight text-foreground",
-        "lg:text-5xl lg:leading-[1.05] lg:tracking-wider",
+        "text-[28px] font-light tracking-[0.2px] leading-tight text-foreground",
         "transition-colors duration-300",
         className
       )}
@@ -24,8 +23,7 @@ export function PageHeading({ children, className }: TypographyProps) {
   return (
     <h1 
       className={cn(
-        "text-3xl font-extralight tracking-wide leading-tight text-foreground",
-        "lg:text-4xl lg:leading-[1.1] lg:tracking-wider",
+        "text-2xl font-light tracking-[0.2px] leading-tight text-foreground",
         "transition-colors duration-300",
         className
       )}
@@ -39,8 +37,7 @@ export function SectionHeading({ children, className }: TypographyProps) {
   return (
     <h2 
       className={cn(
-        "text-xl font-light tracking-wide leading-relaxed text-foreground",
-        "lg:text-2xl lg:leading-[1.25] lg:tracking-wider",
+        "text-lg font-light tracking-[0.2px] leading-relaxed text-foreground",
         "transition-colors duration-300",
         className
       )}
@@ -126,7 +123,7 @@ export function MetricLabel({ children, className }: TypographyProps) {
   return (
     <span 
       className={cn(
-        "text-sm font-medium tracking-wide text-foreground/80",
+        "text-sm font-medium tracking-[0.1px] text-foreground/80",
         "transition-colors duration-200",
         className
       )}
@@ -147,5 +144,61 @@ export function PageSubtext({ children, className }: TypographyProps) {
     >
       {children}
     </p>
+  );
+}
+
+export function CardTitle({ children, className }: TypographyProps) {
+  return (
+    <h3 
+      className={cn(
+        "text-base font-light tracking-[0.2px] text-foreground",
+        "transition-colors duration-300",
+        className
+      )}
+    >
+      {children}
+    </h3>
+  );
+}
+
+export function TableText({ children, className }: TypographyProps) {
+  return (
+    <span 
+      className={cn(
+        "text-sm font-light tracking-wide text-foreground",
+        "transition-colors duration-200",
+        className
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+export function MetricNumber({ children, className }: TypographyProps) {
+  return (
+    <span 
+      className={cn(
+        "text-3xl font-light tracking-tight text-foreground",
+        "transition-all duration-300",
+        className
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+export function LabelText({ children, className }: TypographyProps) {
+  return (
+    <span 
+      className={cn(
+        "text-xs font-medium tracking-[0.1px] text-muted-foreground uppercase",
+        "transition-colors duration-200",
+        className
+      )}
+    >
+      {children}
+    </span>
   );
 }

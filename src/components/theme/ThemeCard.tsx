@@ -1,11 +1,10 @@
-
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { useTheme } from "@/components/ThemeProvider";
 
 interface ThemeCardProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: "default" | "glass" | "glass-light" | "glass-heavy" | "glass-reading" | "premium" | "ultra-premium" | "enterprise" | "liquid" | "frosted-premium" | "transparent";
+  variant?: "default" | "glass" | "glass-light" | "glass-heavy" | "glass-reading" | "premium" | "ultra-premium" | "enterprise" | "liquid" | "frosted-premium" | "transparent" | "elevated" | "premium-enhanced";
   interactive?: boolean;
   children: React.ReactNode;
 }

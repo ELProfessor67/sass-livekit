@@ -1,11 +1,16 @@
-import React from "react";
+import React, { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Plus, X } from "lucide-react";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Plus, X, ChevronDown, Shield, Mic, Video, Music, Phone, MessageSquare, ArrowRightLeft, Check } from "lucide-react";
 import { AdvancedData } from "./types";
 import { WizardSlider } from "./WizardSlider";
 import { setupCalEventType } from "@/lib/api/calls/setupCalEventType";
@@ -19,6 +24,27 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
   const [calSubmitting, setCalSubmitting] = React.useState(false);
   const [calError, setCalError] = React.useState<string | null>(null);
   const [calSuccess, setCalSuccess] = React.useState<string | null>(null);
+  const [isCountryDropdownOpen, setIsCountryDropdownOpen] = useState(false);
+
+  const countries = [
+    { code: "+1", flag: "🇺🇸", name: "United States" },
+    { code: "+44", flag: "🇬🇧", name: "United Kingdom" },
+    { code: "+33", flag: "🇫🇷", name: "France" },
+    { code: "+49", flag: "🇩🇪", name: "Germany" },
+    { code: "+81", flag: "🇯🇵", name: "Japan" },
+    { code: "+86", flag: "🇨🇳", name: "China" },
+    { code: "+91", flag: "🇮🇳", name: "India" },
+    { code: "+61", flag: "🇦🇺", name: "Australia" },
+    { code: "+55", flag: "🇧🇷", name: "Brazil" },
+    { code: "+7", flag: "🇷🇺", name: "Russia" },
+    { code: "+34", flag: "🇪🇸", name: "Spain" },
+    { code: "+39", flag: "🇮🇹", name: "Italy" },
+    { code: "+31", flag: "🇳🇱", name: "Netherlands" },
+    { code: "+46", flag: "🇸🇪", name: "Sweden" },
+    { code: "+47", flag: "🇳🇴", name: "Norway" }
+  ];
+
+  const selectedCountry = countries.find(c => c.code === (data.transferCountryCode || "+1"));
 
   const addEndCallPhrase = () => {
     onChange({
@@ -56,492 +82,738 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
 
   return (
     <div className="max-w-4xl space-y-[var(--space-2xl)]">
+      {/* Privacy & Security */}
+      <Card variant="default">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <h3 className="text-lg font-medium">Privacy & Security</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Choose how calls are protected and recorded
+            </p>
+          </div>
+          <ChevronDown className="h-5 w-5 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-[var(--space-xl)]">
+          <div className="space-y-[var(--space-lg)]">
+            {/* HIPAA Compliant */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-[var(--space-md)]">
+                <Shield className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <Label className="text-sm font-medium">HIPAA Compliant</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Enables HIPAA compliance for healthcare applications and ensures protected health information is handled securely.
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={data.hipaaCompliant}
+                onCheckedChange={(checked) => onChange({ hipaaCompliant: checked })}
+              />
+            </div>
+
+            {/* PCI Compliant */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-[var(--space-md)]">
+                <Shield className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <Label className="text-sm font-medium">PCI Compliant</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Ensures payment card data is handled according to PCI DSS standards for secure financial transactions.
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={data.pciCompliant}
+                onCheckedChange={(checked) => onChange({ pciCompliant: checked })}
+              />
+            </div>
+
+            {/* Audio Recording */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-[var(--space-md)]">
+                <Mic className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <Label className="text-sm font-medium">Audio Recording</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Records audio for all calls to enable call monitoring, quality assurance, and compliance purposes.
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={data.recordingEnabled}
+                onCheckedChange={(checked) => onChange({ recordingEnabled: checked })}
+              />
+            </div>
+
+            {/* Audio Recording Format */}
+            {data.recordingEnabled && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-[var(--space-md)]">
+                  <Music className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <Label className="text-sm font-medium">Audio Recording Format</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Select the audio format for recorded calls. WAV provides highest quality while MP3 saves storage space.
+                    </p>
+                  </div>
+                </div>
+                <Select 
+                  value={data.audioRecordingFormat} 
+                  onValueChange={(value) => onChange({ audioRecordingFormat: value })}
+                >
+                  <SelectTrigger className="w-24">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="wav">WAV</SelectItem>
+                    <SelectItem value="mp3">MP3</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Video Recording */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-[var(--space-md)]">
+                <Video className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <Label className="text-sm font-medium">Video Recording</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Records video when available during calls for enhanced monitoring and analysis capabilities.
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={data.videoRecordingEnabled}
+                onCheckedChange={(checked) => onChange({ videoRecordingEnabled: checked })}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Voicemail Detection */}
+      <Card variant="default">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <h3 className="text-lg font-medium">Voicemail Detection</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Configure automatic voicemail delivery
+            </p>
+          </div>
+          <ChevronDown className="h-5 w-5 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-[var(--space-xl)]">
+          {/* Leave Voicemail Messages */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-[var(--space-md)]">
+              <MessageSquare className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <Label className="text-sm font-medium">Leave Voicemail Messages</Label>
+                <p className="text-xs text-muted-foreground">
+                  Enable automatic voicemail delivery when an answering machine is detected
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={data.voicemailDetectionEnabled}
+              onCheckedChange={(checked) => onChange({ voicemailDetectionEnabled: checked })}
+            />
+          </div>
+
+          {/* Custom Voicemail Message */}
+          {data.voicemailDetectionEnabled && (
+            <div className="space-y-[var(--space-md)]">
+              <Label className="text-sm font-medium">Voicemail Message</Label>
+              <p className="text-xs text-muted-foreground mb-[var(--space-md)]">
+                Custom message to leave when voicemail is detected (optional)
+              </p>
+              <Textarea
+                placeholder="Hi, this is [Assistant Name]. I was calling regarding..."
+                value={data.voicemailMessage || ""}
+                onChange={(e) => onChange({ voicemailMessage: e.target.value })}
+                rows={3}
+                className="w-full"
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Call Transfer */}
+      <Card variant="default">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <h3 className="text-lg font-medium">Call Transfer</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Configure call transfer settings to route calls to another number
+            </p>
+          </div>
+          <ChevronDown className="h-5 w-5 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-[var(--space-xl)]">
+          {/* Transfer Phone Number */}
+          <div className="space-y-[var(--space-md)]">
+            <Label className="text-sm font-medium">Phone Number</Label>
+            <p className="text-xs text-muted-foreground mb-[var(--space-md)]">
+              The phone number to transfer calls to when transfer conditions are met
+            </p>
+            <div className="flex gap-2">
+              <Popover open={isCountryDropdownOpen} onOpenChange={setIsCountryDropdownOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={isCountryDropdownOpen}
+                    className="w-24 h-12 justify-between text-left font-normal"
+                  >
+                    {selectedCountry ? `${selectedCountry.flag} ${selectedCountry.code}` : "+1"}
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search country..." />
+                    <CommandList>
+                      <CommandEmpty>No country found.</CommandEmpty>
+                      <CommandGroup>
+                        {countries.map((country) => (
+                          <CommandItem
+                            key={country.code}
+                            value={`${country.name} ${country.code}`}
+                            onSelect={() => {
+                              onChange({ transferCountryCode: country.code });
+                              setIsCountryDropdownOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={`mr-2 h-4 w-4 ${
+                                (data.transferCountryCode || "+1") === country.code ? "opacity-100" : "opacity-0"
+                              }`}
+                            />
+                            <span className="mr-2">{country.flag}</span>
+                            <span className="mr-2">{country.code}</span>
+                            <span className="text-muted-foreground">{country.name}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              <Input
+                placeholder="Phone number"
+                value={data.transferPhoneNumber || ""}
+                onChange={(e) => onChange({ transferPhoneNumber: e.target.value })}
+                className="flex-1 h-12"
+              />
+            </div>
+          </div>
+
+          {/* Transfer Sentence */}
+          <div className="space-y-[var(--space-md)]">
+            <Label className="text-sm font-medium">Transfer Sentence</Label>
+            <p className="text-xs text-muted-foreground mb-[var(--space-md)]">
+              What the assistant will say before transferring the call
+            </p>
+            <Textarea
+              placeholder="I'm going to transfer you to someone who can better help you with that..."
+              value={data.transferSentence || ""}
+              onChange={(e) => onChange({ transferSentence: e.target.value })}
+              rows={2}
+              className="w-full"
+            />
+          </div>
+
+          {/* Transfer Condition */}
+          <div className="space-y-[var(--space-md)]">
+            <Label className="text-sm font-medium">Transfer Condition</Label>
+            <p className="text-xs text-muted-foreground mb-[var(--space-md)]">
+              Describe when the assistant should transfer the call
+            </p>
+            <Textarea
+              placeholder="Transfer when the customer asks to speak to a manager or requests technical support..."
+              value={data.transferCondition || ""}
+              onChange={(e) => onChange({ transferCondition: e.target.value })}
+              rows={2}
+              className="w-full"
+            />
+          </div>
+
+          {/* Transfer Type */}
+          <div className="space-y-[var(--space-md)]">
+            <Label className="text-sm font-medium">Transfer Type</Label>
+            <p className="text-xs text-muted-foreground mb-[var(--space-md)]">
+              Choose between warm (announced) or cold (blind) transfer
+            </p>
+            <RadioGroup
+              value={data.transferType || "warm"}
+              onValueChange={(value: "warm" | "cold") => onChange({ transferType: value })}
+              className="flex gap-6"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="warm" id="warm" />
+                <Label htmlFor="warm" className="text-sm font-normal cursor-pointer">
+                  Warm Transfer
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="cold" id="cold" />
+                <Label htmlFor="cold" className="text-sm font-normal cursor-pointer">
+                  Cold Transfer
+                </Label>
+              </div>
+            </RadioGroup>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Calendar Integration (Optional) */}
-      <div className="settings-card">
-        <div className="space-y-[var(--space-md)]">
-          <h3 className="settings-card-title">Calendar Integration (Optional)</h3>
-          <p className="settings-card-description">
-            Provide Cal.com credentials to enable in-call scheduling. Leave blank to disable.
-          </p>
-        </div>
+      <Card variant="default">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <h3 className="text-lg font-medium">Calendar Integration (Optional)</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Provide Cal.com credentials to enable in-call scheduling. Leave blank to disable.
+            </p>
+          </div>
+          <ChevronDown className="h-5 w-5 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-[var(--space-xl)]">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-xl)]">
+            <div className="space-y-[var(--space-md)]">
+              <Label className="text-sm font-medium">Cal.com API Key</Label>
+              <Input
+                type="password"
+                placeholder="cal_live_..."
+                value={data.calApiKey || ""}
+                onChange={(e) => onChange({ calApiKey: e.target.value })}
+              />
+            </div>
+            <div className="space-y-[var(--space-md)]">
+              <Label className="text-sm font-medium">Event Type Slug</Label>
+              <Input
+                placeholder="e.g. team/demo-call"
+                value={data.calEventTypeSlug || ""}
+                onChange={(e) => onChange({ calEventTypeSlug: e.target.value })}
+              />
+            </div>
+            <div className="space-y-[var(--space-md)]">
+              <Label className="text-sm font-medium">Timezone</Label>
+              <Input
+                placeholder="e.g. America/Los_Angeles"
+                value={data.calTimezone || ""}
+                onChange={(e) => onChange({ calTimezone: e.target.value })}
+              />
+            </div>
+            <div className="space-y-[var(--space-md)]">
+              <Label className="text-sm font-medium">Event Type ID</Label>
+              <Input
+                placeholder="Auto-filled after connection"
+                value={data.calEventTypeId || ""}
+                onChange={(e) => onChange({ calEventTypeId: e.target.value })}
+                disabled
+              />
+            </div>
+          </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-xl)]">
-          <div className="space-y-[var(--space-md)]">
-            <Label className="settings-label">Cal.com API Key</Label>
-            <Input
-              type="password"
-              placeholder="cal_live_..."
-              value={data.calApiKey || ""}
-              onChange={(e) => onChange({ calApiKey: e.target.value })}
-              className="settings-input"
-            />
-          </div>
-          <div className="space-y-[var(--space-md)]">
-            <Label className="settings-label">Event Type Slug</Label>
-            <Input
-              placeholder="e.g. team/demo-call"
-              value={data.calEventTypeSlug || ""}
-              onChange={(e) => onChange({ calEventTypeSlug: e.target.value })}
-              className="settings-input"
-            />
-          </div>
-          <div className="space-y-[var(--space-md)]">
-            <Label className="settings-label">Timezone</Label>
-            <Input
-              placeholder="e.g. America/Los_Angeles"
-              value={data.calTimezone || ""}
-              onChange={(e) => onChange({ calTimezone: e.target.value })}
-              className="settings-input"
-            />
-          </div>
-          <div className="space-y-[var(--space-md)]">
-            <Label className="settings-label">Event Type ID</Label>
-            <Input
-              placeholder="Auto-filled after connection"
-              value={data.calEventTypeId || ""}
-              onChange={(e) => onChange({ calEventTypeId: e.target.value })}
-              className="settings-input"
-              disabled
-            />
-          </div>
-        </div>
-
-        {/* Cal.com Connection Button */}
-        <div className="mt-4 flex items-center gap-4">
-          <Button
-            onClick={async () => {
-              if (!data.calApiKey || !data.calEventTypeSlug || !data.calTimezone) {
-                setCalError("Please fill in API Key, Event Type Slug, and Timezone");
-                return;
-              }
-              
-              setCalSubmitting(true);
-              setCalError(null);
-              setCalSuccess(null);
-              
-              try {
-                const resp = await setupCalEventType({ 
-                  apiKey: data.calApiKey, 
-                  eventTypeSlug: data.calEventTypeSlug, 
-                  timezone: data.calTimezone 
-                });
+          {/* Cal.com Connection Button */}
+          <div className="flex items-center gap-4">
+            <Button
+              onClick={async () => {
+                if (!data.calApiKey || !data.calEventTypeSlug || !data.calTimezone) {
+                  setCalError("Please fill in API Key, Event Type Slug, and Timezone");
+                  return;
+                }
                 
-                onChange({ calEventTypeId: resp.eventTypeId });
-                setCalSuccess(`Connected: ${resp.eventTypeSlug} (#${resp.eventTypeId})`);
-              } catch (e: any) {
-                setCalError(e?.message || 'Failed to connect');
-              } finally {
-                setCalSubmitting(false);
-              }
-            }}
-            disabled={calSubmitting || !data.calApiKey || !data.calEventTypeSlug || !data.calTimezone}
-            className="mt-2"
-          >
-            {calSubmitting ? 'Connecting…' : 'Connect Cal.com'}
-          </Button>
-          
-          {calSuccess && (
-            <span className="text-sm text-green-600 font-medium">{calSuccess}</span>
-          )}
-          {calError && (
-            <span className="text-sm text-destructive font-medium">{calError}</span>
-          )}
-        </div>
-      </div>
+                setCalSubmitting(true);
+                setCalError(null);
+                setCalSuccess(null);
+                
+                try {
+                  const resp = await setupCalEventType({ 
+                    apiKey: data.calApiKey, 
+                    eventTypeSlug: data.calEventTypeSlug, 
+                    timezone: data.calTimezone 
+                  });
+                  
+                  onChange({ calEventTypeId: resp.eventTypeId });
+                  setCalSuccess(`Connected: ${resp.eventTypeSlug} (#${resp.eventTypeId})`);
+                } catch (e: any) {
+                  setCalError(e?.message || 'Failed to connect');
+                } finally {
+                  setCalSubmitting(false);
+                }
+              }}
+              disabled={calSubmitting || !data.calApiKey || !data.calEventTypeSlug || !data.calTimezone}
+            >
+              {calSubmitting ? 'Connecting…' : 'Connect Cal.com'}
+            </Button>
+            
+            {calSuccess && (
+              <span className="text-sm text-green-600 font-medium">{calSuccess}</span>
+            )}
+            {calError && (
+              <span className="text-sm text-destructive font-medium">{calError}</span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* WhatsApp Business Configuration */}
-      <div className="settings-card border-dashed border-muted-foreground/20">
-        <div className="space-y-[var(--space-md)]">
-          <h3 className="settings-card-title">
-            WhatsApp Business Configuration
-            <span className="ml-2 text-sm font-normal text-muted-foreground">(Optional)</span>
-          </h3>
-          <p className="settings-card-description">
-            Configure WhatsApp Business settings for messaging conversations with your assistant. 
-            Leave blank to disable WhatsApp integration.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-xl)]">
-          <div className="space-y-[var(--space-md)]">
-            <Label className="settings-label">
-              WhatsApp Business Number
-              <span className="ml-1 text-xs text-muted-foreground font-normal">(Optional)</span>
-            </Label>
-            <Input
-              type="tel"
-              placeholder="+1234567890 (leave blank to disable)"
-              value={data.whatsappNumber}
-              onChange={(e) => onChange({ whatsappNumber: e.target.value })}
-              className="settings-input"
-            />
-            <p className="text-[var(--text-xs)] text-theme-secondary">
-              Your WhatsApp Business phone number (include country code). Leave blank to disable WhatsApp integration.
+      <Card variant="default" className="border-dashed border-muted-foreground/20">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <h3 className="text-lg font-medium">
+              WhatsApp Business Configuration
+              <span className="ml-2 text-sm font-normal text-muted-foreground">(Optional)</span>
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Configure WhatsApp Business settings for messaging conversations with your assistant. 
+              Leave blank to disable WhatsApp integration.
             </p>
           </div>
-          <div className="space-y-[var(--space-md)]">
-            <Label className="settings-label">
-              WhatsApp Business API Key
-              <span className="ml-1 text-xs text-muted-foreground font-normal">(Optional)</span>
-            </Label>
-            <Input
-              type="password"
-              placeholder="Enter your WhatsApp Business API key (leave blank to disable)"
-              value={data.whatsappKey}
-              onChange={(e) => onChange({ whatsappKey: e.target.value })}
-              className="settings-input"
-            />
-            <p className="text-[var(--text-xs)] text-theme-secondary">
-              Your WhatsApp Business API access token. Leave blank to disable WhatsApp integration.
+          <ChevronDown className="h-5 w-5 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-[var(--space-xl)]">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-xl)]">
+            <div className="space-y-[var(--space-md)]">
+              <Label className="text-sm font-medium">
+                WhatsApp Business Number
+                <span className="ml-1 text-xs text-muted-foreground font-normal">(Optional)</span>
+              </Label>
+              <Input
+                type="tel"
+                placeholder="+1234567890 (leave blank to disable)"
+                value={data.whatsappNumber}
+                onChange={(e) => onChange({ whatsappNumber: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Your WhatsApp Business phone number (include country code). Leave blank to disable WhatsApp integration.
+              </p>
+            </div>
+            <div className="space-y-[var(--space-md)]">
+              <Label className="text-sm font-medium">
+                WhatsApp Business API Key
+                <span className="ml-1 text-xs text-muted-foreground font-normal">(Optional)</span>
+              </Label>
+              <Input
+                type="password"
+                placeholder="Enter your WhatsApp Business API key (leave blank to disable)"
+                value={data.whatsappKey}
+                onChange={(e) => onChange({ whatsappKey: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Your WhatsApp Business API access token. Leave blank to disable WhatsApp integration.
+              </p>
+            </div>
+          </div>
+          
+          {/* Optional Integration Note */}
+          <div className="p-3 bg-muted/30 rounded-md border border-muted-foreground/10">
+            <p className="text-xs text-muted-foreground">
+              <strong>Note:</strong> WhatsApp Business integration is completely optional. 
+              Your assistant will work perfectly without it. Only configure these fields if you want to enable WhatsApp messaging capabilities.
             </p>
           </div>
-        </div>
-        
-        {/* Optional Integration Note */}
-        <div className="mt-4 p-3 bg-muted/30 rounded-md border border-muted-foreground/10">
-          <p className="text-xs text-muted-foreground">
-            <strong>Note:</strong> WhatsApp Business integration is completely optional. 
-            Your assistant will work perfectly without it. Only configure these fields if you want to enable WhatsApp messaging capabilities.
-          </p>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* SMS Configuration */}
-      <div className="settings-card">
-        <div className="space-y-[var(--space-md)]">
-          <h3 className="settings-card-title">SMS Configuration</h3>
-          <p className="settings-card-description">
-            Configure SMS settings for text-based conversations with your assistant
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 gap-[var(--space-xl)]">
-          {/* First SMS Message */}
-          <div className="space-y-[var(--space-md)]">
-            <Label className="settings-label">First SMS Message</Label>
-            <Textarea
-              placeholder="Hello! I'm your AI assistant. How can I help you today?"
-              value={data.firstSms}
-              onChange={(e) => onChange({ firstSms: e.target.value })}
-              className="min-h-[80px] settings-input"
-            />
-            <p className="text-[var(--text-xs)] text-theme-secondary">
-              This message will be sent automatically when an SMS conversation starts
+      <Card variant="default">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <h3 className="text-lg font-medium">SMS Configuration</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Configure SMS settings for text-based conversations with your assistant
             </p>
           </div>
+          <ChevronDown className="h-5 w-5 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-[var(--space-xl)]">
+          <div className="grid grid-cols-1 gap-[var(--space-xl)]">
+            {/* First SMS Message */}
+            <div className="space-y-[var(--space-md)]">
+              <Label className="text-sm font-medium">First SMS Message</Label>
+              <Textarea
+                placeholder="Hello! I'm your AI assistant. How can I help you today?"
+                value={data.firstSms}
+                onChange={(e) => onChange({ firstSms: e.target.value })}
+                className="min-h-[80px]"
+              />
+              <p className="text-xs text-muted-foreground">
+                This message will be sent automatically when an SMS conversation starts
+              </p>
+            </div>
 
-          {/* SMS Prompt */}
-          <div className="space-y-[var(--space-md)]">
-            <Label className="settings-label">SMS System Prompt</Label>
-            <Textarea
-              placeholder="You are a helpful AI assistant communicating via SMS. Keep responses concise and friendly..."
-              value={data.smsPrompt}
-              onChange={(e) => onChange({ smsPrompt: e.target.value })}
-              className="min-h-[120px] settings-input"
-            />
-            <p className="text-[var(--text-xs)] text-theme-secondary">
-              System instructions for how the assistant should behave in SMS conversations
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Compliance & Recording */}
-      <div className="settings-card">
-        <div className="space-y-[var(--space-md)]">
-          <h3 className="settings-card-title">Compliance & Recording</h3>
-          <p className="settings-card-description">
-            Configure compliance settings and recording preferences
-          </p>
-        </div>
-
-        <div className="space-y-[var(--space-lg)]">
-          {/* HIPAA Compliant */}
-          <div className="flex items-center space-x-[var(--space-md)]">
-            <Checkbox
-              id="hipaa-compliant"
-              checked={data.hipaaCompliant}
-              onCheckedChange={(checked) => onChange({ hipaaCompliant: !!checked })}
-            />
-            <div className="space-y-1">
-              <Label htmlFor="hipaa-compliant" className="settings-label !mb-0">
-                HIPAA Compliant
-              </Label>
-              <p className="text-[var(--text-xs)] text-theme-secondary">
-                Enable HIPAA compliance for healthcare applications
+            {/* SMS Prompt */}
+            <div className="space-y-[var(--space-md)]">
+              <Label className="text-sm font-medium">SMS System Prompt</Label>
+              <Textarea
+                placeholder="You are a helpful AI assistant communicating via SMS. Keep responses concise and friendly..."
+                value={data.smsPrompt}
+                onChange={(e) => onChange({ smsPrompt: e.target.value })}
+                className="min-h-[120px]"
+              />
+              <p className="text-xs text-muted-foreground">
+                System instructions for how the assistant should behave in SMS conversations
               </p>
             </div>
           </div>
+        </CardContent>
+      </Card>
 
-          {/* Recording Enabled */}
-          <div className="flex items-center space-x-[var(--space-md)]">
-            <Checkbox
-              id="recording-enabled"
-              checked={data.recordingEnabled}
-              onCheckedChange={(checked) => onChange({ recordingEnabled: !!checked })}
-            />
-            <div className="space-y-1">
-              <Label htmlFor="recording-enabled" className="settings-label !mb-0">
-                Recording Enabled
-              </Label>
-              <p className="text-[var(--text-xs)] text-theme-secondary">
-                Record audio for all calls
-              </p>
-            </div>
-          </div>
-
-          {/* Video Recording Enabled */}
-          <div className="flex items-center space-x-[var(--space-md)]">
-            <Checkbox
-              id="video-recording-enabled"
-              checked={data.videoRecordingEnabled}
-              onCheckedChange={(checked) => onChange({ videoRecordingEnabled: !!checked })}
-            />
-            <div className="space-y-1">
-              <Label htmlFor="video-recording-enabled" className="settings-label !mb-0">
-                Video Recording Enabled
-              </Label>
-              <p className="text-[var(--text-xs)] text-theme-secondary">
-                Record video for all calls (when available)
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Call Management */}
-      <div className="settings-card">
-        <div className="space-y-[var(--space-md)]">
-          <h3 className="settings-card-title">Call Management</h3>
-          <p className="settings-card-description">
-            Configure call duration limits and ending behavior
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-xl)]">
-          {/* End Call Message */}
-          <div className="space-y-[var(--space-md)]">
-            <Label className="settings-label">End Call Message</Label>
-            <Textarea
-              placeholder="Thank you for calling. Have a great day!"
-              value={data.endCallMessage}
-              onChange={(e) => onChange({ endCallMessage: e.target.value })}
-              className="min-h-[80px] settings-input"
-            />
+      <Card variant="default">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <h3 className="text-lg font-medium">Call Management</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Configure call duration limits and ending behavior
+            </p>
           </div>
+          <ChevronDown className="h-5 w-5 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-[var(--space-xl)]">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-xl)]">
+            {/* End Call Message */}
+            <div className="space-y-[var(--space-md)]">
+              <Label className="text-sm font-medium">End Call Message</Label>
+              <Textarea
+                placeholder="Thank you for calling. Have a great day!"
+                value={data.endCallMessage}
+                onChange={(e) => onChange({ endCallMessage: e.target.value })}
+                className="min-h-[80px]"
+              />
+            </div>
 
-          {/* Max Call Duration */}
-          <div className="space-y-[var(--space-md)]">
-            <Label className="settings-label">Max Call Duration (seconds)</Label>
-            <Input
-              type="number"
-              value={data.maxCallDuration}
-              onChange={(e) => onChange({ maxCallDuration: parseInt(e.target.value) || 0 })}
-              className="settings-input"
-            />
+            {/* Max Call Duration */}
+            <div className="space-y-[var(--space-md)]">
+              <Label className="text-sm font-medium">Max Call Duration (seconds)</Label>
+              <Input
+                type="number"
+                value={data.maxCallDuration}
+                onChange={(e) => onChange({ maxCallDuration: parseInt(e.target.value) || 0 })}
+              />
+            </div>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* End Call Phrases */}
-      <div className="settings-card">
-        <div className="space-y-[var(--space-md)]">
-          <h3 className="settings-card-title">End Call Phrases</h3>
-          <p className="settings-card-description">
-            Define phrases that will trigger the end of a call
-          </p>
-        </div>
-
-        <div className="space-y-[var(--space-lg)]">
-          {data.endCallPhrases.map((phrase, index) => (
-            <div key={index} className="flex gap-[var(--space-md)] items-center">
-              <Input
-                placeholder="Enter end call phrase"
-                value={phrase}
-                onChange={(e) => updateEndCallPhrase(index, e.target.value)}
-                className="settings-input flex-1"
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => removeEndCallPhrase(index)}
-                className="h-10 w-10 p-0 text-destructive hover:text-destructive"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-          
-          <Button
-            variant="outline"
-            onClick={addEndCallPhrase}
-            className="w-full"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add End Call Phrase
-          </Button>
-        </div>
-      </div>
+      <Card variant="default">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <h3 className="text-lg font-medium">End Call Phrases</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Define phrases that will trigger the end of a call
+            </p>
+          </div>
+          <ChevronDown className="h-5 w-5 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-[var(--space-xl)]">
+          <div className="space-y-[var(--space-lg)]">
+            {data.endCallPhrases.map((phrase, index) => (
+              <div key={index} className="flex gap-[var(--space-md)] items-center">
+                <Input
+                  placeholder="Enter end call phrase"
+                  value={phrase}
+                  onChange={(e) => updateEndCallPhrase(index, e.target.value)}
+                  className="flex-1"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeEndCallPhrase(index)}
+                  className="h-10 w-10 p-0 text-destructive hover:text-destructive"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+            
+            <Button
+              variant="outline"
+              onClick={addEndCallPhrase}
+              className="w-full"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add End Call Phrase
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Idle Messages */}
-      <div className="settings-card">
-        <div className="space-y-[var(--space-md)]">
-          <h3 className="settings-card-title">Idle Messages</h3>
-          <p className="settings-card-description">
-            Configure messages to send when the caller is silent
-          </p>
-        </div>
+      <Card variant="default">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <h3 className="text-lg font-medium">Idle Messages</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Configure messages to send when the caller is silent
+            </p>
+          </div>
+          <ChevronDown className="h-5 w-5 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-[var(--space-xl)]">
+          <div className="space-y-[var(--space-lg)]">
+            {data.idleMessages.map((message, index) => (
+              <div key={index} className="flex gap-[var(--space-md)] items-center">
+                <Input
+                  placeholder="Enter idle message"
+                  value={message}
+                  onChange={(e) => updateIdleMessage(index, e.target.value)}
+                  className="flex-1"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeIdleMessage(index)}
+                  className="h-10 w-10 p-0 text-destructive hover:text-destructive"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+            
+            <Button
+              variant="outline"
+              onClick={addIdleMessage}
+              className="w-full"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Idle Message
+            </Button>
 
-        <div className="space-y-[var(--space-lg)]">
-          {data.idleMessages.map((message, index) => (
-            <div key={index} className="flex gap-[var(--space-md)] items-center">
-              <Input
-                placeholder="Enter idle message"
-                value={message}
-                onChange={(e) => updateIdleMessage(index, e.target.value)}
-                className="settings-input flex-1"
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => removeIdleMessage(index)}
-                className="h-10 w-10 p-0 text-destructive hover:text-destructive"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-          
-          <Button
-            variant="outline"
-            onClick={addIdleMessage}
-            className="w-full"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Idle Message
-          </Button>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-lg)]">
-            <div className="space-y-[var(--space-md)]">
-              <Label className="settings-label">Idle Message Max Spoken Count</Label>
-              <Input
-                type="number"
-                value={data.idleMessageMaxSpokenCount}
-                onChange={(e) => onChange({ idleMessageMaxSpokenCount: parseInt(e.target.value) || 0 })}
-                className="settings-input"
-              />
-            </div>
-            <div className="space-y-[var(--space-md)]">
-              <Label className="settings-label">Silence Timeout (seconds)</Label>
-              <Input
-                type="number"
-                value={data.silenceTimeoutSeconds}
-                onChange={(e) => onChange({ silenceTimeoutSeconds: parseInt(e.target.value) || 0 })}
-                className="settings-input"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-lg)]">
+              <div className="space-y-[var(--space-md)]">
+                <Label className="text-sm font-medium">Idle Message Max Spoken Count</Label>
+                <Input
+                  type="number"
+                  value={data.idleMessageMaxSpokenCount}
+                  onChange={(e) => onChange({ idleMessageMaxSpokenCount: parseInt(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="space-y-[var(--space-md)]">
+                <Label className="text-sm font-medium">Silence Timeout (seconds)</Label>
+                <Input
+                  type="number"
+                  value={data.silenceTimeoutSeconds}
+                  onChange={(e) => onChange({ silenceTimeoutSeconds: parseInt(e.target.value) || 0 })}
+                />
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Response Settings */}
-      <div className="settings-card">
-        <div className="space-y-[var(--space-md)]">
-          <h3 className="settings-card-title">Response Settings</h3>
-          <p className="settings-card-description">
-            Fine-tune response timing and interruption behavior
-          </p>
-        </div>
+      <Card variant="default">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <h3 className="text-lg font-medium">Response Settings</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Fine-tune response timing and interruption behavior
+            </p>
+          </div>
+          <ChevronDown className="h-5 w-5 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-[var(--space-xl)]">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-xl)]">
+            <div className="space-y-[var(--space-xl)]">
+              {/* Response Delay */}
+              <div className="space-y-[var(--space-md)]">
+                <Label className="text-sm font-medium">Response Delay (seconds)</Label>
+                <WizardSlider
+                  value={data.responseDelaySeconds}
+                  onChange={(value) => onChange({ responseDelaySeconds: value })}
+                  min={0}
+                  max={5}
+                  step={0.1}
+                  leftLabel="Immediate"
+                  rightLabel="Delayed"
+                />
+              </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-xl)]">
-          <div className="space-y-[var(--space-xl)]">
-            {/* Response Delay */}
-            <div className="space-y-[var(--space-md)]">
-              <Label className="settings-label">Response Delay (seconds)</Label>
-              <WizardSlider
-                value={data.responseDelaySeconds}
-                onChange={(value) => onChange({ responseDelaySeconds: value })}
-                min={0}
-                max={5}
-                step={0.1}
-                leftLabel="Immediate"
-                rightLabel="Delayed"
-              />
+              {/* LLM Request Delay */}
+              <div className="space-y-[var(--space-md)]">
+                <Label className="text-sm font-medium">LLM Request Delay (seconds)</Label>
+                <WizardSlider
+                  value={data.llmRequestDelaySeconds}
+                  onChange={(value) => onChange({ llmRequestDelaySeconds: value })}
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  leftLabel="Fast"
+                  rightLabel="Slow"
+                />
+              </div>
             </div>
 
-            {/* LLM Request Delay */}
-            <div className="space-y-[var(--space-md)]">
-              <Label className="settings-label">LLM Request Delay (seconds)</Label>
-              <WizardSlider
-                value={data.llmRequestDelaySeconds}
-                onChange={(value) => onChange({ llmRequestDelaySeconds: value })}
-                min={0}
-                max={2}
-                step={0.1}
-                leftLabel="Fast"
-                rightLabel="Slow"
-              />
+            <div className="space-y-[var(--space-xl)]">
+              {/* Words to Interrupt */}
+              <div className="space-y-[var(--space-md)]">
+                <Label className="text-sm font-medium">Words to Interrupt Assistant</Label>
+                <WizardSlider
+                  value={data.numWordsToInterruptAssistant}
+                  onChange={(value) => onChange({ numWordsToInterruptAssistant: value })}
+                  min={1}
+                  max={10}
+                  step={1}
+                  leftLabel="1 word"
+                  rightLabel="10 words"
+                  showValue={true}
+                />
+              </div>
+
+              {/* Max Duration */}
+              <div className="space-y-[var(--space-md)]">
+                <Label className="text-sm font-medium">Max Duration (seconds)</Label>
+                <Input
+                  type="number"
+                  value={data.maxDurationSeconds}
+                  onChange={(e) => onChange({ maxDurationSeconds: parseInt(e.target.value) || 0 })}
+                />
+              </div>
             </div>
           </div>
-
-          <div className="space-y-[var(--space-xl)]">
-            {/* Words to Interrupt */}
-            <div className="space-y-[var(--space-md)]">
-              <Label className="settings-label">Words to Interrupt Assistant</Label>
-              <WizardSlider
-                value={data.numWordsToInterruptAssistant}
-                onChange={(value) => onChange({ numWordsToInterruptAssistant: value })}
-                min={1}
-                max={10}
-                step={1}
-                leftLabel="1 word"
-                rightLabel="10 words"
-                showValue={true}
-              />
-            </div>
-
-            {/* Max Duration */}
-            <div className="space-y-[var(--space-md)]">
-              <Label className="settings-label">Max Duration (seconds)</Label>
-              <Input
-                type="number"
-                value={data.maxDurationSeconds}
-                onChange={(e) => onChange({ maxDurationSeconds: parseInt(e.target.value) || 0 })}
-                className="settings-input"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Background Sound */}
-      <div className="settings-card">
-        <div className="space-y-[var(--space-md)]">
-          <h3 className="settings-card-title">Background Sound</h3>
-          <p className="settings-card-description">
-            Add ambient background sounds to enhance the call experience
-          </p>
-        </div>
-
-        <div className="space-y-[var(--space-md)]">
-          <Label className="settings-label">Background Sound</Label>
-          <Select 
-            value={data.backgroundSound} 
-            onValueChange={(value) => onChange({ backgroundSound: value })}
-          >
-            <SelectTrigger className="settings-input">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="off">Off</SelectItem>
-              <SelectItem value="office">Office</SelectItem>
-              <SelectItem value="cafe">Cafe</SelectItem>
-              <SelectItem value="nature">Nature</SelectItem>
-              <SelectItem value="white-noise">White Noise</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <Card variant="default">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <h3 className="text-lg font-medium">Background Sound</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Add ambient background sounds to enhance the call experience
+            </p>
+          </div>
+          <ChevronDown className="h-5 w-5 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-[var(--space-xl)]">
+          <div className="space-y-[var(--space-md)]">
+            <Label className="text-sm font-medium">Background Sound</Label>
+            <Select 
+              value={data.backgroundSound} 
+              onValueChange={(value) => onChange({ backgroundSound: value })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="off">Off</SelectItem>
+                <SelectItem value="office">Office</SelectItem>
+                <SelectItem value="cafe">Cafe</SelectItem>
+                <SelectItem value="nature">Nature</SelectItem>
+                <SelectItem value="white-noise">White Noise</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

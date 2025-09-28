@@ -45,7 +45,8 @@ export const BUSINESS_USE_CASE_TEMPLATES: Record<BusinessUseCase, BusinessUseCas
       { key: "totalCalls", label: "Total Calls", icon: "Phone", format: "number" },
       { key: "avgDuration", label: "Avg. Call Duration", icon: "Timer", format: "duration" },
       { key: "appointments", label: "Appointments", icon: "Calendar", format: "number" },
-      { key: "bookingRate", label: "Booking Rate", icon: "ChartLineUp", format: "percentage" }
+      { key: "bookingRate", label: "Booking Rate", icon: "ChartLineUp", format: "percentage" },
+      { key: "successfulTransfers", label: "Successful Transfers", icon: "ArrowRight", format: "number" }
     ],
     outcomes: [
       { key: "booked appointment", label: "Booked Appointment", color: "hsl(142 76% 36%)", icon: "Calendar", priority: 1 },
@@ -159,9 +160,10 @@ export const BUSINESS_USE_CASE_TEMPLATES: Record<BusinessUseCase, BusinessUseCas
     primaryColor: "hsl(217 91% 60%)",
     metrics: [
       { key: "totalCalls", label: "Total Calls", icon: "Phone", format: "number" },
-      { key: "avgDuration", label: "Avg. Duration", icon: "Timer", format: "duration" },
-      { key: "successful", label: "Successful Calls", icon: "CheckCircle", format: "number" },
-      { key: "successRate", label: "Success Rate", icon: "ChartLineUp", format: "percentage" }
+      { key: "avgDuration", label: "Avg. Call Duration", icon: "Timer", format: "duration" },
+      { key: "appointments", label: "Appointments", icon: "Calendar", format: "number" },
+      { key: "bookingRate", label: "Booking Rate", icon: "ChartLineUp", format: "percentage" },
+      { key: "successfulTransfers", label: "Successful Transfers", icon: "ArrowRight", format: "number" }
     ],
     outcomes: [
       { key: "successful", label: "Successful", color: "hsl(142 76% 36%)", icon: "CheckCircle", priority: 1 },

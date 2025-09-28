@@ -11,6 +11,9 @@ export interface DocumentUploadResponse {
     file_size: number;
     status: string;
     upload_timestamp: string;
+    content_name?: string;
+    content_description?: string;
+    content_type?: string;
   };
 }
 
@@ -20,12 +23,20 @@ export interface Document {
   original_filename: string;
   file_size: number;
   file_path: string;
+  file_type?: string;
+  status: string;
   pinecone_file_id?: string;
   pinecone_status?: 'uploaded' | 'processing' | 'ready' | 'failed' | 'error';
   pinecone_processed_at?: string;
   upload_timestamp: string;
   created_at: string;
   updated_at: string;
+  // Content metadata fields
+  content_name?: string;
+  content_description?: string;
+  content_type?: 'document' | 'website' | 'text';
+  content_url?: string; // For website content
+  content_text?: string; // For text content
 }
 
 export interface DocumentDetails {
@@ -206,8 +217,85 @@ export class KnowledgeBaseAPI {
     this.baseUrl = baseUrl;
   }
 
+  // Save website content to database
+  async saveWebsiteContent(
+    knowledgeBaseId: string,
+    contentData: {
+      name: string;
+      description: string;
+      url: string;
+    },
+    companyId?: string
+  ): Promise<{ success: boolean; document: Document }> {
+    const id = companyId || await getCompanyId();
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`${this.baseUrl}/api/v1/knowledge-base/knowledge-bases/${knowledgeBaseId}/content/website`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        companyId: id,
+        contentName: contentData.name,
+        contentDescription: contentData.description,
+        contentUrl: contentData.url,
+        contentType: 'website'
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Failed to save website content: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  // Save text content to database
+  async saveTextContent(
+    knowledgeBaseId: string,
+    contentData: {
+      name: string;
+      description: string;
+      text: string;
+    },
+    companyId?: string
+  ): Promise<{ success: boolean; document: Document }> {
+    const id = companyId || await getCompanyId();
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`${this.baseUrl}/api/v1/knowledge-base/knowledge-bases/${knowledgeBaseId}/content/text`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        companyId: id,
+        contentName: contentData.name,
+        contentDescription: contentData.description,
+        contentText: contentData.text,
+        contentType: 'text'
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Failed to save text content: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
   // Document upload
-  async uploadDocument(file: File, companyId?: string, knowledgeBaseId?: string): Promise<DocumentUploadResponse> {
+  async uploadDocument(
+    file: File, 
+    companyId?: string, 
+    knowledgeBaseId?: string,
+    contentMetadata?: {
+      name?: string;
+      description?: string;
+      type?: 'document' | 'website' | 'text';
+      url?: string;
+      text?: string;
+    }
+  ): Promise<DocumentUploadResponse> {
     const formData = new FormData();
     formData.append('document', file);
     
@@ -220,6 +308,15 @@ export class KnowledgeBaseAPI {
 
     if (knowledgeBaseId) {
       formData.append('knowledgeBaseId', knowledgeBaseId);
+    }
+
+    // Add content metadata
+    if (contentMetadata) {
+      if (contentMetadata.name) formData.append('contentName', contentMetadata.name);
+      if (contentMetadata.description) formData.append('contentDescription', contentMetadata.description);
+      if (contentMetadata.type) formData.append('contentType', contentMetadata.type);
+      if (contentMetadata.url) formData.append('contentUrl', contentMetadata.url);
+      if (contentMetadata.text) formData.append('contentText', contentMetadata.text);
     }
 
     const headers = await getAuthHeaders();
@@ -480,6 +577,79 @@ export class KnowledgeBaseAPI {
     return response.json();
   }
 
+  // SubKnowledgeBase CRUD operations
+  async createSubKnowledgeBase(
+    knowledgeBaseId: string,
+    subKBData: {
+      name: string;
+      description: string;
+      type: "document" | "website" | "text";
+      url?: string;
+      content?: string;
+      files?: any[];
+    }
+  ): Promise<{ success: boolean; subKnowledgeBase: any }> {
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`${this.baseUrl}/api/v1/knowledge-base/knowledge-bases/${knowledgeBaseId}/sub-knowledge-bases`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(subKBData),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Failed to create sub-knowledge base: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  async updateSubKnowledgeBase(
+    knowledgeBaseId: string,
+    subKBId: string,
+    updateData: {
+      name?: string;
+      description?: string;
+      url?: string;
+      content?: string;
+    }
+  ): Promise<{ success: boolean; subKnowledgeBase: any }> {
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`${this.baseUrl}/api/v1/knowledge-base/knowledge-bases/${knowledgeBaseId}/sub-knowledge-bases/${subKBId}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(updateData),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Failed to update sub-knowledge base: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  async deleteSubKnowledgeBase(
+    knowledgeBaseId: string,
+    subKBId: string
+  ): Promise<{ success: boolean; message: string }> {
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`${this.baseUrl}/api/v1/knowledge-base/knowledge-bases/${knowledgeBaseId}/sub-knowledge-bases/${subKBId}`, {
+      method: 'DELETE',
+      headers,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Failed to delete sub-knowledge base: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
   // Context Snippets Methods
 
   /**
@@ -610,8 +780,18 @@ export class KnowledgeBaseAPI {
 export const knowledgeBaseAPI = new KnowledgeBaseAPI();
 
 // Export convenience functions
-export const uploadDocument = (file: File, companyId?: string, knowledgeBaseId?: string) => 
-  knowledgeBaseAPI.uploadDocument(file, companyId, knowledgeBaseId);
+export const uploadDocument = (
+  file: File, 
+  companyId?: string, 
+  knowledgeBaseId?: string,
+  contentMetadata?: {
+    name?: string;
+    description?: string;
+    type?: 'document' | 'website' | 'text';
+    url?: string;
+    text?: string;
+  }
+) => knowledgeBaseAPI.uploadDocument(file, companyId, knowledgeBaseId, contentMetadata);
 
 export const getDocuments = (companyId?: string) => 
   knowledgeBaseAPI.getDocuments(companyId);
@@ -624,6 +804,35 @@ export const getDocumentDetails = (docId: string) =>
 
 export const deleteDocument = (docId: string) => 
   knowledgeBaseAPI.deleteDocument(docId);
+
+// SubKnowledgeBase convenience functions
+export const createSubKnowledgeBase = (
+  knowledgeBaseId: string,
+  subKBData: {
+    name: string;
+    description: string;
+    type: "document" | "website" | "text";
+    url?: string;
+    content?: string;
+    files?: any[];
+  }
+) => knowledgeBaseAPI.createSubKnowledgeBase(knowledgeBaseId, subKBData);
+
+export const updateSubKnowledgeBase = (
+  knowledgeBaseId: string,
+  subKBId: string,
+  updateData: {
+    name?: string;
+    description?: string;
+    url?: string;
+    content?: string;
+  }
+) => knowledgeBaseAPI.updateSubKnowledgeBase(knowledgeBaseId, subKBId, updateData);
+
+export const deleteSubKnowledgeBase = (
+  knowledgeBaseId: string,
+  subKBId: string
+) => knowledgeBaseAPI.deleteSubKnowledgeBase(knowledgeBaseId, subKBId);
 
 
 export const getStats = (companyId?: string) => 
@@ -676,3 +885,24 @@ export const getFilteredContextSnippets = (
   options?: { top_k?: number; snippet_size?: number },
   companyId?: string
 ) => knowledgeBaseAPI.getFilteredContextSnippets(kbId, query, filters, options, companyId);
+
+// Content saving convenience functions
+export const saveWebsiteContent = (
+  knowledgeBaseId: string,
+  contentData: {
+    name: string;
+    description: string;
+    url: string;
+  },
+  companyId?: string
+) => knowledgeBaseAPI.saveWebsiteContent(knowledgeBaseId, contentData, companyId);
+
+export const saveTextContent = (
+  knowledgeBaseId: string,
+  contentData: {
+    name: string;
+    description: string;
+    text: string;
+  },
+  companyId?: string
+) => knowledgeBaseAPI.saveTextContent(knowledgeBaseId, contentData, companyId);

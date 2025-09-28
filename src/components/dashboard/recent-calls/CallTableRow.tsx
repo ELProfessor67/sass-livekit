@@ -2,7 +2,7 @@
 import React from "react";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogTrigger } from "@/components/ui/dialog";
+import { ThemedDialog, ThemedDialogTrigger } from "@/components/ui/themed-dialog";
 import { Clock, FileText } from "lucide-react";
 import { CallDialogContent } from "../calls/CallDialogContent";
 import { formatPhoneNumber, formatDateTime, formatCallDuration, getCustomerName } from "@/utils/formatUtils";
@@ -32,10 +32,10 @@ export function CallTableRow({ call }: CallTableRowProps) {
     "font-medium";
   
   return (
-    <Dialog>
+    <ThemedDialog>
       <TableRow key={call.id} className={rowStyles}>
         <TableCell className={nameStyles}>
-          <DialogTrigger asChild>
+          <ThemedDialogTrigger asChild>
             <div className="cursor-pointer hover:text-primary transition-colors">
               <div className="font-semibold font-feature-settings tracking-tight antialiased">{getCustomerName(call)}</div>
               <div className="text-sm text-muted-foreground font-feature-settings tracking-tight">
@@ -43,7 +43,7 @@ export function CallTableRow({ call }: CallTableRowProps) {
                 {formatPhoneNumber(call.phoneNumber)}
               </div>
             </div>
-          </DialogTrigger>
+          </ThemedDialogTrigger>
         </TableCell>
         <TableCell>
           <div className="flex flex-col">
@@ -62,15 +62,15 @@ export function CallTableRow({ call }: CallTableRowProps) {
           {getOutcomeBadge(call.resolution)}
         </TableCell>
         <TableCell>
-          <DialogTrigger asChild>
+          <ThemedDialogTrigger asChild>
             <Button variant={isBookedAppointment ? "default" : "outline"} size="sm" className="flex items-center gap-1">
               <FileText size={14} strokeWidth={1.5} />
               Details
             </Button>
-          </DialogTrigger>
+          </ThemedDialogTrigger>
         </TableCell>
       </TableRow>
       <CallDialogContent call={call} />
-    </Dialog>
+    </ThemedDialog>
   );
 }

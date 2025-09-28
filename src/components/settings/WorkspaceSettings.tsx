@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from "framer-motion";
 import { GeneralSettings } from "./GeneralSettings";
 import { MembersSettings } from "./MembersSettings";
 import { BillingSettings } from "./BillingSettings";
-import { ApiIntegrations } from "./ApiIntegrations";
+import BusinessUseCaseSettings from "./BusinessUseCaseSettings";
 
 const tabVariants = {
   initial: { opacity: 0, y: 10 },
@@ -11,14 +11,23 @@ const tabVariants = {
   exit: { opacity: 0, y: -10 }
 };
 
-export function WorkspaceSettings() {
-  const [activeSubTab, setActiveSubTab] = useState("general");
+interface WorkspaceSettingsProps {
+  initialSubTab?: string | null;
+}
+
+export function WorkspaceSettings({ initialSubTab }: WorkspaceSettingsProps) {
+  const [activeSubTab, setActiveSubTab] = useState(() => {
+    if (initialSubTab && ['general', 'members', 'billing', 'business'].includes(initialSubTab)) {
+      return initialSubTab;
+    }
+    return "general";
+  });
 
   const subTabs = [
     { id: "general", label: "General" },
     { id: "members", label: "Members" },
     { id: "billing", label: "Billing" },
-    { id: "integrations", label: "Integrations" }
+    { id: "business", label: "Business Use Case" }
   ];
 
   return (
@@ -72,7 +81,7 @@ export function WorkspaceSettings() {
           {activeSubTab === "general" && <GeneralSettings />}
           {activeSubTab === "members" && <MembersSettings />}
           {activeSubTab === "billing" && <BillingSettings />}
-          {activeSubTab === "integrations" && <ApiIntegrations />}
+          {activeSubTab === "business" && <BusinessUseCaseSettings />}
         </motion.div>
       </AnimatePresence>
     </div>

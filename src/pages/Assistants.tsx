@@ -41,10 +41,10 @@ export default function Assistants() {
           <div className="max-w-6xl mx-auto">
             <ThemeSection spacing="lg">
               <div className="flex flex-col space-y-[var(--space-md)]">
-                <h1 className="text-4xl font-extralight tracking-tight text-foreground">
+                <h1 className="text-[28px] font-light tracking-[0.2px] text-foreground">
                   Assistants
                 </h1>
-                <p className="text-muted-foreground text-lg font-light">
+                <p className="text-muted-foreground text-sm font-medium tracking-[0.1px]">
                   Manage your AI assistants, phone numbers, and knowledge base
                 </p>
               </div>

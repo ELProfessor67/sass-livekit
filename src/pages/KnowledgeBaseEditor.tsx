@@ -3,10 +3,12 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import DashboardLayout from "@/layout/DashboardLayout";
+import { ThemeContainer, ThemeSection, ThemeCard } from "@/components/theme";
+import { PageHeading, PageSubtext, SubHeading, SecondaryText } from "@/components/ui/typography";
 import { 
   Upload, 
   FileText, 
@@ -16,7 +18,9 @@ import {
   X, 
   ArrowLeft,
   Plus,
-  Download
+  Globe,
+  Type,
+  Database
 } from "lucide-react";
 import { 
   getKnowledgeBase, 
@@ -24,15 +28,12 @@ import {
   deleteKnowledgeBase, 
   uploadDocument, 
   deleteDocument,
-  getEnhancedContextSnippets,
-  searchMultipleQueries,
-  getFilteredContextSnippets,
-  type EnhancedContextSnippetsResponse,
-  type MultiSearchContextSnippetsResponse,
-  type FilteredContextSnippetsResponse,
-  type ContextSnippetsFilters
+  saveWebsiteContent,
+  saveTextContent
 } from "@/lib/api/knowledgeBase";
-import { KnowledgeBase, Document } from "@/components/assistants/types/knowledgeBase";
+import { KnowledgeBase } from "@/components/assistants/types/knowledgeBase";
+import { Document } from "@/lib/api/knowledgeBase";
+import { AddContentDialog } from "@/components/assistants/dialogs/AddContentDialog";
 
 export default function KnowledgeBaseEditor() {
   const { id } = useParams();
@@ -48,17 +49,48 @@ export default function KnowledgeBaseEditor() {
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   
-  // Context snippets state
-  const [contextQuery, setContextQuery] = useState("");
-  const [contextSnippets, setContextSnippets] = useState<EnhancedContextSnippetsResponse | null>(null);
-  const [loadingContext, setLoadingContext] = useState(false);
-  const [contextError, setContextError] = useState<string | null>(null);
-  const [showContextSnippets, setShowContextSnippets] = useState(false);
-  const [contextOptions, setContextOptions] = useState({
-    top_k: 16,
-    snippet_size: 2048
+  // Content management state
+  const [isAddContentOpen, setIsAddContentOpen] = useState(false);
+  
+  // Tab-based UI state
+  const [activeTab, setActiveTab] = useState<"documents" | "websites" | "text">("documents");
+  
+  // Get available tabs based on content
+  const getAvailableTabs = () => {
+    if (!knowledgeBase?.documents) return [];
+    
+    const tabs = [];
+    const documents = getDocumentsByType("documents");
+    const websites = getDocumentsByType("websites");
+    const text = getDocumentsByType("text");
+    
+    if (documents.length > 0) tabs.push({ key: "documents", label: "Documents", icon: <FileText className="h-4 w-4" /> });
+    if (websites.length > 0) tabs.push({ key: "websites", label: "Websites", icon: <Globe className="h-4 w-4" /> });
+    if (text.length > 0) tabs.push({ key: "text", label: "Text", icon: <Type className="h-4 w-4" /> });
+    
+    return tabs;
+  };
+  
+  // Set active tab to first available tab if current tab has no content
+  useEffect(() => {
+    const availableTabs = getAvailableTabs();
+    if (availableTabs.length > 0 && !availableTabs.find(tab => tab.key === activeTab)) {
+      setActiveTab(availableTabs[0].key as "documents" | "websites" | "text");
+    }
+  }, [knowledgeBase?.documents]);
+  
+  // Content editing state
+  const [editingContent, setEditingContent] = useState<{
+    name: string;
+    description: string;
+    url?: string;
+    text?: string;
+  }>({
+    name: "",
+    description: "",
+    url: "",
+    text: ""
   });
-  const [contextFilters, setContextFilters] = useState<ContextSnippetsFilters>({});
 
   // Load knowledge base data
   useEffect(() => {
@@ -83,12 +115,20 @@ export default function KnowledgeBaseEditor() {
           createdAt: kb.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
           documents: kb.documents?.map(doc => ({
             doc_id: doc.doc_id,
+            company_id: doc.company_id || "",
             original_filename: doc.original_filename,
             file_size: doc.file_size,
-            file_type: doc.original_filename.split('.').pop() || 'unknown',
+            file_path: doc.file_path || "",
+            file_type: doc.file_type || doc.original_filename.split('.').pop() || 'unknown',
             status: doc.status,
             upload_timestamp: doc.upload_timestamp,
-            created_at: doc.created_at
+            created_at: doc.created_at,
+            updated_at: doc.updated_at || doc.created_at,
+            content_name: doc.content_name,
+            content_description: doc.content_description,
+            content_type: doc.content_type,
+            content_url: doc.content_url,
+            content_text: doc.content_text
           })) || []
         };
         setKnowledgeBase(displayKB);
@@ -118,12 +158,18 @@ export default function KnowledgeBaseEditor() {
         // Update local state with the new document
         const newDocument: Document = {
           doc_id: uploadResponse.document.doc_id,
+          company_id: "", // Will be set by backend
           original_filename: uploadResponse.document.filename,
           file_size: uploadResponse.document.file_size,
+          file_path: "", // Will be set by backend
           file_type: uploadResponse.document.filename.split('.').pop() || 'unknown',
           status: uploadResponse.document.status,
           upload_timestamp: uploadResponse.document.upload_timestamp,
-          created_at: uploadResponse.document.upload_timestamp
+          created_at: uploadResponse.document.upload_timestamp,
+          updated_at: uploadResponse.document.upload_timestamp,
+          content_name: uploadResponse.document.content_name,
+          content_description: uploadResponse.document.content_description,
+          content_type: (uploadResponse.document.content_type as "document" | "website" | "text") || "document"
         };
 
         setKnowledgeBase(prev => prev ? {
@@ -242,7 +288,7 @@ export default function KnowledgeBaseEditor() {
         description: "The knowledge base has been deleted.",
       });
 
-      navigate('/knowledge-base');
+      navigate('/assistants?tab=knowledge-base');
     } catch (error) {
       console.error('Failed to delete knowledge base:', error);
       toast({
@@ -277,101 +323,222 @@ export default function KnowledgeBaseEditor() {
     }
   };
 
-  // Context snippets functions
-  const handleContextSearch = async () => {
-    if (!contextQuery.trim() || !knowledgeBase) return;
-
-    try {
-      setLoadingContext(true);
-      setContextError(null);
-      
-      const result = await getEnhancedContextSnippets(
-        knowledgeBase.id,
-        contextQuery.trim(),
-        contextOptions
-      );
-      
-      if (result.success) {
-        setContextSnippets(result);
-        setShowContextSnippets(true);
-        
-        toast({
-          title: "Context snippets found",
-          description: `Found ${result.total_snippets} relevant snippets from your knowledge base.`,
-        });
-      } else {
-        setContextError(result.error || 'Failed to retrieve context snippets');
-      }
-    } catch (error) {
-      console.error('Context search error:', error);
-      setContextError(error instanceof Error ? error.message : 'Failed to search context');
-      
-      toast({
-        title: "Search failed",
-        description: "Failed to retrieve context snippets. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoadingContext(false);
+  const getTabIcon = (type: string) => {
+    switch (type) {
+      case "document":
+        return <FileText className="h-4 w-4" />;
+      case "website":
+        return <Globe className="h-4 w-4" />;
+      case "text":
+        return <Type className="h-4 w-4" />;
+      default:
+        return <FileText className="h-4 w-4" />;
     }
   };
 
-  const handleFilteredContextSearch = async () => {
-    if (!contextQuery.trim() || !knowledgeBase) return;
-
-    try {
-      setLoadingContext(true);
-      setContextError(null);
-      
-      const result = await getFilteredContextSnippets(
-        knowledgeBase.id,
-        contextQuery.trim(),
-        contextFilters,
-        contextOptions
-      );
-      
-      if (result.success) {
-        setContextSnippets(result);
-        setShowContextSnippets(true);
-        
-        toast({
-          title: "Filtered context snippets found",
-          description: `Found ${result.total_snippets} relevant snippets (filtered from ${result.original_count}).`,
-        });
-      } else {
-        setContextError(result.error || 'Failed to retrieve filtered context snippets');
+  // Helper functions for content categorization
+  const getDocumentsByType = (type: "documents" | "websites" | "text") => {
+    if (!knowledgeBase?.documents) return [];
+    
+    return knowledgeBase.documents.filter((doc: Document) => {
+      switch (type) {
+        case "documents":
+          return doc.content_type === "document" || !doc.content_type;
+        case "websites":
+          return doc.content_type === "website";
+        case "text":
+          return doc.content_type === "text";
+        default:
+          return false;
       }
-    } catch (error) {
-      console.error('Filtered context search error:', error);
-      setContextError(error instanceof Error ? error.message : 'Failed to search filtered context');
-      
+    });
+  };
+
+  const handleSaveWebsite = async () => {
+    if (!knowledgeBase || !editingContent.name.trim() || !editingContent.url?.trim()) return;
+    
+    try {
+      // Save website content to database
+      const response = await saveWebsiteContent(knowledgeBase.id, {
+        name: editingContent.name.trim(),
+        description: editingContent.description.trim(),
+        url: editingContent.url.trim()
+      });
+
+      // Add the saved document to local state
+      const websiteDoc: Document = {
+        doc_id: response.document.doc_id,
+        company_id: response.document.company_id || "",
+        original_filename: response.document.original_filename,
+        file_size: response.document.file_size,
+        file_path: response.document.file_path || "",
+        file_type: response.document.file_type || "website",
+        status: response.document.status,
+        upload_timestamp: response.document.upload_timestamp,
+        created_at: response.document.created_at,
+        updated_at: response.document.updated_at || response.document.created_at,
+        content_name: response.document.content_name,
+        content_description: response.document.content_description,
+        content_type: response.document.content_type,
+        content_url: response.document.content_url
+      };
+
+      setKnowledgeBase(prev => prev ? {
+        ...prev,
+        documents: [...prev.documents, websiteDoc]
+      } : null);
+
       toast({
-        title: "Search failed",
-        description: "Failed to retrieve filtered context snippets. Please try again.",
+        title: "Website added",
+        description: "Website URL has been added to your knowledge base.",
+      });
+
+      setEditingContent({ name: "", description: "", url: "", text: "" });
+    } catch (error) {
+      console.error('Failed to save website:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save website. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      setLoadingContext(false);
     }
   };
 
-  const clearContextSearch = () => {
-    setContextQuery("");
-    setContextSnippets(null);
-    setContextError(null);
-    setShowContextSnippets(false);
+  const handleSaveText = async () => {
+    if (!knowledgeBase || !editingContent.name.trim() || !editingContent.text?.trim()) return;
+    
+    try {
+      // Save text content to database
+      const response = await saveTextContent(knowledgeBase.id, {
+        name: editingContent.name.trim(),
+        description: editingContent.description.trim(),
+        text: editingContent.text.trim()
+      });
+
+      // Add the saved document to local state
+      const textDoc: Document = {
+        doc_id: response.document.doc_id,
+        company_id: response.document.company_id || "",
+        original_filename: response.document.original_filename,
+        file_size: response.document.file_size,
+        file_path: response.document.file_path || "",
+        file_type: response.document.file_type || "text",
+        status: response.document.status,
+        upload_timestamp: response.document.upload_timestamp,
+        created_at: response.document.created_at,
+        updated_at: response.document.updated_at || response.document.created_at,
+        content_name: response.document.content_name,
+        content_description: response.document.content_description,
+        content_type: response.document.content_type,
+        content_text: response.document.content_text
+      };
+
+      setKnowledgeBase(prev => prev ? {
+        ...prev,
+        documents: [...prev.documents, textDoc]
+      } : null);
+
+      toast({
+        title: "Text content added",
+        description: "Text content has been added to your knowledge base.",
+      });
+
+      setEditingContent({ name: "", description: "", url: "", text: "" });
+    } catch (error) {
+      console.error('Failed to save text content:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save text content. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAddContent = async (contentData: {
+    name: string;
+    description: string;
+    type: "document" | "website" | "text";
+    url?: string;
+    content?: string;
+    files?: File[];
+  }) => {
+    try {
+      if (contentData.type === "document" && contentData.files) {
+        // Handle file uploads using existing functionality with metadata
+        setUploading(true);
+        for (const file of contentData.files) {
+          const uploadResponse = await uploadDocument(
+            file, 
+            undefined, 
+            id,
+            {
+              name: contentData.name,
+              description: contentData.description,
+              type: contentData.type
+            }
+          );
+          
+          const newDocument: Document = {
+            doc_id: uploadResponse.document.doc_id,
+            original_filename: uploadResponse.document.filename,
+            file_size: uploadResponse.document.file_size,
+            file_type: uploadResponse.document.filename.split('.').pop() || 'unknown',
+            status: uploadResponse.document.status,
+            upload_timestamp: uploadResponse.document.upload_timestamp,
+            created_at: uploadResponse.document.upload_timestamp,
+            // Add content metadata
+            content_name: contentData.name,
+            content_description: contentData.description,
+            content_type: contentData.type
+          } as Document;
+
+          setKnowledgeBase(prev => prev ? {
+            ...prev,
+            documents: [...prev.documents, newDocument]
+          } : null);
+        }
+        
+        toast({
+          title: "Content added",
+          description: `${contentData.files.length} file(s) uploaded successfully.`,
+        });
+        setUploading(false);
+      } else if (contentData.type === "website") {
+        // TODO: Implement website scraping
+        toast({
+          title: "Website content",
+          description: "Website content feature coming soon!",
+        });
+      } else if (contentData.type === "text") {
+        // TODO: Implement text content storage
+        toast({
+          title: "Text content",
+          description: "Text content feature coming soon!",
+        });
+      }
+    } catch (error) {
+      console.error("Error adding content:", error);
+      toast({
+        title: "Error",
+        description: "Failed to add content. Please try again.",
+        variant: "destructive",
+      });
+      setUploading(false);
+    }
   };
 
   // Show loading state
   if (loading) {
     return (
       <DashboardLayout>
+        <ThemeContainer variant="base" className="min-h-screen">
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Loading knowledge base...</p>
+              <SecondaryText>Loading knowledge base...</SecondaryText>
+            </div>
           </div>
-        </div>
+        </ThemeContainer>
       </DashboardLayout>
     );
   }
@@ -380,15 +547,17 @@ export default function KnowledgeBaseEditor() {
   if (error) {
     return (
       <DashboardLayout>
+        <ThemeContainer variant="base" className="min-h-screen">
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
-            <p className="text-destructive mb-4">{error}</p>
-            <Button onClick={() => navigate('/knowledge-base')}>
+              <SecondaryText className="text-destructive mb-4">{error}</SecondaryText>
+              <Button onClick={() => navigate('/assistants?tab=knowledge-base')}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Knowledge Bases
             </Button>
           </div>
         </div>
+        </ThemeContainer>
       </DashboardLayout>
     );
   }
@@ -399,21 +568,24 @@ export default function KnowledgeBaseEditor() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <ThemeContainer variant="base" className="min-h-screen">
+        <div className="container mx-auto px-[var(--space-lg)]">
+          <div className="max-w-6xl mx-auto">
+            <ThemeSection spacing="lg">
           {/* Header */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-[var(--space-lg)]">
               <Button
                 variant="ghost"
-                size="sm"
-                onClick={() => navigate('/knowledge-base')}
+                    size="icon"
+                    onClick={() => navigate('/assistants?tab=knowledge-base')}
+                    className="flex-shrink-0"
               >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
+                    <ArrowLeft className="h-4 w-4" />
               </Button>
               <div>
-                <h1 className="text-2xl font-bold">Knowledge Base Editor</h1>
-                <p className="text-muted-foreground">Manage your knowledge base content</p>
+                    <PageHeading>Knowledge Base Editor</PageHeading>
+                    <PageSubtext>Manage your knowledge base content</PageSubtext>
               </div>
             </div>
             <div className="flex items-center space-x-2">
@@ -428,391 +600,390 @@ export default function KnowledgeBaseEditor() {
             </div>
           </div>
 
-          {/* Knowledge Base Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Knowledge Base Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Name */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Name</label>
-                {isEditingName ? (
-                  <div className="flex items-center space-x-2">
-                    <Input
-                      value={editingName}
-                      onChange={(e) => setEditingName(e.target.value)}
-                      placeholder="Enter knowledge base name"
-                    />
-                    <Button size="sm" onClick={handleSaveName}>
-                      <Check className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => {
-                        setIsEditingName(false);
-                        setEditingName("");
-                      }}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex items-center space-x-2">
-                    <span className="text-lg font-medium">{knowledgeBase.name}</span>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setEditingName(knowledgeBase.name);
-                        setIsEditingName(true);
-                      }}
-                    >
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
-              </div>
 
-              {/* Description */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Description</label>
-                {isEditingDescription ? (
-                  <div className="space-y-2">
-                    <Textarea
-                      value={editingDescription}
-                      onChange={(e) => setEditingDescription(e.target.value)}
-                      placeholder="Enter knowledge base description"
-                      rows={3}
-                    />
-                    <div className="flex items-center space-x-2">
-                      <Button size="sm" onClick={handleSaveDescription}>
-                        <Check className="h-4 w-4" />
-                      </Button>
+              {/* Tab-based Content Management */}
+                <ThemeCard variant="glass">
+                <div className="p-[var(--space-2xl)]">
+                  {/* Tab Navigation */}
+                  {getAvailableTabs().length > 0 && (
+                    <div className="border-b border-border mb-[var(--space-2xl)]">
+                      <div className="flex justify-between items-center">
+                        <div className="flex-1">
+                          <div className="h-auto p-0 bg-transparent justify-start inline-flex">
+                            {getAvailableTabs().map((tab) => (
+                              <button 
+                                key={tab.key}
+                                onClick={() => setActiveTab(tab.key as "documents" | "websites" | "text")}
+                                className={`
+                                  group relative flex items-center space-x-2 px-[var(--space-lg)] py-3 rounded-none border-b-2 transition-colors whitespace-nowrap
+                                  ${activeTab === tab.key 
+                                    ? 'border-primary bg-transparent text-foreground' 
+                                    : 'border-transparent hover:border-muted-foreground/30 text-muted-foreground hover:text-foreground'
+                                  }
+                                `}
+                              >
+                                {tab.icon}
+                                <span className="truncate">{tab.label}</span>
+                                <Badge variant="outline" className="text-xs ml-2">
+                                  {getDocumentsByType(tab.key as "documents" | "websites" | "text").length}
+                                </Badge>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="pl-[var(--space-lg)] py-2">
                       <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => {
-                          setIsEditingDescription(false);
-                          setEditingDescription("");
-                        }}
+                            variant="ghost"
+                            size="sm"
+                        onClick={() => setIsAddContentOpen(true)}
+                            className="h-10 px-3"
                       >
-                        <X className="h-4 w-4" />
+                            <Plus className="h-4 w-4 mr-2" />
+                        Add Content
                       </Button>
                     </div>
                   </div>
-                ) : (
-                  <div className="flex items-center space-x-2">
-                    <span className="text-muted-foreground">
-                      {knowledgeBase.description || "No description"}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setEditingDescription(knowledgeBase.description);
-                        setIsEditingDescription(true);
-                      }}
-                    >
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
-              </div>
+                    </div>
+                  )}
 
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-4 pt-4 border-t">
-                <div className="text-center">
-                  <div className="text-2xl font-bold">{knowledgeBase.documents.length}</div>
-                  <div className="text-sm text-muted-foreground">Documents</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold">
-                    {formatFileSize(knowledgeBase.documents.reduce((sum, doc) => sum + doc.file_size, 0))}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Total Size</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold">
-                    {knowledgeBase.documents.filter(doc => doc.pinecone_status === 'ready').length}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Processed</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Documents */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Documents</CardTitle>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="file"
-                    multiple
-                    accept=".pdf,.doc,.docx,.txt,.csv,.json"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    id="file-upload"
-                    disabled={uploading}
-                  />
-                  <label htmlFor="file-upload">
-                    <Button asChild disabled={uploading}>
-                      <span>
-                        <Upload className="h-4 w-4 mr-2" />
-                        {uploading ? "Uploading..." : "Upload Documents"}
-                      </span>
-                    </Button>
-                  </label>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {knowledgeBase.documents.length === 0 ? (
-                <div className="text-center py-8">
-                  <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-medium mb-2">No documents yet</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Upload documents to build your knowledge base
-                  </p>
-                  <label htmlFor="file-upload">
-                    <Button asChild>
-                      <span>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Upload Your First Document
-                      </span>
-                    </Button>
-                  </label>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {knowledgeBase.documents.map((doc) => (
-                    <div
-                      key={doc.doc_id}
-                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50"
-                    >
-                      <div className="flex items-center space-x-4">
-                        <FileText className="h-8 w-8 text-muted-foreground" />
-                        <div>
-                          <div className="font-medium">{doc.original_filename}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {formatFileSize(doc.file_size)} • {doc.original_filename.split('.').pop() || 'unknown'}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            Uploaded {new Date(doc.upload_timestamp).toLocaleDateString()}
-                          </div>
+                  {/* Empty State - No Content */}
+                  {getAvailableTabs().length === 0 && (
+                    <div className="text-center py-[var(--space-3xl)]">
+                    <div className="space-y-[var(--space-lg)]">
+                        <div className="mx-auto h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Database className="h-8 w-8 text-primary" />
                         </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Badge className={getStatusColor(doc.pinecone_status || 'uploaded')}>
-                          {doc.pinecone_status || 'uploaded'}
-                        </Badge>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDeleteDocument(doc.doc_id)}
+                        <div>
+                          <h3 className="text-lg font-medium text-foreground">No content yet</h3>
+                          <p className="text-muted-foreground mt-2">
+                            Add your first piece of content to get started
+                          </p>
+                        </div>
+                        <Button 
+                          onClick={() => setIsAddContentOpen(true)}
+                          className="bg-primary hover:bg-primary/90 text-primary-foreground"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Content
                         </Button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                  )}
 
-          {/* Context Snippets Search */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Context Snippets Search</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Search your knowledge base for relevant context snippets using Pinecone Assistant
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Search Input */}
-              <div className="flex space-x-2">
-                <Input
-                  placeholder="Enter your search query..."
-                  value={contextQuery}
-                  onChange={(e) => setContextQuery(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleContextSearch()}
-                  disabled={loadingContext}
-                />
-                <Button 
-                  onClick={handleContextSearch} 
-                  disabled={loadingContext || !contextQuery.trim()}
-                >
-                  {loadingContext ? "Searching..." : "Search"}
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={clearContextSearch}
-                  disabled={loadingContext}
-                >
-                  Clear
-                </Button>
-              </div>
-
-              {/* Search Options */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Max Results (top_k)</label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="50"
-                    value={contextOptions.top_k}
-                    onChange={(e) => setContextOptions(prev => ({ 
-                      ...prev, 
-                      top_k: parseInt(e.target.value) || 16 
-                    }))}
-                    disabled={loadingContext}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Snippet Size (tokens)</label>
-                  <Input
-                    type="number"
-                    min="100"
-                    max="5000"
-                    value={contextOptions.snippet_size}
-                    onChange={(e) => setContextOptions(prev => ({ 
-                      ...prev, 
-                      snippet_size: parseInt(e.target.value) || 2048 
-                    }))}
-                    disabled={loadingContext}
-                  />
-                </div>
-              </div>
-
-              {/* Filters */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Filters (Optional)</label>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs text-muted-foreground">File Types (comma-separated)</label>
-                    <Input
-                      placeholder="pdf, docx, txt"
-                      value={contextFilters.file_types?.join(', ') || ''}
-                      onChange={(e) => setContextFilters(prev => ({ 
-                        ...prev, 
-                        file_types: e.target.value ? e.target.value.split(',').map(s => s.trim()) : undefined
-                      }))}
-                      disabled={loadingContext}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs text-muted-foreground">Min Relevance Score</label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max="1"
-                      step="0.1"
-                      placeholder="0.5"
-                      value={contextFilters.min_relevance_score || ''}
-                      onChange={(e) => setContextFilters(prev => ({ 
-                        ...prev, 
-                        min_relevance_score: e.target.value ? parseFloat(e.target.value) : undefined
-                      }))}
-                      disabled={loadingContext}
-                    />
-                  </div>
-                </div>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={handleFilteredContextSearch}
-                  disabled={loadingContext || !contextQuery.trim()}
-                >
-                  Search with Filters
-                </Button>
-              </div>
-
-              {/* Error Display */}
-              {contextError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-md">
-                  <p className="text-sm text-red-600">{contextError}</p>
-                </div>
-              )}
-
-              {/* Results */}
-              {showContextSnippets && contextSnippets && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-medium">
-                      Search Results ({contextSnippets.total_snippets} snippets)
-                    </h3>
-                    <div className="text-sm text-muted-foreground">
-                      Avg Relevance: {(contextSnippets.average_relevance * 100).toFixed(1)}%
-                    </div>
-                  </div>
-
-                  {contextSnippets.snippets.length === 0 ? (
-                    <div className="text-center py-8">
-                      <p className="text-muted-foreground">No context snippets found for your query.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {contextSnippets.snippets.map((snippet, index) => (
-                        <div key={snippet.id || index} className="border rounded-lg p-4 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
-                              <Badge variant="outline">
-                                {snippet.file_type.toUpperCase()}
-                              </Badge>
-                              <span className="text-sm text-muted-foreground">
-                                {snippet.file_name}
-                              </span>
-                              {snippet.page_numbers.length > 0 && (
-                                <span className="text-xs text-muted-foreground">
-                                  Page {snippet.page_numbers.join(', ')}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <Badge variant="secondary">
-                                {(snippet.relevance_score * 100).toFixed(1)}% relevant
-                              </Badge>
-                              {snippet.signed_url && (
-                                <Button size="sm" variant="outline" asChild>
-                                  <a 
-                                    href={snippet.signed_url} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                  >
-                                    <Download className="h-3 w-3 mr-1" />
-                                    View File
-                                  </a>
-                                </Button>
-                              )}
-                            </div>
+                  {/* Tab Content */}
+                  {getAvailableTabs().length > 0 && (
+                    <div className="space-y-6">
+                    {/* Documents Tab */}
+                    {activeTab === "documents" && (
+                      <div className="space-y-6">
+                        {getDocumentsByType("documents").length === 0 ? (
+                          <div className="text-center py-12">
+                            <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                            <SubHeading className="mb-2">No documents yet</SubHeading>
+                            <SecondaryText>
+                              Upload files to add them to your knowledge base
+                            </SecondaryText>
                           </div>
-                          <div className="text-sm">
-                            <p className="text-muted-foreground mb-2">
-                              {snippet.content_preview}
-                            </p>
-                            <details className="group">
-                              <summary className="cursor-pointer text-primary hover:underline">
-                                View full content
-                              </summary>
-                              <div className="mt-2 p-3 bg-muted rounded-md text-sm">
-                                {snippet.content}
+                        ) : (
+                          <div className="space-y-6">
+                            {getDocumentsByType("documents").map((doc) => (
+                              <ThemeCard variant="glass" className="p-6" key={doc.doc_id}>
+                                <div className="space-y-4">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-2">
+                                      <FileText className="h-5 w-5 text-primary" />
+                                      <SubHeading>{doc.content_name || doc.original_filename}</SubHeading>
+                                    </div>
+                                    <Button
+                                      variant="destructive"
+                                      size="sm"
+                                      onClick={() => handleDeleteDocument(doc.doc_id)}
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Delete Content
+                                    </Button>
+                                  </div>
+                                  
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {/* Name Field */}
+                                    <div>
+                                      <Label htmlFor={`doc-name-${doc.doc_id}`} className="text-sm font-medium text-foreground">
+                                        Name
+                                      </Label>
+                                      <Input
+                                        id={`doc-name-${doc.doc_id}`}
+                                        value={doc.content_name || doc.original_filename}
+                                        readOnly
+                                        className="mt-1 bg-muted/50"
+                                      />
+                                    </div>
+                                    
+                                    {/* File Field */}
+                                    <div>
+                                      <Label htmlFor={`doc-file-${doc.doc_id}`} className="text-sm font-medium text-foreground">
+                                        File
+                                      </Label>
+                                      <Input
+                                        id={`doc-file-${doc.doc_id}`}
+                                        value={doc.original_filename}
+                                        readOnly
+                                        className="mt-1 bg-muted/50"
+                                      />
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Description Field */}
+                                  <div>
+                                    <Label htmlFor={`doc-description-${doc.doc_id}`} className="text-sm font-medium text-foreground">
+                                      Description
+                                    </Label>
+                                    <Textarea
+                                      id={`doc-description-${doc.doc_id}`}
+                                      value={doc.content_description || ""}
+                                      readOnly
+                                      className="min-h-[80px] mt-1 bg-muted/50"
+                                    />
+                                  </div>
+                                  
+                                  {/* File Details */}
+                                  <div className="pt-4 border-t border-border">
+                                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                                      <div>
+                                        {formatFileSize(doc.file_size)} • {doc.original_filename.split('.').pop() || 'unknown'}
+                                      </div>
+                                      <div className="flex items-center space-x-2">
+                                        <Badge className={getStatusColor(doc.pinecone_status || 'uploaded')}>
+                                          {doc.pinecone_status || 'uploaded'}
+                                        </Badge>
+                                        <span>Uploaded {new Date(doc.upload_timestamp).toLocaleDateString()}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </ThemeCard>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Websites Tab */}
+                    {activeTab === "websites" && (
+                      <div className="space-y-6">
+                        {/* Add Website Form */}
+                        <ThemeCard variant="glass" className="p-6">
+                          <div className="space-y-4">
+                            <SubHeading>Add Website</SubHeading>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <Label htmlFor="website-name">Name</Label>
+                                <Input
+                                  id="website-name"
+                                  placeholder="Website name..."
+                                  value={editingContent.name}
+                                  onChange={(e) => setEditingContent(prev => ({ ...prev, name: e.target.value }))}
+                                />
                               </div>
-                            </details>
+                              <div>
+                                <Label htmlFor="website-url">URL</Label>
+                                <Input
+                                  id="website-url"
+                                  placeholder="https://example.com"
+                                  value={editingContent.url || ""}
+                                  onChange={(e) => setEditingContent(prev => ({ ...prev, url: e.target.value }))}
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <Label htmlFor="website-description">Description</Label>
+                              <Textarea
+                                id="website-description"
+                                placeholder="Describe this website..."
+                                value={editingContent.description}
+                                onChange={(e) => setEditingContent(prev => ({ ...prev, description: e.target.value }))}
+                                className="min-h-[80px]"
+                              />
+                            </div>
+                            <Button 
+                              onClick={handleSaveWebsite}
+                              disabled={!editingContent.name.trim() || !editingContent.url?.trim()}
+                            >
+                              <Globe className="h-4 w-4 mr-2" />
+                              Add Website
+                            </Button>
                           </div>
-                        </div>
-                      ))}
+                        </ThemeCard>
+
+                        {/* Websites List */}
+                        {getDocumentsByType("websites").length === 0 ? (
+                          <div className="text-center py-12">
+                            <Globe className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                            <SubHeading className="mb-2">No websites yet</SubHeading>
+                            <SecondaryText>
+                              Add website URLs to include web content in your knowledge base
+                            </SecondaryText>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {getDocumentsByType("websites").map((doc) => (
+                          <div
+                            key={doc.doc_id}
+                            className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50"
+                          >
+                            <div className="flex items-center space-x-4">
+                                  <Globe className="h-8 w-8 text-muted-foreground" />
+                              <div>
+                                <div className="font-medium">
+                                  {doc.content_name || doc.original_filename}
+                                </div>
+                                {doc.content_description && (
+                                  <div className="text-sm text-muted-foreground mb-1">
+                                    {doc.content_description}
+                                  </div>
+                                )}
+                                <div className="text-sm text-muted-foreground">
+                                      {doc.content_url}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      Added {new Date(doc.upload_timestamp).toLocaleDateString()}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <Badge className={getStatusColor(doc.pinecone_status || 'ready')}>
+                                    {doc.pinecone_status || 'ready'}
+                                  </Badge>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleDeleteDocument(doc.doc_id)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Text Tab */}
+                    {activeTab === "text" && (
+                      <div className="space-y-6">
+                        {/* Add Text Form */}
+                        <ThemeCard variant="glass" className="p-6">
+                          <div className="space-y-4">
+                            <SubHeading>Add Text Content</SubHeading>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <Label htmlFor="text-name">Name</Label>
+                                <Input
+                                  id="text-name"
+                                  placeholder="Content name..."
+                                  value={editingContent.name}
+                                  onChange={(e) => setEditingContent(prev => ({ ...prev, name: e.target.value }))}
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="text-description">Description</Label>
+                                <Input
+                                  id="text-description"
+                                  placeholder="Brief description..."
+                                  value={editingContent.description}
+                                  onChange={(e) => setEditingContent(prev => ({ ...prev, description: e.target.value }))}
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <Label htmlFor="text-content">Content</Label>
+                              <Textarea
+                                id="text-content"
+                                placeholder="Enter your text content here..."
+                                value={editingContent.text || ""}
+                                onChange={(e) => setEditingContent(prev => ({ ...prev, text: e.target.value }))}
+                                className="min-h-[120px]"
+                              />
+                            </div>
+                            <Button 
+                              onClick={handleSaveText}
+                              disabled={!editingContent.name.trim() || !editingContent.text?.trim()}
+                            >
+                              <Type className="h-4 w-4 mr-2" />
+                              Add Text Content
+                            </Button>
+                          </div>
+                        </ThemeCard>
+
+                        {/* Text Content List */}
+                        {getDocumentsByType("text").length === 0 ? (
+                          <div className="text-center py-12">
+                            <Type className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                            <SubHeading className="mb-2">No text content yet</SubHeading>
+                            <SecondaryText>
+                              Add text content directly to your knowledge base
+                            </SecondaryText>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {getDocumentsByType("text").map((doc) => (
+                              <div
+                                key={doc.doc_id}
+                                className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50"
+                              >
+                                <div className="flex items-center space-x-4">
+                                  <Type className="h-8 w-8 text-muted-foreground" />
+                                  <div>
+                                    <div className="font-medium">
+                                      {doc.content_name || doc.original_filename}
+                                    </div>
+                                    {doc.content_description && (
+                                      <div className="text-sm text-muted-foreground mb-1">
+                                        {doc.content_description}
+                                      </div>
+                                    )}
+                                    <div className="text-sm text-muted-foreground">
+                                      {formatFileSize(doc.file_size)} characters
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      Added {new Date(doc.upload_timestamp).toLocaleDateString()}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                  <Badge className={getStatusColor(doc.pinecone_status || 'ready')}>
+                                    {doc.pinecone_status || 'ready'}
+                              </Badge>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDeleteDocument(doc.doc_id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                        )}
+                      </div>
+                    )}
                     </div>
                   )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                  </div>
+                </ThemeCard>
+
+            </ThemeSection>
+          </div>
         </div>
+      </ThemeContainer>
+
+      {/* Add Content Dialog */}
+      <AddContentDialog
+        open={isAddContentOpen}
+        onOpenChange={setIsAddContentOpen}
+        onAddContent={handleAddContent}
+      />
     </DashboardLayout>
   );
 }

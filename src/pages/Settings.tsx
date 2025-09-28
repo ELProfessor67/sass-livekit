@@ -1,11 +1,12 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import DashboardLayout from "@/layout/DashboardLayout";
 import { motion, AnimatePresence } from "framer-motion";
 import { AccountSettings } from "@/components/settings/AccountSettings";
 import { WorkspaceSettings } from "@/components/settings/WorkspaceSettings";
 import { PlansAndPricingSettings } from "@/components/settings/PlansAndPricingSettings";
-import BusinessUseCaseSettings from "@/components/settings/BusinessUseCaseSettings";
+import { ApiIntegrations } from "@/components/settings/ApiIntegrations";
 import { ThemeContainer, ThemeSection, ThemeCard } from "@/components/theme";
 
 const tabVariants = {
@@ -15,12 +16,20 @@ const tabVariants = {
 };
 
 export default function Settings() {
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("account");
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['account', 'workspace', 'integrations', 'plans'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
 
   const tabs = [
     { id: "account", label: "Account" },
-    { id: "business", label: "Business Use Case" },
     { id: "workspace", label: "Workspace" },
+    { id: "integrations", label: "Integrations" },
     { id: "plans", label: "Plans & Pricing" }
   ];
 
@@ -78,9 +87,9 @@ export default function Settings() {
                       exit="exit"
                       transition={{ duration: 0.2 }}
                     >
-                      {activeTab === "account" && <AccountSettings />}
-                      {activeTab === "business" && <BusinessUseCaseSettings />}
-                      {activeTab === "workspace" && <WorkspaceSettings />}
+                      {activeTab === "account" && <AccountSettings initialSubTab={searchParams.get('subtab')} />}
+                      {activeTab === "workspace" && <WorkspaceSettings initialSubTab={searchParams.get('subtab')} />}
+                      {activeTab === "integrations" && <ApiIntegrations />}
                       {activeTab === "plans" && <PlansAndPricingSettings />}
                     </motion.div>
                   </AnimatePresence>

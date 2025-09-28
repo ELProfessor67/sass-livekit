@@ -4,14 +4,22 @@ export interface ModelData {
   knowledgeBase: string;
   calendar: string;
   conversationStart: string;
+  voice: string;
   temperature: number;
   maxTokens: number;
   firstMessage: string;
   systemPrompt: string;
+  language: string;
   transcriber: {
     model: string;
     language: string;
   };
+  // Call Management Settings
+  endCallMessage: string;
+  maxCallDuration: number;
+  idleMessages: string[];
+  idleMessageMaxSpokenCount: number;
+  silenceTimeoutSeconds: number;
 }
 
 export interface VoiceData {
@@ -51,14 +59,16 @@ export interface StructuredDataField {
 
 export interface AnalysisData {
   structuredData: StructuredDataField[];
-  callSummary: boolean;
+  callSummary: string;
   successEvaluation: boolean;
   customSuccessPrompt: string;
 }
 
 export interface AdvancedData {
   hipaaCompliant: boolean;
+  pciCompliant: boolean;
   recordingEnabled: boolean;
+  audioRecordingFormat: string;
   videoRecordingEnabled: boolean;
   endCallMessage: string;
   endCallPhrases: string[];
@@ -71,6 +81,14 @@ export interface AdvancedData {
   numWordsToInterruptAssistant: number;
   maxDurationSeconds: number;
   backgroundSound: string;
+  voicemailDetectionEnabled: boolean;
+  voicemailMessage?: string;
+  transferEnabled: boolean;
+  transferPhoneNumber: string;
+  transferCountryCode: string;
+  transferSentence: string;
+  transferCondition: string;
+  transferType: "warm" | "cold";
   // SMS fields
   firstSms: string;
   smsPrompt: string;
@@ -82,6 +100,36 @@ export interface AdvancedData {
   calEventTypeId?: string;
   calEventTypeSlug?: string;
   calTimezone?: string;
+}
+
+export interface SMSData {
+  provider: string;
+  knowledgeBase: string;
+  calendar: string;
+  systemPrompt: string;
+  responseStyle: number;
+  characterLimit: number;
+  language: string;
+  autoReply: boolean;
+  autoReplyDelay: number;
+  businessHours: {
+    enabled: boolean;
+    start: string;
+    end: string;
+    timezone: string;
+  };
+  messageTemplates: string[];
+  complianceSettings: {
+    tcpaCompliant: boolean;
+    optInEnabled: boolean;
+    optOutKeywords: string[];
+    helpKeywords: string[];
+  };
+  escalationRules: {
+    enabled: boolean;
+    humanTransferKeywords: string[];
+    maxAutoResponses: number;
+  };
 }
 
 export interface N8nWebhookField {
@@ -99,6 +147,7 @@ export interface AssistantFormData {
   id: string;
   model: ModelData;
   voice: VoiceData;
+  sms: SMSData;
   analysis: AnalysisData;
   advanced: AdvancedData;
   n8n: N8nData;

@@ -1,6 +1,8 @@
 
 import { cn } from "@/lib/utils";
 import { CaretUp, CaretDown } from "phosphor-react";
+import { Card } from "@/components/ui/card";
+import { useTheme } from "@/components/ThemeProvider";
 
 interface StatCardProps {
   title: React.ReactNode;
@@ -20,22 +22,23 @@ export default function StatCard({
   trend,
   className,
 }: StatCardProps) {
+  const { uiStyle } = useTheme();
+  
+  // Use appropriate card variant based on theme
+  const cardVariant = uiStyle === "glass" ? "glass" : "default";
+  
   return (
-    <div className={cn(
-      // Enterprise glass base with subtle border
-      "glass-enterprise glass-micro-lift border-glass-subtle",
-      // Layout and spacing
-      "rounded-2xl p-6",
-      // Backdrop and borders with periwinkle/bluish glass
-      "bg-[hsl(var(--glass-periwinkle-light))] dark:bg-[hsl(var(--glass-bluish-light))] backdrop-blur-md border-[hsl(var(--glass-border-periwinkle))] dark:border-[hsl(var(--glass-border-bluish))]",
-      // Shadows and interactions
-      "shadow-xl transition-all duration-300",
-      "hover:scale-105 hover:shadow-2xl hover:shadow-white/5",
-      className
-    )}>
+    <Card 
+      variant={cardVariant}
+      className={cn(
+        "p-6 transition-all duration-300",
+        "hover:scale-105 hover:shadow-xl",
+        className
+      )}
+    >
       <div className="flex items-center justify-between mb-2">
-        {/* Title with enhanced typography */}
-        <div className="text-glass-enhanced text-sm font-medium tracking-tighter text-muted-foreground">
+        {/* Title */}
+        <div className="flex">
           {title}
         </div>
         
@@ -61,35 +64,25 @@ export default function StatCard({
         )}
       </div>
       
-      {/* Main content area - direct on glass */}
+      {/* Main content area */}
       <div className="flex items-center justify-between mt-4">
-        <div className="text-glass-primary text-3xl font-normal tracking-tighter">
+        <div className="flex">
           {value}
         </div>
         
-        {/* Electric blue icon container */}
+        {/* Icon container */}
         <div className={cn(
-          "w-12 h-12 flex items-center justify-center",
-          "rounded-xl backdrop-blur-md transition-all duration-300",
-          // Electric blue background with gradient
-          "bg-gradient-to-br from-[hsl(var(--electric-blue-subtle))] to-[hsl(var(--electric-blue-medium))]",
-          "dark:from-[hsl(var(--electric-blue-medium))] dark:to-[hsl(var(--electric-blue-high))]",
-          // Electric border and glow
-          "border border-[hsl(var(--electric-blue-medium)/0.5)] dark:border-[hsl(var(--electric-blue-high)/0.6)]",
-          "shadow-lg shadow-[hsl(var(--electric-glow)/0.3)]",
-          // Icon color - white for contrast against electric blue
-          "text-white",
-          // Enhanced hover effects with electric glow
-          "hover:scale-105 hover:shadow-xl hover:shadow-[hsl(var(--electric-glow)/0.5)]",
-          "hover:bg-gradient-to-br hover:from-[hsl(var(--electric-blue-medium))] hover:to-[hsl(var(--electric-blue-high))]",
-          "dark:hover:from-[hsl(var(--electric-blue-high))] dark:hover:to-[hsl(var(--electric-blue-high))]",
-          // Interaction states
-          "active:scale-95",
-          "focus:outline-none focus:ring-2 focus:ring-[hsl(var(--electric-glow)/0.4)]"
+          "w-12 h-12 flex items-center justify-center flex-shrink-0",
+          "rounded-xl transition-all duration-300",
+          "bg-primary text-primary-foreground",
+          "hover:scale-105 hover:shadow-lg",
+          "shadow-md"
         )}>
-          {icon}
+          <div className="flex items-center justify-center w-6 h-6">
+            {icon}
+          </div>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }

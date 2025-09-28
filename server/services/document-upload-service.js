@@ -38,7 +38,7 @@ class DocumentUploadService {
     });
   }
 
-  async uploadDocument(file, companyId, userId) {
+  async uploadDocument(file, companyId, userId, contentMetadata = {}) {
     try {
       const docId = uuidv4();
       const fileExtension = path.extname(file.originalname);
@@ -49,15 +49,22 @@ class DocumentUploadService {
       fs.writeFileSync(localFilePath, file.buffer);
       const filePath = localFilePath;
 
-      // Save to database
-      const document = await this.databaseService.createDocument({
+      // Prepare document data with metadata
+      const documentData = {
         doc_id: docId,
         company_id: companyId,
         filename: fileName,
         original_filename: file.originalname,
         file_size: file.size,
-        file_path: filePath
-      });
+        file_path: filePath,
+        // Add content metadata
+        content_name: contentMetadata.content_name,
+        content_description: contentMetadata.content_description,
+        content_type: contentMetadata.content_type || 'document'
+      };
+
+      // Save to database
+      const document = await this.databaseService.createDocument(documentData);
 
       // Queue for processing
       await this.queueDocumentProcessing(docId);

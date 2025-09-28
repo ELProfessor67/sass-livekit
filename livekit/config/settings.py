@@ -53,6 +53,42 @@ class OpenAIConfig:
 
 
 @dataclass
+class GroqConfig:
+    """Groq API configuration."""
+    api_key: str
+    llm_model: str = "llama-3.1-8b-instant"
+    temperature: float = 0.1
+    max_tokens: int = 150
+    
+    @classmethod
+    def from_env(cls) -> "GroqConfig":
+        return cls(
+            api_key=os.getenv("GROQ_API_KEY", ""),
+            llm_model=os.getenv("GROQ_LLM_MODEL", "llama-3.1-8b-instant"),
+            temperature=float(os.getenv("GROQ_TEMPERATURE", "0.1")),
+            max_tokens=int(os.getenv("GROQ_MAX_TOKENS", "150"))
+        )
+
+
+@dataclass
+class CerebrasConfig:
+    """Cerebras API configuration."""
+    api_key: str
+    llm_model: str = "cerebras-llama-2-7b"
+    temperature: float = 0.1
+    max_tokens: int = 250
+    
+    @classmethod
+    def from_env(cls) -> "CerebrasConfig":
+        return cls(
+            api_key=os.getenv("CEREBRAS_API_KEY", ""),
+            llm_model=os.getenv("CEREBRAS_LLM_MODEL", "cerebras-llama-2-7b"),
+            temperature=float(os.getenv("CEREBRAS_TEMPERATURE", "0.1")),
+            max_tokens=int(os.getenv("CEREBRAS_MAX_TOKENS", "250"))
+        )
+
+
+@dataclass
 class SupabaseConfig:
     """Supabase database configuration."""
     url: str
@@ -115,6 +151,8 @@ class Settings:
     # Core configurations
     livekit: LiveKitConfig
     openai: OpenAIConfig
+    groq: GroqConfig
+    cerebras: CerebrasConfig
     supabase: SupabaseConfig
     calendar: CalendarConfig
     
@@ -162,6 +200,8 @@ class Settings:
         return cls(
             livekit=LiveKitConfig.from_env(),
             openai=OpenAIConfig.from_env(),
+            groq=GroqConfig.from_env(),
+            cerebras=CerebrasConfig.from_env(),
             supabase=SupabaseConfig.from_env(),
             calendar=CalendarConfig.from_env(),
             force_first_message=os.getenv("FORCE_FIRST_MESSAGE", "true").lower() == "true",

@@ -1,12 +1,16 @@
 # LiveKit Voice Agent Requirements
 
 # Core LiveKit dependencies
-livekit-agents>=0.8.0
+livekit-agents>=1.2.11
 livekit-plugins-openai>=0.8.0
 livekit-plugins-silero>=0.8.0
+livekit-plugins-elevenlabs>=1.2.11
 
 # OpenAI integration
 openai>=1.0.0
+
+# ElevenLabs integration
+elevenlabs>=0.2.0
 
 # Database
 supabase>=2.0.0

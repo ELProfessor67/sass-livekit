@@ -1,8 +1,7 @@
 
-import { Phone, Timer, Calendar, ChartLineUp, CheckCircle, ShoppingCart, FileText, User } from "phosphor-react";
+import { Phone, Timer, Calendar, ChartLineUp, CheckCircle, ShoppingCart, FileText, User, ArrowRight } from "phosphor-react";
 import StatCard from "@/components/dashboard/StatCard";
 import { MetricText, MetricLabel } from "@/components/ui/typography";
-import { secondsToDuration } from "@/lib/api/mockData/helpers";
 import { useBusinessUseCase } from "@/components/BusinessUseCaseProvider";
 
 interface DashboardStatsProps {
@@ -10,17 +9,21 @@ interface DashboardStatsProps {
   avgDuration: number;
   appointments: number;
   bookingRate: number;
+  successfulTransfers: number;
 }
 
 export function formatDuration(seconds: number) {
-  return secondsToDuration(seconds);
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
 export default function DashboardStats({ 
   totalCalls, 
   avgDuration, 
   appointments, 
-  bookingRate 
+  bookingRate,
+  successfulTransfers
 }: DashboardStatsProps) {
   const { config } = useBusinessUseCase();
   
@@ -33,7 +36,9 @@ export default function DashboardStats({
     CheckCircle,
     ShoppingCart,
     UserCheck: User,
-    FileText
+    FileText,
+    ArrowRight,
+    Users: User
   };
   
   // Value formatting function
@@ -51,7 +56,7 @@ export default function DashboardStats({
   };
 
   return (
-    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-5">
       {config.metrics.map((metric, index) => {
         const IconComponent = iconMap[metric.icon] || Phone;
         let value: number;
@@ -77,6 +82,12 @@ export default function DashboardStats({
           case "successRate":
             value = bookingRate;
             break;
+          case "successfulTransfers":
+          case "escalations":
+          case "referrals":
+          case "transfers":
+            value = successfulTransfers;
+            break;
           default:
             value = 0;
         }
@@ -86,7 +97,7 @@ export default function DashboardStats({
             key={metric.key}
             title={<MetricLabel className="text-elegant">{metric.label}</MetricLabel>}
             value={<MetricText className="text-display">{formatValue(value, metric.format)}</MetricText>}
-            icon={<IconComponent size={24} weight="thin" />}
+            icon={<IconComponent size={24} weight="regular" />}
             trend={{ value: 18 - index * 2, positive: true }}
           />
         );

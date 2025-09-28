@@ -11,6 +11,21 @@ Environment variables used by the app
 # OpenAI Configuration (Required for Knowledge Base)
 - OPENAI_API_KEY: OpenAI API key for embeddings and text processing
 
+# Groq Configuration (Optional - Alternative LLM provider)
+- GROQ_API_KEY: Groq API key for LLM processing
+- GROQ_LLM_MODEL: Groq model to use (default: llama-3.1-8b-instant)
+- GROQ_TEMPERATURE: Temperature setting for Groq model (default: 0.1)
+- GROQ_MAX_TOKENS: Maximum tokens for Groq model response (default: 150)
+
+# Available Groq Production Models:
+# - llama-3.1-8b-instant (131K context, 131K max tokens)
+# - llama-3.3-70b-versatile (131K context, 32K max tokens)  
+# - openai/gpt-oss-120b (131K context, 65K max tokens)
+# - openai/gpt-oss-20b (131K context, 65K max tokens)
+
+# Cerebras Configuration (Optional - Alternative LLM provider)
+- CEREBRAS_API_KEY: Cerebras API key for LLM processing
+
 # AWS S3 Configuration (Optional - will fallback to local storage)
 - AWS_ACCESS_KEY_ID: AWS access key ID
 - AWS_SECRET_ACCESS_KEY: AWS secret access key

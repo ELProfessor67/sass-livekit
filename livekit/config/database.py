@@ -83,7 +83,7 @@ class DatabaseClient:
                 "n8n_sheet_tab, n8n_save_name, n8n_save_email, n8n_save_phone, n8n_save_summary, "
                 "n8n_save_sentiment, n8n_save_labels, n8n_save_recording_url, n8n_save_transcript_url, "
                 "n8n_save_duration, n8n_save_call_direction, n8n_save_from_number, n8n_save_to_number, "
-                "n8n_save_cost, n8n_custom_fields"
+                "n8n_save_cost, n8n_custom_fields, groq_model, groq_temperature, groq_max_tokens, cerebras_model, cerebras_temperature, cerebras_max_tokens"
             ).eq("id", assistant_id).single().execute()
             
             if result.data:

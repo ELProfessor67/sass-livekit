@@ -6,8 +6,8 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
 } from "recharts";
+import { ChartContainer } from "@/components/ui/chart";
 
 interface CallVolumeChartProps {
   chartData: any[];
@@ -26,7 +26,7 @@ export default function CallVolumeChart({ chartData }: CallVolumeChartProps) {
   const tickCount = 5; 
 
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    <ChartContainer config={{}} className="h-full aspect-auto">
       <AreaChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id="colorCall" x1="0" y1="0" x2="0" y2="1">
@@ -39,9 +39,7 @@ export default function CallVolumeChart({ chartData }: CallVolumeChartProps) {
           axisLine={false} 
           tickLine={false}
           padding={{ left: 10, right: 10 }}
-          stroke="#a5b4fc"
-          tick={{ fill: 'currentColor', fontSize: 12 }}
-          className="axis-labels"
+          tick={{ fontSize: 12 }}
           // For short date ranges, don't show all days
           interval={chartData.length > 14 ? Math.ceil(chartData.length / 10) - 1 : 0}
         />
@@ -50,9 +48,7 @@ export default function CallVolumeChart({ chartData }: CallVolumeChartProps) {
           tickLine={false}
           domain={[yAxisMin, yAxisMax]}
           padding={{ top: 20 }}
-          stroke="#a5b4fc"
-          tick={{ fill: 'currentColor', fontSize: 12 }}
-          className="axis-labels"
+          tick={{ fontSize: 12 }}
           width={30}
           tickCount={tickCount}
         />
@@ -84,6 +80,6 @@ export default function CallVolumeChart({ chartData }: CallVolumeChartProps) {
           animationDuration={800}
         />
       </AreaChart>
-    </ResponsiveContainer>
+    </ChartContainer>
   );
 }

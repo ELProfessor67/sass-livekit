@@ -7,8 +7,11 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Plus, ChevronDown, Edit, Check, X } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Plus, ChevronDown, Edit, Check, X, Sparkles, Database, Shield } from "lucide-react";
 import { AnalysisData, StructuredDataField } from "./types";
+import { IntelligentDataField } from "./IntelligentDataField";
+import { DataFieldSuggestion, UNIVERSAL_DEFAULTS } from "@/utils/dataTypeInference";
 import { cn } from "@/lib/utils";
 
 interface AnalysisTabProps {
@@ -30,6 +33,36 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ data, onChange }) => {
     enumValues: []
   });
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+
+  // Initialize with universal defaults if no data exists
+  React.useEffect(() => {
+    if (data.structuredData.length === 0) {
+      const universalFields: StructuredDataField[] = UNIVERSAL_DEFAULTS.map(field => ({
+        name: field.name,
+        type: field.type,
+        description: field.description,
+        isUniversal: field.isUniversal,
+        origin: field.origin
+      }));
+      
+      onChange({
+        structuredData: universalFields
+      });
+    }
+  }, []);
+
+  const addDataField = (field: DataFieldSuggestion) => {
+    const newStructuredField: StructuredDataField = {
+      name: field.name,
+      type: field.type,
+      description: field.description,
+      origin: field.origin || 'Custom'
+    };
+    
+    onChange({
+      structuredData: [...data.structuredData, newStructuredField]
+    });
+  };
 
   const addStructuredDataField = () => {
     if (newField.name && newField.description) {
@@ -68,249 +101,159 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ data, onChange }) => {
   };
 
   return (
-    <div className="space-y-[var(--space-2xl)]">
-      {/* Page Header */}
-      <div className="mb-6">
-        <h2 className="text-[28px] font-light tracking-[0.2px] mb-2">Analysis Configuration</h2>
-        <p className="text-base text-muted-foreground max-w-xl">
-          Configure how conversations are analyzed, structured, and evaluated for your business needs
-        </p>
-      </div>
+    <TooltipProvider>
+      <div className="space-y-[var(--space-2xl)]">
+        {/* Page Header */}
+        <div className="mb-6">
+          <h2 className="text-[28px] font-light tracking-[0.2px] mb-2">Analysis Configuration</h2>
+          <p className="text-base text-muted-foreground max-w-xl">
+            Configure how conversations are analyzed, structured, and evaluated for your business needs
+          </p>
+        </div>
 
-      {/* Summary Settings Card */}
-      <Card variant="default">
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <div>
-            <h3 className="text-lg font-medium">Summary Settings</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Configure automatic call summarization features
-            </p>
-          </div>
-          <ChevronDown className="h-5 w-5 text-muted-foreground" />
-        </CardHeader>
-        <CardContent className="space-y-[var(--space-xl)]">
-          <div className="space-y-4">
-            <Label className="text-sm font-medium">Call Summary</Label>
-            <Textarea
-              placeholder="Configure how call summaries should be generated. Define the key points, format, and level of detail you want in automated summaries..."
-              value={data.callSummary ? "Enabled" : ""}
-              onChange={() => {}}
-              className="resize-none h-28 text-[15px]"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Business Evaluation Card */}
-      <Card variant="default">
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <div>
-            <h3 className="text-lg font-medium">Business Evaluation</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Define success criteria and evaluation parameters
-            </p>
-          </div>
-          <ChevronDown className="h-5 w-5 text-muted-foreground" />
-        </CardHeader>
-        <CardContent className="space-y-[var(--space-xl)]">
-          <div className="space-y-4">
-            <Label className="text-sm font-medium">Custom Success Prompt</Label>
-            <Textarea
-              placeholder="Define what constitutes a successful call for your business. For example: 'A call is successful if the customer schedules an appointment, provides contact information, or shows interest in our services.'"
-              value={data.customSuccessPrompt}
-              onChange={(e) => onChange({ customSuccessPrompt: e.target.value })}
-              className="resize-none h-24 text-[15px]"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Structured Data Card */}
-      <Card variant="default">
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <div>
-            <h3 className="text-lg font-medium">Structured Data</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Define data fields to extract from conversations
-            </p>
-          </div>
-          <ChevronDown className="h-5 w-5 text-muted-foreground" />
-        </CardHeader>
-        <CardContent className="space-y-[var(--space-xl)]">
-          {/* Data Schema Section */}
-          <div className="pt-2">
-            <div className="mb-4">
-              <h4 className="text-sm font-medium">Data Schema</h4>
-              <p className="text-xs text-muted-foreground mt-1">
-                Configure structured fields to extract and validate from call data
+        {/* Call Summaries Card */}
+        <Card variant="default">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div>
+              <h3 className="text-lg font-medium">Call Summaries</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Choose how calls are summarized
               </p>
             </div>
-
-            {/* Property List */}
-            {data.structuredData.length > 0 ? (
+            <ChevronDown className="h-5 w-5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="space-y-[var(--space-xl)]">
+            <div className="space-y-4">
               <div className="space-y-2">
-                {/* Table Header */}
-                <div className="grid grid-cols-12 gap-2 py-2 px-1 text-xs font-medium text-muted-foreground border-b">
-                  <div className="col-span-3">NAME</div>
-                  <div className="col-span-2">TYPE</div>
-                  <div className="col-span-5">OPTIONS</div>
-                  <div className="col-span-2">ACTIONS</div>
-                </div>
+                <Label className="text-sm font-medium">Summary Style</Label>
+                <p className="text-sm text-muted-foreground">
+                  Automatically create summaries of your calls to capture key details, decisions, and next steps
+                </p>
+              </div>
+              <Textarea
+                placeholder="Create a brief, conversational call summary. Include what they're looking for, their key needs, and next steps. Keep it under 250 words with a conversational tone."
+                value={data.callSummary || ""}
+                onChange={(e) => onChange({ callSummary: e.target.value })}
+                className="resize-none h-28 text-[15px]"
+              />
+            </div>
+          </CardContent>
+        </Card>
 
-                {/* Property Rows */}
+        {/* What Makes a Call Successful Card */}
+        <Card variant="default">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div>
+              <h3 className="text-lg font-medium">What Makes a Call Successful</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Choose what makes calls successful for you
+              </p>
+            </div>
+            <ChevronDown className="h-5 w-5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="space-y-[var(--space-xl)]">
+            <div className="space-y-4">
+              <Label className="text-sm font-medium">Success Criteria Prompt</Label>
+              <Textarea
+                placeholder="Define what constitutes a successful call for your business. For example: 'A call is successful if the customer schedules an appointment, provides contact information, or shows interest in our services.'"
+                value={data.customSuccessPrompt}
+                onChange={(e) => onChange({ customSuccessPrompt: e.target.value })}
+                className="resize-none h-24 text-[15px]"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+      {/* What to Track Card */}
+      <Card variant="default">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <Database className="h-5 w-5 text-primary" />
+              <h3 className="text-lg font-medium">What to Track</h3>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Choose what information to capture from your calls
+            </p>
+          </div>
+          <ChevronDown className="h-5 w-5 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Natural Language Input */}
+          <IntelligentDataField 
+            onAdd={addDataField}
+          />
+
+          {/* Current Fields Display */}
+          {data.structuredData.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-medium">Currently Tracking</h4>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="text-xs">
+                    {data.structuredData.length} item{data.structuredData.length !== 1 ? 's' : ''}
+                  </Badge>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                 {data.structuredData.map((field, index) => (
-                  <div key={index} className="grid grid-cols-12 gap-2 items-center p-3 bg-background/50 rounded-md border hover:shadow-sm transition-shadow">
-                    {/* Name */}
-                    <div className="col-span-3 font-medium text-sm">
-                      {field.name}
+                  <Card key={index} className="group relative p-3 bg-card border border-border/60 hover:border-border hover:shadow-sm transition-all duration-200 rounded-lg min-h-[100px] flex flex-col">
+                    {/* Remove button in top-right corner */}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => removeStructuredDataField(index)}
+                      className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 h-5 w-5 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all duration-200 z-10"
+                      aria-label={`Remove ${field.name} field`}
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </Button>
+                    
+                    {/* Main content */}
+                    <div className="flex-1 flex flex-col justify-center space-y-2 pr-4 pb-6">
+                      <h5 className="font-medium text-sm leading-tight">{field.name}</h5>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 cursor-help">
+                            {field.description}
+                          </p>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p className="text-sm">{field.description}</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
                     
-                    {/* Type Badge */}
-                    <div className="col-span-2">
+                    {/* Type badge in bottom-left corner */}
+                    <div className="absolute bottom-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                       <Badge 
                         variant="secondary"
-                        className={cn("text-xs", getTypeColor(field.type))}
+                        className={cn("text-[9px] px-1 py-0.5 leading-none", getTypeColor(field.type))}
                       >
                         {field.type}
                       </Badge>
                     </div>
-                    
-                    {/* Options */}
-                    <div className="col-span-5 flex gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        Required
-                      </Badge>
-                    </div>
-                    
-                    {/* Actions */}
-                    <div className="col-span-2 flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0"
-                      >
-                        <Edit className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeStructuredDataField(index)}
-                        className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
+                  </Card>
                 ))}
               </div>
-            ) : (
-              // Empty State
-              <div className="flex flex-col items-center justify-center py-8 px-4 border border-dashed rounded-md bg-muted/30">
-                <p className="text-sm font-medium text-muted-foreground mb-1">
-                  No structured data fields defined
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Add fields to extract structured information from conversations
-                </p>
-              </div>
-            )}
 
-            {/* Add Property Form */}
-            <div className="grid grid-cols-12 gap-3 items-center mb-3 mt-4 p-3 bg-muted/30 rounded-md border">
-              {/* Name Input */}
-              <div className="col-span-3">
-                <Input
-                  placeholder="Field name"
-                  value={newField.name}
-                  onChange={(e) => setNewField({ ...newField, name: e.target.value })}
-                  className="h-8 text-sm"
-                />
-              </div>
-              
-              {/* Type Select */}
-              <div className="col-span-2">
-                <Select 
-                  value={newField.type} 
-                  onValueChange={(value) => setNewField({ ...newField, type: value })}
-                >
-                  <SelectTrigger className="h-8 text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="string">String</SelectItem>
-                    <SelectItem value="number">Number</SelectItem>
-                    <SelectItem value="boolean">Boolean</SelectItem>
-                    <SelectItem value="object">Object</SelectItem>
-                    <SelectItem value="array">Array</SelectItem>
-                    <SelectItem value="date">Date</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              {/* Options */}
-              <div className="col-span-5 flex items-center gap-3">
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="required"
-                    checked={newField.required}
-                    onCheckedChange={(checked) => setNewField({ ...newField, required: checked })}
-                  />
-                  <Label htmlFor="required" className="text-sm">Required</Label>
-                </div>
-              </div>
-              
-              {/* Actions */}
-              <div className="col-span-2 flex gap-1">
+              {/* Quick Actions */}
+              <div className="flex gap-2 pt-2">
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
-                  onClick={addStructuredDataField}
-                  disabled={!newField.name || !newField.description}
-                  className="h-8 w-8 p-0 text-green-600 hover:text-green-700"
+                  className="gap-2"
                 >
-                  <Check className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setNewField({ 
-                    name: "", 
-                    type: "string", 
-                    description: "",
-                    required: false,
-                    enumValues: []
-                  })}
-                  className="h-8 w-8 p-0"
-                >
-                  <X className="h-3.5 w-3.5" />
+                  <Sparkles className="h-4 w-4" />
+                  Add Business-Specific Fields
                 </Button>
               </div>
             </div>
-
-            {/* Description for new field */}
-            <div className="mt-2">
-              <Textarea
-                placeholder="Field description (what information should be extracted)"
-                value={newField.description}
-                onChange={(e) => setNewField({ ...newField, description: e.target.value })}
-                className="resize-none h-16 text-sm"
-              />
-            </div>
-
-            {/* Add Property Button */}
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={addStructuredDataField}
-              disabled={!newField.name || !newField.description}
-              className="mt-4"
-            >
-              <Plus className="h-3.5 w-3.5 mr-1" />
-              Add Property
-            </Button>
-          </div>
+          )}
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 };

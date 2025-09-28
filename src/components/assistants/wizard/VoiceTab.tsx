@@ -73,12 +73,12 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
 
             <div className="space-y-3">
               <Label className="text-[16px] font-semibold tracking-[0.2px]">Model</Label>
-              <Select value={data.model || "eleven_turbo_v2_5"} onValueChange={(value) => onChange({ model: value })}>
+              <Select value={data.model || "eleven_turbo_v2"} onValueChange={(value) => onChange({ model: value })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="eleven_turbo_v2_5">Eleven Turbo v2.5</SelectItem>
+                  <SelectItem value="eleven_turbo_v2">Eleven Turbo v2</SelectItem>
                   <SelectItem value="eleven_multilingual_v2">Eleven Multilingual v2</SelectItem>
                   <SelectItem value="eleven_monolingual_v1">Eleven Monolingual v1</SelectItem>
                 </SelectContent>

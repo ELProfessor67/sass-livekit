@@ -1,6 +1,4 @@
-
-@layer base {
-  :root {
+:root {
     /* Typography Scale */
     --text-xs: 0.75rem;      /* 12px */
     --text-sm: 0.875rem;     /* 14px */
@@ -111,36 +109,47 @@
     --shadow-glass-lg: var(--shadow-lg), inset 0 2px 0 hsl(var(--foreground) / 0.12);
     --shadow-glass-xl: var(--shadow-xl), inset 0 2px 0 hsl(var(--foreground) / 0.15);
     
-    /* Glass UI Core Colors */
-    --glass-background: 240 5% 98%;
-    --glass-border: 240 5% 90%;
-    --glass-foreground: 240 5% 6%;
+    /* Glass Input System */
+    --glass-input-bg: var(--card) / 0.50;
+    --glass-input-border: var(--border) / 0.50;
+    --glass-input-hover-bg: var(--card) / 0.60;
+    --glass-input-hover-border: var(--border) / 0.70;
+    --glass-input-focus-bg: var(--card) / 0.70;
+    --glass-input-focus-border: var(--primary) / 0.40;
     
-    /* Glass Card Variants */
-    --glass-light: 0 0% 99%;
-    --glass-premium: 240 10% 97%;
-    --glass-ultra: 240 15% 96%;
-    --glass-enterprise: 238 30% 97%;
+    /* Glass Dropdown System - Light Mode */
+    --glass-dropdown-bg: hsl(var(--card) / 0.85);
+    --glass-dropdown-border: hsl(var(--border) / 0.40);
+    --glass-dropdown-shadow: var(--light-shadow-floating);
     
-    /* Primary Brand Colors */
-    --primary: 238 100% 74%;
-    --primary-foreground: 240 8% 6%;
-    --primary-glow: 238 100% 80%;
+    /* Primary Button System */
+    --btn-primary-bg: hsl(var(--primary));
+    --btn-primary-hover: hsl(var(--primary) / 0.90);
+    --btn-primary-text: hsl(var(--primary-foreground));
+    --btn-primary-shadow: 0 4px 16px hsl(var(--primary) / 0.25);
+    --btn-primary-hover-shadow: 0 8px 24px hsl(var(--primary) / 0.35);
     
-    /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
-    --gradient-glass: linear-gradient(135deg, hsl(0 0% 100% / 0.8), hsl(240 5% 96% / 0.6));
-    --gradient-hero: linear-gradient(180deg, hsl(0 0% 100%), hsl(240 10% 98%));
+    /* Multi-Channel Glass Colors */
     
-    /* Shadows & Glows */
-    --shadow-glass: 0 8px 32px hsl(240 5% 50% / 0.1);
-    --shadow-glass-lg: 0 20px 40px -12px hsl(238 100% 74% / 0.25), 0 0 60px hsl(238 100% 74% / 0.1);
-    --shadow-premium: 0 20px 60px hsl(238 100% 74% / 0.08);
-    --glow-primary: 0 0 60px hsl(238 100% 74% / 0.15);
-    --glow-ambient: 0 0 120px hsl(238 100% 74% / 0.05);
-  }
+    /* SMS - Brand Periwinkle (keeping current brand color) */
+    --sms-glass-bg: 224 100% 76% / 0.12;
+    --sms-glass-border: 224 100% 76% / 0.25;
+    --sms-glass-hover: 224 100% 76% / 0.16;
+    
+    /* WhatsApp - Glass Green */
+    --whatsapp-glass-bg: 142 76% 36% / 0.12;
+    --whatsapp-glass-border: 142 76% 36% / 0.25;
+    --whatsapp-glass-hover: 142 76% 36% / 0.16;
+    --whatsapp-checkmark: 142 76% 36%;
+    
+    /* iMessage - Glass Blue */
+    --imessage-glass-bg: 212 100% 50% / 0.12;
+    --imessage-glass-border: 212 100% 50% / 0.25;
+    --imessage-glass-hover: 212 100% 50% / 0.16;
+    --imessage-delivered: 212 100% 50%;
+}
 
-  .dark {
+.dark {
     /* Enhanced Dark Mode Shadows with Periwinkle Atmosphere */
     --shadow-xs: 0 1px 2px hsl(var(--primary) / 0.10), 0 1px 1px hsl(var(--foreground) / 0.06);
     --shadow-sm: 0 2px 4px hsl(var(--primary) / 0.12), 0 1px 2px hsl(var(--foreground) / 0.08);
@@ -155,89 +164,113 @@
     --shadow-glass-lg: var(--shadow-lg), inset 0 2px 0 hsl(var(--foreground) / 0.18);
     --shadow-glass-xl: var(--shadow-xl), inset 0 2px 0 hsl(var(--foreground) / 0.20);
     
-    /* Dark Mode Glass UI Colors */
-    --glass-background: 222.2 84% 4.9%;
-    --glass-border: 217.2 32.6% 17.5%;
-    --glass-foreground: 210 40% 98%;
-    
-    /* Dark Mode Glass Card Variants */
-    --glass-light: 217.2 32.6% 17.5%;
-    --glass-premium: 217.2 32.6% 20%;
-    --glass-ultra: 217.2 32.6% 22%;
-    --glass-enterprise: 217.2 32.6% 25%;
-  }
+    /* Glass Dropdown System - Dark Mode Override */
+    --glass-dropdown-bg: hsl(0 0% 0% / 0.40);
+    --glass-dropdown-border: hsl(0 0% 100% / 0.10);
+    --glass-dropdown-shadow: 0 32px 80px hsl(0 0% 0% / 0.40);
 }
 
-@layer components {
-  /* Theme Surface Utilities */
-  .surface-base {
-    background: hsl(var(--surface-base));
-  }
-  
-  .surface-elevated {
-    background: hsl(var(--surface-elevated));
-  }
-  
-  .surface-overlay {
-    background: hsl(var(--surface-overlay));
-  }
-  
-  /* Theme Typography */
-  .text-theme-primary {
-    color: hsl(var(--foreground));
-  }
-  
-  .text-theme-secondary {
-    color: hsl(var(--muted-foreground));
-  }
-  
-  .text-theme-accent {
-    color: hsl(var(--primary));
-  }
-  
-  /* Theme Borders */
-  .border-theme-light {
-    border-color: hsl(var(--border) / var(--opacity-light));
-  }
-  
-  .border-theme-medium {
-    border-color: hsl(var(--border) / var(--opacity-medium));
-  }
-  
-  .border-theme-strong {
-    border-color: hsl(var(--border) / var(--opacity-strong));
-  }
-  
-  /* Theme Interactive States */
-  .hover-theme-subtle:hover {
-    background: hsl(var(--foreground) / var(--state-hover-opacity));
-  }
-  
-  .hover-theme-accent:hover {
-    background: hsl(var(--primary) / var(--state-hover-opacity));
-    border-color: hsl(var(--primary) / var(--opacity-medium));
-  }
-  
-  /* Clean Light Mode Hover States */
-  .light\:hover-theme-neutral:hover {
-    background: hsl(var(--neutral-accent-light));
-    box-shadow: var(--light-shadow-medium);
-  }
-  
-  /* Theme Transitions */
-  .transition-theme-fast {
-    transition: var(--transition-fast);
-  }
-  
-  .transition-theme-base {
-    transition: var(--transition-base);
-  }
-  
-  .transition-theme-slow {
-    transition: var(--transition-slow);
-  }
-  
-  .transition-theme-spring {
-    transition: var(--transition-spring);
-  }
+/* Theme Surface Utilities */
+.surface-base {
+  background: hsl(var(--surface-base));
+}
+
+.surface-elevated {
+  background: hsl(var(--surface-elevated));
+}
+
+.surface-overlay {
+  background: hsl(var(--surface-overlay));
+}
+
+/* Theme Typography */
+.text-theme-primary {
+  color: hsl(var(--foreground));
+}
+
+.text-theme-secondary {
+  color: hsl(var(--muted-foreground));
+}
+
+.text-theme-accent {
+  color: hsl(var(--primary));
+}
+
+/* Theme Borders */
+.border-theme-light {
+  border-color: hsl(var(--border) / var(--opacity-light));
+}
+
+.border-theme-medium {
+  border-color: hsl(var(--border) / var(--opacity-medium));
+}
+
+.border-theme-strong {
+  border-color: hsl(var(--border) / var(--opacity-strong));
+}
+
+/* Theme Interactive States */
+.hover-theme-subtle:hover {
+  background: hsl(var(--foreground) / var(--state-hover-opacity));
+}
+
+.hover-theme-accent:hover {
+  background: hsl(var(--primary) / var(--state-hover-opacity));
+  border-color: hsl(var(--primary) / var(--opacity-medium));
+}
+
+/* Theme Transitions */
+.transition-theme-fast {
+  transition: var(--transition-fast);
+}
+
+.transition-theme-base {
+  transition: var(--transition-base);
+}
+
+.transition-theme-slow {
+  transition: var(--transition-slow);
+}
+
+.transition-theme-spring {
+  transition: var(--transition-spring);
+}
+
+/* Multi-Channel Message Bubble Utilities */
+.message-bubble-sms {
+  background: hsl(var(--sms-glass-bg));
+  border-color: hsl(var(--sms-glass-border));
+  backdrop-filter: blur(8px);
+}
+
+.message-bubble-whatsapp {
+  background: hsl(var(--whatsapp-glass-bg));
+  border-color: hsl(var(--whatsapp-glass-border));
+  backdrop-filter: blur(8px);
+}
+
+.message-bubble-imessage {
+  background: hsl(var(--imessage-glass-bg));
+  border-color: hsl(var(--imessage-glass-border));
+  backdrop-filter: blur(8px);
+}
+
+/* Override outgoing message colors to match Project 2 */
+.message-bubble-sms:not(.incoming),
+.message-bubble-whatsapp:not(.incoming),
+.message-bubble-imessage:not(.incoming) {
+  background: hsl(220 70% 50% / 0.15);
+  border-color: hsl(220 70% 50% / 0.25);
+}
+
+.channel-indicator-sms {
+  color: hsl(224 100% 76%);
+}
+
+.channel-indicator-whatsapp {
+  color: hsl(142 76% 36%);
+}
+
+.channel-indicator-imessage {
+  color: hsl(212 100% 50%);
 }

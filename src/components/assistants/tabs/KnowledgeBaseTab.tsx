@@ -51,7 +51,7 @@ function SimplifiedKnowledgeBaseCard({
 }) {
   return (
     <ThemeCard 
-      variant="default" 
+      variant="glass" 
       className="group relative p-[var(--space-2xl)] transition-theme-base hover:shadow-[var(--shadow-glass-lg)] cursor-pointer"
       onClick={() => onClick(knowledgeBase.id)}
     >
@@ -237,7 +237,7 @@ export function KnowledgeBaseTab({ tabChangeTrigger = 0 }: KnowledgeBaseTabProps
           ))
         ) : (
           <div className="col-span-full">
-            <ThemeCard variant="default" className="text-center py-[var(--space-4xl)]">
+            <ThemeCard variant="glass" className="text-center py-[var(--space-4xl)]">
               <div className="p-[var(--space-2xl)] space-y-[var(--space-xl)]">
                 <Database className="h-12 w-12 text-muted-foreground mx-auto" />
                 <div className="space-y-[var(--space-md)]">

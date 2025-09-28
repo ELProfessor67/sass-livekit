@@ -1,110 +1,282 @@
 
 
 
-import React, { useMemo, useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import React, { useState, useEffect } from "react";
+import { Phone, Plus, Pencil } from "lucide-react";
 import { ThemeCard } from "@/components/theme/ThemeCard";
-import { ThemeContainer } from "@/components/theme/ThemeContainer";
-import { ThemeSection } from "@/components/theme/ThemeSection";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useToast } from "@/components/ui/use-toast";
-import { PageHeading, PageSubtext } from "@/components/ui/typography";
-import { ReloadIcon } from "@radix-ui/react-icons";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { formatPhoneNumber } from "@/utils/formatUtils";
+import { EnhancedImportDialog } from "../dialogs/EnhancedImportDialog";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  ThemedDialog,
+  ThemedDialogContent,
+  ThemedDialogHeader,
+  ThemedDialogTrigger,
+} from "@/components/ui/themed-dialog";
+import { DialogFooter } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
-// import { Checkbox } from "@/components/ui/checkbox"; // removed (unused)
+import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useRouteChangeData } from "@/hooks/useRouteChange";
+import { fetchPhoneNumberMappings } from "@/lib/api/phoneNumbers/fetchPhoneNumberMappings";
 
-type UnusedTwilioNumber = {
-  sid: string;
-  phoneNumber: string;
-  friendlyName?: string;
-  usage?: "unused" | "demo" | "ours" | "foreign" | "app" | "trunk";
-};
-
-type PhoneNumberRow = {
-  id: string;            // PN sid
-  number: string;        // E.164
+interface PhoneNumber {
+  id: string;
+  number: string;
   label?: string;
-  usage?: string;
-  mapped?: boolean;      // Whether this number is mapped in our DB
-  trunkSid?: string;     // Twilio trunk SID if attached
-  voiceUrl?: string;     // Voice URL configuration
-};
-
-type AssistantOpt = { id: string; name: string };
-type TrunkOpt = { sid: string; name: string | null; domainName: string | null };
+  status: "active" | "inactive" | "pending";
+  inboundAssistant?: string;
+  outboundAssistant?: string;
+}
 
 interface PhoneNumbersTabProps {
   tabChangeTrigger?: number;
 }
 
+function PhoneNumberCard({ 
+  phoneNumber, 
+  assistants, 
+  onAssign, 
+  loading 
+}: { 
+  phoneNumber: PhoneNumber; 
+  assistants: Array<{ id: string; name: string }>;
+  onAssign: (phoneNumber: PhoneNumber, inboundAssistant: string, outboundAssistant?: string) => void;
+  loading: boolean;
+}) {
+  const { toast } = useToast();
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingNumber, setEditingNumber] = useState(phoneNumber);
+  const [inboundAssistant, setInboundAssistant] = useState(phoneNumber.inboundAssistant || "");
+  const [outboundAssistant, setOutboundAssistant] = useState(phoneNumber.outboundAssistant || "none");
+
+  const statusColors = {
+    active: "hsl(142 76% 36%)",
+    inactive: "hsl(215 28% 17%)",
+    pending: "hsl(45 93% 47%)"
+  };
+
+  const handleSave = () => {
+    if (!inboundAssistant) {
+      toast({
+        title: "Error",
+        description: "Please select an inbound assistant.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    onAssign(phoneNumber, inboundAssistant, outboundAssistant === "none" ? undefined : outboundAssistant);
+    setIsEditOpen(false);
+  };
+
+  const handleDelete = () => {
+    toast({
+      title: "Phone number deleted",
+      description: "The phone number has been removed from your account.",
+      variant: "destructive",
+    });
+  };
+
+  return (
+    <ThemedDialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+      <ThemedDialogTrigger asChild>
+        <ThemeCard variant="default" className="group relative overflow-hidden transition-all duration-200 hover:shadow-lg cursor-pointer">
+          <div className="p-4">
+            {/* Header Row: Phone Number + Status */}
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-light text-foreground">
+                  {formatPhoneNumber(phoneNumber.number)}
+                </h3>
+                <div 
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: statusColors[phoneNumber.status] }}
+                />
+              </div>
+              
+              {/* Compact Actions */}
+              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 hover:bg-accent"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsEditOpen(true);
+                  }}
+                >
+                  <Pencil className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+            
+            {/* Subtitle: Label */}
+            {phoneNumber.label && (
+              <p className="text-xs text-muted-foreground mb-3">
+                {phoneNumber.label}
+              </p>
+            )}
+            
+            {/* Assistant Info */}
+            <div className="space-y-1">
+              {phoneNumber.inboundAssistant && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Inbound:</span>
+                  <span className="text-xs text-foreground">{phoneNumber.inboundAssistant}</span>
+                </div>
+              )}
+              {phoneNumber.outboundAssistant && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Outbound:</span>
+                  <span className="text-xs text-foreground">{phoneNumber.outboundAssistant}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </ThemeCard>
+      </ThemedDialogTrigger>
+      
+      <ThemedDialogContent className="sm:max-w-[425px] bg-gray-900/95 backdrop-blur-sm">
+        <ThemedDialogHeader
+          title="Configure Phone Number"
+          description={`Assign assistants and manage settings for ${formatPhoneNumber(phoneNumber.number)}`}
+        />
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <h4 className="font-light text-foreground">Phone Number Details</h4>
+            <div className="p-4 rounded-lg bg-muted/30 border border-border">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Number</span>
+                  <span className="font-light text-foreground">
+                    {formatPhoneNumber(phoneNumber.number)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Status</span>
+                  <Badge variant={phoneNumber.status === 'active' ? 'default' : 'secondary'}>
+                    {phoneNumber.status}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="label" className="text-foreground font-light">Label (Optional)</Label>
+            <Input
+              id="label"
+              value={editingNumber.label || ""}
+              onChange={(e) => setEditingNumber({...editingNumber, label: e.target.value})}
+              placeholder="e.g., Main Sales Line"
+              className="bg-background border-border text-foreground"
+            />
+          </div>
+          <div>
+            <Label htmlFor="inbound" className="text-foreground font-light">Inbound Assistant</Label>
+            <Select 
+              value={inboundAssistant} 
+              onValueChange={setInboundAssistant}
+            >
+              <SelectTrigger className="bg-background border-border text-foreground">
+                <SelectValue placeholder="Select assistant" />
+              </SelectTrigger>
+              <SelectContent className="bg-background border-border">
+                {assistants.map((assistant) => (
+                  <SelectItem key={assistant.id} value={assistant.name} className="text-foreground hover:bg-muted">
+                    {assistant.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="outbound" className="text-foreground font-light">Outbound Assistant</Label>
+            <Select 
+              value={outboundAssistant} 
+              onValueChange={setOutboundAssistant}
+            >
+              <SelectTrigger className="bg-background border-border text-foreground">
+                <SelectValue placeholder="Select assistant (optional)" />
+              </SelectTrigger>
+              <SelectContent className="bg-background border-border">
+                <SelectItem value="none">None</SelectItem>
+                {assistants.map((assistant) => (
+                  <SelectItem key={assistant.id} value={assistant.name} className="text-foreground hover:bg-muted">
+                    {assistant.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setIsEditOpen(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={loading}>
+            {loading ? "Assigning..." : "Save Changes"}
+          </Button>
+        </DialogFooter>
+      </ThemedDialogContent>
+    </ThemedDialog>
+  );
+}
+
 export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) {
+  const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([]);
+  const [assistants, setAssistants] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(false);
-  const [numbers, setNumbers] = useState<PhoneNumberRow[]>([]);
-  const [assistants, setAssistants] = useState<AssistantOpt[]>([]);
-  const [trunks, setTrunks] = useState<TrunkOpt[]>([]);
-  const [selectedTrunk, setSelectedTrunk] = useState<string>("");
-  const [selection, setSelection] = useState<Record<string, string>>({}); // PN sid -> assistantId
-  const [query, setQuery] = useState("");
-  const [filterType, setFilterType] = useState<"all" | "unused" | "used" | "assigned">("unused");
   const [hasTwilioCredentials, setHasTwilioCredentials] = useState<boolean | null>(null);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
 
   const base = (import.meta.env.VITE_BACKEND_URL as string) ?? "http://localhost:4000";
-  const agentName = (import.meta.env.VITE_LK_AGENT_NAME as string) ?? "ai";
 
+  // Load assistants for current user
   useEffect(() => {
-    (async () => {
-      // assistants for current user
-      if (user?.id) {
+    if (user?.id) {
+      (async () => {
         const { data } = await supabase
           .from("assistant")
           .select("id, name")
           .eq("user_id", user.id);
         setAssistants((data || []).map((a: any) => ({ id: a.id, name: a.name ?? "Untitled" })));
-      }
-      // Twilio trunks (for attaching DID)
-      try {
-        const r = await fetch(`${base}/api/v1/twilio/trunks`);
-        const j = await r.json();
-        if (j.success) {
-          setTrunks(j.trunks || []);
-          if ((j.trunks || []).length && !selectedTrunk) setSelectedTrunk(j.trunks[0].sid);
-        }
-      } catch {
-        // ignore – UI still works for LK rule creation
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
-
-  // Check Twilio credentials status and load numbers
-  useEffect(() => {
-    if (user?.id) {
-      loadAllNumbersFromTwilio();
+      })();
     }
   }, [user?.id]);
 
-  // Trigger API call on route changes
-  useRouteChangeData(loadAllNumbersFromTwilio, [user?.id], {
-    enabled: !!user?.id,
-    refetchOnRouteChange: true
-  });
+  // Load phone numbers from Twilio after assistants are loaded
+  useEffect(() => {
+    if (user?.id && assistants.length > 0) {
+      loadAllNumbersFromTwilio();
+    }
+  }, [user?.id, assistants.length]);
 
   // Trigger API call when tab changes
   useEffect(() => {
-    if (tabChangeTrigger > 0 && user?.id) {
+    if (tabChangeTrigger > 0 && user?.id && assistants.length > 0) {
       loadAllNumbersFromTwilio();
     }
-  }, [tabChangeTrigger, user?.id]);
+  }, [tabChangeTrigger, user?.id, assistants.length]);
+
+  // Trigger API call on route changes
+  useRouteChangeData(loadAllNumbersFromTwilio, [user?.id, assistants.length], {
+    enabled: !!user?.id && assistants.length > 0,
+    refetchOnRouteChange: true
+  });
 
   async function loadAllNumbersFromTwilio() {
     try {
@@ -122,7 +294,7 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
       if (!json.success) {
         if (res.status === 404 && json.message === 'No Twilio credentials found') {
           setHasTwilioCredentials(false);
-          setNumbers([]);
+          setPhoneNumbers([]);
           return;
         }
 
@@ -132,23 +304,48 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
       }
 
       setHasTwilioCredentials(true);
-      const mapped: PhoneNumberRow[] =
-        ((json.numbers as any[] | undefined) || []).map((n) => ({
-          id: n.sid,
-          number: n.phoneNumber,
-          label: n.friendlyName || undefined,
-          usage: n.usage || "unused",
-          mapped: n.mapped || false,
-          trunkSid: n.trunkSid || undefined,
-          voiceUrl: n.voiceUrl || undefined,
-        }));
+      
+      // Fetch phone number mappings from database
+      const mappingsResponse = await fetchPhoneNumberMappings();
+      const mappings = mappingsResponse.mappings;
+      
+      console.log('Phone number mappings from database:', mappings);
+      console.log('Twilio numbers:', json.numbers);
+      
+      // Create a map of phone numbers to assistant IDs
+      const phoneToAssistantMap = new Map();
+      mappings.forEach(mapping => {
+        // Normalize phone number format for matching
+        const normalizedNumber = mapping.number.replace(/\D/g, '');
+        phoneToAssistantMap.set(normalizedNumber, mapping.inbound_assistant_id);
+        console.log('Mapping:', mapping.number, '->', normalizedNumber, '->', mapping.inbound_assistant_id);
+      });
 
-      setNumbers(mapped);
-      const unusedCount = mapped.filter(n => n.usage === "unused" && !n.mapped).length;
-      const usedCount = mapped.length - unusedCount;
+      const mapped: PhoneNumber[] =
+        ((json.numbers as any[] | undefined) || []).map((n) => {
+          // Normalize Twilio phone number for matching
+          const normalizedTwilioNumber = n.phoneNumber.replace(/\D/g, '');
+          const assistantId = phoneToAssistantMap.get(normalizedTwilioNumber);
+          const assistant = assistantId ? assistants.find(a => a.id === assistantId) : null;
+          
+          console.log('Twilio number:', n.phoneNumber, '->', normalizedTwilioNumber, '->', assistantId, '->', assistant?.name);
+          
+          return {
+            id: n.sid,
+            number: n.phoneNumber,
+            label: n.friendlyName || undefined,
+            status: getStatusFromTwilioData(n),
+            inboundAssistant: assistant?.name || undefined,
+            outboundAssistant: undefined, // For now, only inbound is supported
+          };
+        });
+
+      setPhoneNumbers(mapped);
+      const assignedCount = mapped.filter(n => n.inboundAssistant || n.outboundAssistant).length;
+      const unassignedCount = mapped.length - assignedCount;
       toast({
         title: "Loaded",
-        description: `Found ${mapped.length} total numbers (${unusedCount} unused, ${usedCount} used).`
+        description: `Found ${mapped.length} total numbers (${assignedCount} assigned, ${unassignedCount} unassigned).`
       });
     } catch (e: any) {
       console.error("Error loading phone numbers:", e);
@@ -171,41 +368,77 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
       }
 
       setHasTwilioCredentials(true); // Assume credentials exist if admin endpoint works
-      const mapped: PhoneNumberRow[] =
-        ((json.numbers as any[] | undefined) || []).map((n) => ({
-          id: n.sid,
-          number: n.phoneNumber,
-          label: n.friendlyName || undefined,
-          usage: n.usage || "unused",
-          mapped: n.mapped || false,
-          trunkSid: n.trunkSid || undefined,
-          voiceUrl: n.voiceUrl || undefined,
-        }));
+      
+      // Fetch phone number mappings from database
+      const mappingsResponse = await fetchPhoneNumberMappings();
+      const mappings = mappingsResponse.mappings;
+      
+      console.log('Phone number mappings from database (admin):', mappings);
+      console.log('Twilio numbers (admin):', json.numbers);
+      
+      // Create a map of phone numbers to assistant IDs
+      const phoneToAssistantMap = new Map();
+      mappings.forEach(mapping => {
+        // Normalize phone number format for matching
+        const normalizedNumber = mapping.number.replace(/\D/g, '');
+        phoneToAssistantMap.set(normalizedNumber, mapping.inbound_assistant_id);
+        console.log('Mapping (admin):', mapping.number, '->', normalizedNumber, '->', mapping.inbound_assistant_id);
+      });
 
-      setNumbers(mapped);
-      const unusedCount = mapped.filter(n => n.usage === "unused" && !n.mapped).length;
-      const usedCount = mapped.length - unusedCount;
+      const mapped: PhoneNumber[] =
+        ((json.numbers as any[] | undefined) || []).map((n) => {
+          // Normalize Twilio phone number for matching
+          const normalizedTwilioNumber = n.phoneNumber.replace(/\D/g, '');
+          const assistantId = phoneToAssistantMap.get(normalizedTwilioNumber);
+          const assistant = assistantId ? assistants.find(a => a.id === assistantId) : null;
+          
+          console.log('Twilio number (admin):', n.phoneNumber, '->', normalizedTwilioNumber, '->', assistantId, '->', assistant?.name);
+          
+          return {
+            id: n.sid,
+            number: n.phoneNumber,
+            label: n.friendlyName || undefined,
+            status: getStatusFromTwilioData(n),
+            inboundAssistant: assistant?.name || undefined,
+            outboundAssistant: undefined, // For now, only inbound is supported
+          };
+        });
+
+      setPhoneNumbers(mapped);
+      const assignedCount = mapped.filter(n => n.inboundAssistant || n.outboundAssistant).length;
+      const unassignedCount = mapped.length - assignedCount;
       toast({
         title: "Loaded (Admin)",
-        description: `Found ${mapped.length} total numbers (${unusedCount} unused, ${usedCount} used).`
+        description: `Found ${mapped.length} total numbers (${assignedCount} assigned, ${unassignedCount} unassigned).`
       });
     } catch (e: any) {
       console.error("Error loading from admin endpoint:", e);
       setHasTwilioCredentials(false);
-      setNumbers([]);
+      setPhoneNumbers([]);
       toast({ title: "Error", description: e?.message || "Could not load numbers", variant: "destructive" });
     }
   }
 
-  async function handleAssign(row: PhoneNumberRow) {
-    const assistantId = selection[row.id];
-    if (!assistantId) {
-      toast({ title: "Pick an assistant", description: "Select an assistant before assigning.", variant: "destructive" });
+  function getStatusFromTwilioData(n: any): "active" | "inactive" | "pending" {
+    const hasTrunk = n.trunkSid && n.trunkSid !== null;
+    const isDemoUrl = n.voiceUrl?.includes('demo.twilio.com');
+    const isDemoUsage = n.usage === "demo";
+    const isUnused = !hasTrunk && ((n.usage === "unused" && !n.mapped) || (isDemoUrl && isDemoUsage));
+    
+    if (hasTrunk) return "active";
+    if (isDemoUrl || isDemoUsage) return "pending";
+    if (isUnused) return "inactive";
+    return "active";
+  }
+
+  async function handleAssign(phoneNumber: PhoneNumber, inboundAssistantName: string, outboundAssistantName?: string) {
+    const inboundAssistant = assistants.find((a) => a.name === inboundAssistantName);
+    const outboundAssistant = outboundAssistantName ? assistants.find((a) => a.name === outboundAssistantName) : null;
+    
+    if (!inboundAssistant) {
+      toast({ title: "Error", description: "Inbound assistant not found.", variant: "destructive" });
       return;
     }
-    // Trunk selection is now automatic - no need to check
-
-    const assistantName = assistants.find((a) => a.id === assistantId)?.name || "Assistant";
 
     try {
       setLoading(true);
@@ -217,7 +450,7 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
           "Content-Type": "application/json",
           'x-user-id': user?.id || '',
         },
-        body: JSON.stringify({ phoneSid: row.id }),
+        body: JSON.stringify({ phoneSid: phoneNumber.id }),
       });
       const attachJson = await attachResp.json();
       if (!attachResp.ok || !attachJson.success) {
@@ -234,9 +467,9 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
             'x-user-id': user?.id || ''
           },
           body: JSON.stringify({
-            assistantId,
-            assistantName,
-            phoneNumber: row.number,
+            assistantId: inboundAssistant.id,
+            assistantName: inboundAssistant.name,
+            phoneNumber: phoneNumber.number,
           }),
         });
         const livekitJson = await livekitResp.json();
@@ -257,9 +490,9 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          phoneSid: row.id,
-          assistantId,
-          label: row.label || undefined,
+          phoneSid: phoneNumber.id,
+          assistantId: inboundAssistant.id,
+          label: phoneNumber.label || undefined,
           outboundTrunkId: livekitTrunk?.outboundTrunkId,
           outboundTrunkName: livekitTrunk?.outboundTrunkName,
         }),
@@ -269,13 +502,22 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
         throw new Error(mapJson.message || "Failed to map phone number to assistant");
       }
 
+      // Update the local state with the new assignments
+      setPhoneNumbers((prev) => prev.map((n) => 
+        n.id === phoneNumber.id 
+          ? { 
+              ...n, 
+              inboundAssistant: inboundAssistant.name,
+              outboundAssistant: outboundAssistant?.name,
+              status: "active" as const
+            }
+          : n
+      ));
+
       toast({
         title: "Assigned",
-        description: `${row.number} → ${assistantName}. Phone number attached to trunk, mapped to assistant, and LiveKit dispatch rule created.`,
+        description: `${phoneNumber.number} → ${inboundAssistant.name}${outboundAssistant ? ` (Outbound: ${outboundAssistant.name})` : ''}. Phone number attached to trunk, mapped to assistant, and LiveKit dispatch rule created.`,
       });
-
-      // remove from "unused" list
-      setNumbers((prev) => prev.filter((n) => n.id !== row.id));
     } catch (e: any) {
       toast({ title: "Failed to assign", description: e?.message || "Please try again.", variant: "destructive" });
     } finally {
@@ -283,222 +525,149 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
     }
   }
 
-  const filtered = useMemo(() => {
-    let filteredNumbers = numbers;
-
-    // Apply filter type
-    if (filterType === "unused") {
-      filteredNumbers = numbers.filter(n => {
-        const isDemoUrl = n.voiceUrl?.includes('demo.twilio.com');
-        const isDemoUsage = n.usage === "demo";
-        const hasTrunk = n.trunkSid && n.trunkSid !== null;
-        const isUnused = !hasTrunk && ((n.usage === "unused" && !n.mapped) || (isDemoUrl && isDemoUsage));
-        return isUnused;
-      });
-    } else if (filterType === "used") {
-      filteredNumbers = numbers.filter(n => {
-        const isDemoUrl = n.voiceUrl?.includes('demo.twilio.com');
-        const isDemoUsage = n.usage === "demo";
-        const hasTrunk = n.trunkSid && n.trunkSid !== null;
-        const isAssigned = hasTrunk;
-        const isUnused = !hasTrunk && ((n.usage === "unused" && !n.mapped) || (isDemoUrl && isDemoUsage));
-        const isUsed = !isUnused && !isAssigned;
-        return isUsed;
-      });
-    } else if (filterType === "assigned") {
-      filteredNumbers = numbers.filter(n => {
-        const hasTrunk = n.trunkSid && n.trunkSid !== null;
-        return hasTrunk;
-      });
-    }
-
-    // Apply search query
-    if (query.trim()) {
-      const q = query.toLowerCase();
-      filteredNumbers = filteredNumbers.filter(
-        (n) =>
-          (n.number || "").toLowerCase().includes(q) ||
-          (n.label || "").toLowerCase().includes(q) ||
-          (n.voiceUrl || "").toLowerCase().includes(q),
-      );
-    }
-
-    return filteredNumbers;
-  }, [numbers, query, filterType]);
+  const handleImport = (numbers: Array<{
+    sid: string;
+    phoneNumber: string;
+    label: string;
+    inboundAssistant: string;
+    outboundAssistant: string;
+  }>) => {
+    console.log("PhoneNumbersTab handleImport called with:", numbers);
+    
+    const newPhoneNumbers: PhoneNumber[] = numbers.map(number => ({
+      id: number.sid,
+      number: number.phoneNumber,
+      label: number.label,
+      status: "pending" as const,
+      inboundAssistant: number.inboundAssistant,
+      outboundAssistant: number.outboundAssistant || undefined
+    }));
+    
+    setPhoneNumbers([...phoneNumbers, ...newPhoneNumbers]);
+    
+    const message = newPhoneNumbers.length === 1 
+      ? "Phone number has been imported successfully"
+      : `${newPhoneNumbers.length} phone numbers have been imported successfully`;
+    
+    toast({
+      title: "Import successful",
+      description: message,
+    });
+  };
 
   return (
-    <ThemeContainer variant="base">
-      <ThemeSection>
-        <ThemeCard variant="default" className="p-6 space-y-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <PageHeading>Phone Numbers</PageHeading>
-              <PageSubtext>
-                View and manage all your Twilio phone numbers. Assign unused numbers to assistants using your auto-generated main trunk.
-              </PageSubtext>
-            </div>
-            <div className="flex items-center gap-3">
-              {/* Uncomment to allow manual trunk selection
-              <Select value={selectedTrunk} onValueChange={setSelectedTrunk}>
-                <SelectTrigger className="w-[260px]">
-                  <SelectValue placeholder="Select Twilio trunk" />
-                </SelectTrigger>
-                <SelectContent>
-                  {trunks.map((t) => (
-                    <SelectItem key={t.sid} value={t.sid}>
-                      {t.name || t.sid}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              */}
-              <Button
-                onClick={loadAllNumbersFromTwilio}
-                disabled={loading || hasTwilioCredentials === false}
-                title={hasTwilioCredentials === false ? "Configure Twilio credentials in Settings first" : ""}
-              >
-                {loading ? (
-                  <span className="inline-flex items-center gap-2">
-                    <ReloadIcon className="h-4 w-4 animate-spin" /> Loading
-                  </span>
-                ) : (
-                  "Load from Twilio"
-                )}
-              </Button>
-            </div>
-          </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-light text-foreground mb-2">
+            Phone Numbers
+          </h2>
+          <p className="text-muted-foreground">
+            View and manage phone numbers assigned to your assistants
+            {phoneNumbers.filter(n => n.inboundAssistant || n.outboundAssistant).length > 0 && (
+              <span className="ml-2 text-sm">
+                ({phoneNumbers.filter(n => n.inboundAssistant || n.outboundAssistant).length} assigned)
+              </span>
+            )}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={loadAllNumbersFromTwilio}
+            disabled={loading || hasTwilioCredentials === false}
+            title={hasTwilioCredentials === false ? "Configure Twilio credentials in Settings first" : ""}
+            variant="outline"
+          >
+            {loading ? (
+              <span className="inline-flex items-center gap-2">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> Loading
+              </span>
+            ) : (
+              "Load from Twilio"
+            )}
+          </Button>
+          <Button 
+            variant="default"
+            onClick={(e) => {
+              console.log("Import Numbers button clicked", e);
+              e.preventDefault();
+              setIsImportOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Import Numbers
+          </Button>
+        </div>
+      </div>
 
-          <div className="flex items-center gap-3">
-            <Input
-              placeholder="Search numbers, labels, or URLs..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="max-w-md"
-            />
-            <Select value={filterType} onValueChange={(value: "all" | "unused" | "used" | "assigned") => setFilterType(value)}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="Filter" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Numbers</SelectItem>
-                <SelectItem value="unused">Unused Only</SelectItem>
-                <SelectItem value="used">Used Only</SelectItem>
-                <SelectItem value="assigned">Assigned Only</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+      {/* Import Dialog */}
+      {isImportOpen && (
+        <EnhancedImportDialog
+          open={isImportOpen}
+          onOpenChange={(open) => {
+            console.log("EnhancedImportDialog onOpenChange:", open);
+            setIsImportOpen(open);
+          }}
+          assistants={assistants}
+        />
+      )}
 
-          <div className="border rounded-md overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[200px]">Number</TableHead>
-                  <TableHead>Label</TableHead>
-                  <TableHead className="w-[200px]">Voice URL</TableHead>
-                  <TableHead className="w-[120px]">Status</TableHead>
-                  <TableHead className="w-[200px]">Assistant</TableHead>
-                  <TableHead className="w-[120px]">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                      {loading ? (
-                        "Loading numbers..."
-                      ) : hasTwilioCredentials === false ? (
-                        <div className="space-y-2">
-                          <p>No Twilio credentials configured.</p>
-                          <p className="text-sm">Please configure your Twilio credentials in <strong>Settings → Workspace → Integrations</strong> to manage phone numbers.</p>
-                        </div>
-                      ) : (
-                        "No numbers loaded. Click 'Load from Twilio'."
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filtered.map((n) => {
-                    const isDemoUrl = n.voiceUrl?.includes('demo.twilio.com');
-                    const isDemoUsage = n.usage === "demo";
-                    const hasTrunk = n.trunkSid && n.trunkSid !== null;
-
-                    // Priority: If has trunk, it's assigned regardless of URL
-                    const isAssigned = hasTrunk;
-                    const isUnused = !hasTrunk && ((n.usage === "unused" && !n.mapped) || (isDemoUrl && isDemoUsage));
-                    const isUsed = !isUnused && !isAssigned;
-
-                    return (
-                      <TableRow
-                        key={n.id}
-                        className={`border-b border-border/40 hover:bg-muted/30 transition-colors ${isAssigned ? "bg-green-50 dark:bg-green-950/20" : isUsed ? "bg-muted/20" : ""
-                          }`}
+      {/* Phone Numbers Grid - Only show numbers assigned to assistants */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {(() => {
+          // Only show numbers that have been assigned to assistants (either inbound or outbound)
+          const assignedNumbers = phoneNumbers.filter(n => 
+            n.inboundAssistant || n.outboundAssistant
+          );
+          
+          return assignedNumbers.length > 0 ? (
+            assignedNumbers.map((phoneNumber) => (
+              <PhoneNumberCard 
+                key={phoneNumber.id} 
+                phoneNumber={phoneNumber} 
+                assistants={assistants}
+                onAssign={handleAssign}
+                loading={loading}
+              />
+            ))
+          ) : (
+            <div className="col-span-full">
+              <ThemeCard variant="default" className="text-center py-12">
+                <div className="p-6">
+                  <Phone className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">
+                    {loading ? "Loading numbers..." : hasTwilioCredentials === false ? "No Twilio credentials configured" : "No assigned phone numbers"}
+                  </h3>
+                  <p className="text-muted-foreground mb-4">
+                    {loading ? "Please wait while we load your phone numbers..." : 
+                     hasTwilioCredentials === false ? "Please configure your Twilio credentials in Settings → Workspace → Integrations to manage phone numbers." :
+                     "You don't have any phone numbers assigned to assistants yet. Import and assign numbers to get started."}
+                  </p>
+                  {!loading && hasTwilioCredentials !== false && (
+                    <div className="flex gap-3 justify-center">
+                      <Button 
+                        variant="default"
+                        onClick={loadAllNumbersFromTwilio}
                       >
-                        <TableCell className="font-medium text-foreground">{n.number}</TableCell>
-                        <TableCell className="text-muted-foreground">{n.label || "—"}</TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {n.voiceUrl ? (
-                            <div className="max-w-[180px] truncate" title={n.voiceUrl}>
-                              {n.voiceUrl}
-                            </div>
-                          ) : (
-                            "—"
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${isAssigned
-                            ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                            : isDemoUrl || isDemoUsage
-                              ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                              : isUnused
-                                ? "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
-                                : "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
-                            }`}>
-                            {isAssigned ? "Assigned" : isDemoUrl || isDemoUsage ? "Demo (Unused)" : isUnused ? "Unused" : "Used"}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          {isUnused ? (
-                            <Select
-                              value={selection[n.id] || ""}
-                              onValueChange={(v) => setSelection((prev) => ({ ...prev, [n.id]: v }))}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select assistant" />
-                              </SelectTrigger>
-                              <SelectContent side="top">
-                                {assistants.map((a) => (
-                                  <SelectItem key={a.id} value={a.id}>
-                                    {a.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : isAssigned ? (
-                            <span className="text-green-600 dark:text-green-400 text-sm font-medium">Assigned to trunk</span>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">Already assigned</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {isUnused ? (
-                            <Button size="sm" onClick={() => handleAssign(n)} disabled={loading || !selection[n.id]}>
-                              Assign
-                            </Button>
-                          ) : isAssigned ? (
-                            <span className="text-green-600 dark:text-green-400 text-sm">✓</span>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">—</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </ThemeCard>
-      </ThemeSection>
-    </ThemeContainer>
+                        <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        Load from Twilio
+                      </Button>
+                      <Button 
+                        variant="outline"
+                        onClick={() => setIsImportOpen(true)}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Import Numbers
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </ThemeCard>
+            </div>
+          );
+        })()}
+      </div>
+    </div>
   );
 }

@@ -1,9 +1,13 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from "framer-motion";
 import { ProfileForm } from "./account/ProfileForm";
 import { NotificationsForm } from "./account/NotificationsForm";
 import { UIPreferencesSettings } from "./UIPreferencesSettings";
+
+interface AccountSettingsProps {
+  initialSubTab?: string | null;
+}
 
 const tabVariants = {
   initial: { opacity: 0, y: 10 },
@@ -11,8 +15,14 @@ const tabVariants = {
   exit: { opacity: 0, y: -10 }
 };
 
-export function AccountSettings() {
+export function AccountSettings({ initialSubTab }: AccountSettingsProps) {
   const [activeSubTab, setActiveSubTab] = useState("profile");
+
+  useEffect(() => {
+    if (initialSubTab && ['profile', 'notifications', 'preferences'].includes(initialSubTab)) {
+      setActiveSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
 
   const subTabs = [
     { id: "profile", label: "Profile" },

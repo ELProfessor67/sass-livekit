@@ -21,16 +21,50 @@ import uuid
 from dotenv import load_dotenv
 
 # Load environment variables FIRST before any other imports
-load_dotenv()
+try:
+    load_dotenv()
+except Exception as e:
+    print(f"Warning: Could not load .env file: {e}")
+    # Continue without .env file
+
+# Set REST API environment variable if not already set
+if not os.getenv("USE_REST_API"):
+    os.environ["USE_REST_API"] = "true"
+    print("REST_API_ENABLED | Set USE_REST_API=true as fallback")
 
 from zoneinfo import ZoneInfo
 
 from livekit import agents, api
 from livekit.agents import AgentSession, Agent, RunContext, function_tool, AutoSubscribe
 
+# Import ElevenLabs at top level to avoid main thread registration issues
+try:
+    import livekit.plugins.elevenlabs as lk_elevenlabs
+    ELEVENLABS_AVAILABLE = True
+except ImportError:
+    lk_elevenlabs = None
+    ELEVENLABS_AVAILABLE = False
+
 # ⬇️ OpenAI + VAD plugins
 from livekit.plugins import openai as lk_openai  # LLM, STT, TTS
 from livekit.plugins import silero              # VAD
+
+# ⬇️ Groq plugin
+try:
+    from livekit.plugins import groq as lk_groq  # Groq LLM
+except ImportError:
+    lk_groq = None
+
+# ⬇️ REST LLM Service
+from services.rest_llm_service import create_rest_llm
+from config.rest_api_config import get_rest_config, is_rest_model
+
+# ⬇️ Cerebras plugin (using OpenAI-compatible API)
+try:
+    import openai as cerebras_client
+    CEREBRAS_AVAILABLE = True
+except ImportError:
+    CEREBRAS_AVAILABLE = False
 
 try:
     from supabase import create_client, Client  # type: ignore
@@ -660,6 +694,9 @@ async def entrypoint(ctx: agents.JobContext):
     dispatch_count += 1
     logging.info("🎯 DISPATCH_RECEIVED | count=%d | room=%s | job_metadata=%s", dispatch_count, ctx.room.name, ctx.job.metadata)
     logging.info("🚀 AGENT_ENTRYPOINT_START | room=%s | job_metadata=%s", ctx.room.name, ctx.job.metadata)
+    
+    # Log REST API configuration
+    get_rest_config().log_config()
 
     # Initialize connection with auto-subscribe to audio only (crucial for SIP)
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
@@ -881,17 +918,67 @@ async def entrypoint(ctx: agents.JobContext):
         temperature = float(os.getenv("OPENAI_TEMPERATURE", "0.3"))
         max_tokens = int(os.getenv("OPENAI_MAX_TOKENS", "250"))
 
-        session = AgentSession(
-            turn_detection="vad",
-            vad=vad,
-            stt=lk_openai.STT(model=stt_model, api_key=openai_api_key),
-            llm=lk_openai.LLM(
+        # Voice config for outbound: use env/defaults
+        outbound_voice_provider = os.getenv("VOICE_PROVIDER", "OpenAI")
+        outbound_voice_model = os.getenv("VOICE_MODEL", tts_model)
+        outbound_voice_name = os.getenv("VOICE_NAME", tts_voice)
+        
+        # Configure TTS for outbound
+        if outbound_voice_provider == "ElevenLabs":
+            elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
+            if elevenlabs_api_key and ELEVENLABS_AVAILABLE:
+                try:
+                    outbound_tts = lk_elevenlabs.TTS(
+                        voice_id=outbound_voice_name,
+                        api_key=elevenlabs_api_key,
+                        model=outbound_voice_model,
+                        streaming_latency=int(os.getenv("VOICE_OPTIMIZE_STREAMING", "2")),
+                        inactivity_timeout=300,  # 5 minutes timeout
+                        auto_mode=True  # Reduces latency and improves stability
+                    )
+                    logging.info("OUTBOUND_ELEVENLABS_TTS_CONFIGURED | voice_id=%s", outbound_voice_name)
+                except Exception as e:
+                    logging.error("ELEVENLABS_TTS_ERROR | error=%s | falling back to OpenAI TTS for outbound", str(e))
+                    # Map ElevenLabs voice to OpenAI voice for fallback
+                    openai_voice = "alloy"  # Default OpenAI voice
+                    openai_tts_model = "tts-1" if outbound_voice_model.startswith("eleven_") else outbound_voice_model
+                    outbound_tts = lk_openai.TTS(model=openai_tts_model, voice=openai_voice, api_key=openai_api_key)
+            else:
+                if not ELEVENLABS_AVAILABLE:
+                    logging.warning("ELEVENLABS_NOT_AVAILABLE | falling back to OpenAI TTS for outbound")
+                else:
+                    logging.warning("ELEVENLABS_API_KEY_NOT_SET | falling back to OpenAI TTS for outbound")
+                # Map ElevenLabs voice to OpenAI voice for fallback
+                openai_voice = "alloy"  # Default OpenAI voice
+                openai_tts_model = "tts-1" if outbound_voice_model.startswith("eleven_") else outbound_voice_model
+                outbound_tts = lk_openai.TTS(model=openai_tts_model, voice=openai_voice, api_key=openai_api_key)
+        else:
+            outbound_tts = lk_openai.TTS(model=outbound_voice_model, voice=outbound_voice_name, api_key=openai_api_key)
+            logging.info("OUTBOUND_OPENAI_TTS_CONFIGURED | model=%s | voice=%s", outbound_voice_model, outbound_voice_name)
+
+        # Configure LLM for outbound - Check if we should use REST API
+        if is_rest_model(llm_model):
+            logging.info("OUTBOUND_REST_LLM_CONFIGURED | model=%s | using REST API", llm_model)
+            outbound_llm = create_rest_llm(
+                model=llm_model,
+                api_key=openai_api_key,
+                base_url=get_rest_config().rest_api_base_url
+            )
+        else:
+            outbound_llm = lk_openai.LLM(
                 model=llm_model,
                 api_key=openai_api_key,
                 temperature=temperature,
                 tool_choice="none",  # outbound
-            ),
-            tts=lk_openai.TTS(model=tts_model, voice=tts_voice, api_key=openai_api_key),
+            )
+            logging.info("OUTBOUND_OPENAI_LLM_CONFIGURED | model=%s | temperature=%s", llm_model, temperature)
+
+        session = AgentSession(
+            turn_detection="vad",
+            vad=vad,
+            stt=lk_openai.STT(model=stt_model, api_key=openai_api_key),
+            llm=outbound_llm,
+            tts=outbound_tts,
         )
 
         logging.info("STARTING_SESSION (OUTBOUND) | instructions_length=%d | has_calendar=%s",
@@ -1084,7 +1171,9 @@ async def entrypoint(ctx: agents.JobContext):
                 sb: Client = create_client(supabase_url, supabase_key)  # type: ignore
                 resp = sb.table("assistant").select(
                     "id, name, prompt, first_message, cal_api_key, cal_event_type_id, cal_timezone, llm_provider_setting, llm_model_setting, temperature_setting, max_token_setting, knowledge_base_id, "
-                    "n8n_webhook_url, n8n_webhook_fields"
+                    "voice_provider_setting, voice_model_setting, voice_name_setting, background_sound_setting, input_min_characters, voice_stability, voice_clarity_similarity, voice_speed, "
+                    "use_speaker_boost, voice_optimize_streaming_latency, voice_seconds, voice_backoff_seconds, silence_timeout, maximum_duration, smart_endpointing, "
+                    "n8n_webhook_url, n8n_webhook_fields, groq_model, groq_temperature, groq_max_tokens, cerebras_model, cerebras_temperature, cerebras_max_tokens"
                 ).eq("id", assistant_id).single().execute()
                 row = resp.data
                 print("row", row)
@@ -1099,6 +1188,23 @@ async def entrypoint(ctx: agents.JobContext):
                             "llm_model": row.get("llm_model_setting") or "gpt-4o-mini",
                             "temperature": row.get("temperature_setting") or 0.1,
                             "max_tokens": row.get("max_token_setting") or 250,
+                        },
+                        "voice": {
+                            "provider": row.get("voice_provider_setting") or "OpenAI",
+                            "model": row.get("voice_model_setting") or "gpt-4o-mini-tts",
+                            "voice": row.get("voice_name_setting") or "alloy",
+                            "background_sound": row.get("background_sound_setting") or "none",
+                            "input_min_characters": row.get("input_min_characters") or 10,
+                            "stability": row.get("voice_stability") or 0.71,
+                            "clarity": row.get("voice_clarity_similarity") or 0.75,
+                            "speed": row.get("voice_speed") or 1.0,
+                            "use_speaker_boost": row.get("use_speaker_boost") or True,
+                            "optimize_streaming": row.get("voice_optimize_streaming_latency") or 2,
+                            "voice_seconds": row.get("voice_seconds") or 0.2,
+                            "backoff_seconds": row.get("voice_backoff_seconds") or 1,
+                            "silence_timeout": row.get("silence_timeout") or 30,
+                            "max_duration": row.get("maximum_duration") or 1800,
+                            "smart_endpointing": row.get("smart_endpointing") or True,
                         },
                         "cal_api_key": row.get("cal_api_key"),
                         "cal_event_type_id": row.get("cal_event_type_id"),
@@ -1129,6 +1235,23 @@ async def entrypoint(ctx: agents.JobContext):
                         "temperature": a.get("temperature_setting") or 0.1,
                         "max_tokens": a.get("max_token_setting") or 250,
                     },
+                    "voice": {
+                        "provider": a.get("voice_provider_setting") or "OpenAI",
+                        "model": a.get("voice_model_setting") or "gpt-4o-mini-tts",
+                        "voice": a.get("voice_name_setting") or "alloy",
+                        "background_sound": a.get("background_sound_setting") or "none",
+                        "input_min_characters": a.get("input_min_characters") or 10,
+                        "stability": a.get("voice_stability") or 0.71,
+                        "clarity": a.get("voice_clarity_similarity") or 0.75,
+                        "speed": a.get("voice_speed") or 1.0,
+                        "use_speaker_boost": a.get("use_speaker_boost") or True,
+                        "optimize_streaming": a.get("voice_optimize_streaming_latency") or 2,
+                        "voice_seconds": a.get("voice_seconds") or 0.2,
+                        "backoff_seconds": a.get("voice_backoff_seconds") or 1,
+                        "silence_timeout": a.get("silence_timeout") or 30,
+                        "max_duration": a.get("maximum_duration") or 1800,
+                        "smart_endpointing": a.get("smart_endpointing") or True,
+                    },
                     "cal_api_key": data.get("cal_api_key"),
                     "cal_event_type_id": (
                         str(data.get("cal_event_type_id"))
@@ -1156,6 +1279,23 @@ async def entrypoint(ctx: agents.JobContext):
                 "llm_model": "gpt-4o-mini",
                 "temperature": 0.1,
                 "max_tokens": 250,
+            },
+            "voice": {
+                "provider": "OpenAI",
+                "model": "gpt-4o-mini-tts",
+                "voice": "alloy",
+                "background_sound": "none",
+                "input_min_characters": 10,
+                "stability": 0.71,
+                "clarity": 0.75,
+                "speed": 1.0,
+                "use_speaker_boost": True,
+                "optimize_streaming": 2,
+                "voice_seconds": 0.2,
+                "backoff_seconds": 1,
+                "silence_timeout": 30,
+                "max_duration": 1800,
+                "smart_endpointing": True,
             }
         }
 
@@ -1307,32 +1447,199 @@ GUIDED CALL POLICY (be natural, not rigid):
 
     # INBOUND model config comes from assistant data
     assistant_data = resolver_meta.get("assistant", {})
+    llm_provider = assistant_data.get("llm_provider", "OpenAI")
     llm_model = assistant_data.get("llm_model", os.getenv("OPENAI_LLM_MODEL", "gpt-4o-mini"))
     original_model = llm_model
-    if llm_model == "GPT-4o Mini":
-        llm_model = "gpt-4o-mini"
-    elif llm_model == "GPT-4o":
-        llm_model = "gpt-4o"
-    elif llm_model == "GPT-4":
-        llm_model = "gpt-4"
+    
+    # Map model names to API format based on provider
+    if llm_provider == "OpenAI":
+        if llm_model == "GPT-4o Mini":
+            llm_model = "gpt-4o-mini"
+        elif llm_model == "GPT-4o":
+            llm_model = "gpt-4o"
+        elif llm_model == "GPT-4":
+            llm_model = "gpt-4"
+    elif llm_provider == "Groq":
+        # Groq models are already in correct format
+        pass
+    elif llm_provider == "Anthropic":
+        if llm_model == "Claude 3.5 Sonnet":
+            llm_model = "claude-3-5-sonnet-20241022"
+        elif llm_model == "Claude 3 Opus":
+            llm_model = "claude-3-opus-20240229"
+        elif llm_model == "Claude 3 Haiku":
+            llm_model = "claude-3-haiku-20240307"
+    elif llm_provider == "Google":
+        if llm_model == "Gemini Pro":
+            llm_model = "gemini-pro"
+        elif llm_model == "Gemini Pro Vision":
+            llm_model = "gemini-pro-vision"
+    elif llm_provider == "Cerebras":
+        # Cerebras models are already in correct format
+        pass
+    
     if original_model != llm_model:
-        logging.info("MODEL_NAME_FIXED | original=%s | fixed=%s", original_model, llm_model)
+        logging.info("MODEL_NAME_FIXED | provider=%s | original=%s | fixed=%s", llm_provider, original_model, llm_model)
 
     temperature = assistant_data.get("temperature", 0.1)
     max_tokens = assistant_data.get("max_tokens", 250)
+
+    # Voice configuration from database
+    voice_data = resolver_meta.get("voice", {})
+    voice_provider = voice_data.get("provider", "OpenAI")
+    voice_model = voice_data.get("model", "gpt-4o-mini-tts")
+    voice_name = voice_data.get("voice", "alloy")
+    
+    # Map voice names to ElevenLabs voice IDs if using ElevenLabs
+    elevenlabs_voice_map = {
+        "rachel": "21m00Tcm4TlvDq8ikWAM",
+        "domi": "AZnzlk1XvdvUeBnXmlld", 
+        "bella": "EXAVITQu4vr4xnSDxMaL",
+        "antoni": "ErXwobaYiN019PkySvjV",
+        "elli": "MF3mGyEYCl7XYWbV9V6O",
+        "josh": "TxGEqnHWrfWFTfGW9XjX",
+        "arnold": "VR6AewLTigWG4xSOukaG"
+    }
+    
+    if voice_provider == "ElevenLabs" and voice_name.lower() in elevenlabs_voice_map:
+        voice_id = elevenlabs_voice_map[voice_name.lower()]
+        logging.info("VOICE_MAPPED | provider=%s | voice_name=%s | voice_id=%s", voice_provider, voice_name, voice_id)
+    else:
+        voice_id = voice_name
+        logging.info("VOICE_USED | provider=%s | voice_name=%s", voice_provider, voice_name)
+
+    # Configure TTS based on voice provider
+    if voice_provider == "ElevenLabs":
+        # Use ElevenLabs TTS
+        elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
+        if elevenlabs_api_key and ELEVENLABS_AVAILABLE:
+            try:
+                tts = lk_elevenlabs.TTS(
+                    voice_id=voice_id,
+                    api_key=elevenlabs_api_key,
+                    model=voice_model,
+                    streaming_latency=voice_data.get("optimize_streaming", 2),
+                    inactivity_timeout=300,  # 5 minutes timeout
+                    auto_mode=True  # Reduces latency and improves stability
+                )
+                logging.info("ELEVENLABS_TTS_CONFIGURED | voice_id=%s | model=%s | streaming_latency=%s", 
+                           voice_id, voice_model, voice_data.get("optimize_streaming", 2))
+            except Exception as e:
+                logging.error("ELEVENLABS_TTS_ERROR | error=%s | falling back to OpenAI TTS", str(e))
+                # Map ElevenLabs voice to OpenAI voice for fallback
+                openai_voice = "alloy"  # Default OpenAI voice
+                openai_tts_model = "tts-1" if voice_model.startswith("eleven_") else voice_model
+                tts = lk_openai.TTS(model=openai_tts_model, voice=openai_voice, api_key=openai_api_key)
+        else:
+            if not ELEVENLABS_AVAILABLE:
+                logging.warning("ELEVENLABS_NOT_AVAILABLE | falling back to OpenAI TTS")
+            else:
+                logging.warning("ELEVENLABS_API_KEY_NOT_SET | falling back to OpenAI TTS")
+            # Map ElevenLabs voice to OpenAI voice for fallback
+            openai_voice = "alloy"  # Default OpenAI voice
+            openai_tts_model = "tts-1" if voice_model.startswith("eleven_") else voice_model
+            tts = lk_openai.TTS(model=openai_tts_model, voice=openai_voice, api_key=openai_api_key)
+    else:
+        # Use OpenAI TTS
+        tts = lk_openai.TTS(model=voice_model, voice=voice_id, api_key=openai_api_key)
+        logging.info("OPENAI_TTS_CONFIGURED | model=%s | voice=%s", voice_model, voice_id)
+
+    # Configure LLM based on provider
+    if llm_provider == "Groq" and lk_groq:
+        # Use global GROQ_API_KEY from environment
+        groq_api_key = os.getenv("GROQ_API_KEY")
+        groq_model = assistant_data.get("groq_model") or llm_model
+        
+        # Handle decommissioned models - map old models to new ones
+        model_mapping = {
+            "llama3-8b-8192": "llama-3.1-8b-instant",
+            "llama3-70b-8192": "llama-3.3-70b-versatile",
+            "mixtral-8x7b-32768": "llama-3.1-8b-instant",
+            "gemma2-9b-it": "llama-3.1-8b-instant"  # Map deprecated Gemma to Llama
+        }
+        original_model = groq_model
+        groq_model = model_mapping.get(groq_model, groq_model)
+        if original_model != groq_model:
+            logging.info("GROQ_MODEL_MAPPED | old_model=%s | new_model=%s", original_model, groq_model)
+        
+        groq_temperature = assistant_data.get("groq_temperature") or temperature
+        groq_max_tokens = assistant_data.get("groq_max_tokens") or max_tokens
+        
+        if groq_api_key:
+            llm = lk_groq.LLM(
+                model=groq_model,
+                api_key=groq_api_key,
+                temperature=groq_temperature,
+                parallel_tool_calls=False,
+                tool_choice="auto",
+            )
+            logging.info("GROQ_LLM_CONFIGURED | model=%s | temperature=%s | max_tokens=%s", 
+                        groq_model, groq_temperature, groq_max_tokens)
+        else:
+            logging.warning("GROQ_API_KEY_NOT_SET | falling back to OpenAI LLM")
+            llm = lk_openai.LLM(
+                model=llm_model,
+                api_key=openai_api_key,
+                temperature=temperature,
+                parallel_tool_calls=False,
+                tool_choice="auto",
+            )
+    elif llm_provider == "Cerebras" and CEREBRAS_AVAILABLE:
+        # Use global CEREBRAS_API_KEY from environment
+        cerebras_api_key = os.getenv("CEREBRAS_API_KEY")
+        cerebras_model = assistant_data.get("cerebras_model") or llm_model
+        cerebras_temperature = assistant_data.get("cerebras_temperature") or temperature
+        cerebras_max_tokens = assistant_data.get("cerebras_max_tokens") or max_tokens
+        
+        if cerebras_api_key:
+            # Create OpenAI-compatible client for Cerebras
+            cerebras_openai_client = cerebras_client.OpenAI(
+                api_key=cerebras_api_key,
+                base_url="https://api.cerebras.ai/v1"
+            )
+            llm = lk_openai.LLM(
+                model=cerebras_model,
+                api_key=cerebras_api_key,
+                temperature=cerebras_temperature,
+                parallel_tool_calls=False,
+                tool_choice="auto",
+            )
+            logging.info("CEREBRAS_LLM_CONFIGURED | model=%s | temperature=%s | max_tokens=%s", 
+                        cerebras_model, cerebras_temperature, cerebras_max_tokens)
+        else:
+            logging.warning("CEREBRAS_API_KEY_NOT_SET | falling back to OpenAI LLM")
+            llm = lk_openai.LLM(
+                model=llm_model,
+                api_key=openai_api_key,
+                temperature=temperature,
+                parallel_tool_calls=False,
+                tool_choice="auto",
+            )
+    else:
+        # Default to OpenAI LLM - Check if we should use REST API
+        if is_rest_model(llm_model):
+            logging.info("REST_LLM_CONFIGURED | model=%s | using REST API", llm_model)
+            llm = create_rest_llm(
+                model=llm_model,
+                api_key=openai_api_key,
+                base_url=get_rest_config().rest_api_base_url
+            )
+        else:
+            llm = lk_openai.LLM(
+                model=llm_model,
+                api_key=openai_api_key,
+                temperature=temperature,
+                parallel_tool_calls=False,
+                tool_choice="auto",
+            )
+            logging.info("OPENAI_LLM_CONFIGURED | model=%s | temperature=%s", llm_model, temperature)
 
     session = AgentSession(
         turn_detection="vad",
         vad=vad,
         stt=lk_openai.STT(model=stt_model, api_key=openai_api_key),
-        llm=lk_openai.LLM(
-            model=llm_model,
-            api_key=openai_api_key,
-            temperature=temperature,
-            parallel_tool_calls=False,
-            tool_choice="auto",
-        ),
-        tts=lk_openai.TTS(model=tts_model, voice=tts_voice, api_key=openai_api_key),
+        llm=llm,
+        tts=tts,
     )
 
     logging.info("STARTING_SESSION (INBOUND) | instructions_length=%d | has_calendar=%s",

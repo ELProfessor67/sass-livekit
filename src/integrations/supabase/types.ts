@@ -6,6 +6,8 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
+// Updated types to include call_history and sms_messages tables
+
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
@@ -239,6 +241,10 @@ export type Database = {
           first_message: string | null
           first_message_mode: string | null
           ghl_location_id: string | null
+          groq_api_key: string | null
+          groq_max_tokens: number | null
+          groq_model: string | null
+          groq_temperature: number | null
           hipaa_compliance: boolean | null
           id: string
           idle_messages: Json | null
@@ -315,6 +321,12 @@ export type Database = {
           first_message?: string | null
           first_message_mode?: string | null
           ghl_location_id?: string | null
+          groq_max_tokens?: number | null
+          groq_model?: string | null
+          groq_temperature?: number | null
+          cerebras_max_tokens?: number | null
+          cerebras_model?: string | null
+          cerebras_temperature?: number | null
           hipaa_compliance?: boolean | null
           id?: string
           idle_messages?: Json | null
@@ -391,6 +403,12 @@ export type Database = {
           first_message?: string | null
           first_message_mode?: string | null
           ghl_location_id?: string | null
+          groq_max_tokens?: number | null
+          groq_model?: string | null
+          groq_temperature?: number | null
+          cerebras_max_tokens?: number | null
+          cerebras_model?: string | null
+          cerebras_temperature?: number | null
           hipaa_compliance?: boolean | null
           id?: string
           idle_messages?: Json | null
@@ -1019,6 +1037,117 @@ export type Database = {
           updated_at?: string
           user_id?: string
           workspace_name?: string
+        }
+        Relationships: []
+      }
+      call_history: {
+        Row: {
+          id: string
+          call_id: string
+          assistant_id: string
+          phone_number: string | null
+          participant_identity: string | null
+          start_time: string
+          end_time: string
+          call_duration: number
+          call_status: string
+          transcription: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          call_id: string
+          assistant_id: string
+          phone_number?: string | null
+          participant_identity?: string | null
+          start_time: string
+          end_time: string
+          call_duration: number
+          call_status?: string
+          transcription?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          call_id?: string
+          assistant_id?: string
+          phone_number?: string | null
+          participant_identity?: string | null
+          start_time?: string
+          end_time?: string
+          call_duration?: number
+          call_status?: string
+          transcription?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      sms_messages: {
+        Row: {
+          id: string
+          message_sid: string
+          conversation_id: string | null
+          user_id: string | null
+          to_number: string
+          from_number: string
+          body: string
+          direction: string
+          status: string
+          error_code: string | null
+          error_message: string | null
+          num_segments: string | null
+          price: string | null
+          price_unit: string | null
+          date_created: string
+          date_sent: string | null
+          date_updated: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          message_sid: string
+          conversation_id?: string | null
+          user_id?: string | null
+          to_number: string
+          from_number: string
+          body: string
+          direction: string
+          status: string
+          error_code?: string | null
+          error_message?: string | null
+          num_segments?: string | null
+          price?: string | null
+          price_unit?: string | null
+          date_created: string
+          date_sent?: string | null
+          date_updated: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          message_sid?: string
+          conversation_id?: string | null
+          user_id?: string | null
+          to_number?: string
+          from_number?: string
+          body?: string
+          direction?: string
+          status?: string
+          error_code?: string | null
+          error_message?: string | null
+          num_segments?: string | null
+          price?: string | null
+          price_unit?: string | null
+          date_created?: string
+          date_sent?: string | null
+          date_updated?: string
+          created_at?: string
+          updated_at?: string
         }
         Relationships: []
       }

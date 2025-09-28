@@ -19,6 +19,13 @@
     --muted-foreground: 0 0% 25%;  /* Much darker gray for better contrast */
     --accent: 240 4.8% 95.9%;
     --accent-foreground: 0 0% 8%;  /* Darker for better contrast */
+    
+    /* Background-aware contrast system */
+    --text-on-background: 0 0% 5%;  /* Dark text for light backgrounds */
+    --text-on-background-muted: 0 0% 25%;  /* Muted dark text for light backgrounds */
+    --text-in-container: 220 15% 92%;  /* Light text for dark containers */
+    --text-in-container-muted: 0 0% 70%;  /* Muted light text for dark containers */
+    
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
     --border: 240 5.9% 85%;
@@ -116,6 +123,12 @@
     --muted-foreground: 220 12% 88%;  /* Slightly more muted for secondary text */
     --accent: 0 0% 15%;
     --accent-foreground: 220 15% 92%;
+    
+    /* Background-aware contrast system for bright backgrounds */
+    --text-on-background: 0 0% 5%;  /* Dark text for bright backgrounds - matches light mode */
+    --text-on-background-muted: 0 0% 25%;  /* Muted dark text for bright backgrounds - matches light mode */
+    --text-in-container: 220 15% 92%;  /* Light text for dark containers */
+    --text-in-container-muted: 220 12% 88%;  /* Muted light text for dark containers */
     --destructive: 0 62.8% 60.6%;
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 20%;  /* Increased from 18% for better visibility */
@@ -206,7 +219,7 @@
     width: 100%;
     height: 100%;
     background: url('/lovable-uploads/e95c4948-393a-4dc5-8bde-5bb7d92b5581.png') center center/cover no-repeat;
-    filter: blur(8px);
+    filter: blur(4px);
     z-index: -2;
   }
 
@@ -223,8 +236,8 @@
   }
 
   .dark body::after {
-    background: hsl(var(--background) / 0.25);
-    backdrop-filter: blur(6px);
+    background: hsl(var(--background) / 0.06);
+    backdrop-filter: blur(4px);
   }
 
   h1, h2, h3, h4, h5, h6 {

@@ -1,10 +1,9 @@
-@layer components {
-  /* Glass UI Theme */
-  .glass-ui {
-    background: transparent; /* Don't override the background image */
-    position: relative;
-    min-height: 100vh; /* Ensure full viewport coverage */
-  }
+/* Glass UI Theme */
+.glass-ui {
+  background: transparent; /* Don't override the background image */
+  position: relative;
+  min-height: 100vh; /* Ensure full viewport coverage */
+}
   
   .glass-ui::before {
     content: '';
@@ -25,7 +24,7 @@
     inset: 0;
     z-index: -2;
     backdrop-filter: blur(1px);
-    background: hsl(var(--background) / 0.1);
+    background: hsl(var(--background) / 0.01);
     pointer-events: none;
   }
 
@@ -39,9 +38,26 @@
     @apply bg-background border-b border-border;
   }
 
-  /* Minimal UI Theme */
+  /* Minimal UI Theme - Force override any glass background effects */
+  html.minimal-ui,
+  html.minimal-ui body,
   .minimal-ui {
-    background: hsl(var(--background));
+    background: hsl(var(--background)) !important;
+    background-image: none !important;
+  }
+
+  /* Explicitly prevent any glass background effects in minimal theme with highest specificity */
+  html.minimal-ui::before,
+  html.minimal-ui::after,
+  html.minimal-ui body::before,
+  html.minimal-ui body::after,
+  .minimal-ui::before,
+  .minimal-ui::after {
+    display: none !important;
+    content: none !important;
+    background-image: none !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
   }
   
   /* Enhanced Glass Material System - 3 Levels */
@@ -63,7 +79,6 @@
     @apply rounded-2xl backdrop-blur-md 
            bg-[hsl(var(--background)/0.16)] dark:bg-[hsl(var(--glass-bluish-medium))] 
            shadow-xl transition-all duration-300 
-           hover:bg-[hsl(var(--background)/0.22)] dark:hover:bg-[hsl(220_15%_35%/0.16)]
            hover:shadow-2xl
            relative overflow-hidden border border-border/30;
   }
@@ -75,11 +90,11 @@
   .glass-ui .card-glass::before {
     content: '';
     @apply absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent
-           opacity-0 transition-opacity duration-500;
+           opacity-0 transition-opacity duration-500 pointer-events-none;
   }
   
   .glass-ui .card-glass:hover::before {
-    @apply opacity-100;
+    @apply opacity-0;
   }
   
   /* Heavy Glass - Primary content areas */
@@ -88,7 +103,6 @@
            bg-[hsl(var(--background)/0.24)] dark:bg-[hsl(var(--glass-bluish-heavy))] 
            shadow-2xl shadow-[hsl(var(--foreground)/0.05)] dark:shadow-primary/10
            transition-all duration-300 
-           hover:bg-[hsl(var(--background)/0.28)] dark:hover:bg-[hsl(220_15%_35%/0.20)]
            hover:shadow-2xl hover:shadow-[hsl(var(--foreground)/0.08)] dark:hover:shadow-primary/15
            relative overflow-hidden border border-border/30;
   }
@@ -100,11 +114,11 @@
   .glass-ui .card-glass-heavy::before {
     content: '';
     @apply absolute inset-0 bg-gradient-to-br from-primary/[0.08] to-accent/5
-           opacity-0 transition-opacity duration-500;
+           opacity-0 transition-opacity duration-500 pointer-events-none;
   }
   
   .glass-ui .card-glass-heavy:hover::before {
-    @apply opacity-100;
+    @apply opacity-0;
   }
   
   /* Reading Zone Enhancement */
@@ -128,11 +142,48 @@
   }
   
   .minimal-ui .card-minimal {
-    @apply bg-card border-border shadow-lg rounded-3xl;
+    @apply bg-card border border-border/80 rounded-3xl;
+    @apply hover:border-border transition-all duration-300;
   }
   
   .dark .minimal-ui .card-minimal {
-    @apply bg-card/95 border-border/50 shadow-2xl;
+    @apply bg-card border-border/60;
+    @apply hover:border-border/80;
+  }
+
+  /* Clean Minimal Card Variants - No shadows, just clean borders */
+  .minimal-ui .card-elevated-minimal {
+    @apply bg-card border border-border rounded-3xl
+           transition-all duration-300;
+  }
+  
+  .minimal-ui .card-elevated-minimal:hover {
+    @apply border-border/80;
+  }
+  
+  .dark .minimal-ui .card-elevated-minimal {
+    @apply bg-card border-border/70;
+  }
+  
+  .dark .minimal-ui .card-elevated-minimal:hover {
+    @apply border-border/90;
+  }
+
+  .minimal-ui .card-premium-enhanced-minimal {
+    @apply bg-card border-2 border-primary/20 rounded-3xl
+           transition-all duration-300;
+  }
+  
+  .minimal-ui .card-premium-enhanced-minimal:hover {
+    @apply border-primary/30;
+  }
+  
+  .dark .minimal-ui .card-premium-enhanced-minimal {
+    @apply bg-card border-primary/25;
+  }
+  
+  .dark .minimal-ui .card-premium-enhanced-minimal:hover {
+    @apply border-primary/35;
   }
   
   /* Theme-specific stat card styles */
@@ -176,7 +227,7 @@
     content: '';
     @apply absolute inset-0 bg-gradient-to-br from-primary/[0.12] via-primary/[0.08] to-accent/[0.06]
            dark:from-primary/15 dark:via-primary/10 dark:to-accent/[0.08]
-           opacity-0 transition-opacity duration-500;
+           opacity-0 transition-opacity duration-500 pointer-events-none;
   }
   
   .glass-ui .card-premium-glass:hover::before {
@@ -199,7 +250,7 @@
     content: '';
     @apply absolute inset-0 bg-gradient-to-br from-primary/15 via-primary/10 to-accent/[0.08]
            dark:from-primary/20 dark:via-primary/[0.12] dark:to-accent/10
-           opacity-0 transition-opacity duration-700;
+           opacity-0 transition-opacity duration-700 pointer-events-none;
   }
   
   .glass-ui .card-ultra-premium-glass:hover::before {
@@ -215,12 +266,13 @@
   }
   
   .minimal-ui .card-premium-minimal {
-    @apply bg-gradient-to-br from-card to-card/[0.8] border-2 border-primary/20 rounded-4xl 
-           shadow-2xl shadow-primary/10;
+    @apply bg-card border-2 border-primary/20 rounded-3xl;
+    @apply hover:border-primary/30 transition-all duration-300;
   }
   
   .dark .minimal-ui .card-premium-minimal {
-    @apply bg-gradient-to-br from-card/[0.95] to-card/[0.9] border-primary/[0.3] shadow-primary/20;
+    @apply bg-card border-primary/30;
+    @apply hover:border-primary/40;
   }
   
   /* Glass UI Button Variants */
@@ -256,7 +308,14 @@
   }
 
   .minimal-ui .popover-minimal {
-    @apply bg-card border-border rounded-xl shadow-xl;
+    @apply bg-card border border-border rounded-2xl shadow-xl;
+    background: linear-gradient(135deg, 
+      hsl(var(--card)) 0%, 
+      hsl(var(--card) / 0.95) 100%);
+    border: 1px solid hsl(var(--border) / 0.8);
+    box-shadow: 
+      0 10px 25px -5px hsl(var(--foreground) / 0.1),
+      0 4px 6px -2px hsl(var(--foreground) / 0.05);
   }
   .minimal-ui .rounded-squircle {
     border-radius: 1.5rem; /* 24px */
@@ -269,4 +328,80 @@
   .minimal-ui .rounded-squircle-xl {
     border-radius: 2.5rem; /* 40px */
   }
+
+  /* Disable pseudo-element overlay and background changes on all pages except dashboard */
+  body:not([data-page="dashboard"]) .glass-ui .card-glass:hover::before,
+  body:not([data-page="dashboard"]) .glass-ui .card-glass-heavy:hover::before,
+  body:not([data-page="dashboard"]) .glass-ui .card-premium-glass:hover::before,
+  body:not([data-page="dashboard"]) .glass-ui .card-ultra-premium-glass:hover::before {
+    opacity: 0 !important;
+  }
+
+  /* Comprehensive color/background hover overrides for non-dashboard pages */
+  body:not([data-page="dashboard"]) .glass-ui .card-glass:hover,
+  body:not([data-page="dashboard"]) .glass-ui .card-glass-light:hover,
+  body:not([data-page="dashboard"]) .glass-ui .card-glass-heavy:hover,
+  body:not([data-page="dashboard"]) .glass-ui .card-premium-glass:hover,
+  body:not([data-page="dashboard"]) .glass-ui .card-ultra-premium-glass:hover,
+  body:not([data-page="dashboard"]) .glass-ui .stat-card-glass:hover,
+  body:not([data-page="dashboard"]) .minimal-ui .card-minimal:hover,
+  body:not([data-page="dashboard"]) .minimal-ui .card-premium-minimal:hover,
+  body:not([data-page="dashboard"]) .minimal-ui .stat-card-minimal:hover {
+    background: inherit !important;
+    border-color: inherit !important;
+  }
+
+  /* Disable glass interactive hover effects for non-dashboard pages */
+  body:not([data-page="dashboard"]) .glass-interactive:hover,
+  body:not([data-page="dashboard"]) .glass-interactive-premium:hover {
+    background: inherit !important;
+    border-color: inherit !important;
+  }
+
+/* Disable ambient glow effects for non-dashboard pages */
+body:not([data-page="dashboard"]) .glass-ambient-warm:hover::before {
+  opacity: 0 !important;
+}
+
+/* Navigation theme styles */
+.glass-ui .nav-glass {
+  @apply bg-white/10 backdrop-blur-md border border-white/30 rounded-full;
+  color: hsl(var(--nav-glass-foreground, 0 0% 0%)) !important;
+}
+
+/* Ensure all nav text/icons are black in Glass UI */
+.glass-ui .nav-glass a,
+.glass-ui .nav-glass button,
+.glass-ui .nav-glass span,
+.glass-ui .nav-glass svg {
+  color: hsl(var(--nav-glass-foreground, 0 0% 0%)) !important;
+}
+
+/* Preserve black on hover as well */
+.glass-ui .nav-glass a:hover,
+.glass-ui .nav-glass button:hover {
+  color: hsl(var(--nav-glass-foreground, 0 0% 0%)) !important;
+}
+
+.minimal-ui .nav-minimal {
+  @apply bg-card border border-border rounded-full;
+  background: linear-gradient(135deg, 
+    hsl(var(--card)) 0%, 
+    hsl(var(--card) / 0.95) 100%);
+  border: 1px solid hsl(var(--border) / 0.8);
+}
+
+.glass-ui .nav-item-active-glass {
+  @apply bg-white/30 backdrop-blur-md;
+  color: hsl(var(--nav-glass-foreground, 0 0% 0%)) !important;
+}
+.minimal-ui .nav-item-active-minimal {
+  @apply bg-primary text-primary-foreground;
+}
+
+/* Disable button hover background changes for non-dashboard pages (but allow on assistants page) */
+body:not([data-page="dashboard"]):not([data-page="assistants"]) .btn-glass-primary:hover,
+body:not([data-page="dashboard"]):not([data-page="assistants"]) .btn-glass-secondary:hover {
+  background: inherit !important;
+  border-color: inherit !important;
 }

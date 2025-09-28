@@ -28,13 +28,20 @@ router.post('/upload', extractUserId, uploadService.getUploadMiddleware(), async
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const { companyId, knowledgeBaseId } = req.body;
-    console.log('Upload request body:', { companyId, knowledgeBaseId });
+    const { companyId, knowledgeBaseId, contentName, contentDescription, contentType } = req.body;
+    console.log('Upload request body:', { companyId, knowledgeBaseId, contentName, contentDescription, contentType });
     if (!companyId) {
       return res.status(400).json({ error: 'Company ID is required' });
     }
 
-    const document = await uploadService.uploadDocument(req.file, companyId, req.user.id);
+    // Extract content metadata
+    const contentMetadata = {
+      content_name: contentName,
+      content_description: contentDescription,
+      content_type: contentType || 'document'
+    };
+
+    const document = await uploadService.uploadDocument(req.file, companyId, req.user.id, contentMetadata);
     
     // Associate document with knowledge base if provided
     if (knowledgeBaseId) {
@@ -61,7 +68,10 @@ router.post('/upload', extractUserId, uploadService.getUploadMiddleware(), async
         filename: document.original_filename,
         file_size: document.file_size,
         status: 'uploaded',
-        upload_timestamp: document.upload_timestamp
+        upload_timestamp: document.upload_timestamp,
+        content_name: document.content_name,
+        content_description: document.content_description,
+        content_type: document.content_type
       }
     });
   } catch (error) {
@@ -374,6 +384,124 @@ router.delete('/documents/:docId', extractUserId, async (req, res) => {
     res.json({ success: true, message: 'Document deleted successfully' });
   } catch (error) {
     console.error('Delete document error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Content Management API Endpoints
+
+// Save website content
+router.post('/knowledge-bases/:kbId/content/website', extractUserId, async (req, res) => {
+  try {
+    const { kbId } = req.params;
+    const { companyId, contentName, contentDescription, contentUrl, contentType } = req.body;
+    
+    if (!companyId || !contentName || !contentUrl) {
+      return res.status(400).json({ error: 'Company ID, content name, and URL are required' });
+    }
+
+    // Create document record for website content
+    const documentData = {
+      doc_id: require('uuid').v4(),
+      company_id: companyId,
+      filename: contentName,
+      original_filename: contentName,
+      file_size: 0,
+      file_path: '',
+      content_name: contentName,
+      content_description: contentDescription,
+      content_type: contentType || 'website',
+      content_url: contentUrl,
+      status: 'ready',
+      upload_timestamp: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const document = await databaseService.createDocument(documentData);
+    
+    // Associate with knowledge base
+    await databaseService.associateDocumentWithKnowledgeBase(document.doc_id, kbId);
+    
+    res.json({ 
+      success: true, 
+      document: {
+        doc_id: document.doc_id,
+        company_id: document.company_id,
+        original_filename: document.original_filename,
+        file_size: document.file_size,
+        file_path: document.file_path,
+        file_type: document.content_type,
+        status: document.status,
+        upload_timestamp: document.upload_timestamp,
+        created_at: document.created_at,
+        updated_at: document.updated_at,
+        content_name: document.content_name,
+        content_description: document.content_description,
+        content_type: document.content_type,
+        content_url: document.content_url
+      }
+    });
+  } catch (error) {
+    console.error('Save website content error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Save text content
+router.post('/knowledge-bases/:kbId/content/text', extractUserId, async (req, res) => {
+  try {
+    const { kbId } = req.params;
+    const { companyId, contentName, contentDescription, contentText, contentType } = req.body;
+    
+    if (!companyId || !contentName || !contentText) {
+      return res.status(400).json({ error: 'Company ID, content name, and text content are required' });
+    }
+
+    // Create document record for text content
+    const documentData = {
+      doc_id: require('uuid').v4(),
+      company_id: companyId,
+      filename: contentName,
+      original_filename: contentName,
+      file_size: contentText.length,
+      file_path: '',
+      content_name: contentName,
+      content_description: contentDescription,
+      content_type: contentType || 'text',
+      content_text: contentText,
+      status: 'ready',
+      upload_timestamp: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const document = await databaseService.createDocument(documentData);
+    
+    // Associate with knowledge base
+    await databaseService.associateDocumentWithKnowledgeBase(document.doc_id, kbId);
+    
+    res.json({ 
+      success: true, 
+      document: {
+        doc_id: document.doc_id,
+        company_id: document.company_id,
+        original_filename: document.original_filename,
+        file_size: document.file_size,
+        file_path: document.file_path,
+        file_type: document.content_type,
+        status: document.status,
+        upload_timestamp: document.upload_timestamp,
+        created_at: document.created_at,
+        updated_at: document.updated_at,
+        content_name: document.content_name,
+        content_description: document.content_description,
+        content_type: document.content_type,
+        content_text: document.content_text
+      }
+    });
+  } catch (error) {
+    console.error('Save text content error:', error);
     res.status(500).json({ error: error.message });
   }
 });

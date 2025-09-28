@@ -19,6 +19,7 @@ import { ThemeContainer, ThemeSection, ThemeCard } from "@/components/theme";
 import DashboardLayout from "@/layout/DashboardLayout";
 import { ModelTab } from "@/components/assistants/wizard/ModelTab";
 import { VoiceTab } from "@/components/assistants/wizard/VoiceTab";
+import { SMSTab } from "@/components/assistants/wizard/SMSTab";
 import { AnalysisTab } from "@/components/assistants/wizard/AnalysisTab";
 import { AdvancedTab } from "@/components/assistants/wizard/AdvancedTab";
 import { N8nTab } from "@/components/assistants/wizard/N8nTab";
@@ -55,6 +56,7 @@ const CreateAssistant = () => {
   const tabs = [
     { id: "model", label: "Model" },
     { id: "voice", label: "Voice" },
+    { id: "sms", label: "Messages" },
     { id: "analysis", label: "Analysis" },
     { id: "advanced", label: "Advanced" },
     { id: "n8n", label: "n8n" }
@@ -72,19 +74,27 @@ const CreateAssistant = () => {
       knowledgeBase: "None",
       calendar: "None",
       conversationStart: "assistant-first",
+      voice: "rachel-elevenlabs",
       temperature: 0.3,
       maxTokens: 250,
       firstMessage: "",
       systemPrompt: "",
+      language: "en",
       transcriber: {
         model: "nova-2",
         language: "en"
-      }
+      },
+      // Call Management Settings
+      endCallMessage: "",
+      maxCallDuration: 1800,
+      idleMessages: [],
+      idleMessageMaxSpokenCount: 3,
+      silenceTimeoutSeconds: 10
     },
     voice: {
       provider: "ElevenLabs",
       voice: "Rachel",
-      model: "eleven_turbo_v2_5",
+      model: "eleven_turbo_v2",
       backgroundSound: "none",
       inputMinCharacters: 10,
       stability: 0.71,
@@ -109,15 +119,46 @@ const CreateAssistant = () => {
       pronunciationDictionary: false,
       chunk: 1
     },
+    sms: {
+      provider: "Twilio",
+      knowledgeBase: "None",
+      calendar: "None",
+      systemPrompt: "",
+      responseStyle: 0.5,
+      characterLimit: 160,
+      language: "en",
+      autoReply: true,
+      autoReplyDelay: 1,
+      businessHours: {
+        enabled: false,
+        start: "09:00",
+        end: "17:00",
+        timezone: "America/New_York"
+      },
+      messageTemplates: [],
+      complianceSettings: {
+        tcpaCompliant: true,
+        optInEnabled: true,
+        optOutKeywords: ["STOP", "UNSUBSCRIBE", "QUIT"],
+        helpKeywords: ["HELP", "INFO", "SUPPORT"]
+      },
+      escalationRules: {
+        enabled: true,
+        humanTransferKeywords: ["AGENT", "HUMAN", "REPRESENTATIVE"],
+        maxAutoResponses: 5
+      }
+    },
     analysis: {
       structuredData: [],
-      callSummary: true,
+      callSummary: "",
       successEvaluation: true,
       customSuccessPrompt: ""
     },
     advanced: {
       hipaaCompliant: false,
+      pciCompliant: false,
       recordingEnabled: true,
+      audioRecordingFormat: "wav",
       videoRecordingEnabled: false,
       endCallMessage: "",
       endCallPhrases: [],
@@ -130,6 +171,14 @@ const CreateAssistant = () => {
       numWordsToInterruptAssistant: 2,
       maxDurationSeconds: 600,
       backgroundSound: "office",
+      voicemailDetectionEnabled: false,
+      voicemailMessage: "",
+      transferEnabled: false,
+      transferPhoneNumber: "",
+      transferCountryCode: "+1",
+      transferSentence: "",
+      transferCondition: "",
+      transferType: "warm" as const,
       firstSms: "",
       smsPrompt: "",
       whatsappNumber: "",
@@ -193,14 +242,22 @@ const CreateAssistant = () => {
               knowledgeBase: data.knowledge_base_id || "None",
               calendar: "None", // Not stored in DB yet
               conversationStart: "assistant-first",
+              voice: "rachel-elevenlabs",
               temperature: data.temperature_setting || 0.3,
               maxTokens: data.max_token_setting || 250,
               firstMessage: data.first_message || "",
               systemPrompt: data.prompt || "",
+              language: "en",
               transcriber: {
                 model: data.transcriber_model || "nova-2",
                 language: data.transcriber_language || "en"
-              }
+              },
+              // Call Management Settings
+              endCallMessage: data.end_call_message || "",
+              maxCallDuration: data.maximum_duration || 1800,
+              idleMessages: Array.isArray(data.idle_messages) ? data.idle_messages.filter(item => typeof item === 'string') : [],
+              idleMessageMaxSpokenCount: data.max_idle_messages || 3,
+              silenceTimeoutSeconds: data.silence_timeout || 10
             },
             voice: {
               provider: data.voice_provider_setting || "ElevenLabs",
@@ -230,15 +287,46 @@ const CreateAssistant = () => {
               pronunciationDictionary: false,
               chunk: 1
             },
+            sms: {
+              provider: "Twilio",
+              knowledgeBase: "None",
+              calendar: "None",
+              systemPrompt: "",
+              responseStyle: 0.5,
+              characterLimit: 160,
+              language: "en",
+              autoReply: true,
+              autoReplyDelay: 1,
+              businessHours: {
+                enabled: false,
+                start: "09:00",
+                end: "17:00",
+                timezone: "America/New_York"
+              },
+              messageTemplates: [],
+              complianceSettings: {
+                tcpaCompliant: true,
+                optInEnabled: true,
+                optOutKeywords: ["STOP", "UNSUBSCRIBE", "QUIT"],
+                helpKeywords: ["HELP", "INFO", "SUPPORT"]
+              },
+              escalationRules: {
+                enabled: true,
+                humanTransferKeywords: ["AGENT", "HUMAN", "REPRESENTATIVE"],
+                maxAutoResponses: 5
+              }
+            },
             analysis: {
               structuredData: [],
-              callSummary: true,
+              callSummary: "",
               successEvaluation: true,
               customSuccessPrompt: data.analysis_summary_prompt || ""
             },
             advanced: {
               hipaaCompliant: data.hipaa_compliance || false,
+              pciCompliant: false,
               recordingEnabled: data.audio_recording_setting || true,
+              audioRecordingFormat: "wav",
               videoRecordingEnabled: data.video_recording || false,
               endCallMessage: data.end_call_message || "",
               endCallPhrases: Array.isArray(data.end_call_phrases) ? data.end_call_phrases.filter(item => typeof item === 'string') : [],
@@ -251,6 +339,14 @@ const CreateAssistant = () => {
               numWordsToInterruptAssistant: 2,
               maxDurationSeconds: 600,
               backgroundSound: "office",
+              voicemailDetectionEnabled: false,
+              voicemailMessage: "",
+              transferEnabled: false,
+              transferPhoneNumber: "",
+              transferCountryCode: "+1",
+              transferSentence: "",
+              transferCondition: "",
+              transferType: "warm" as const,
               firstSms: data.first_sms || "",
               smsPrompt: data.sms_prompt || "",
               whatsappNumber: (data as any).whatsapp_number || "",
@@ -300,6 +396,20 @@ const CreateAssistant = () => {
       knowledge_base_id: kbId,
       temperature_setting: formData.model.temperature,
       max_token_setting: formData.model.maxTokens,
+      
+      // Groq-specific settings (only set if provider is Groq)
+      ...(formData.model.provider === "Groq" && {
+        groq_model: formData.model.model,
+        groq_temperature: formData.model.temperature,
+        groq_max_tokens: formData.model.maxTokens,
+      }),
+      
+      // Cerebras-specific settings (only set if provider is Cerebras)
+      ...(formData.model.provider === "Cerebras" && {
+        cerebras_model: formData.model.model,
+        cerebras_temperature: formData.model.temperature,
+        cerebras_max_tokens: formData.model.maxTokens,
+      }),
       first_message: formData.model.firstMessage || null,
       prompt: formData.model.systemPrompt || null,
 
@@ -571,6 +681,12 @@ const CreateAssistant = () => {
                       <VoiceTab 
                         data={formData.voice} 
                         onChange={(data) => handleFormDataChange('voice', data)} 
+                      />
+                    )}
+                    {activeTab === "sms" && (
+                      <SMSTab 
+                        data={formData.sms} 
+                        onChange={(data) => handleFormDataChange('sms', data)} 
                       />
                     )}
                     {activeTab === "analysis" && (
