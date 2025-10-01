@@ -155,7 +155,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                   "Anthropic": "Claude 3.5 Sonnet",
                   "Google": "Gemini Pro",
                   "Groq": "openai/gpt-oss-120b",
-                  "Cerebras": "cerebras-llama-2-7b"
+                  "Cerebras": "gpt-oss-120b"
                 };
                 const newModel = defaultModels[value as keyof typeof defaultModels] || "";
                 console.log('Provider changed:', { from: data.provider, to: value, newModel });
@@ -213,11 +213,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                   )}
                   {data.provider === "Cerebras" && (
                     <>
-                      <SelectItem value="cerebras-llama-2-7b">Cerebras Llama 2 7B</SelectItem>
-                      <SelectItem value="cerebras-llama-2-13b">Cerebras Llama 2 13B</SelectItem>
-                      <SelectItem value="cerebras-gpt-13b">Cerebras GPT 13B</SelectItem>
-                      <SelectItem value="cerebras-gpt-6.7b">Cerebras GPT 6.7B</SelectItem>
-                      <SelectItem value="cerebras-gpt-2.7b">Cerebras GPT 2.7B</SelectItem>
+                      <SelectItem value="gpt-oss-120b">GPT-OSS 120B</SelectItem>
                     </>
                   )}
                 </SelectContent>

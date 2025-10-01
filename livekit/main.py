@@ -1600,6 +1600,7 @@ GUIDED CALL POLICY (be natural, not rigid):
             llm = lk_openai.LLM(
                 model=cerebras_model,
                 api_key=cerebras_api_key,
+                base_url="https://api.cerebras.ai/v1",
                 temperature=cerebras_temperature,
                 parallel_tool_calls=False,
                 tool_choice="auto",

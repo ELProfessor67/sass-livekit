@@ -25,6 +25,20 @@ Environment variables used by the app
 
 # Cerebras Configuration (Optional - Alternative LLM provider)
 - CEREBRAS_API_KEY: Cerebras API key for LLM processing
+- CEREBRAS_LLM_MODEL: Cerebras model to use (default: llama3.1-8b)
+- CEREBRAS_TEMPERATURE: Temperature setting for Cerebras model (default: 0.1)
+- CEREBRAS_MAX_TOKENS: Maximum tokens for Cerebras model response (default: 250)
+
+# Available Cerebras Models:
+# - llama3.1-8b (8B parameters, fast inference)
+# - llama-3.3-70b (70B parameters, high quality)
+# - llama-4-scout-17b-16e-instruct (17B parameters, instruction-tuned)
+# - llama-4-maverick-17b-128e-instruct (17B parameters, preview)
+# - qwen-3-32b (32B parameters, multilingual)
+# - qwen-3-235b-a22b-instruct-2507 (235B parameters, preview)
+# - qwen-3-235b-a22b-thinking-2507 (235B parameters, reasoning, preview)
+# - qwen-3-coder-480b (480B parameters, code generation, preview)
+# - gpt-oss-120b (120B parameters, OpenAI-compatible)
 
 # AWS S3 Configuration (Optional - will fallback to local storage)
 - AWS_ACCESS_KEY_ID: AWS access key ID

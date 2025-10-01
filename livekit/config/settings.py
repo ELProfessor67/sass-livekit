@@ -74,7 +74,7 @@ class GroqConfig:
 class CerebrasConfig:
     """Cerebras API configuration."""
     api_key: str
-    llm_model: str = "cerebras-llama-2-7b"
+    llm_model: str = "llama3.1-8b"
     temperature: float = 0.1
     max_tokens: int = 250
     
@@ -82,7 +82,7 @@ class CerebrasConfig:
     def from_env(cls) -> "CerebrasConfig":
         return cls(
             api_key=os.getenv("CEREBRAS_API_KEY", ""),
-            llm_model=os.getenv("CEREBRAS_LLM_MODEL", "cerebras-llama-2-7b"),
+            llm_model=os.getenv("CEREBRAS_LLM_MODEL", "llama3.1-8b"),
             temperature=float(os.getenv("CEREBRAS_TEMPERATURE", "0.1")),
             max_tokens=int(os.getenv("CEREBRAS_MAX_TOKENS", "250"))
         )
