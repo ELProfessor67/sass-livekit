@@ -232,16 +232,58 @@ twilioAdminRouter.post('/trunk/attach', async (req, res) => {
 // body: { phoneSid?: "PNxxx", phoneNumber?: "+19862108561", assistantId: "..." , label?, outboundTrunkId?, outboundTrunkName? }
 twilioAdminRouter.post('/map', async (req, res) => {
     try {
+        const userId = req.headers['x-user-id'];
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'User ID required' });
+        }
+
         const { phoneSid, phoneNumber, assistantId, label, outboundTrunkId, outboundTrunkName } = req.body || {};
         if (!assistantId || (!phoneSid && !phoneNumber)) {
             return res.status(400).json({ success: false, message: 'assistantId and phoneSid or phoneNumber are required' });
         }
 
+        console.log(`Mapping phone ${phoneSid || phoneNumber} to assistant ${assistantId} for user ${userId}`);
+
+        // Get user's active credentials
+        const { data: credentials, error: credError } = await supa
+            .from('user_twilio_credentials')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .single();
+
+        if (credError) {
+            if (credError.code === 'PGRST116') {
+                return res.status(404).json({ success: false, message: 'No Twilio credentials found' });
+            }
+            console.error('Database error:', credError);
+            return res.status(500).json({ success: false, message: 'Database error occurred' });
+        }
+
+        if (!credentials) {
+            return res.status(404).json({ success: false, message: 'No Twilio credentials found' });
+        }
+
+        // Create Twilio client with user's credentials
+        const userTwilio = Twilio(credentials.account_sid, credentials.auth_token);
+
         // normalize number (fetch from Twilio if only PN SID provided)
         let e164 = phoneNumber;
         if (!e164 && phoneSid) {
-            const num = await twilio.incomingPhoneNumbers(phoneSid).fetch();
-            e164 = num.phoneNumber;
+            try {
+                const num = await userTwilio.incomingPhoneNumbers(phoneSid).fetch();
+                e164 = num.phoneNumber;
+                console.log(`Resolved phone number: ${e164} from SID: ${phoneSid}`);
+            } catch (phoneError) {
+                console.error('Error fetching phone number:', phoneError);
+                if (phoneError.status === 404) {
+                    return res.status(404).json({ 
+                        success: false, 
+                        message: 'Phone number not found in Twilio account' 
+                    });
+                }
+                throw phoneError;
+            }
         }
         if (!e164) return res.status(400).json({ success: false, message: 'Could not resolve phone number' });
 
@@ -284,7 +326,7 @@ twilioAdminRouter.post('/map', async (req, res) => {
         const baseUrl = process.env.NGROK_URL || process.env.BACKEND_URL;
         if (baseUrl && phoneSid) {
             try {
-                await twilio.incomingPhoneNumbers(phoneSid).update({
+                await userTwilio.incomingPhoneNumbers(phoneSid).update({
                     smsUrl: `${baseUrl}/api/v1/twilio/sms/webhook`,
                     smsMethod: 'POST',
                     statusCallback: `${baseUrl}/api/v1/twilio/sms/status-callback`,
@@ -303,6 +345,23 @@ twilioAdminRouter.post('/map', async (req, res) => {
         res.json({ success: true, mapped: { phoneSid: phoneSid || null, number: e164, assistantId } });
     } catch (e) {
         console.error('twilio/map error', e);
-        res.status(500).json({ success: false, message: 'Map failed' });
+        console.error('Error details:', {
+            message: e.message,
+            status: e.status,
+            code: e.code,
+            moreInfo: e.moreInfo
+        });
+        
+        // Return more specific error message
+        const errorMessage = e.message || 'Map failed';
+        res.status(500).json({ 
+            success: false, 
+            message: errorMessage,
+            details: process.env.NODE_ENV === 'development' ? {
+                status: e.status,
+                code: e.code,
+                moreInfo: e.moreInfo
+            } : undefined
+        });
     }
 });

@@ -132,6 +132,8 @@ twilioUserRouter.post('/trunk/attach', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Phone SID required' });
     }
 
+    console.log(`Attempting to attach phone ${phoneSid} to trunk for user ${userId}`);
+
     // Get user's active credentials
     const { data: credentials, error: credError } = await supa
       .from('user_twilio_credentials')
@@ -152,18 +154,100 @@ twilioUserRouter.post('/trunk/attach', async (req, res) => {
       return res.status(404).json({ success: false, message: 'No Twilio credentials found' });
     }
 
+    if (!credentials.trunk_sid) {
+      console.error('No trunk_sid found in credentials for user:', userId);
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No trunk configured. Please create a main trunk first.' 
+      });
+    }
+
+    console.log(`Using trunk_sid: ${credentials.trunk_sid} for user ${userId}`);
+
     // Create Twilio client with user's credentials
     const twilio = Twilio(credentials.account_sid, credentials.auth_token);
 
+    // Verify the phone number exists and get its details
+    let phoneNumber;
+    try {
+      phoneNumber = await twilio.incomingPhoneNumbers(phoneSid).fetch();
+      console.log(`Found phone number: ${phoneNumber.phoneNumber} (${phoneNumber.sid})`);
+    } catch (phoneError) {
+      console.error('Error fetching phone number:', phoneError);
+      if (phoneError.status === 404) {
+        return res.status(404).json({ 
+          success: false, 
+          message: 'Phone number not found in Twilio account' 
+        });
+      }
+      throw phoneError;
+    }
+
+    // Verify the trunk exists
+    try {
+      const trunk = await twilio.trunking.v1.trunks(credentials.trunk_sid).fetch();
+      console.log(`Found trunk: ${trunk.friendlyName} (${trunk.sid})`);
+    } catch (trunkError) {
+      console.error('Error fetching trunk:', trunkError);
+      if (trunkError.status === 404) {
+        return res.status(404).json({ 
+          success: false, 
+          message: 'Trunk not found. Please recreate your Twilio credentials.' 
+        });
+      }
+      throw trunkError;
+    }
+
     // Attach phone number to user's trunk
-    await twilio.incomingPhoneNumbers(phoneSid).update({
-      trunkSid: credentials.trunk_sid,
-    });
+    try {
+      await twilio.incomingPhoneNumbers(phoneSid).update({
+        trunkSid: credentials.trunk_sid,
+      });
+      console.log(`Successfully attached phone ${phoneNumber.phoneNumber} to trunk ${credentials.trunk_sid}`);
+    } catch (attachError) {
+      console.error('Error attaching phone to trunk:', attachError);
+      
+      // Handle specific Twilio errors
+      if (attachError.status === 400) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Invalid request: ${attachError.message}` 
+        });
+      } else if (attachError.status === 403) {
+        return res.status(403).json({ 
+          success: false, 
+          message: 'Insufficient permissions to modify this phone number' 
+        });
+      } else if (attachError.status === 404) {
+        return res.status(404).json({ 
+          success: false, 
+          message: 'Phone number or trunk not found' 
+        });
+      }
+      throw attachError;
+    }
 
     res.json({ success: true, message: 'Phone number attached to trunk' });
   } catch (error) {
     console.error('Error attaching phone to trunk:', error);
-    res.status(500).json({ success: false, message: 'Failed to attach phone to trunk' });
+    console.error('Error details:', {
+      message: error.message,
+      status: error.status,
+      code: error.code,
+      moreInfo: error.moreInfo
+    });
+    
+    // Return more specific error message
+    const errorMessage = error.message || 'Failed to attach phone to trunk';
+    res.status(500).json({ 
+      success: false, 
+      message: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? {
+        status: error.status,
+        code: error.code,
+        moreInfo: error.moreInfo
+      } : undefined
+    });
   }
 });
 

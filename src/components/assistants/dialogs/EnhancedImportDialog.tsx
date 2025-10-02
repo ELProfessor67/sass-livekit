@@ -319,7 +319,10 @@ export function EnhancedImportDialog({
         // Step 3: Map phone number to assistant in database (including outbound trunk info)
         const mapResp = await fetch(`${base}/api/v1/twilio/map`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            'x-user-id': user?.id || '',
+          },
           body: JSON.stringify({
             phoneSid: twilioNumber.sid,
             assistantId: assistant.id,
@@ -420,7 +423,10 @@ export function EnhancedImportDialog({
       // Step 3: Map phone number to assistant in database
       const mapResp = await fetch(`${base}/api/v1/twilio/map`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          'x-user-id': user?.id || '',
+        },
         body: JSON.stringify({
           phoneSid: tempSid,
           assistantId: assistant.id,

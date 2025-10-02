@@ -488,7 +488,10 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
       // Step 3: Map phone number to assistant in database (including outbound trunk info)
       const mapResp = await fetch(`${base}/api/v1/twilio/map`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          'x-user-id': user?.id || '',
+        },
         body: JSON.stringify({
           phoneSid: phoneNumber.id,
           assistantId: inboundAssistant.id,
