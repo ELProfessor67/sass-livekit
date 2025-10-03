@@ -5,7 +5,6 @@ import { createClient } from '@supabase/supabase-js';
 
 export const outboundCallsRouter = express.Router();
 
-const twilio = Twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -104,9 +103,7 @@ outboundCallsRouter.post('/initiate', async (req, res) => {
       }
       
       // Fallback to environment variable if no assistant phone found
-      if (!fromPhoneNumber) {
-        fromPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
-      }
+    
     }
     
     if (!fromPhoneNumber) {
@@ -120,8 +117,26 @@ outboundCallsRouter.post('/initiate', async (req, res) => {
     const baseUrl = process.env.NGROK_URL || process.env.BACKEND_URL;
     const livekitRoomUrl = `${baseUrl}/api/v1/livekit/room/${roomName}`;
 
+    // Get user's active Twilio credentials
+    const { data: credentials, error: credError } = await supabase
+      .from('user_twilio_credentials')
+      .select('*')
+      .eq('user_id', campaign.user_id)
+      .eq('is_active', true)
+      .single();
+
+    if (credError || !credentials) {
+      return res.status(404).json({
+        success: false,
+        message: 'No Twilio credentials found for user'
+      });
+    }
+
+    // Create Twilio client with user's credentials
+    const userTwilio = Twilio(credentials.account_sid, credentials.auth_token);
+
     // Initiate Twilio call
-    const call = await twilio.calls.create({
+    const call = await userTwilio.calls.create({
       to: phoneNumber,
       from: fromPhoneNumber,
       url: livekitRoomUrl,

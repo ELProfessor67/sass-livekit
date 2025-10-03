@@ -25,7 +25,8 @@ class SMSAssistantService {
       
       if (!assistant) {
         console.log(`No assistant found for phone number: ${toNumber}`);
-        await this.sendErrorResponse(fromNumber, toNumber, 'Sorry, this number is not configured for SMS assistance.');
+        // Cannot send error response without user credentials
+        console.log('No assistant found - cannot send error response without user credentials');
         return;
       }
 
@@ -42,7 +43,8 @@ class SMSAssistantService {
       const userId = await this.databaseService.getUserIdFromAssistant(assistant.id);
       if (!userId) {
         console.error(`No user ID found for assistant: ${assistant.id}`);
-        await this.sendErrorResponse(fromNumber, toNumber, 'Sorry, there was an error processing your message.');
+        // Cannot send error response without user credentials
+        console.log('No user ID found - cannot send error response without user credentials');
         return;
       }
       
@@ -117,10 +119,17 @@ class SMSAssistantService {
     } catch (error) {
       console.error('Error processing incoming SMS:', error);
       
-      // Send error response to user
+      // Try to send error response if we can get user credentials
       try {
-        await this.sendErrorResponse(smsData.fromNumber, smsData.toNumber, 
-          'Sorry, I encountered an error processing your message. Please try again later.');
+        // Try to get assistant and user ID for error response
+        const assistant = await this.databaseService.getAssistantByPhoneNumber(smsData.toNumber);
+        if (assistant) {
+          const userId = await this.databaseService.getUserIdFromAssistant(assistant.id);
+          if (userId) {
+            await this.sendErrorResponse(smsData.fromNumber, smsData.toNumber, 
+              'Sorry, I encountered an error processing your message. Please try again later.', userId);
+          }
+        }
       } catch (sendError) {
         console.error('Error sending error response:', sendError);
       }
@@ -133,12 +142,72 @@ class SMSAssistantService {
   async sendSMSResponse(toNumber, fromNumber, message, userId) {
     try {
       console.log(`Sending SMS response to ${toNumber}: ${message}`);
-      console.log(`Twilio credentials check - Account SID: ${process.env.TWILIO_ACCOUNT_SID ? 'Set' : 'Missing'}, Auth Token: ${process.env.TWILIO_AUTH_TOKEN ? 'Set' : 'Missing'}`);
+      console.log(`Using user-specific Twilio credentials for SMS response`);
       
-      const twilioMessage = await this.twilioClient.messages.create({
+      // Get user's active Twilio credentials
+      console.log(`Looking up Twilio credentials for user: ${userId}`);
+      const { data: credentials, error: credError } = await this.databaseService.supabase
+        .from('user_twilio_credentials')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .single();
+
+      if (credError) {
+        console.error('Error fetching Twilio credentials:', credError);
+        console.error('Credential error details:', {
+          code: credError.code,
+          message: credError.message,
+          details: credError.details,
+          hint: credError.hint
+        });
+        throw new Error(`Failed to fetch Twilio credentials: ${credError.message}`);
+      }
+
+      if (!credentials) {
+        console.error('No Twilio credentials found for user:', userId);
+        throw new Error('No Twilio credentials found for user');
+      }
+
+      console.log('Found Twilio credentials:', {
+        id: credentials.id,
+        account_sid: credentials.account_sid ? 'Set' : 'Not set',
+        auth_token: credentials.auth_token ? 'Set' : 'Not set',
+        is_active: credentials.is_active,
+        label: credentials.label
+      });
+
+      // Debug: Log actual credential values (first few chars only for security)
+      console.log('Actual credential values:', {
+        account_sid: credentials.account_sid ? `${credentials.account_sid.substring(0, 8)}...` : 'null',
+        auth_token: credentials.auth_token ? `${credentials.auth_token.substring(0, 8)}...` : 'null',
+        account_sid_length: credentials.account_sid ? credentials.account_sid.length : 0,
+        auth_token_length: credentials.auth_token ? credentials.auth_token.length : 0
+      });
+
+      // Create Twilio client with user's credentials
+      const Twilio = (await import('twilio')).default;
+      console.log('Creating Twilio client with credentials...');
+      const userTwilioClient = Twilio(credentials.account_sid, credentials.auth_token);
+      console.log('Twilio client created successfully');
+      
+      console.log('Attempting to send SMS with parameters:', {
         body: message,
         from: fromNumber,
         to: toNumber
+      });
+      
+      const twilioMessage = await userTwilioClient.messages.create({
+        body: message,
+        from: fromNumber,
+        to: toNumber
+      });
+      
+      console.log('SMS creation successful, message details:', {
+        sid: twilioMessage.sid,
+        status: twilioMessage.status,
+        to: twilioMessage.to,
+        from: twilioMessage.from
       });
 
       console.log(`SMS sent successfully. SID: ${twilioMessage.sid}, Status: ${twilioMessage.status}`);
@@ -172,9 +241,46 @@ class SMSAssistantService {
   /**
    * Send error response to user
    */
-  async sendErrorResponse(toNumber, fromNumber, errorMessage) {
+  async sendErrorResponse(toNumber, fromNumber, errorMessage, userId) {
     try {
-      const twilioMessage = await this.twilioClient.messages.create({
+      // Get user's active Twilio credentials
+      console.log(`Looking up Twilio credentials for error response for user: ${userId}`);
+      const { data: credentials, error: credError } = await this.databaseService.supabase
+        .from('user_twilio_credentials')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .single();
+
+      if (credError) {
+        console.error('Error fetching Twilio credentials for error response:', credError);
+        console.error('Credential error details:', {
+          code: credError.code,
+          message: credError.message,
+          details: credError.details,
+          hint: credError.hint
+        });
+        throw new Error(`Failed to fetch Twilio credentials: ${credError.message}`);
+      }
+
+      if (!credentials) {
+        console.error('No Twilio credentials found for user:', userId);
+        throw new Error('No Twilio credentials found for user');
+      }
+
+      console.log('Found Twilio credentials for error response:', {
+        id: credentials.id,
+        account_sid: credentials.account_sid ? 'Set' : 'Not set',
+        auth_token: credentials.auth_token ? 'Set' : 'Not set',
+        is_active: credentials.is_active,
+        label: credentials.label
+      });
+
+      // Create Twilio client with user's credentials
+      const Twilio = (await import('twilio')).default;
+      const userTwilioClient = Twilio(credentials.account_sid, credentials.auth_token);
+
+      const twilioMessage = await userTwilioClient.messages.create({
         body: errorMessage,
         from: fromNumber,
         to: toNumber

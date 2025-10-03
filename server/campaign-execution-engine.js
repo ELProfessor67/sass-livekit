@@ -1,13 +1,10 @@
 // server/campaign-execution-engine.js
 import { createClient } from '@supabase/supabase-js';
-import Twilio from 'twilio';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-
-const twilio = Twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
 class CampaignExecutionEngine {
   constructor() {

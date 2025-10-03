@@ -13,14 +13,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const twilioClient = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
-
 const smsDatabaseService = new SMSDatabaseService(supabase);
 const smsAIService = new SMSAIService();
-const smsAssistantService = new SMSAssistantService(smsDatabaseService, smsAIService, twilioClient);
+const smsAssistantService = new SMSAssistantService(smsDatabaseService, smsAIService, null); // Pass null since we'll create client per request
 
 // SMS Webhook Handler
 router.post('/webhook/sms', async (req, res) => {

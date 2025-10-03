@@ -6,8 +6,6 @@ import { createClient } from '@supabase/supabase-js';
 
 export const twilioAdminRouter = express.Router();
 
-const twilio = Twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-
 // Optional Supabase client (safe to remove if you don't persist mappings)
 const supa =
     process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -72,6 +70,34 @@ twilioAdminRouter.get('/__ping', (_req, res) => {
  */
 twilioAdminRouter.get('/phone-numbers', async (req, res) => {
     try {
+        const userId = req.headers['x-user-id'];
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'User ID required' });
+        }
+
+        // Get user's active credentials
+        const { data: credentials, error: credError } = await supa
+            .from('user_twilio_credentials')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .single();
+
+        if (credError) {
+            if (credError.code === 'PGRST116') {
+                return res.status(404).json({ success: false, message: 'No Twilio credentials found' });
+            }
+            console.error('Database error:', credError);
+            return res.status(500).json({ success: false, message: 'Database error occurred' });
+        }
+
+        if (!credentials) {
+            return res.status(404).json({ success: false, message: 'No Twilio credentials found' });
+        }
+
+        // Create Twilio client with user's credentials
+        const userTwilio = Twilio(credentials.account_sid, credentials.auth_token);
+
         const base = getBase(req);
         const unusedOnly = req.query.unused === '1';
         const strict = req.query.strict === '1';
@@ -87,7 +113,7 @@ twilioAdminRouter.get('/phone-numbers', async (req, res) => {
             }
         }
 
-        const all = await twilio.incomingPhoneNumbers.list({ limit: 1000 });
+        const all = await userTwilio.incomingPhoneNumbers.list({ limit: 1000 });
 
         const rows = all.map((n) => {
             const row = {
@@ -124,15 +150,43 @@ twilioAdminRouter.get('/phone-numbers', async (req, res) => {
  */
 twilioAdminRouter.post('/assign', async (req, res) => {
     try {
+        const userId = req.headers['x-user-id'];
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'User ID required' });
+        }
+
         const { phoneSid, assistantId, label } = req.body || {};
         if (!phoneSid || !assistantId) {
             return res.status(400).json({ success: false, message: 'phoneSid and assistantId are required' });
         }
 
-        const base = getBase(req);
-        const num = await twilio.incomingPhoneNumbers(phoneSid).fetch();
+        // Get user's active credentials
+        const { data: credentials, error: credError } = await supa
+            .from('user_twilio_credentials')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .single();
 
-        await twilio.incomingPhoneNumbers(phoneSid).update({
+        if (credError) {
+            if (credError.code === 'PGRST116') {
+                return res.status(404).json({ success: false, message: 'No Twilio credentials found' });
+            }
+            console.error('Database error:', credError);
+            return res.status(500).json({ success: false, message: 'Database error occurred' });
+        }
+
+        if (!credentials) {
+            return res.status(404).json({ success: false, message: 'No Twilio credentials found' });
+        }
+
+        // Create Twilio client with user's credentials
+        const userTwilio = Twilio(credentials.account_sid, credentials.auth_token);
+
+        const base = getBase(req);
+        const num = await userTwilio.incomingPhoneNumbers(phoneSid).fetch();
+
+        await userTwilio.incomingPhoneNumbers(phoneSid).update({
             voiceUrl: `${base}/twilio/incoming`,
             voiceMethod: 'POST',
         });
@@ -141,7 +195,7 @@ twilioAdminRouter.post('/assign', async (req, res) => {
         const baseUrl = process.env.NGROK_URL || process.env.BACKEND_URL;
         if (baseUrl) {
             try {
-                await twilio.incomingPhoneNumbers(phoneSid).update({
+                await userTwilio.incomingPhoneNumbers(phoneSid).update({
                     smsUrl: `${baseUrl}/api/v1/twilio/sms/webhook`,
                     smsMethod: 'POST',
                     statusCallback: `${baseUrl}/api/v1/twilio/sms/status-callback`,
@@ -182,9 +236,37 @@ twilioAdminRouter.post('/assign', async (req, res) => {
 });
 
 /** List trunks (Option B) */
-twilioAdminRouter.get('/trunks', async (_req, res) => {
+twilioAdminRouter.get('/trunks', async (req, res) => {
     try {
-        const trunks = await twilio.trunking.v1.trunks.list({ limit: 100 });
+        const userId = req.headers['x-user-id'];
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'User ID required' });
+        }
+
+        // Get user's active credentials
+        const { data: credentials, error: credError } = await supa
+            .from('user_twilio_credentials')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .single();
+
+        if (credError) {
+            if (credError.code === 'PGRST116') {
+                return res.status(404).json({ success: false, message: 'No Twilio credentials found' });
+            }
+            console.error('Database error:', credError);
+            return res.status(500).json({ success: false, message: 'Database error occurred' });
+        }
+
+        if (!credentials) {
+            return res.status(404).json({ success: false, message: 'No Twilio credentials found' });
+        }
+
+        // Create Twilio client with user's credentials
+        const userTwilio = Twilio(credentials.account_sid, credentials.auth_token);
+
+        const trunks = await userTwilio.trunking.v1.trunks.list({ limit: 100 });
         res.json({
             success: true,
             trunks: trunks.map((t) => ({
@@ -206,16 +288,44 @@ twilioAdminRouter.get('/trunks', async (_req, res) => {
  */
 twilioAdminRouter.post('/trunk/attach', async (req, res) => {
     try {
+        const userId = req.headers['x-user-id'];
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'User ID required' });
+        }
+
         const phoneSid = req.body?.phoneSid;
-        const trunkSid = req.body?.trunkSid || process.env.TWILIO_TRUNK_SID;
+        const trunkSid = req.body?.trunkSid;
 
         if (!phoneSid) return res.status(400).json({ success: false, message: 'phoneSid is required' });
         if (!trunkSid)
             return res
                 .status(400)
-                .json({ success: false, message: 'trunkSid missing (set TWILIO_TRUNK_SID or send in body)' });
+                .json({ success: false, message: 'trunkSid is required' });
 
-        const result = await twilio.trunking.v1.trunks(trunkSid).phoneNumbers.create({ phoneNumberSid: phoneSid });
+        // Get user's active credentials
+        const { data: credentials, error: credError } = await supa
+            .from('user_twilio_credentials')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .single();
+
+        if (credError) {
+            if (credError.code === 'PGRST116') {
+                return res.status(404).json({ success: false, message: 'No Twilio credentials found' });
+            }
+            console.error('Database error:', credError);
+            return res.status(500).json({ success: false, message: 'Database error occurred' });
+        }
+
+        if (!credentials) {
+            return res.status(404).json({ success: false, message: 'No Twilio credentials found' });
+        }
+
+        // Create Twilio client with user's credentials
+        const userTwilio = Twilio(credentials.account_sid, credentials.auth_token);
+
+        const result = await userTwilio.trunking.v1.trunks(trunkSid).phoneNumbers.create({ phoneNumberSid: phoneSid });
 
         res.json({ success: true, attached: { trunkSid, phoneSid, sid: result?.sid || null } });
     } catch (e) {

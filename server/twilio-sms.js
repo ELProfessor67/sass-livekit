@@ -12,14 +12,9 @@ const supabase = createClient(
 );
 
 // Initialize SMS services
-const twilioClient = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
-
 const smsDatabaseService = new SMSDatabaseService(supabase);
 const smsAIService = new SMSAIService();
-const smsAssistantService = new SMSAssistantService(smsDatabaseService, smsAIService, twilioClient);
+const smsAssistantService = new SMSAssistantService(smsDatabaseService, smsAIService, null); // Pass null since we'll create client per request
 
 const router = express.Router();
 
