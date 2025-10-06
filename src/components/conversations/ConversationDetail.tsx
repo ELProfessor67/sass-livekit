@@ -11,6 +11,7 @@ import { Call } from "@/components/calls/types";
 import { normalizeResolution } from "@/components/dashboard/call-outcomes/utils";
 import { CompactAudioPlayer } from "@/components/ui/compact-audio-player";
 import { CallRecordingDisplay } from "./CallRecordingDisplay";
+import { formatPhoneNumber } from "@/utils/formatUtils";
 
 interface ConversationDetailProps {
   conversation: Conversation;
@@ -24,6 +25,53 @@ export function ConversationDetail({ conversation }: ConversationDetailProps) {
       .join('')
       .toUpperCase()
       .slice(0, 2);
+  };
+
+  // Check if we have a contact name (not just a phone number)
+  const hasContactName = (): boolean => {
+    // First, check if conversation already has a displayName (from ContactSummary)
+    if (conversation.displayName && conversation.displayName !== formatPhoneNumber(conversation.phoneNumber)) {
+      // If displayName contains both name and phone (format: "Name - Phone"), we have a name
+      if (conversation.displayName.includes(' - ')) {
+        return true;
+      }
+      // If it's just the name (not a phone number), we have a name
+      return conversation.displayName !== formatPhoneNumber(conversation.phoneNumber);
+    }
+
+    // Check if conversation has calls with structured data
+    if (conversation.calls && conversation.calls.length > 0) {
+      const sortedCalls = [...conversation.calls].sort((a, b) => 
+        new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime()
+      );
+      
+      const latestCall = sortedCalls[0];
+      
+      let structuredData = null;
+      if (latestCall.analysis && typeof latestCall.analysis === 'object') {
+        structuredData = latestCall.analysis;
+      } else if ((latestCall as any).structured_data && typeof (latestCall as any).structured_data === 'object') {
+        structuredData = (latestCall as any).structured_data;
+      }
+
+      if (structuredData) {
+        const extractValue = (field: any): string | undefined => {
+          if (typeof field === 'string') {
+            return field;
+          } else if (field && typeof field === 'object' && field.value) {
+            return field.value;
+          }
+          return undefined;
+        };
+
+        const customerNameField = structuredData['Customer Name'] || structuredData['name'] || structuredData['full_name'] || structuredData['contact_name'] || structuredData['client_name'];
+        if (customerNameField) {
+          const extractedName = extractValue(customerNameField);
+          return extractedName && extractedName.trim() !== '';
+        }
+      }
+    }
+    return false;
   };
 
   const getOutcomeBadgeColor = (outcome?: string) => {
@@ -115,9 +163,11 @@ export function ConversationDetail({ conversation }: ConversationDetailProps) {
             <h1 className="text-2xl font-semibold text-foreground mb-1">
               {conversation.displayName}
             </h1>
-            <p className="text-lg text-muted-foreground mb-3">
-              {conversation.phoneNumber}
-            </p>
+            {hasContactName() && (
+              <p className="text-lg text-muted-foreground mb-3">
+                {formatPhoneNumber(conversation.phoneNumber)}
+              </p>
+            )}
             
             <div className="flex items-center space-x-4 mb-4">
               <Button size="sm" className="gap-2">

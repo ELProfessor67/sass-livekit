@@ -69,7 +69,7 @@ export function CreateKnowledgeBaseDialog({
 
   return (
     <ThemedDialog open={open} onOpenChange={onOpenChange}>
-      <ThemedDialogContent>
+      <ThemedDialogContent className="max-h-[90vh] overflow-y-auto">
         <ThemedDialogHeader 
           title="Create Knowledge Base"
           description="Add a new knowledge base to store documents and information"

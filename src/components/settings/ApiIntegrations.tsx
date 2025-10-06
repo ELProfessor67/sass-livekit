@@ -8,8 +8,13 @@ import { useToast } from "@/hooks/use-toast";
 import { TwilioIntegrationCard } from "./integrations/TwilioIntegrationCard";
 import { SecurityCard } from "./integrations/SecurityCard";
 import { TwilioAuthDialog } from "./TwilioAuthDialog";
+import { CalendarIntegrationCard } from "./CalendarIntegrationCard";
+import { CalendarAuthDialog } from "./CalendarAuthDialog";
 import type { TwilioIntegration, TwilioCredentials } from "./integrations/types";
 import { TwilioCredentialsService, type UserTwilioCredentials } from "@/lib/twilio-credentials";
+import { CalendarCredentialsService, type UserCalendarCredentials, type CalendarCredentialsInput } from "@/lib/calendar-credentials";
+import { WhatsAppIntegrationCard } from "./WhatsAppIntegrationCard";
+import { WhatsAppCredentialsService, type UserWhatsAppCredentials } from "@/lib/whatsapp-credentials";
 
 const integrations = [
   // CRM Integrations
@@ -93,12 +98,18 @@ export function ApiIntegrations() {
   const { toast } = useToast();
   const [activeCategory, setActiveCategory] = useState("all");
   const [twilioIntegrations, setTwilioIntegrations] = useState<TwilioIntegration[]>([]);
+  const [calendarIntegrations, setCalendarIntegrations] = useState<UserCalendarCredentials[]>([]);
+  const [whatsappIntegrations, setWhatsappIntegrations] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showTwilioDetails, setShowTwilioDetails] = useState(false);
+  const [showCalendarDetails, setShowCalendarDetails] = useState(false);
+  const [showWhatsappDetails, setShowWhatsappDetails] = useState(false);
 
-  // Load Twilio credentials on component mount
+  // Load credentials on component mount
   useEffect(() => {
     loadTwilioCredentials();
+    loadCalendarCredentials();
+    loadWhatsAppCredentials();
   }, []);
 
   const loadTwilioCredentials = async () => {
@@ -134,6 +145,49 @@ export function ApiIntegrations() {
     }
   };
 
+  const loadCalendarCredentials = async () => {
+    try {
+      const credentials = await CalendarCredentialsService.getAllCredentials();
+      console.log("Loaded calendar credentials:", credentials);
+      setCalendarIntegrations(credentials);
+    } catch (error) {
+      console.error("Error loading calendar credentials:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load calendar credentials.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const loadWhatsAppCredentials = async () => {
+    try {
+      const credentials = await WhatsAppCredentialsService.getAllCredentials();
+      console.log("Loaded WhatsApp credentials:", credentials);
+      
+      const whatsappIntegrations = credentials.map(cred => ({
+        id: cred.id,
+        name: "WhatsApp Business",
+        description: `WhatsApp Business messaging${cred.label ? ` - ${cred.label}` : ''}`,
+        status: "connected" as const,
+        lastUsed: formatLastUsed(cred.updated_at),
+        details: {
+          number: maskWhatsAppNumber(cred.whatsapp_number),
+          label: cred.label,
+        },
+      }));
+
+      setWhatsappIntegrations(whatsappIntegrations);
+    } catch (error) {
+      console.error("Error loading WhatsApp credentials:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load WhatsApp credentials.",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Helper functions
   const maskAccountSid = (accountSid: string): string => {
     if (accountSid.length <= 8) return accountSid;
@@ -152,12 +206,27 @@ export function ApiIntegrations() {
     return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
   };
 
-  // Update Twilio status based on actual connections
+  const maskWhatsAppNumber = (number: string): string => {
+    if (number.length <= 4) return number;
+    return number.slice(0, -4).replace(/./g, '*') + number.slice(-4);
+  };
   const updatedIntegrations = integrations.map(integration => {
     if (integration.id === "twilio") {
       return {
         ...integration,
         status: twilioIntegrations.length > 0 ? "connected" : "available"
+      };
+    }
+    if (integration.id === "calcom") {
+      return {
+        ...integration,
+        status: calendarIntegrations.length > 0 ? "connected" : "available"
+      };
+    }
+    if (integration.id === "whatsapp") {
+      return {
+        ...integration,
+        status: whatsappIntegrations.length > 0 ? "connected" : "available"
       };
     }
     return integration;
@@ -255,28 +324,113 @@ export function ApiIntegrations() {
     }
   };
 
+  const handleCalendarConnect = async (data: CalendarCredentialsInput) => {
+    console.log("handleCalendarConnect called with data:", data);
+    try {
+      await CalendarCredentialsService.saveCredentials(data);
+      await loadCalendarCredentials();
+      
+      toast({
+        title: "Calendar connected",
+        description: "Your calendar integration has been connected successfully.",
+      });
+    } catch (error) {
+      console.error("Error connecting calendar:", error);
+      toast({
+        title: "Connection failed",
+        description: "Failed to connect your calendar. Please try again.",
+        variant: "destructive",
+      });
+      throw error;
+    }
+  };
+
+  const handleRemoveCalendarIntegration = async (id: string) => {
+    try {
+      await CalendarCredentialsService.deleteCredentials(id);
+      await loadCalendarCredentials();
+      
+      toast({
+        title: "Integration removed",
+        description: "The calendar integration has been removed successfully.",
+      });
+    } catch (error) {
+      console.error("Error removing calendar integration:", error);
+      toast({
+        title: "Removal failed",
+        description: "Failed to remove the calendar integration. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRefreshCalendarIntegration = async (id: string) => {
+    try {
+      await CalendarCredentialsService.setActiveCredentials(id);
+      await loadCalendarCredentials();
+      
+      toast({
+        title: "Integration refreshed",
+        description: "The calendar integration has been set as active.",
+      });
+    } catch (error) {
+      console.error("Error refreshing calendar integration:", error);
+      toast({
+        title: "Refresh failed",
+        description: "Failed to refresh the calendar integration. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleIntegrationClick = (integration: typeof integrations[0]) => {
     if (integration.id === "twilio") {
       // Toggle Twilio details visibility
       setShowTwilioDetails(!showTwilioDetails);
       return;
     }
+    
+    if (integration.id === "calcom") {
+      // Toggle calendar details visibility
+      setShowCalendarDetails(!showCalendarDetails);
+      return;
+    }
+    
+    if (integration.id === "whatsapp") {
+      // Toggle WhatsApp details visibility
+      setShowWhatsappDetails(!showWhatsappDetails);
+      return;
+    }
+    
     // For other integrations, show coming soon or redirect
     console.log(`Connecting to ${integration.name}`);
+    toast({
+      title: "Coming Soon",
+      description: `${integration.name} integration is coming soon!`,
+    });
   };
 
   const IntegrationCard = ({ integration }: { integration: typeof integrations[0] }) => {
     const IconComponent = integration.icon;
     
-    // Check if Twilio is actually connected
-     const isConnected = integration.status === "connected";
+    // Check if integration is actually connected
+    const isConnected = integration.status === "connected";
 
     
-    // Debug logging for Twilio
+    // Debug logging for integrations
     if (integration.id === "twilio") {
       console.log("Twilio integration debug:", {
         twilioIntegrationsLength: twilioIntegrations.length,
         twilioIntegrations,
+        isConnected,
+        isLoading
+      });
+    }
+    
+    if (integration.id === "calcom") {
+      console.log("Calendar integration debug:", {
+        calendarIntegrationsLength: calendarIntegrations.length,
+        calendarIntegrations,
         isConnected,
         isLoading
       });
@@ -321,22 +475,31 @@ export function ApiIntegrations() {
           
           {/* Action Button */}
           <div className="mt-auto">
-          {integration.id === "twilio" ? (
-    <TwilioAuthDialog onSuccess={handleTwilioConnect}>
-      <Button
-        variant="outline"
-        className="w-full text-sm h-8 relative z-10 flex items-center justify-center gap-1.5"
-        size="sm"
-      >
-        <CheckCircle2 className="w-3 h-3" />
-        Manage
-      </Button>
-    </TwilioAuthDialog>
-  
-  
-) : (
+            {integration.id === "twilio" ? (
+              <TwilioAuthDialog onSuccess={handleTwilioConnect}>
+                <Button
+                  variant="outline"
+                  className="w-full text-sm h-8 relative z-10 flex items-center justify-center gap-1.5"
+                  size="sm"
+                >
+                  <CheckCircle2 className="w-3 h-3" />
+                  Manage
+                </Button>
+              </TwilioAuthDialog>
+            ) : integration.id === "calcom" ? (
+              <CalendarAuthDialog onSuccess={handleCalendarConnect}>
+                <Button
+                  variant="outline"
+                  className="w-full text-sm h-8 relative z-10 flex items-center justify-center gap-1.5"
+                  size="sm"
+                >
+                  <CheckCircle2 className="w-3 h-3" />
+                  Manage
+                </Button>
+              </CalendarAuthDialog>
+            ) : (
               <Button 
-                variant={isConnected ? "outline" : "primary"}
+                variant={isConnected ? "outline" : "default"}
                 className="w-full text-sm h-8 relative z-10 flex items-center justify-center gap-1.5"
                 size="sm"
                 onClick={() => handleIntegrationClick(integration)}
@@ -411,6 +574,30 @@ export function ApiIntegrations() {
             onSuccess={handleTwilioConnect}
             onRemove={handleRemoveIntegration}
             onRefresh={handleRefreshIntegration}
+          />
+        </div>
+      )}
+      
+      {/* Calendar Integration Details - Only show when toggled */}
+      {showCalendarDetails && calendarIntegrations.length > 0 && (
+        <div className="mt-8 transition-all duration-300 ease-in-out">
+          <h3 className="text-lg font-semibold text-foreground mb-4">Connected Calendar Accounts</h3>
+          <CalendarIntegrationCard 
+            integrations={calendarIntegrations}
+            onSuccess={handleCalendarConnect}
+            onRemove={handleRemoveCalendarIntegration}
+            onRefresh={handleRefreshCalendarIntegration}
+          />
+        </div>
+      )}
+      
+      {/* WhatsApp Integration Details - Only show when toggled */}
+      {showWhatsappDetails && whatsappIntegrations.length > 0 && (
+        <div className="mt-8 transition-all duration-300 ease-in-out">
+          <h3 className="text-lg font-semibold text-foreground mb-4">Connected WhatsApp Accounts</h3>
+          <WhatsAppIntegrationCard 
+            integrations={whatsappIntegrations}
+            onIntegrationsChange={setWhatsappIntegrations}
           />
         </div>
       )}

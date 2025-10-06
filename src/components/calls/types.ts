@@ -46,6 +46,7 @@ export interface Call {
   call_sid?: string;
   recording_info?: any;
   assistant_id?: string;
+  structured_data?: any;
 }
 
 export interface CallsData {

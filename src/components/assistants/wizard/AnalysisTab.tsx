@@ -46,7 +46,9 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ data, onChange }) => {
       }));
       
       onChange({
-        structuredData: universalFields
+        structuredData: universalFields,
+        structuredDataProperties: generateStructuredDataProperties(universalFields),
+        structuredDataPrompt: generateStructuredDataPrompt(universalFields)
       });
     }
   }, []);
@@ -59,19 +61,25 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ data, onChange }) => {
       origin: field.origin || 'Custom'
     };
     
+    const updatedFields = [...data.structuredData, newStructuredField];
     onChange({
-      structuredData: [...data.structuredData, newStructuredField]
+      structuredData: updatedFields,
+      structuredDataProperties: generateStructuredDataProperties(updatedFields),
+      structuredDataPrompt: data.structuredDataPrompt || generateStructuredDataPrompt(updatedFields)
     });
   };
 
   const addStructuredDataField = () => {
     if (newField.name && newField.description) {
+      const updatedFields = [...data.structuredData, { 
+        name: newField.name,
+        type: newField.type,
+        description: newField.description 
+      }];
       onChange({
-        structuredData: [...data.structuredData, { 
-          name: newField.name,
-          type: newField.type,
-          description: newField.description 
-        }]
+        structuredData: updatedFields,
+        structuredDataProperties: generateStructuredDataProperties(updatedFields),
+        structuredDataPrompt: data.structuredDataPrompt || generateStructuredDataPrompt(updatedFields)
       });
       setNewField({ 
         name: "", 
@@ -85,7 +93,33 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ data, onChange }) => {
 
   const removeStructuredDataField = (index: number) => {
     const updatedFields = data.structuredData.filter((_, i) => i !== index);
-    onChange({ structuredData: updatedFields });
+    onChange({ 
+      structuredData: updatedFields,
+      structuredDataProperties: generateStructuredDataProperties(updatedFields),
+      structuredDataPrompt: data.structuredDataPrompt || generateStructuredDataPrompt(updatedFields)
+    });
+  };
+
+  const generateStructuredDataProperties = (fields: StructuredDataField[]) => {
+    const properties: any = {};
+    fields.forEach(field => {
+      properties[field.name.toLowerCase().replace(/\s+/g, '_')] = {
+        type: field.type,
+        description: field.description,
+        required: false
+      };
+    });
+    return properties;
+  };
+
+  const generateStructuredDataPrompt = (fields: StructuredDataField[]) => {
+    if (fields.length === 0) return "";
+    
+    const fieldDescriptions = fields.map(field => 
+      `- ${field.name}: ${field.description} (type: ${field.type})`
+    ).join('\n');
+    
+    return `Extract the following structured data from the conversation:\n\n${fieldDescriptions}\n\nFor each field, provide the most relevant information mentioned during the call. If a field is not mentioned or not applicable, use null. Return the data in a structured format.`;
   };
 
   const getTypeColor = (type: string) => {
@@ -251,6 +285,109 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ data, onChange }) => {
               </div>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Analysis Timeout Settings */}
+      <Card variant="default">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <h3 className="text-lg font-medium">Analysis Timeout Settings</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Configure how long the AI should wait for analysis responses
+            </p>
+          </div>
+          <ChevronDown className="h-5 w-5 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Call Summary Timeout</Label>
+              <Input
+                type="number"
+                placeholder="30"
+                value={data.summaryTimeout || 30}
+                onChange={(e) => onChange({ summaryTimeout: parseInt(e.target.value) || 30 })}
+                className="h-10"
+              />
+              <p className="text-xs text-muted-foreground">
+                Seconds to wait for call summary generation
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Success Evaluation Timeout</Label>
+              <Input
+                type="number"
+                placeholder="15"
+                value={data.evaluationTimeout || 15}
+                onChange={(e) => onChange({ evaluationTimeout: parseInt(e.target.value) || 15 })}
+                className="h-10"
+              />
+              <p className="text-xs text-muted-foreground">
+                Seconds to wait for success evaluation
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Structured Data Timeout</Label>
+              <Input
+                type="number"
+                placeholder="20"
+                value={data.structuredDataTimeout || 20}
+                onChange={(e) => onChange({ structuredDataTimeout: parseInt(e.target.value) || 20 })}
+                className="h-10"
+              />
+              <p className="text-xs text-muted-foreground">
+                Seconds to wait for structured data extraction
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Structured Data Prompt Configuration */}
+      <Card variant="default">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <h3 className="text-lg font-medium">Structured Data Extraction Prompt</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Advanced prompt for extracting structured data from conversations
+            </p>
+          </div>
+          <ChevronDown className="h-5 w-5 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Custom Extraction Prompt</Label>
+            <Textarea
+              placeholder="Enter a custom prompt for structured data extraction. This will be used by the AI to extract the fields you've configured above."
+              value={data.structuredDataPrompt || ""}
+              onChange={(e) => onChange({ structuredDataPrompt: e.target.value })}
+              className="resize-none h-24 text-[15px]"
+            />
+            <p className="text-xs text-muted-foreground">
+              Leave blank to use the auto-generated prompt based on your configured fields.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onChange({ structuredDataPrompt: generateStructuredDataPrompt(data.structuredData) })}
+                disabled={data.structuredData.length === 0}
+                className="gap-2"
+              >
+                <Sparkles className="h-4 w-4" />
+                Auto-Generate Prompt
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onChange({ structuredDataPrompt: "" })}
+                className="gap-2"
+              >
+                Clear Custom Prompt
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
       </div>

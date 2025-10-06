@@ -20,7 +20,12 @@ import { fetchCsvFiles, CsvFile as DbCsvFile } from "@/lib/api/csv/fetchCsvFiles
 import { fetchCsvContacts, CsvContact as DbCsvContact } from "@/lib/api/csv/fetchCsvContacts";
 import { deleteCsvFile as deleteCsvFileAPI } from "@/lib/api/csv/deleteCsvFile";
 import { DeleteCsvFileDialog } from "@/components/contacts/dialogs/DeleteCsvFileDialog";
+import { EditContactDialog } from "@/components/contacts/dialogs/EditContactDialog";
+import { DeleteContactDialog } from "@/components/contacts/dialogs/DeleteContactDialog";
 import { useAuth } from "@/contexts/AuthContext";
+import { fetchContacts } from "@/lib/api/contacts/fetchContacts";
+import { fetchContactLists } from "@/lib/api/contacts/fetchContactLists";
+import { useToast } from "@/hooks/use-toast";
 
 // Mock data structures
 interface ContactList {
@@ -60,74 +65,6 @@ interface CSVContact {
   do_not_call: boolean;
 }
 
-const mockContactLists: ContactList[] = [
-  { id: "1", name: "Sales Prospects", count: 147, createdAt: "2024-01-15" },
-  { id: "2", name: "Customer Support", count: 89, createdAt: "2024-01-20" },
-  { id: "3", name: "Marketing Leads", count: 234, createdAt: "2024-02-01" },
-];
-
-const mockContacts: Contact[] = [
-  {
-    id: "1",
-    firstName: "John",
-    lastName: "Smith",
-    phone: "+14155551234",
-    email: "john.smith@email.com",
-    listId: "1",
-    listName: "Sales Prospects",
-    status: "active",
-    created: "2024-01-15",
-    doNotCall: false
-  },
-  {
-    id: "2",
-    firstName: "Sarah",
-    lastName: "Johnson",
-    phone: "+14155555678",
-    email: "sarah.j@company.com",
-    listId: "1",
-    listName: "Sales Prospects",
-    status: "active",
-    created: "2024-01-18",
-    doNotCall: false
-  },
-  {
-    id: "3",
-    firstName: "Mike",
-    lastName: "Davis",
-    phone: "+14155559876",
-    email: "mike.davis@business.net",
-    listId: "2",
-    listName: "Customer Support",
-    status: "do-not-call",
-    created: "2024-01-12",
-    doNotCall: true
-  },
-  {
-    id: "4",
-    firstName: "Emily",
-    lastName: "Chen",
-    phone: "+14155554321",
-    email: "emily.chen@startup.io",
-    listId: "3",
-    listName: "Marketing Leads",
-    status: "active",
-    created: "2024-01-22",
-    doNotCall: false
-  },
-  {
-    id: "5",
-    firstName: "Robert",
-    lastName: "Wilson",
-    phone: "+14155558765",
-    email: "r.wilson@corp.com",
-    listId: "1",
-    listName: "Sales Prospects",
-    status: "inactive",
-    created: "2024-01-10",
-    doNotCall: false
-  }
-];
 
 // CSV parsing utility function
 const parseCSV = (csvText: string): CSVContact[] => {
@@ -167,13 +104,18 @@ const parseCSV = (csvText: string): CSVContact[] => {
 
 export default function Contacts() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [selectedList, setSelectedList] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [addListOpen, setAddListOpen] = useState(false);
   const [addContactOpen, setAddContactOpen] = useState(false);
   const [uploadContactsOpen, setUploadContactsOpen] = useState(false);
-  const [contactLists, setContactLists] = useState<ContactList[]>(mockContactLists);
-  const [contacts, setContacts] = useState<Contact[]>(mockContacts);
+  const [editContactOpen, setEditContactOpen] = useState(false);
+  const [deleteContactOpen, setDeleteContactOpen] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [contactLists, setContactLists] = useState<ContactList[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   
   // CSV upload states
   const [csvFiles, setCsvFiles] = useState<CSVFile[]>([]);
@@ -187,6 +129,54 @@ export default function Contacts() {
   const [csvToDelete, setCsvToDelete] = useState<{ id: string; name: string; contactCount: number; campaigns?: Array<{ id: string; name: string }> } | null>(null);
   const [deletingCsv, setDeletingCsv] = useState(false);
 
+  // Load real data from database
+  const loadContacts = async () => {
+    if (!user?.id) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      
+      // Load contact lists
+      const listsResponse = await fetchContactLists();
+      const transformedLists: ContactList[] = listsResponse.contactLists.map(list => ({
+        id: list.id,
+        name: list.name,
+        count: list.count,
+        createdAt: list.created_at.split('T')[0]
+      }));
+      setContactLists(transformedLists);
+
+      // Load contacts
+      const contactsResponse = await fetchContacts();
+      const transformedContacts: Contact[] = contactsResponse.contacts.map(contact => ({
+        id: contact.id,
+        firstName: contact.first_name,
+        lastName: contact.last_name || '',
+        phone: contact.phone || '',
+        email: contact.email || '',
+        listId: contact.list_id,
+        listName: contact.list_name,
+        status: contact.status,
+        created: contact.created_at.split('T')[0],
+        doNotCall: contact.do_not_call
+      }));
+      setContacts(transformedContacts);
+
+    } catch (error) {
+      console.error('Error loading contacts:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Load data on component mount
+  useEffect(() => {
+    loadContacts();
+  }, [user?.id]);
+
   const filteredContacts = contacts.filter(contact => {
     const matchesSearch = searchQuery === "" || 
       contact.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -199,34 +189,32 @@ export default function Contacts() {
     return matchesSearch && matchesList;
   });
 
-  const handleCreateList = (name: string) => {
-    const newList: ContactList = {
-      id: Date.now().toString(),
-      name,
-      count: 0,
-      createdAt: new Date().toISOString().split('T')[0]
-    };
-    setContactLists([...contactLists, newList]);
+  const handleCreateList = async (name: string) => {
+    // Refresh data after creating list
+    await loadContacts();
   };
 
-  const handleCreateContact = (contactData: Omit<Contact, 'id' | 'listName' | 'created'>) => {
-    const list = contactLists.find(l => l.id === contactData.listId);
-    const newContact: Contact = {
-      ...contactData,
-      id: Date.now().toString(),
-      listName: list?.name || "Unknown List",
-      created: new Date().toISOString().split('T')[0]
-    };
-    setContacts([...contacts, newContact]);
-    
-    // Update list count
-    setContactLists(lists => 
-      lists.map(list => 
-        list.id === contactData.listId 
-          ? { ...list, count: list.count + 1 }
-          : list
-      )
-    );
+  const handleCreateContact = async (contactData: Omit<Contact, 'id' | 'listName' | 'created'>) => {
+    // Refresh data after creating contact
+    await loadContacts();
+  };
+
+  const handleEditContact = (contact: Contact) => {
+    setSelectedContact(contact);
+    setEditContactOpen(true);
+  };
+
+  const handleDeleteContact = (contact: Contact) => {
+    setSelectedContact(contact);
+    setDeleteContactOpen(true);
+  };
+
+  const handleContactUpdated = async () => {
+    await loadContacts();
+  };
+
+  const handleContactDeleted = async () => {
+    await loadContacts();
   };
 
   const totalContacts = contacts.length;
@@ -423,6 +411,25 @@ export default function Contacts() {
 
     loadCsvFiles();
   }, [user?.id]);
+
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="container mx-auto px-[var(--space-lg)] max-w-6xl">
+          <ThemeContainer variant="base">
+            <ThemeSection spacing="lg">
+              <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                  <p className="text-muted-foreground">Loading contacts...</p>
+                </div>
+              </div>
+            </ThemeSection>
+          </ThemeContainer>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -773,9 +780,14 @@ export default function Contacts() {
                                     </Button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end">
-                                    <DropdownMenuItem>Edit Contact</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleEditContact(contact)}>
+                                      Edit Contact
+                                    </DropdownMenuItem>
                                     <DropdownMenuItem>Call Contact</DropdownMenuItem>
-                                    <DropdownMenuItem className="text-destructive">
+                                    <DropdownMenuItem 
+                                      className="text-destructive"
+                                      onClick={() => handleDeleteContact(contact)}
+                                    >
                                       Delete Contact
                                     </DropdownMenuItem>
                                   </DropdownMenuContent>
@@ -823,6 +835,21 @@ export default function Contacts() {
         contactCount={csvToDelete?.contactCount || 0}
         campaigns={csvToDelete?.campaigns || []}
         loading={deletingCsv}
+      />
+      
+      <EditContactDialog
+        open={editContactOpen}
+        onOpenChange={setEditContactOpen}
+        contact={selectedContact}
+        contactLists={contactLists}
+        onContactUpdated={handleContactUpdated}
+      />
+      
+      <DeleteContactDialog
+        open={deleteContactOpen}
+        onOpenChange={setDeleteContactOpen}
+        contact={selectedContact}
+        onContactDeleted={handleContactDeleted}
       />
     </DashboardLayout>
   );

@@ -152,7 +152,14 @@ const CreateAssistant = () => {
       structuredData: [],
       callSummary: "",
       successEvaluation: true,
-      customSuccessPrompt: ""
+      customSuccessPrompt: "",
+      // Analysis timeout settings (in seconds)
+      summaryTimeout: 30,
+      evaluationTimeout: 15,
+      structuredDataTimeout: 20,
+      // Structured data configuration
+      structuredDataPrompt: "",
+      structuredDataProperties: {}
     },
     advanced: {
       hipaaCompliant: false,
@@ -317,10 +324,17 @@ const CreateAssistant = () => {
               }
             },
             analysis: {
-              structuredData: [],
-              callSummary: "",
+              structuredData: data.structured_data_fields || [],
+              callSummary: data.analysis_summary_prompt || "",
               successEvaluation: true,
-              customSuccessPrompt: data.analysis_summary_prompt || ""
+              customSuccessPrompt: data.analysis_evaluation_prompt || "",
+              // Analysis timeout settings
+              summaryTimeout: data.analysis_summary_timeout || 30,
+              evaluationTimeout: data.analysis_evaluation_timeout || 15,
+              structuredDataTimeout: data.analysis_structured_data_timeout || 20,
+              // Structured data configuration
+              structuredDataPrompt: data.analysis_structured_data_prompt || "",
+              structuredDataProperties: data.analysis_structured_data_properties || {}
             },
             advanced: {
               hipaaCompliant: data.hipaa_compliance || false,
@@ -388,6 +402,38 @@ const CreateAssistant = () => {
       ? formData.model.knowledgeBase
       : null;
 
+    // Debug: Log formData to see what calendar data is available
+    console.log("FormData model calendar fields:", {
+      calendar: formData.model.calendar,
+      calApiKey: formData.model.calApiKey,
+      calEventTypeId: formData.model.calEventTypeId,
+      calEventTypeSlug: formData.model.calEventTypeSlug,
+      calTimezone: formData.model.calTimezone
+    });
+
+    // Handle calendar event type auto-creation
+    let calEventTypeId = formData.model.calEventTypeId || null;
+    let calEventTypeSlug = formData.model.calEventTypeSlug || null;
+    
+    if (formData.model.calendar && formData.model.calendar !== "None" && formData.model.calEventTypeSlug && !formData.model.calEventTypeId) {
+      try {
+        // Auto-create event type if slug is provided but no ID exists
+        const { CalendarEventTypeService } = await import("@/lib/calendar-event-types");
+        const eventType = await CalendarEventTypeService.createEventType({
+          calendarCredentialId: formData.model.calendar,
+          eventTypeSlug: formData.model.calEventTypeSlug,
+          label: `${formData.name} - ${formData.model.calEventTypeSlug}`,
+          description: `Auto-created event type for assistant: ${formData.name}`,
+          durationMinutes: 30
+        });
+        calEventTypeId = eventType.event_type_id;
+        calEventTypeSlug = eventType.event_type_slug;
+      } catch (error) {
+        console.error("Failed to create calendar event type:", error);
+        // Continue without event type if creation fails
+      }
+    }
+
     return {
       user_id: userId,
       name: formData.name,
@@ -436,7 +482,14 @@ const CreateAssistant = () => {
       transcriber_language: formData.model.transcriber?.language || null,
 
       // Analysis
-      analysis_summary_prompt: formData.analysis.customSuccessPrompt || null,
+      analysis_summary_prompt: formData.analysis.callSummary || null,
+      analysis_evaluation_prompt: formData.analysis.customSuccessPrompt || null,
+      analysis_summary_timeout: formData.analysis.summaryTimeout || null,
+      analysis_evaluation_timeout: formData.analysis.evaluationTimeout || null,
+      analysis_structured_data_prompt: formData.analysis.structuredDataPrompt || null,
+      analysis_structured_data_properties: formData.analysis.structuredDataProperties || null,
+      analysis_structured_data_timeout: formData.analysis.structuredDataTimeout || null,
+      structured_data_fields: formData.analysis.structuredData?.length ? formData.analysis.structuredData : null,
 
       // Advanced
       hipaa_compliance: formData.advanced.hipaaCompliant,
@@ -452,15 +505,17 @@ const CreateAssistant = () => {
       first_sms: formData.advanced.firstSms || null,
       sms_prompt: formData.advanced.smsPrompt || null,
 
-      // WhatsApp Business fields
-      whatsapp_number: formData.advanced.whatsappNumber || null,
-      whatsapp_key: formData.advanced.whatsappKey || null,
+      // WhatsApp Integration
+      whatsapp_credentials_id: formData.model.whatsappCredentialsId || null,
+      whatsapp_number: formData.model.whatsappNumber || null,
+      whatsapp_key: formData.model.whatsappKey || null,
 
-      // Cal.com Integration
-      cal_api_key: (formData.advanced as any).calApiKey || null,
-      cal_event_type_id: (formData.advanced as any).calEventTypeId || null,
-      cal_event_type_slug: (formData.advanced as any).calEventTypeSlug || null,
-      cal_timezone: (formData.advanced as any).calTimezone || null,
+      // Calendar Integration
+      calendar: formData.model.calendar !== "None" ? formData.model.calendar : null,
+      cal_api_key: formData.model.calApiKey || null,
+      cal_event_type_id: calEventTypeId,
+      cal_event_type_slug: calEventTypeSlug,
+      cal_timezone: formData.model.calTimezone || null,
 
       // n8n Integration
       n8n_webhook_url: formData.n8n.webhookUrl || null,
@@ -496,6 +551,16 @@ const CreateAssistant = () => {
       await ensureUserProfileExists(user.id, user.fullName || null);
 
       const payload = await mapFormToAssistantPayload(user.id);
+
+      // Debug: Log the payload to see what's being saved
+      console.log("Assistant payload being saved:", payload);
+      console.log("Calendar data:", {
+        calendar: payload.calendar,
+        cal_api_key: payload.cal_api_key,
+        cal_event_type_id: payload.cal_event_type_id,
+        cal_event_type_slug: payload.cal_event_type_slug,
+        cal_timezone: payload.cal_timezone
+      });
 
 
 

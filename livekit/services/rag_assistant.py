@@ -1,6 +1,6 @@
 """
-Enhanced Assistant class with RAG (Retrieval-Augmented Generation) capabilities
-Integrates knowledge base context with voice agent functionality
+LiveKit Agent implementation with RAG (Retrieval-Augmented Generation) capabilities.
+Converts the existing RAGAssistant class to follow LiveKit Agents framework patterns.
 """
 
 from __future__ import annotations
@@ -12,29 +12,31 @@ import re
 from typing import Optional, Dict, Any
 
 from livekit.agents import Agent, RunContext, function_tool, ChatContext, ChatMessage
-from integrations.calendar_api import Calendar, AvailableSlot, SlotUnavailableError
+from integrations.calendar_api import Calendar, AvailableSlot, SlotUnavailableError, CalendarResult, CalendarError
 from .rag_service import rag_service, RAGContext
 
 
-class RAGAssistant(Agent):
-    """Enhanced Assistant with RAG capabilities for knowledge base integration"""
+class RAGAgent(Agent):
+    """LiveKit Agent with RAG capabilities for knowledge base integration"""
     
     def __init__(
         self, 
         instructions: str, 
         calendar: Calendar | None = None,
         knowledge_base_id: Optional[str] = None,
-        company_id: Optional[str] = None
+        company_id: Optional[str] = None,
+        supabase=None
     ) -> None:
         super().__init__(instructions=instructions)
         self.calendar = calendar
         self.knowledge_base_id = knowledge_base_id
         self.company_id = company_id
+        self.supabase = supabase
         
         # RAG configuration
         self.rag_enabled = bool(knowledge_base_id)
-        self.max_context_length = 8000  # Increased to handle larger snippets
-        self.rag_threshold = 0.3  # Minimum relevance score for context
+        self.max_context_length = 8000
+        self.rag_threshold = 0.3
         
         # Booking state (FSM) - inherited from original Assistant
         self._booking_intent: bool = False
@@ -52,21 +54,26 @@ class RAGAssistant(Agent):
         # Webhook data collection
         self._webhook_data: dict[str, str] = {}
         
+        # Analysis data collection
+        self._structured_data: dict[str, any] = {}
+        self._analysis_fields: list = []
+        
         # Data collection state
         self._data_collection_intent: bool = False
-        self._data_collection_step: str = "none"  # none, name, email, phone, complete
+        self._data_collection_step: str = "none"
         
         # Collected data for N8N integration
         self._collected_data: Dict[str, Any] = {}
-
-        # one-tool-per-utterance guard
-        self._last_speech_id: Optional[str] = None
-        self._calls_this_speech: int = 0
         
         # RAG state
         self._last_rag_query: Optional[str] = None
         self._last_rag_context: Optional[str] = None
         self._rag_cache: Dict[str, str] = {}
+
+    async def on_enter(self):
+        """Called when the agent is added to the session."""
+        # Generate initial greeting
+        self.session.generate_reply()
 
     async def on_user_turn_completed(
         self, 
@@ -184,44 +191,74 @@ class RAGAssistant(Agent):
         except Exception as e:
             logging.error(f"RAG_ASSISTANT | Error getting RAG context: {e}")
             return None
-    
-    async def search_knowledge_base(self, query: str) -> Optional[RAGContext]:
+
+    # ---------- RAG-specific function tools ----------
+    @function_tool(name="search_knowledge")
+    async def search_knowledge(self, ctx: RunContext, query: str) -> str:
         """
-        Search knowledge base and return structured context
+        Search the knowledge base for information related to the query
         """
-        if not self.rag_enabled or not self.knowledge_base_id:
-            return None
+        if not self.rag_enabled:
+            return "I don't have access to a knowledge base right now."
+        
+        # Check if webhook data has been collected first
+        if hasattr(self, '_webhook_data') and self._webhook_data:
+            webhook_fields_count = len(self._webhook_data)
+            logging.info(f"RAG_ASSISTANT | Webhook data collected: {webhook_fields_count} fields")
+        else:
+            logging.info("RAG_ASSISTANT | No webhook data collected yet, proceeding with RAG search")
         
         try:
-            return await rag_service.search_knowledge_base(
-                knowledge_base_id=self.knowledge_base_id,
-                query=query
-            )
+            logging.info(f"RAG_ASSISTANT | Knowledge search requested: '{query}'")
+            
+            # Get context from knowledge base
+            context = await self._get_rag_context(query)
+            if context:
+                return f"Based on our knowledge base: {context}"
+            else:
+                return "I couldn't find specific information about that in our knowledge base. Is there anything else I can help you with?"
+                
         except Exception as e:
-            logging.error(f"RAG_ASSISTANT | Error searching knowledge base: {e}")
-            return None
+            logging.error(f"RAG_ASSISTANT | Error in search_knowledge: {e}")
+            return "I had trouble searching our knowledge base. Let me try to help you in another way."
 
-    # ---------- Inherited helper methods from original Assistant ----------
+    @function_tool(name="get_detailed_info")
+    async def get_detailed_info(self, ctx: RunContext, topic: str) -> str:
+        """
+        Get detailed information about a specific topic from the knowledge base
+        """
+        if not self.rag_enabled:
+            return "I don't have access to detailed information right now."
+        
+        try:
+            # Use multiple related queries for better coverage
+            queries = [
+                topic,
+                f"what is {topic}",
+                f"information about {topic}",
+                f"details on {topic}"
+            ]
+            
+            # Search with multiple queries
+            context = await rag_service.search_multiple_queries(
+                knowledge_base_id=self.knowledge_base_id,
+                queries=queries,
+                max_context_length=self.max_context_length
+            )
+            
+            if context:
+                return f"Here's detailed information about {topic}: {context}"
+            else:
+                return f"I couldn't find detailed information about {topic} in our knowledge base. Would you like me to help you with something else?"
+                
+        except Exception as e:
+            logging.error(f"RAG_ASSISTANT | Error in get_detailed_info: {e}")
+            return "I had trouble retrieving detailed information. Let me try to help you in another way."
+
+    # ---------- Inherited helper methods from BookingAgent ----------
     def _tz(self):
         from zoneinfo import ZoneInfo
         return self.calendar.tz if self.calendar else ZoneInfo("UTC")
-
-    def _turn_gate(self, ctx: RunContext) -> Optional[str]:
-        """Prefer at most one tool call per user utterance (speech_id)."""
-        sid = getattr(ctx, "speech_id", None) or getattr(ctx, "speechId", None)
-        if sid is None:
-            if self._calls_this_speech >= 1:
-                return "I'll pause here for your reply."
-            self._calls_this_speech += 1
-            return None
-        if sid != self._last_speech_id:
-            self._last_speech_id = sid
-            self._calls_this_speech = 1
-            return None
-        self._calls_this_speech += 1
-        if self._calls_this_speech > 1:
-            return "I'll pause here for your reply."
-        return None
 
     def _parse_day(self, day_query: str) -> Optional[datetime.date]:
         if not day_query:
@@ -287,80 +324,10 @@ class RAGAssistant(Agent):
         t = (text or "").strip().lower()
         return (not t) or ("?" in t) or ("what is your" in t) or ("your name" in t) or ("your email" in t) or ("your phone" in t)
 
-    # ---------- RAG-specific tool functions ----------
-    @function_tool
-    async def search_knowledge(self, ctx: RunContext, query: str) -> str:
-        """
-        Search the knowledge base for information related to the query
-        """
-        gate = self._turn_gate(ctx)
-        if gate: return gate
-        
-        if not self.rag_enabled:
-            return "I don't have access to a knowledge base right now."
-        
-        # Check if webhook data has been collected first
-        if hasattr(self, '_webhook_data') and self._webhook_data:
-            webhook_fields_count = len(self._webhook_data)
-            logging.info(f"RAG_ASSISTANT | Webhook data collected: {webhook_fields_count} fields")
-        else:
-            logging.info("RAG_ASSISTANT | No webhook data collected yet, proceeding with RAG search")
-        
-        try:
-            logging.info(f"RAG_ASSISTANT | Knowledge search requested: '{query}'")
-            
-            # Get context from knowledge base
-            context = await self._get_rag_context(query)
-            if context:
-                return f"Based on our knowledge base: {context}"
-            else:
-                return "I couldn't find specific information about that in our knowledge base. Is there anything else I can help you with?"
-                
-        except Exception as e:
-            logging.error(f"RAG_ASSISTANT | Error in search_knowledge: {e}")
-            return "I had trouble searching our knowledge base. Let me try to help you in another way."
-
-    @function_tool
-    async def get_detailed_info(self, ctx: RunContext, topic: str) -> str:
-        """
-        Get detailed information about a specific topic from the knowledge base
-        """
-        gate = self._turn_gate(ctx)
-        if gate: return gate
-        
-        if not self.rag_enabled:
-            return "I don't have access to detailed information right now."
-        
-        try:
-            # Use multiple related queries for better coverage
-            queries = [
-                topic,
-                f"what is {topic}",
-                f"information about {topic}",
-                f"details on {topic}"
-            ]
-            
-            # Search with multiple queries
-            context = await rag_service.search_multiple_queries(
-                knowledge_base_id=self.knowledge_base_id,
-                queries=queries,
-                max_context_length=self.max_context_length
-            )
-            
-            if context:
-                return f"Here's detailed information about {topic}: {context}"
-            else:
-                return f"I couldn't find detailed information about {topic} in our knowledge base. Would you like me to help you with something else?"
-                
-        except Exception as e:
-            logging.error(f"RAG_ASSISTANT | Error in get_detailed_info: {e}")
-            return "I had trouble retrieving detailed information. Let me try to help you in another way."
-
-    # ---------- Inherited booking functions from original Assistant ----------
-    @function_tool
+    # ---------- Inherited booking functions from BookingAgent ----------
+    @function_tool(name="confirm_wants_to_book_yes")
     async def confirm_wants_to_book_yes(self, ctx: RunContext) -> str:
-        gate = self._turn_gate(ctx)
-        if gate: return gate
+        """Called when user confirms they want to book an appointment."""
         self._booking_intent = True
         self._confirmed = False
         self._preferred_day = None
@@ -369,10 +336,9 @@ class RAGAssistant(Agent):
         self._notes = ""
         return "Great—what's the reason for the visit? I'll add it to the notes."
 
-    @function_tool
+    @function_tool(name="set_notes")
     async def set_notes(self, ctx: RunContext, notes: str) -> str:
-        gate = self._turn_gate(ctx)
-        if gate: return gate
+        """Set the reason/notes for the appointment."""
         if not self._booking_intent:
             return "If you'd like to book, please say so first."
         self._notes = (notes or "").strip()
@@ -380,12 +346,18 @@ class RAGAssistant(Agent):
             return "Could you tell me the reason for the visit? I'll add it to the notes."
         return "Got it. Which day works for you—today, tomorrow, a weekday, or a date like 2025-09-05?"
 
-    @function_tool
+    @function_tool(name="list_slots_on_day")
     async def list_slots_on_day(self, ctx: RunContext, day: str, max_options: int = 6) -> str:
-        gate = self._turn_gate(ctx)
-        if gate: return gate
+        """List available appointment slots for a specific day."""
+        # Auto-detect booking intent if user is asking about availability
         if not self._booking_intent:
-            return "If you'd like to book, please say so first."
+            day_lower = day.lower() if day else ""
+            if any(keyword in day_lower for keyword in ["available", "free", "open", "book", "schedule", "appointment"]):
+                self._booking_intent = True
+                logging.info("BOOKING_INTENT_DETECTED | auto-detected from availability query")
+            else:
+                return "If you'd like to book, please say so first."
+        
         msg = self._require_calendar()
         if msg: return msg
 
@@ -402,7 +374,7 @@ class RAGAssistant(Agent):
         end_utc = end_local.astimezone(ZoneInfo("UTC"))
 
         try:
-            slots = await self.calendar.list_available_slots(start_time=start_utc, end_time=end_utc)
+            result = await self.calendar.list_available_slots(start_time=start_utc, end_time=end_utc)
 
             def present(slots_list: list[AvailableSlot], label: str) -> str:
                 self._slots_map.clear()
@@ -420,33 +392,73 @@ class RAGAssistant(Agent):
                 lines.append("Which option would you like to choose?")
                 return "\n".join(lines)
 
-            if slots:
+            if result.is_success and result.slots:
                 label = f"on {start_local.strftime('%A, %B %d')}"
-                return present(slots, label)
+                return present(result.slots, label)
+            
+            elif result.is_calendar_unavailable:
+                return "I'm having trouble connecting to the calendar right now. Would you like me to try another day, or should I notify someone to help you?"
 
-            # find next day with availability within 30 days
-            search_end = start_utc + datetime.timedelta(days=30)
-            future = await self.calendar.list_available_slots(start_time=end_utc, end_time=search_end)
-            if not future:
-                return "I don't see any open times soon. Would you like me to check a wider range?"
-            by_day: dict[datetime.date, list[AvailableSlot]] = {}
-            for s in future:
-                by_day.setdefault(s.start_time.astimezone(tz).date(), []).append(s)
-            nxt = min(by_day.keys())
-            alt = by_day[nxt]
-            alt_label = f"on {datetime.datetime.combine(nxt, datetime.time(0,0,tzinfo=tz)).strftime('%A, %B %d')}"
-            return "Nothing is open that day. " + present(alt, alt_label)
+            elif result.is_no_slots:
+                # find next day with availability within 30 days
+                search_end = start_utc + datetime.timedelta(days=30)
+                future_result = await self.calendar.list_available_slots(start_time=end_utc, end_time=search_end)
+                
+                if not future_result.is_success or not future_result.slots:
+                    return "I don't see any open times soon. Would you like me to check a wider range?"
+                
+                by_day: dict[datetime.date, list[AvailableSlot]] = {}
+                for s in future_result.slots:
+                    by_day.setdefault(s.start_time.astimezone(tz).date(), []).append(s)
+                nxt = min(by_day.keys())
+                alt = by_day[nxt]
+                alt_label = f"on {datetime.datetime.combine(nxt, datetime.time(0,0,tzinfo=tz)).strftime('%A, %B %d')}"
+                return "Nothing is open that day. " + present(alt, alt_label)
+            
+            else:
+                # Fallback for any other error state
+                return "I'm having trouble checking that day. Could we try a different day?"
+                
         except Exception:
             logging.exception("Error listing slots")
             return "Sorry, I had trouble checking that day. Could we try a different day?"
 
-    @function_tool
+    @function_tool(name="choose_slot")
     async def choose_slot(self, ctx: RunContext, option_id: str) -> str:
-        gate = self._turn_gate(ctx)
-        if gate: return gate
-        if not self._booking_intent or not self._slots_map:
+        """Choose a specific time slot for the appointment."""
+        # Auto-detect booking intent if user is selecting a time
+        if not self._booking_intent:
+            self._booking_intent = True
+            logging.info("BOOKING_INTENT_DETECTED | auto-detected from time selection")
+        
+        if not self._slots_map:
             return "Let's pick a day first."
         key = (option_id or "").strip().lower()
+        
+        # Handle time-based selection (e.g., "3pm", "3:00", "15:00")
+        if not key.isdigit() and not key.startswith("option"):
+            # Try to parse as time
+            time_match = re.search(r'(\d{1,2})(?::(\d{2}))?\s*(am|pm)?', key, re.IGNORECASE)
+            if time_match:
+                hour = int(time_match.group(1))
+                minute = int(time_match.group(2) or 0)
+                ampm = time_match.group(3)
+                
+                # Convert to 24-hour format
+                if ampm and ampm.lower() == 'pm' and hour != 12:
+                    hour += 12
+                elif ampm and ampm.lower() == 'am' and hour == 12:
+                    hour = 0
+                
+                # Find matching slot by time
+                for slot_key, slot in self._slots_map.items():
+                    slot_hour = slot.start_time.hour
+                    slot_minute = slot.start_time.minute
+                    if slot_hour == hour and slot_minute == minute:
+                        self._selected_slot = slot
+                        logging.info("SLOT_SELECTED_BY_TIME | time=%s | slot=%s", key, slot_key)
+                        return "Great. What's your full name?"
+        
         slot = self._slots_map.get(key) \
             or self._slots_map.get(f"option {key}") \
             or self._slots_map.get(f"option_{key}") \
@@ -454,39 +466,79 @@ class RAGAssistant(Agent):
         if not slot:
             return "I couldn't find that option. Please say the option number again."
         self._selected_slot = slot
+        logging.info("SLOT_SELECTED | option_id=%s | slot=%s", option_id, slot.start_time)
         return "Great. What's your full name?"
 
-    @function_tool
+    @function_tool(name="provide_name")
     async def provide_name(self, ctx: RunContext, name: str) -> str:
-        gate = self._turn_gate(ctx)
-        if gate: return gate
+        """Provide the customer's name for the appointment."""
         if not self._selected_slot:
             return "Please choose a time option first."
         if self._looks_like_prompt(name) or len(name.strip()) < 2:
             return "Please tell me your full name."
         self._name = name.strip()
+        
+        # Automatically collect analysis data for name if analysis fields are configured
+        if self._analysis_fields:
+            for field in self._analysis_fields:
+                field_name = field.get('name', '').lower()
+                if 'name' in field_name or 'customer' in field_name:
+                    self._structured_data[field.get('name', 'Customer Name')] = {
+                        "value": name.strip(),
+                        "type": "string",
+                        "timestamp": datetime.datetime.now().isoformat()
+                    }
+                    logging.info("ANALYSIS_DATA_COLLECTED_AUTO | field=%s | value=%s", field.get('name', 'Customer Name'), name.strip())
+                    break
+        
         return "Thanks. What's your email?"
 
-    @function_tool
+    @function_tool(name="provide_email")
     async def provide_email(self, ctx: RunContext, email: str) -> str:
-        gate = self._turn_gate(ctx)
-        if gate: return gate
+        """Provide the customer's email for the appointment."""
         if not self._selected_slot or not self._name:
             return "We'll do email after we pick a time and your name."
         if self._looks_like_prompt(email) or not self._email_ok(email):
             return "That email doesn't look valid. Could you repeat it?"
         self._email = email.strip()
+        
+        # Automatically collect analysis data for email if analysis fields are configured
+        if self._analysis_fields:
+            for field in self._analysis_fields:
+                field_name = field.get('name', '').lower()
+                if 'email' in field_name:
+                    self._structured_data[field.get('name', 'Email Address')] = {
+                        "value": email.strip(),
+                        "type": "string",
+                        "timestamp": datetime.datetime.now().isoformat()
+                    }
+                    logging.info("ANALYSIS_DATA_COLLECTED_AUTO | field=%s | value=%s", field.get('name', 'Email Address'), email.strip())
+                    break
+        
         return "And your phone number?"
 
-    @function_tool
+    @function_tool(name="provide_phone")
     async def provide_phone(self, ctx: RunContext, phone: str) -> str:
-        gate = self._turn_gate(ctx)
-        if gate: return gate
+        """Provide the customer's phone number for the appointment."""
         if not self._selected_slot or not self._name or not self._email:
             return "We'll do phone after time, name, and email."
         if self._looks_like_prompt(phone) or not self._phone_ok(phone):
             return "That phone doesn't look right. Please say it with digits."
         self._phone = phone.strip()
+        
+        # Automatically collect analysis data for phone if analysis fields are configured
+        if self._analysis_fields:
+            for field in self._analysis_fields:
+                field_name = field.get('name', '').lower()
+                if 'phone' in field_name or 'number' in field_name:
+                    self._structured_data[field.get('name', 'Phone Number')] = {
+                        "value": phone.strip(),
+                        "type": "string",
+                        "timestamp": datetime.datetime.now().isoformat()
+                    }
+                    logging.info("ANALYSIS_DATA_COLLECTED_AUTO | field=%s | value=%s", field.get('name', 'Phone Number'), phone.strip())
+                    break
+        
         tz = self._tz()
         local = self._selected_slot.start_time.astimezone(tz)
         day_s = local.strftime('%A, %B %d at %I:%M %p')
@@ -494,10 +546,9 @@ class RAGAssistant(Agent):
         return (f"Please confirm: {day_s}. Name {self._name}. Email {self._email}. "
                 f"Phone {self._phone}. Reason: {notes_s}. Is everything correct?")
 
-    @function_tool
+    @function_tool(name="confirm_details")
     async def confirm_details(self, ctx: RunContext) -> str:
-        gate = self._turn_gate(ctx)
-        if gate: return gate
+        """Confirm the appointment details and book it."""
         if not (self._selected_slot and self._name and self._email and self._phone):
             return "We're not ready to confirm yet."
         self._confirmed = True
@@ -505,18 +556,19 @@ class RAGAssistant(Agent):
         if msg: return msg
         return await self._do_schedule()
 
-    @function_tool
+    @function_tool(name="confirm_details_yes")
     async def confirm_details_yes(self, ctx: RunContext) -> str:
+        """Confirm the appointment details (yes response)."""
         return await self.confirm_details(ctx)
 
-    @function_tool
+    @function_tool(name="confirm_details_no")
     async def confirm_details_no(self, ctx: RunContext) -> str:
-        gate = self._turn_gate(ctx)
-        if gate: return gate
+        """User wants to change appointment details."""
         self._confirmed = False
         return "No problem. What would you like to change—name, email, phone, or time?"
 
     async def _do_schedule(self) -> str:
+        """Actually schedule the appointment."""
         try:
             await self.calendar.schedule_appointment(
                 start_time=self._selected_slot.start_time,
@@ -535,129 +587,12 @@ class RAGAssistant(Agent):
             self._confirmed = False
             return "I ran into a problem booking that. Let's try a different time."
 
-    @function_tool
-    async def finalize_booking(self, ctx: RunContext) -> str:
-        gate = self._turn_gate(ctx)
-        if gate: return gate
-        msg = self._require_calendar()
-        if msg: return msg
-        if not (self._booking_intent and self._selected_slot and self._name and self._email and self._phone and self._confirmed):
-            return "We're not ready to finalize—let's confirm details first."
-        return await self._do_schedule()
-
-    # ---------- Legacy booking functions ----------
-    @function_tool
-    async def list_available_slots(self, ctx: RunContext, range_days: int = 7) -> str:
-        return "Let's first pick a day; then I'll read out the available times."
-
-    @function_tool
-    async def schedule_appointment(
-        self,
-        ctx: RunContext,
-        slot_id: str,
-        attendee_name: str,
-        attendee_email: str,
-        attendee_phone: Optional[str] = None,
-        notes: Optional[str] = None,
-    ) -> str:
-        return "We'll confirm details, then I'll book it for you."
-
-    # ---------- General Data Collection Tools (for N8N integration) ----------
-    
-    @function_tool
-    async def start_data_collection(self, ctx: RunContext) -> str:
-        """
-        Start collecting contact information for N8N integration
-        """
-        gate = self._turn_gate(ctx)
-        if gate: return gate
-        
-        self._data_collection_intent = True
-        self._data_collection_step = "name"
-        return "I'd like to get some contact information from you. What's your full name?"
-
-    @function_tool
-    async def collect_name(self, ctx: RunContext, name: str) -> str:
-        """
-        Collect the caller's name for N8N integration
-        """
-        gate = self._turn_gate(ctx)
-        if gate: return gate
-        
-        if self._looks_like_prompt(name) or len(name.strip()) < 2:
-            return "Please tell me your full name."
-        
-        self._name = name.strip()
-        self._collected_data["name"] = self._name
-        self._data_collection_step = "email"
-        return "Thank you! What's your email address?"
-
-    @function_tool
-    async def collect_email(self, ctx: RunContext, email: str) -> str:
-        """
-        Collect the caller's email for N8N integration
-        """
-        gate = self._turn_gate(ctx)
-        if gate: return gate
-        
-        if not self._name:
-            return "Let me get your name first. What's your full name?"
-        
-        if self._looks_like_prompt(email) or not self._email_ok(email):
-            return "That email doesn't look valid. Could you repeat it?"
-        
-        self._email = email.strip()
-        self._collected_data["email"] = self._email
-        self._data_collection_step = "phone"
-        return "Great! And what's your phone number?"
-
-    @function_tool
-    async def collect_phone(self, ctx: RunContext, phone: str) -> str:
-        """
-        Collect the caller's phone number for N8N integration
-        """
-        gate = self._turn_gate(ctx)
-        if gate: return gate
-        
-        if not self._name or not self._email:
-            return "Let me get your name and email first."
-        
-        if self._looks_like_prompt(phone) or not self._phone_ok(phone):
-            return "That phone number doesn't look right. Please say it with digits."
-        
-        self._phone = phone.strip()
-        self._collected_data["phone"] = self._phone
-        self._data_collection_step = "complete"
-        return f"Perfect! I have your information: {self._name}, {self._email}, {self._phone}. Is there anything else I can help you with?"
-
-    @function_tool
-    async def skip_data_collection(self, ctx: RunContext) -> str:
-        """
-        Skip data collection if the caller doesn't want to provide information
-        """
-        gate = self._turn_gate(ctx)
-        if gate: return gate
-        
-        self._data_collection_intent = False
-        self._data_collection_step = "none"
-        return "No problem! Is there anything else I can help you with?"
-
-    def get_collected_data(self) -> Dict[str, Any]:
-        """
-        Get the collected contact information for N8N integration
-        """
-        return self._collected_data.copy()
-
-    # ---------- Webhook data collection ----------
-    @function_tool
+    # ---------- Data collection tools ----------
+    @function_tool(name="collect_webhook_data")
     async def collect_webhook_data(self, ctx: RunContext, field_name: str, field_value: str, collection_method: str = "user_provided") -> str:
         """Collect webhook data with flexible collection methods for n8n integration"""
-        print(f"DEBUG: collect_webhook_data CALLED | field_name={field_name} | field_value={field_value} | method={collection_method}")
-        logging.info("DEBUG: collect_webhook_data CALLED | field_name=%s | field_value=%s | method=%s", field_name, field_value, collection_method)
+        logging.info("collect_webhook_data CALLED | field_name=%s | field_value=%s | method=%s", field_name, field_value, collection_method)
         
-        gate = self._turn_gate(ctx)
-        if gate: return gate
-
         if not field_name or not field_value:
             return "I need both the field name and value to collect this information."
 
@@ -681,3 +616,38 @@ class RAGAssistant(Agent):
     def get_webhook_data(self) -> dict:
         """Get all collected webhook data"""
         return self._webhook_data.copy()
+    
+    def get_structured_data(self) -> dict:
+        """Get all collected structured data for analysis"""
+        logging.info("GET_STRUCTURED_DATA_CALLED | fields_count=%d | data=%s", len(self._structured_data), self._structured_data)
+        return self._structured_data.copy()
+    
+    def set_analysis_fields(self, fields: list) -> None:
+        """Set the analysis fields configuration"""
+        self._analysis_fields = fields
+
+    @function_tool(name="collect_analysis_data")
+    async def collect_analysis_data(self, ctx: RunContext, field_name: str, field_value: str, field_type: str = "string") -> str:
+        """Collect structured data for analysis during conversation"""
+        logging.info("COLLECT_ANALYSIS_DATA_CALLED | field_name=%s | field_value=%s | type=%s", field_name, field_value, field_type)
+        
+        if not field_name or not field_value:
+            return "I need both the field name and value to collect this information."
+
+        # Validate field type
+        valid_types = ["string", "number", "boolean", "date", "object", "array"]
+        if field_type not in valid_types:
+            field_type = "string"
+
+        # Store the analysis data with metadata
+        self._structured_data[field_name.strip()] = {
+            "value": field_value.strip(),
+            "type": field_type,
+            "timestamp": datetime.datetime.now().isoformat(),
+            "collection_method": "manual"
+        }
+
+        logging.info("ANALYSIS_DATA_COLLECTED | field=%s | type=%s | total_fields=%d",
+                    field_name, field_type, len(self._structured_data))
+
+        return f"Collected {field_name} ({field_type}). Thank you!"

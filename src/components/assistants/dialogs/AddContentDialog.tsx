@@ -109,7 +109,7 @@ export function AddContentDialog({
 
   return (
     <ThemedDialog open={open} onOpenChange={onOpenChange}>
-      <ThemedDialogContent className="sm:max-w-xl">
+      <ThemedDialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
         <form onSubmit={handleSubmit}>
           <ThemedDialogHeader
             title="Add Content"

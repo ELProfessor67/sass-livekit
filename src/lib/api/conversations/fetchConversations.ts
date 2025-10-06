@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { Conversation } from "@/components/conversations/types";
 import { fetchRecordingUrlCached, RecordingInfo } from "../recordings/fetchRecordingUrl";
 import { SMSMessage } from "@/lib/api/sms/smsService";
+import { formatPhoneNumber } from "@/utils/formatUtils";
 
 /**
  * PROGRESSIVE LOADING CONVERSATIONS API
@@ -33,6 +34,9 @@ export interface CallHistoryRecord {
   transcription: Array<{ role: string; content: any }>;
   call_sid?: string; // Note: This field may not exist in the current schema
   recording_sid?: string; // Note: This field may not exist in the current schema
+  call_summary?: string;
+  success_evaluation?: string;
+  structured_data?: any;
   created_at: string;
   updated_at: string;
 }
@@ -168,7 +172,7 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
       callHistory.map(async (call: CallHistoryRecord) => {
         try {
           const phoneNumber = call.phone_number;
-          const participantName = call.participant_identity || 'Unknown';
+          const participantName = formatPhoneNumber(call.phone_number); // Use formatted phone number instead of participant identity
 
           // Process transcription data to the expected format
           const processedTranscript = call.transcription?.map((entry: any) => {
@@ -193,10 +197,43 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
           // Note: call_sid field may not exist in current schema
           const recordingInfo = (call as any).call_sid ? await fetchRecordingUrlCached((call as any).call_sid) : null;
 
+          // Extract contact name from structured data if available, otherwise use formatted phone
+          let contactName = participantName; // Default to formatted phone number
+          let hasStructuredName = false;
+          
+          if (call.structured_data && typeof call.structured_data === 'object') {
+            const structuredData = call.structured_data;
+            
+            // Helper function to extract value from structured data field
+            const extractValue = (field: any): string | undefined => {
+              if (typeof field === 'string') {
+                return field;
+              } else if (field && typeof field === 'object' && field.value) {
+                return field.value;
+              }
+              return undefined;
+            };
+
+            // Try to find customer name in structured data
+            const customerNameField = structuredData['Customer Name'] || structuredData['name'] || structuredData['full_name'] || structuredData['contact_name'] || structuredData['client_name'];
+            if (customerNameField) {
+              const extractedName = extractValue(customerNameField);
+              if (extractedName && extractedName.trim() !== '') {
+                contactName = extractedName; // Only name, no phone number
+                hasStructuredName = true;
+              }
+            }
+          }
+          
+          // If no structured name found, use only formatted phone number
+          if (!hasStructuredName) {
+            contactName = participantName; // Just formatted phone number
+          }
+
           // Add call to conversation
           const callData = {
             id: call.id,
-            name: participantName,
+            name: contactName,
             phoneNumber: call.phone_number,
             date: format(new Date(call.start_time), 'yyyy-MM-dd'),
             time: format(new Date(call.start_time), 'HH:mm'),
@@ -209,7 +246,7 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
             call_recording: recordingInfo?.recordingUrl || '',
             summary: generateCallSummary(call.transcription),
             transcript: processedTranscript,
-            analysis: null,
+            analysis: call.structured_data || null,
             address: '',
             messages: [],
             phone_number: call.phone_number,
@@ -217,7 +254,8 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
             created_at: call.start_time,
             call_sid: (call as any).call_sid,
             recording_info: recordingInfo,
-            assistant_id: call.assistant_id
+            assistant_id: call.assistant_id,
+            structured_data: call.structured_data
           };
 
           return { callData, phoneNumber, participantName };
@@ -264,13 +302,17 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
         conversation.calls.push(callData);
         conversation.totalCalls += 1;
 
-        // Update last activity
+        // Update last activity and participant identity
         const callTime = new Date(callData.created_at);
         if (callTime > conversation.lastActivityTimestamp) {
           conversation.lastActivityDate = callData.date;
           conversation.lastActivityTime = callData.time;
           conversation.lastActivityTimestamp = callTime;
           conversation.lastCallOutcome = callData.resolution;
+          // Update display name to use the latest call's participant identity (real name)
+          conversation.displayName = callData.name;
+          conversation.firstName = callData.name.split(' ')[0] || 'Unknown';
+          conversation.lastName = callData.name.split(' ').slice(1).join(' ') || '';
         }
 
         // Also check if SMS messages have more recent activity
@@ -403,7 +445,7 @@ export const fetchContactList = async (limit: number = 50): Promise<ContactSumma
       // Try to get call history
       const { data: callData, error: callError } = await supabase
         .from('call_history')
-        .select('phone_number, participant_identity, start_time, call_duration, call_status, transcription')
+        .select('phone_number, participant_identity, start_time, call_duration, call_status, transcription, call_summary, success_evaluation, structured_data')
         .order('start_time', { ascending: false })
         .limit(limit * 10);
 
@@ -451,10 +493,43 @@ export const fetchContactList = async (limit: number = 50): Promise<ContactSumma
         const phoneNumber = call.phone_number;
         const callTime = new Date(call.start_time);
         
+        // Extract contact name from structured data if available, otherwise use formatted phone
+        let contactName = formatPhoneNumber(call.phone_number); // Default to formatted phone number
+        let hasStructuredName = false;
+        
+        if (call.structured_data && typeof call.structured_data === 'object') {
+          const structuredData = call.structured_data;
+          
+          // Helper function to extract value from structured data field
+          const extractValue = (field: any): string | undefined => {
+            if (typeof field === 'string') {
+              return field;
+            } else if (field && typeof field === 'object' && field.value) {
+              return field.value;
+            }
+            return undefined;
+          };
+
+          // Try to find customer name in structured data
+          const customerNameField = structuredData['Customer Name'] || structuredData['name'] || structuredData['full_name'] || structuredData['contact_name'] || structuredData['client_name'];
+          if (customerNameField) {
+            const extractedName = extractValue(customerNameField);
+            if (extractedName && extractedName.trim() !== '') {
+              contactName = `${extractedName} - ${formatPhoneNumber(call.phone_number)}`; // Name + formatted phone
+              hasStructuredName = true;
+            }
+          }
+        }
+        
+        // If no structured name found, use only formatted phone number
+        if (!hasStructuredName) {
+          contactName = formatPhoneNumber(call.phone_number); // Just formatted phone number
+        }
+        
         if (!contactsMap.has(phoneNumber)) {
           contactsMap.set(phoneNumber, {
             phoneNumber,
-            participantIdentity: call.participant_identity || 'Unknown',
+            participantIdentity: contactName,
             lastActivity: callTime,
             calls: [],
             totalDuration: 0,
@@ -469,6 +544,8 @@ export const fetchContactList = async (limit: number = 50): Promise<ContactSumma
         if (callTime > contact.lastActivity) {
           contact.lastActivity = callTime;
           contact.lastCallOutcome = determineCallResolution(call.transcription, call.call_status);
+          // Update participant identity to use the latest call's contact name
+          contact.participantIdentity = contactName;
         }
       });
     }
@@ -685,7 +762,7 @@ export const fetchConversationDetails = async (
     const processedCalls = await Promise.all(
       (recentCalls || []).map(async (call: CallHistoryRecord) => {
         try {
-          const participantName = call.participant_identity || 'Unknown';
+          const participantName = formatPhoneNumber(call.phone_number); // Use formatted phone number instead of participant identity
 
           // Process transcription data
           const processedTranscript = call.transcription?.map((entry: any) => {
@@ -709,9 +786,42 @@ export const fetchConversationDetails = async (
           // Note: call_sid field may not exist in current schema
           const recordingInfo = (call as any).call_sid ? await fetchRecordingUrlCached((call as any).call_sid) : null;
 
+          // Extract contact name from structured data if available, otherwise use formatted phone
+          let contactName = participantName; // Default to formatted phone number
+          let hasStructuredName = false;
+          
+          if (call.structured_data && typeof call.structured_data === 'object') {
+            const structuredData = call.structured_data;
+            
+            // Helper function to extract value from structured data field
+            const extractValue = (field: any): string | undefined => {
+              if (typeof field === 'string') {
+                return field;
+              } else if (field && typeof field === 'object' && field.value) {
+                return field.value;
+              }
+              return undefined;
+            };
+
+            // Try to find customer name in structured data
+            const customerNameField = structuredData['Customer Name'] || structuredData['name'] || structuredData['full_name'] || structuredData['contact_name'] || structuredData['client_name'];
+            if (customerNameField) {
+              const extractedName = extractValue(customerNameField);
+              if (extractedName && extractedName.trim() !== '') {
+                contactName = extractedName; // Only name, no phone number
+                hasStructuredName = true;
+              }
+            }
+          }
+          
+          // If no structured name found, use only formatted phone number
+          if (!hasStructuredName) {
+            contactName = participantName; // Just formatted phone number
+          }
+
           return {
             id: call.id,
-            name: participantName,
+            name: contactName,
             phoneNumber: call.phone_number,
             date: format(new Date(call.start_time), 'yyyy-MM-dd'),
             time: format(new Date(call.start_time), 'HH:mm'),
@@ -724,7 +834,7 @@ export const fetchConversationDetails = async (
             call_recording: recordingInfo?.recordingUrl || '',
             summary: generateCallSummary(call.transcription),
             transcript: processedTranscript,
-            analysis: null,
+            analysis: call.structured_data || null,
             address: '',
             messages: [],
             phone_number: call.phone_number,
@@ -732,7 +842,8 @@ export const fetchConversationDetails = async (
             created_at: call.start_time,
             call_sid: (call as any).call_sid,
             recording_info: recordingInfo,
-            assistant_id: call.assistant_id
+            assistant_id: call.assistant_id,
+            structured_data: call.structured_data
           };
         } catch (error) {
           console.error('Error processing call:', call.id, error);
@@ -761,6 +872,7 @@ export const fetchConversationDetails = async (
 
     // Create conversation object
     const validCalls = processedCalls.filter(Boolean);
+    // Use the most recent call's participant name (which should have the real contact name)
     const participantName = validCalls[0]?.name || 'Unknown';
     const nameParts = participantName.split(' ');
 
@@ -960,7 +1072,7 @@ export const loadConversationHistory = async (
     const processedCalls = await Promise.all(
       (olderCalls || []).map(async (call: CallHistoryRecord) => {
         try {
-          const participantName = call.participant_identity || 'Unknown';
+          const participantName = formatPhoneNumber(call.phone_number); // Use formatted phone number instead of participant identity
 
           const processedTranscript = call.transcription?.map((entry: any) => {
             let content = '';
@@ -1113,7 +1225,7 @@ export const fetchNewMessagesSince = async (
         newCalls = await Promise.all(
           (callData || []).map(async (call: CallHistoryRecord) => {
             try {
-              const participantName = call.participant_identity || 'Unknown';
+              const participantName = formatPhoneNumber(call.phone_number); // Use formatted phone number instead of participant identity
 
               // Process transcription data
               const processedTranscript = call.transcription?.map((entry: any) => {

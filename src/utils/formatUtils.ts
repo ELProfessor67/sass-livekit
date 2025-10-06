@@ -11,7 +11,7 @@ export const formatPhoneNumber = (phone?: string): string => {
   // Ensure we have 10 digits
   if (cleaned.length !== 10) return phone;
   
-  // Format as (XXX) XXX-XXXX
+  // Format as (XXX) XXX-XXXX - US Formatting
   return cleaned.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3');
 };
 

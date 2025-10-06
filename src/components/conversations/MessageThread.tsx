@@ -14,6 +14,7 @@ import { TranscriptionSegment } from "@/lib/transcription/RealTimeTranscriptionS
 import { SMSMessage } from "@/lib/api/sms/smsService";
 import { fetchAssistants, Assistant } from "@/lib/api/assistants/fetchAssistants";
 import { fetchPhoneNumberMappings, PhoneNumberMapping } from "@/lib/api/phoneNumbers/fetchPhoneNumberMappings";
+import { formatPhoneNumber } from "@/utils/formatUtils";
 import {
   Select,
   SelectContent,
@@ -197,6 +198,57 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
       .slice(0, 2);
   };
 
+  // Get display name - either name OR phone number, never both
+  const getDisplayName = (): string => {
+    // First, check if conversation already has a displayName (from ContactSummary)
+    if (conversation.displayName && conversation.displayName !== formatPhoneNumber(conversation.phoneNumber)) {
+      // If displayName contains both name and phone (format: "Name - Phone"), extract just the name
+      if (conversation.displayName.includes(' - ')) {
+        return conversation.displayName.split(' - ')[0];
+      }
+      // If it's just the name, return it
+      return conversation.displayName;
+    }
+
+    // Check if conversation has calls with structured data
+    if (conversation.calls && conversation.calls.length > 0) {
+      const sortedCalls = [...conversation.calls].sort((a, b) => 
+        new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime()
+      );
+      
+      const latestCall = sortedCalls[0];
+      
+      let structuredData = null;
+      if (latestCall.analysis && typeof latestCall.analysis === 'object') {
+        structuredData = latestCall.analysis;
+      } else if ((latestCall as any).structured_data && typeof (latestCall as any).structured_data === 'object') {
+        structuredData = (latestCall as any).structured_data;
+      }
+
+      if (structuredData) {
+        const extractValue = (field: any): string | undefined => {
+          if (typeof field === 'string') {
+            return field;
+          } else if (field && typeof field === 'object' && field.value) {
+            return field.value;
+          }
+          return undefined;
+        };
+
+        const customerNameField = structuredData['Customer Name'] || structuredData['name'] || structuredData['full_name'] || structuredData['contact_name'] || structuredData['client_name'];
+        if (customerNameField) {
+          const extractedName = extractValue(customerNameField);
+          if (extractedName && extractedName.trim() !== '') {
+            return extractedName; // Only name, no phone number
+          }
+        }
+      }
+    }
+    
+    // Fallback to formatted phone number if no name found
+    return formatPhoneNumber(conversation.phoneNumber);
+  };
+
   // Helper function to get assistant ID for a phone number
   const getAssistantIdForPhoneNumber = (phoneNumber: string): string | null => {
     const mapping = phoneMappings.find(m => m.number === phoneNumber);
@@ -378,16 +430,13 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
           <div className="flex items-center space-x-3">
             <Avatar className="h-8 w-8 bg-primary/10">
               <AvatarFallback className="bg-primary/20 text-primary text-xs font-medium">
-                {getInitials(conversation.displayName)}
+                {getInitials(getDisplayName())}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1">
               <h2 className="text-base font-medium text-foreground">
-                {conversation.displayName}
+                {getDisplayName()}
               </h2>
-              <p className="text-xs text-muted-foreground">
-                {conversation.phoneNumber}
-              </p>
             </div>
             <div className="flex items-center space-x-2 relative">
               

@@ -26,7 +26,7 @@ class DatabaseConfig:
         return cls(
             url=os.getenv("SUPABASE_URL", ""),
             service_role_key=os.getenv("SUPABASE_SERVICE_ROLE", "") or os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""),
-            enabled=bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_ROLE"))
+            enabled=bool(os.getenv("SUPABASE_URL") and (os.getenv("SUPABASE_SERVICE_ROLE") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")))
         )
 
 
@@ -76,14 +76,18 @@ class DatabaseClient:
         
         try:
             result = self._client.table("assistant").select(
-                "id, name, prompt, first_message, cal_api_key, cal_event_type_id, cal_timezone, "
+                "id, name, prompt, first_message, calendar, cal_api_key, cal_event_type_id, cal_event_type_slug, cal_timezone, "
                 "llm_provider_setting, llm_model_setting, temperature_setting, max_token_setting, "
                 "knowledge_base_id, n8n_webhook_url, n8n_auto_create_sheet, n8n_drive_folder_id, "
                 "n8n_spreadsheet_name_template, n8n_sheet_tab_template, n8n_spreadsheet_id, "
                 "n8n_sheet_tab, n8n_save_name, n8n_save_email, n8n_save_phone, n8n_save_summary, "
                 "n8n_save_sentiment, n8n_save_labels, n8n_save_recording_url, n8n_save_transcript_url, "
                 "n8n_save_duration, n8n_save_call_direction, n8n_save_from_number, n8n_save_to_number, "
-                "n8n_save_cost, n8n_custom_fields, groq_model, groq_temperature, groq_max_tokens, cerebras_model, cerebras_temperature, cerebras_max_tokens"
+                "n8n_save_cost, n8n_custom_fields, groq_model, groq_temperature, groq_max_tokens, "
+                "cerebras_model, cerebras_temperature, cerebras_max_tokens, structured_data_fields, "
+                "analysis_summary_prompt, analysis_evaluation_prompt, analysis_structured_data_prompt, "
+                "analysis_structured_data_properties, analysis_summary_timeout, analysis_evaluation_timeout, "
+                "analysis_structured_data_timeout"
             ).eq("id", assistant_id).single().execute()
             
             if result.data:

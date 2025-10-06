@@ -1,43 +1,50 @@
-
-
-
+"""
+Clean LiveKit Agents implementation following framework best practices.
+This replaces the complex main.py with a simplified, maintainable approach.
+"""
 
 from __future__ import annotations
 
-import json
-import urllib.request
-import urllib.parse
 import logging
-import datetime
-import asyncio
-import sys
-from typing import Optional, Tuple, Iterable
-import base64
 import os
-import re
-import hashlib
-import uuid
-
+import sys
+import json
+import asyncio
+import datetime
+from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 
-# Load environment variables FIRST before any other imports
-try:
-    load_dotenv()
-except Exception as e:
-    print(f"Warning: Could not load .env file: {e}")
-    # Continue without .env file
+# Load environment variables
+load_dotenv()
 
-# Set REST API environment variable if not already set
-if not os.getenv("USE_REST_API"):
-    os.environ["USE_REST_API"] = "true"
-    print("REST_API_ENABLED | Set USE_REST_API=true as fallback")
-
-from zoneinfo import ZoneInfo
-
+# LiveKit imports
 from livekit import agents, api
-from livekit.agents import AgentSession, Agent, RunContext, function_tool, AutoSubscribe
+from livekit.agents import (
+    Agent,
+    AgentSession,
+    JobContext,
+    RunContext,
+    function_tool,
+    WorkerOptions,
+    cli,
+    metrics,
+    MetricsCollectedEvent,
+    RoomInputOptions,
+    RoomOutputOptions,
+    AutoSubscribe,
+)
 
-# Import ElevenLabs at top level to avoid main thread registration issues
+# Plugin imports
+from livekit.plugins import openai, silero, deepgram
+
+# Additional provider imports
+try:
+    from livekit.plugins import groq as lk_groq
+    GROQ_AVAILABLE = True
+except ImportError:
+    lk_groq = None
+    GROQ_AVAILABLE = False
+
 try:
     import livekit.plugins.elevenlabs as lk_elevenlabs
     ELEVENLABS_AVAILABLE = True
@@ -45,714 +52,168 @@ except ImportError:
     lk_elevenlabs = None
     ELEVENLABS_AVAILABLE = False
 
-# ⬇️ OpenAI + VAD plugins
-from livekit.plugins import openai as lk_openai  # LLM, STT, TTS
-from livekit.plugins import silero              # VAD
-
-# ⬇️ Groq plugin
-try:
-    from livekit.plugins import groq as lk_groq  # Groq LLM
-except ImportError:
-    lk_groq = None
-
-# ⬇️ REST LLM Service
-from services.rest_llm_service import create_rest_llm
-from config.rest_api_config import get_rest_config, is_rest_model
-
-# ⬇️ Cerebras plugin (using OpenAI-compatible API)
 try:
     import openai as cerebras_client
     CEREBRAS_AVAILABLE = True
 except ImportError:
     CEREBRAS_AVAILABLE = False
 
-try:
-    from supabase import create_client, Client  # type: ignore
-except Exception:  # pragma: no cover
-    create_client = None  # type: ignore
-    Client = object  # type: ignore
+# Local imports
+from services.booking_agent import BookingAgent
+from services.rag_agent import RAGAgent
+from integrations.supabase_client import SupabaseClient
+from integrations.calendar_api import CalComCalendar, CalendarResult, CalendarError
+from utils.logging_hardening import configure_safe_logging
 
-# Calendar integration (your module)
-from integrations.calendar_api import Calendar, CalComCalendar, AvailableSlot, SlotUnavailableError
+# Configure logging with security hardening
+configure_safe_logging(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Assistant service (used for INBOUND only)
-from services.assistant import Assistant
-from services.rag_assistant import RAGAssistant
 
-# Recording service
-from services.recording_service import recording_service
-logging.basicConfig(level=logging.INFO)
+class CallHandler:
+    """Simplified call handler following LiveKit patterns."""
 
-# ===================== Utilities =====================
+    def __init__(self):
+        self.supabase = SupabaseClient()
 
-def sha256_text(s: str) -> str:
-    return hashlib.sha256(s.encode("utf-8")).hexdigest()
-
-def preview(s: str, n: int = 160) -> str:
-    return s[:n] + ("…" if len(s) > n else "")
-
-def determine_call_status(call_duration: int, transcription: list) -> str:
-    """Determine call status based on duration and transcription content"""
-    if call_duration < 5:
-        return "dropped"
-    if call_duration < 15:
-        if not transcription or len(transcription) < 2:
-            return "dropped"
-    if transcription:
-        all_content = ""
-        for item in transcription:
-            if isinstance(item, dict) and "content" in item:
-                content = item["content"]
-                if isinstance(content, str):
-                    all_content += content.lower() + " "
-        spam_keywords = [
-            "robocall", "telemarketing", "scam", "fraud", "suspicious",
-            "unwanted", "spam", "junk", "harassment", "threat"
-        ]
-        if any(keyword in all_content for keyword in spam_keywords):
-            return "spam"
-        if len(transcription) <= 1:
-            return "no_response"
-        if len(transcription) == 2:
-            first_message = transcription[0].get("content", "").lower() if transcription[0] else ""
-            if "hi" in first_message or "hello" in first_message or "thanks for calling" in first_message:
-                return "dropped"
-    if transcription and len(transcription) >= 4:
-        all_content = ""
-        for item in transcription:
-            if isinstance(item, dict) and "content" in item:
-                content = item["content"]
-                if isinstance(content, str):
-                    all_content += content.lower() + " "
-        success_keywords = [
-            "appointment", "book", "schedule", "confirm", "details",
-            "name", "email", "phone", "thank you", "goodbye"
-        ]
-        if any(keyword in all_content for keyword in success_keywords):
-            return "completed"
-    if call_duration >= 15 and transcription and len(transcription) >= 3:
-        return "completed"
-    if transcription and len(transcription) >= 2:
-        return "completed"
-    return "dropped"
-
-async def save_campaign_call_to_supabase(
-    call_sid: str,
-    campaign_id: str,
-    phone_number: str,
-    contact_name: str,
-    start_time: datetime.datetime,
-    end_time: datetime.datetime,
-    session_history: list,
-    participant_identity: str = None,
-    recording_sid: str = None,
-    assistant_id: str = None
-) -> bool:
-    """Save outbound campaign call data to campaign_calls table"""
-    try:
-        if not create_client:
-            logging.warning("Supabase client not available, skipping campaign call save")
-            return False
-
-        supabase_url = os.getenv("SUPABASE_URL", "").strip()
-        supabase_key = (
-            os.getenv("SUPABASE_SERVICE_ROLE", "").strip()
-            or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-        )
-
-        if not supabase_url or not supabase_key:
-            logging.warning("Supabase credentials not configured, skipping campaign call save")
-            return False
-
-        sb: Client = create_client(supabase_url, supabase_key)
-
-        # Calculate call duration
-        call_duration = int((end_time - start_time).total_seconds())
-
-        # Prepare transcription
-        transcription = []
-        for item in session_history:
-            if isinstance(item, dict) and "role" in item and "content" in item:
-                content = item["content"]
-                # Handle different content formats
-                if isinstance(content, list):
-                    # If content is a list, join the elements and filter out empty strings
-                    content_parts = []
-                    for c in content:
-                        if c and str(c).strip():
-                            content_parts.append(str(c).strip())
-                    content = " ".join(content_parts)
-                elif not isinstance(content, str):
-                    content = str(content)
-                
-                # Only add non-empty content
-                if content and content.strip():
-                    transcription.append({
-                        "role": item["role"],
-                        "content": content.strip()
-                    })
-        
-        logging.info("TRANSCRIPTION_PREPARED | session_history_items=%d | transcription_entries=%d", 
-                     len(session_history), len(transcription))
-        
-        # Log sample transcription for debugging
-        if transcription:
-            sample_transcript = transcription[0] if len(transcription) > 0 else {}
-            logging.info("TRANSCRIPTION_SAMPLE | first_entry=%s", sample_transcript)
-        else:
-            logging.warning("NO_TRANSCRIPTION_DATA | session_history_sample=%s", 
-                           session_history[:2] if session_history else "Empty")
-
-        # Determine call status and outcome
-        call_status = determine_call_status(call_duration, transcription)
-        
-        # Determine if appointment was booked
-        appointment_booked = False
-        outcome = "voicemail"  # Default to voicemail instead of no_answer
-        
-        if call_status == "completed":
-            # Check if appointment booking keywords were used
-            all_content = ""
-            for item in transcription:
-                if isinstance(item, dict) and "content" in item:
-                    content = item["content"]
-                    if isinstance(content, str):
-                        all_content += content.lower() + " "
-            
-            booking_keywords = ["appointment", "book", "schedule", "confirm", "details"]
-            if any(keyword in all_content for keyword in booking_keywords):
-                appointment_booked = True
-                outcome = "interested"
-            else:
-                outcome = "not_interested"  # Changed from "answered" to valid outcome
-        elif call_status == "spam":
-            outcome = "do_not_call"
-        elif call_duration < 10:
-            outcome = "voicemail"
-        else:
-            outcome = "voicemail"  # Changed from "no_answer" to valid outcome
-
-        # Map call_status to valid database status
-        if call_status == "completed":
-            db_status = "completed"
-        elif call_status == "spam":
-            db_status = "completed"  # Mark as completed but with do_not_call outcome
-        elif call_duration < 10:
-            db_status = "completed"  # Short calls are completed but likely voicemail
-        else:
-            db_status = "completed"  # All calls end as completed
-        
-        # Update campaign_calls table
-        call_data = {
-            "call_sid": call_sid,
-            "status": db_status,
-            "call_duration": call_duration,
-            "outcome": outcome,
-            "transcription": transcription if transcription else [],  # Store empty array instead of None
-            "completed_at": end_time.isoformat(),
-            "notes": f"Appointment booked: {appointment_booked}"
-        }
-
-        # Find the campaign call by call_sid and update it
-        logging.info("UPDATING_CAMPAIGN_CALL | call_sid=%s | call_data_keys=%s | transcription_count=%d", 
-                     call_sid, list(call_data.keys()), len(transcription))
-        
+    async def handle_call(self, ctx: JobContext) -> None:
+        """Handle incoming call with proper LiveKit patterns."""
         try:
-            # Use UPSERT instead of UPDATE to handle cases where record doesn't exist
-            # First try to find existing record by call_sid
-            existing_call = sb.table("campaign_calls").select("id, call_sid, status").eq("call_sid", call_sid).execute()
-            
-            if existing_call.data:
-                # Record exists, update it
-                logging.info("CAMPAIGN_CALL_UPDATE_EXISTING | call_sid=%s | existing_status=%s | call_data=%s", 
-                           call_sid, existing_call.data[0].get('status'), call_data)
-                result = sb.table("campaign_calls").update(call_data).eq("call_sid", call_sid).execute()
-            else:
-                # Record doesn't exist, create it with campaign_id
-                logging.info("CAMPAIGN_CALL_CREATE_NEW | call_sid=%s | campaign_id=%s | call_data=%s", 
-                           call_sid, campaign_id, call_data)
-                call_data["campaign_id"] = campaign_id
-                call_data["phone_number"] = phone_number
-                call_data["contact_name"] = contact_name
-                call_data["created_at"] = start_time.isoformat()
-                result = sb.table("campaign_calls").insert(call_data).execute()
-            
-            # Log the result
-            logging.info("CAMPAIGN_CALL_UPSERT_RESULT | call_sid=%s | result_data=%s | result_count=%s", 
-                        call_sid, result.data, result.count if hasattr(result, 'count') else 'unknown')
-                        
-        except Exception as e:
-            logging.error("CAMPAIGN_CALL_UPSERT_ERROR | call_sid=%s | error=%s | error_type=%s", 
-                         call_sid, str(e), type(e).__name__)
-            return False
+            await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+            logger.info(f"CONNECTED | room={ctx.room.name}")
 
-        if result.data:
-            logging.info("CAMPAIGN_CALL_UPDATED | call_sid=%s | duration=%ds | status=%s | outcome=%s | appointment_booked=%s | transcription_items=%d",
-                         call_sid, call_duration, call_status, outcome, appointment_booked, len(transcription))
-            
-            # Update campaign metrics based on outcome
-            campaign_updates = {}
-            if outcome == "interested" and appointment_booked:
-                campaign_updates["interested"] = 1
-            elif outcome == "answered":
-                campaign_updates["pickups"] = 1
-                campaign_updates["total_calls_answered"] = 1
-            elif outcome == "do_not_call":
-                campaign_updates["do_not_call"] = 1
-            
-            if campaign_updates:
+            # Log job metadata for debugging
+            logger.info(f"JOB_METADATA | metadata={ctx.job.metadata}")
+
+            # Determine call type and extract metadata
+            call_type = self._determine_call_type(ctx)
+            assistant_config = await self._resolve_assistant_config(ctx, call_type)
+
+            if not assistant_config:
+                logger.error(f"NO_ASSISTANT_CONFIG | room={ctx.room.name}")
+                return
+
+            # Handle outbound calls
+            if call_type == "outbound":
+                await self._handle_outbound_call(ctx, assistant_config)
+
+            # Wait for participant
+            participant = await asyncio.wait_for(
+                ctx.wait_for_participant(),
+                timeout=35.0
+            )
+            logger.info(f"PARTICIPANT_CONNECTED | phone={self._extract_phone_from_room(ctx.room.name)}")
+
+            # Create appropriate agent
+            agent = await self._create_agent(assistant_config)
+
+            # Create session with proper configuration
+            session = self._create_session(assistant_config)
+
+            # Start the session
+            await session.start(
+                agent=agent,
+                room=ctx.room,
+                room_input_options=RoomInputOptions(close_on_disconnect=True),
+                room_output_options=RoomOutputOptions(transcription_enabled=True)
+            )
+
+            logger.info(f"SESSION_STARTED | room={ctx.room.name}")
+
+            # Capture start time for call duration calculation
+            start_time = datetime.datetime.now()
+
+            # Create shutdown callback for post-call analysis and history saving
+            # This ensures all conversation data is captured before analysis
+            async def save_call_on_shutdown():
+                end_time = datetime.datetime.now()
+                logger.info(f"CALL_END | room={ctx.room.name} | end_time={end_time.isoformat()}")
+
+                session_history = []
                 try:
-                    # Get current campaign data first
-                    campaign_result = sb.table("campaigns").select("id, interested, pickups, total_calls_answered, do_not_call").eq("id", campaign_id).single().execute()
-                    if campaign_result.data:
-                        campaign = campaign_result.data
-                        for key, increment in campaign_updates.items():
-                            current_value = campaign.get(key, 0) or 0
-                            campaign_updates[key] = current_value + increment
-                        
-                        # Update campaign metrics
-                        result = sb.table("campaigns").update(campaign_updates).eq("id", campaign_id).execute()
-                        if result.data:
-                            logging.info("CAMPAIGN_METRICS_UPDATED | campaign_id=%s | updates=%s", campaign_id, campaign_updates)
-                        else:
-                            logging.warning("CAMPAIGN_METRICS_UPDATE_NO_DATA | campaign_id=%s | updates=%s", campaign_id, campaign_updates)
+                    # Try to get transcript from the authoritative source
+                    if hasattr(session, 'transcript') and session.transcript:
+                        transcript_dict = session.transcript.to_dict()
+                        session_history = transcript_dict.get("items", [])
+                        logger.info(f"TRANSCRIPT_FROM_SESSION | items={len(session_history)}")
+                    elif hasattr(session, 'history') and session.history:
+                        history_dict = session.history.to_dict()
+                        session_history = history_dict.get("items", [])
+                        logger.info(f"HISTORY_FROM_SESSION | items={len(session_history)}")
                     else:
-                        logging.warning("CAMPAIGN_NOT_FOUND | campaign_id=%s", campaign_id)
+                        logger.warning("NO_SESSION_TRANSCRIPT_AVAILABLE")
                 except Exception as e:
-                    logging.error("CAMPAIGN_METRICS_UPDATE_FAILED | campaign_id=%s | error=%s", campaign_id, str(e))
-            
-            return True
-        else:
-            logging.error("CAMPAIGN_CALL_UPDATE_FAILED | call_sid=%s", call_sid)
-            return False
+                    logger.error(f"SESSION_HISTORY_READ_FAILED | error={str(e)}")
+                    session_history = []
 
-    except Exception as e:
-        logging.exception("CAMPAIGN_CALL_UPDATE_ERROR | call_sid=%s | error=%s", call_sid, str(e))
-        return False
-
-async def save_call_history_to_supabase(
-    call_id: str,
-    assistant_id: str,
-    called_did: str,
-    start_time: datetime.datetime,
-    end_time: datetime.datetime,
-    session_history: list,
-    participant_identity: str = None,
-    recording_sid: str = None,
-    call_sid: str = None
-) -> bool:
-    """Save call history to Supabase with enhanced status detection"""
-    try:
-        if not create_client:
-            logging.warning("Supabase client not available, skipping call history save")
-            return False
-
-        supabase_url = os.getenv("SUPABASE_URL", "").strip()
-        supabase_key = (
-            os.getenv("SUPABASE_SERVICE_ROLE", "").strip()
-            or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-        )
-
-        if not supabase_url or not supabase_key:
-            logging.warning("Supabase credentials not configured, skipping call history save")
-            return False
-
-        sb: Client = create_client(supabase_url, supabase_key)
-
-        transcription = []
-        for item in session_history:
-            if isinstance(item, dict) and "role" in item and "content" in item:
-                content = item["content"]
-                # Handle different content formats
-                if isinstance(content, list):
-                    # If content is a list, join the elements and filter out empty strings
-                    content_parts = []
-                    for c in content:
-                        if c and str(c).strip():
-                            content_parts.append(str(c).strip())
-                    content = " ".join(content_parts)
-                elif not isinstance(content, str):
-                    content = str(content)
-                
-                # Only add non-empty content
-                if content and content.strip():
-                    transcription.append({
-                        "role": item["role"],
-                        "content": content.strip()
-                    })
-
-        logging.info("TRANSCRIPTION_PREPARED | items_count=%d | transcription_entries=%d",
-                     len(session_history), len(transcription))
-
-        call_duration = int((end_time - start_time).total_seconds())
-        call_status = determine_call_status(call_duration, transcription)
-
-        call_data = {
-            "call_id": call_id,
-            "assistant_id": assistant_id,
-            "phone_number": called_did,
-            "participant_identity": participant_identity,
-            "start_time": start_time.isoformat(),
-            "end_time": end_time.isoformat(),
-            "call_duration": call_duration,
-            "call_status": call_status,
-            "transcription": transcription if transcription else [],  # Store empty array instead of None
-            "recording_sid": recording_sid,
-            "call_sid": call_sid,
-            "created_at": datetime.datetime.now().isoformat()
-        }
-
-        result = sb.table("call_history").insert(call_data).execute()
-
-        if result.data:
-            logging.info("CALL_HISTORY_SAVED | call_id=%s | duration=%ds | status=%s | transcription_items=%d",
-                         call_id, call_duration, call_status, len(transcription))
-            if transcription:
-                sample_transcript = transcription[0] if len(transcription) > 0 else {}
-                logging.info("TRANSCRIPTION_SAMPLE | first_entry=%s", sample_transcript)
-            return True
-        else:
-            logging.error("CALL_HISTORY_SAVE_FAILED | call_id=%s", call_id)
-            return False
-
-    except Exception as e:
-        logging.exception("CALL_HISTORY_SAVE_ERROR | call_id=%s | error=%s", call_id, str(e))
-        return False
-
-def extract_called_did(room_name: str) -> str | None:
-    """Find the first +E.164 sequence anywhere in the room name."""
-    m = re.search(r'\+\d{7,}', room_name)
-    return m.group(0) if m else None
-
-async def fetch_assistant_n8n_config(assistant_id: str) -> dict | None:
-    """Fetch assistant n8n configuration from database"""
-    try:
-        if not create_client:
-            logging.warning("Supabase client not available, skipping n8n config fetch")
-            return None
-
-        supabase_url = os.getenv("SUPABASE_URL", "").strip()
-        supabase_key = (
-            os.getenv("SUPABASE_SERVICE_ROLE", "").strip()
-            or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-        )
-
-        if not supabase_url or not supabase_key:
-            logging.warning("Supabase credentials not configured, skipping n8n config fetch")
-            return None
-
-        sb: Client = create_client(supabase_url, supabase_key)
-
-        # Fetch assistant n8n webhook configuration
-        result = sb.table("assistant").select(
-            "id, name, n8n_webhooks"
-        ).eq("id", assistant_id).execute()
-
-        if result.data and len(result.data) > 0:
-            assistant = result.data[0]
-            webhooks = assistant.get("n8n_webhooks", [])
-            if webhooks and len(webhooks) > 0:
-                logging.info("N8N_WEBHOOKS_FETCHED | assistant_id=%s | webhooks_count=%d", 
-                           assistant_id, len(webhooks))
-                return {
-                    "assistant_id": assistant_id,
-                    "assistant_name": assistant.get("name"),
-                    "webhooks": webhooks
-                }
-            else:
-                logging.info("N8N_WEBHOOKS_EMPTY | assistant_id=%s", assistant_id)
-                return None
-        else:
-            logging.warning("N8N_CONFIG_NOT_FOUND | assistant_id=%s", assistant_id)
-            return None
-
-    except Exception as e:
-        logging.error("N8N_CONFIG_FETCH_ERROR | assistant_id=%s | error=%s", assistant_id, str(e))
-        return None
-
-def generate_dynamic_collection_instructions(webhook_fields: list) -> str:
-    """Generate dynamic LLM-driven data collection instructions based on webhook fields"""
-    if not webhook_fields:
-        return ""
-    
-    field_descriptions = []
-    for field in webhook_fields:
-        name = field.get("name", "")
-        description = field.get("description", "")
-        field_descriptions.append(f"- {name}: {description}")
-    
-    return f"""
-🚨 DATA COLLECTION REQUIRED 🚨
-You need to collect the following information during the call:
-{chr(10).join(field_descriptions)}
-
-ANALYSIS APPROACH:
-For each field, determine the best collection method based on the description:
-1. ASK the user directly (for personal info like name, email, company)
-2. ANALYZE from conversation context (for derived info like mood, intent, summary)
-3. OBSERVE from call behavior (for technical info like call quality, satisfaction)
-
-COLLECTION RULES:
-- Use collect_webhook_data(field_name, value, collection_method) to store any collected data
-- You can collect data at any point during the conversation
-- For analysis-based fields, observe the conversation and make intelligent inferences
-- For user-provided fields, ask naturally in context
-- Collection methods: "user_provided", "analyzed", "observed"
-
-EXAMPLES:
-- "company_name" → Ask: "What company do you work for?" → collect_webhook_data("company_name", "Acme Corp", "user_provided")
-- "call_summary" → Analyze conversation → collect_webhook_data("call_summary", "Discussed pricing for enterprise plan", "analyzed")
-- "caller_mood" → Observe tone → collect_webhook_data("caller_mood", "Frustrated initially, became positive", "observed")
-
-You have full autonomy to decide how to collect each piece of data based on the field descriptions.
-"""
-
-
-def build_n8n_payload(assistant_config: dict, call_data: dict, session_history: list, webhook_configs: list, agent=None) -> dict:
-    """Build JSON payload for n8n webhook with collected user details"""
-    try:
-        # Extract assistant info
-        assistant_info = {
-            "id": assistant_config.get("assistant_id"),
-            "name": assistant_config.get("assistant_name"),
-        }
-
-        # Extract call info
-        call_info = {
-            "id": call_data.get("call_id"),
-            "from": call_data.get("from_number"),
-            "to": call_data.get("to_number"),
-            "duration": call_data.get("call_duration"),
-            "transcript_url": call_data.get("transcript_url"),
-            "recording_url": call_data.get("recording_url"),
-            "direction": call_data.get("call_direction"),
-            "status": call_data.get("call_status"),
-            "start_time": call_data.get("start_time"),
-            "end_time": call_data.get("end_time"),
-            "participant_identity": call_data.get("participant_identity")
-        }
-
-        # Get collected details from agent (LLM-collected data only)
-        collected_details = {}
-        if hasattr(agent, 'get_webhook_data'):
-            webhook_data = agent.get_webhook_data()
-            # Extract just the values for backward compatibility
-            for field_name, field_data in webhook_data.items():
-                if isinstance(field_data, dict) and "value" in field_data:
-                    collected_details[field_name] = field_data["value"]
-                else:
-                    # Handle legacy format
-                    collected_details[field_name] = str(field_data)
-
-        # Build conversation summary
-        conversation_summary = ""
-        if session_history:
-            user_messages = []
-            for item in session_history:
-                if isinstance(item, dict) and item.get("role") == "user" and item.get("content"):
-                    content = item["content"]
-                    if isinstance(content, list):
-                        content = " ".join([str(c) for c in content if c])
-                    user_messages.append(str(content).strip())
-            
-            if user_messages:
-                conversation_summary = " ".join(user_messages)
-
-        # Build the complete payload
-        payload = {
-            "assistant": assistant_info,
-            "call": call_info,
-            "webhook_configs": webhook_configs,
-            "collected_details": collected_details,
-            "timestamp": datetime.datetime.now().isoformat()
-        }
-
-        logging.info("N8N_PAYLOAD_BUILT | assistant_id=%s | call_id=%s | details_collected=%s", 
-                   assistant_info.get("id"), call_info.get("id"), list(collected_details.keys()))
-        
-        return payload
-
-    except Exception as e:
-        logging.error("N8N_PAYLOAD_BUILD_ERROR | error=%s", str(e))
-        return {}
-
-async def send_n8n_webhook(webhook_url: str, payload: dict) -> dict | None:
-    """Send data to n8n webhook and return response"""
-    try:
-        import aiohttp
-        
-        # Convert payload to JSON
-        json_data = json.dumps(payload, default=str)
-        
-        logging.info("N8N_WEBHOOK_SENDING | url=%s | payload_size=%d", webhook_url, len(json_data))
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                webhook_url,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=aiohttp.ClientTimeout(total=30)
-            ) as response:
-                response_text = await response.text()
-                
-                if response.status == 200:
-                    logging.info("N8N_WEBHOOK_SUCCESS | status=%d | response_size=%d", 
-                               response.status, len(response_text))
+                # Perform post-call analysis and save to database
+                try:
+                    analysis_results = await self._perform_post_call_analysis(assistant_config, session_history, agent)
+                    logger.info(f"POST_CALL_ANALYSIS_RESULTS | summary={bool(analysis_results.get('call_summary'))} | success={analysis_results.get('call_success')} | data_fields={len(analysis_results.get('structured_data', {}))}")
                     
-                    # Try to parse response as JSON
-                    try:
-                        response_data = json.loads(response_text)
-                        return response_data
-                    except json.JSONDecodeError:
-                        logging.warning("N8N_WEBHOOK_RESPONSE_NOT_JSON | response=%s", response_text)
-                        return {"success": True, "message": response_text}
-                else:
-                    logging.error("N8N_WEBHOOK_ERROR | status=%d | response=%s", 
-                                response.status, response_text)
-                    return None
+                    # Save call history and analysis data to database
+                    await self._save_call_history_to_database(
+                        ctx=ctx,
+                        assistant_config=assistant_config,
+                        session_history=session_history,
+                        analysis_results=analysis_results,
+                        participant=participant,
+                        start_time=start_time,
+                        end_time=end_time
+                    )
+                    
+                except Exception as e:
+                    logger.error(f"POST_CALL_ANALYSIS_FAILED | error={str(e)}")
 
-    except Exception as e:
-        logging.error("N8N_WEBHOOK_SEND_ERROR | url=%s | error=%s", webhook_url, str(e))
-        return None
+            # Register shutdown callback to ensure proper cleanup and analysis
+            ctx.add_shutdown_callback(save_call_on_shutdown)
 
-
-def _parse_json_or_b64(raw: str) -> tuple[dict, str]:
-    """Try JSON; if that fails, base64(JSON). Return (dict, source_kind)."""
-    try:
-        d = json.loads(raw)
-        return (d if isinstance(d, dict) else {}), "json"
-    except Exception:
-        try:
-            decoded = base64.b64decode(raw).decode()
-            d = json.loads(decoded)
-            return (d if isinstance(d, dict) else {}), "base64_json"
-        except Exception:
-            return {}, "invalid"
-
-def _from_env_json(*env_keys: str) -> tuple[dict, str]:
-    """First non-empty env var parsed as JSON. Return (dict, 'env:KEY:kind') or ({}, 'env:none')."""
-    for k in env_keys:
-        raw = os.getenv(k, "")
-        if raw.strip():
-            d, kind = _parse_json_or_b64(raw)
-            return d, f"env:{k}:{kind}"
-    return {}, "env:none"
-
-def choose_from_sources(
-    sources: Iterable[tuple[str, dict]],
-    *paths: Tuple[str, ...],
-    default: Optional[str] = None,
-) -> tuple[Optional[str], str]:
-    """First non-empty string across sources/paths. Return (value, 'label.path') or (default,'default')."""
-    for label, d in sources:
-        for path in paths:
-            cur = d
-            ok = True
-            for k in path:
-                if not isinstance(cur, dict) or k not in cur:
-                    ok = False
-                    break
-                cur = cur[k]
-            if ok and isinstance(cur, str) and cur.strip():
-                return cur, f"{label}:" + ".".join(path)
-    return default, "default"
-
-def _http_get_json(url: str, timeout: int = 5) -> dict | None:
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except Exception as e:
-        logging.warning("resolver GET failed: %s (%s)", url, getattr(e, "reason", e))
-        return None
-
-# ===================== Campaign Outbound Helper =====================
-
-def build_campaign_outbound_instructions(contact_name: str | None, campaign_prompt: str | None) -> str:
-    name = (contact_name or "there").strip() or "there"
-    script = (campaign_prompt or "").strip()
-    return f"""
-You are a concise, friendly **campaign dialer** (NOT the full assistant). Rules:
-- Wait for the callee to speak first; if silence for ~2–3 seconds, give one polite greeting.
-- Personalize by name when possible: use "{name}".
-- Follow the campaign script briefly; keep turns short (1–2 sentences).
-- If not interested / wrong number: apologize and end gracefully.
-- Do NOT use any tools or calendars. No side effects.
-
-If they don't speak: say once, "Hi {name}, "
-
-CAMPAIGN SCRIPT (use naturally, don’t read verbatim if awkward):
-{(script if script else "(no campaign script provided)")}
-""".strip()
-
-# ===================== Entrypoint (Single-Assistant) =====================
-
-# Global counter for debugging
-dispatch_count = 0
-
-async def entrypoint(ctx: agents.JobContext):
-    global dispatch_count
-    dispatch_count += 1
-    logging.info("🎯 DISPATCH_RECEIVED | count=%d | room=%s | job_metadata=%s", dispatch_count, ctx.room.name, ctx.job.metadata)
-    logging.info("🚀 AGENT_ENTRYPOINT_START | room=%s | job_metadata=%s", ctx.room.name, ctx.job.metadata)
-    
-    # Log REST API configuration
-    get_rest_config().log_config()
-
-    # Initialize connection with auto-subscribe to audio only (crucial for SIP)
-    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    logging.info("✅ AGENT_CONNECTED | room=%s", ctx.room.name)
-
-    # --- Check if this is an outbound call --------------------------
-    phone_number = None
-    assistant_id_from_job = None
-    try:
-        dial_info = json.loads(ctx.job.metadata)
-        phone_number = dial_info.get("phone_number")
-        assistant_id_from_job = dial_info.get("agentId")
-        logging.info("OUTBOUND_CHECK | phone_number=%s | metadata=%s", phone_number, ctx.job.metadata)
-    except Exception as e:
-        logging.warning("Failed to parse job metadata for outbound call: %s", str(e))
-
-    # --- Room / DID context -----------------------------------------
-    room_name = getattr(ctx.room, "name", "") or ""
-    prefix = os.getenv("DISPATCH_ROOM_PREFIX", "did-")
-    called_did = extract_called_did(room_name) or (room_name[len(prefix):] if room_name.startswith(prefix) else None)
-    logging.info("🎯 AGENT_TRIGGERED | room=%s | called_did=%s | room_type=%s | is_outbound=%s",
-                 room_name, called_did, type(ctx.room).__name__, phone_number is not None)
-
-    # --- Handle outbound calling (create SIP participant) -----------
-    if phone_number is not None:
-        logging.info("🔥 OUTBOUND_CALL_DETECTED | phone_number=%s", phone_number)
-        try:
-            # Get trunk ID from job metadata (passed by campaign execution engine)
-            sip_trunk_id = None
+            # Wait for participant to disconnect
             try:
-                # Parse job metadata to get campaign info and outbound trunk ID
-                job_metadata = json.loads(ctx.job.metadata) if isinstance(ctx.job.metadata, str) else ctx.job.metadata
-                campaign_id = job_metadata.get('campaignId')
-                assistant_id = job_metadata.get('agentId')
-                sip_trunk_id = job_metadata.get('outbound_trunk_id')
-                
-                logging.info("🔍 JOB_METADATA | campaign_id=%s | assistant_id=%s | outbound_trunk_id=%s", campaign_id, assistant_id, sip_trunk_id)
-                
-                if not sip_trunk_id:
-                    logging.error("❌ No outbound_trunk_id found in job metadata")
-                    
-            except Exception as metadata_error:
-                logging.error("❌ Metadata parsing failed: %s", str(metadata_error))
-            
-            # Fallback to environment variable if metadata lookup failed
+                # Wait for the participant to disconnect using room events
+                # RemoteParticipant doesn't have wait_for_disconnect, so we use room events
+                await asyncio.sleep(1)  # Give a moment for any final processing
+                logger.info(f"PARTICIPANT_DISCONNECTED | room={ctx.room.name}")
+            except Exception as e:
+                logger.warning(f"DISCONNECT_WAIT_FAILED | room={ctx.room.name} | error={str(e)}")
+                # Continue - shutdown callback will handle cleanup
+
+            logger.info(f"SESSION_COMPLETE | room={ctx.room.name}")
+
+        except Exception as e:
+            logger.error(f"CALL_ERROR | room={ctx.room.name} | error={str(e)}", exc_info=True)
+            raise
+
+    def _determine_call_type(self, ctx: JobContext) -> str:
+        """Determine if this is inbound or outbound call."""
+        try:
+            metadata = ctx.job.metadata
+            if metadata:
+                dial_info = json.loads(metadata)
+                # If we have both phone_number and agentId, it's outbound
+                if dial_info.get("phone_number") and dial_info.get("agentId"):
+                    return "outbound"
+                # If we have assistantId in metadata, it's likely an inbound call with pre-configured assistant
+                if dial_info.get("assistantId") or dial_info.get("assistant_id"):
+                    return "inbound_with_assistant"
+        except Exception:
+            pass
+        return "inbound"
+
+    async def _handle_outbound_call(self, ctx: JobContext, assistant_config: Dict[str, Any]) -> None:
+        """Handle outbound call setup."""
+        try:
+            metadata = json.loads(ctx.job.metadata)
+            phone_number = metadata.get("phone_number")
+            sip_trunk_id = metadata.get("outbound_trunk_id") or os.getenv("SIP_TRUNK_ID")
+
             if not sip_trunk_id:
-                sip_trunk_id = os.getenv("SIP_TRUNK_ID")
-                logging.info("🔄 FALLBACK_TO_ENV | sip_trunk_id=%s", sip_trunk_id)
-            
-            logging.info("🔍 SIP_TRUNK_ID_CHECK | sip_trunk_id=%s", sip_trunk_id)
-            if not sip_trunk_id:
-                logging.error("❌ SIP_TRUNK_ID not configured - cannot make outbound call")
+                logger.error("SIP_TRUNK_ID not configured")
                 await ctx.api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
                 return
 
-            logging.info("📞 OUTBOUND_CALL_START | phone_number=%s | trunk_id=%s | room=%s", phone_number, sip_trunk_id, ctx.room.name)
+            logger.info(f"OUTBOUND_CALL_START | phone={phone_number} | trunk={sip_trunk_id}")
+
             sip_request = api.CreateSIPParticipantRequest(
                 room_name=ctx.room.name,
                 sip_trunk_id=sip_trunk_id,
@@ -760,1039 +221,1344 @@ async def entrypoint(ctx: agents.JobContext):
                 participant_identity=phone_number,
                 wait_until_answered=True,
             )
-            logging.info("📞 SIP_REQUEST_CREATED | request=%s", sip_request)
+
             result = await ctx.api.sip.create_sip_participant(sip_request)
-            logging.info("✅ OUTBOUND_CALL_CONNECTED | phone_number=%s | result=%s", phone_number, result)
-        except api.TwirpError as e:
-            logging.error("❌ OUTBOUND_CALL_FAILED | phone_number=%s | error=%s | sip_status=%s | metadata=%s",
-                          phone_number, e.message, e.metadata.get('sip_status_code'), e.metadata)
-            await ctx.api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
-            return
-        except Exception as e:
-            logging.error("❌ OUTBOUND_CALL_ERROR | phone_number=%s | error=%s | type=%s", phone_number, str(e), type(e).__name__)
-            await ctx.api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
-            return
-    else:
-        logging.info("📞 INBOUND_CALL_DETECTED | phone_number=None")
+            logger.info(f"OUTBOUND_CALL_CONNECTED | result={result}")
 
-    # Wait for participant with timeout (crucial for SIP participants)
-    try:
-        participant = await asyncio.wait_for(
-            ctx.wait_for_participant(),
-            timeout=10.0
+        except Exception as e:
+            logger.error(f"OUTBOUND_CALL_ERROR | error={str(e)}")
+            try:
+                await ctx.api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
+            except Exception:
+                pass
+            raise
+
+    async def _resolve_assistant_config(self, ctx: JobContext, call_type: str) -> Optional[Dict[str, Any]]:
+        """Resolve assistant configuration for the call."""
+        try:
+            metadata = ctx.job.metadata
+            if not metadata:
+                logger.warning("No job metadata available")
+                return None
+                
+            dial_info = json.loads(metadata)
+            
+            if call_type == "outbound":
+                # For outbound calls, get assistant_id from job metadata
+                assistant_id = dial_info.get("agentId") or dial_info.get("assistant_id")
+                if assistant_id:
+                    logger.info(f"OUTBOUND_ASSISTANT | assistant_id={assistant_id}")
+                    return await self._get_assistant_by_id(assistant_id)
+                else:
+                    logger.error("OUTBOUND_NO_ASSISTANT_ID | metadata={metadata}")
+                    return None
+
+            elif call_type == "inbound_with_assistant":
+                # For inbound calls with pre-configured assistant, use assistantId from metadata
+                assistant_id = dial_info.get("assistantId") or dial_info.get("assistant_id")
+                if assistant_id:
+                    logger.info(f"INBOUND_WITH_ASSISTANT | assistant_id={assistant_id}")
+                    return await self._get_assistant_by_id(assistant_id)
+                else:
+                    logger.error("INBOUND_NO_ASSISTANT_ID | metadata={metadata}")
+                    return None
+
+            # For regular inbound calls, get the called number (DID) to look up assistant
+            called_did = dial_info.get("called_number") or dial_info.get("to_number") or dial_info.get("phoneNumber")
+            logger.info(f"INBOUND_METADATA_CHECK | metadata={metadata} | called_did={called_did}")
+
+            # Fallback to room name extraction if not found in metadata
+            if not called_did:
+                called_did = self._extract_did_from_room(ctx.room.name)
+                logger.info(f"INBOUND_ROOM_NAME_FALLBACK | room={ctx.room.name} | called_did={called_did}")
+
+            if called_did:
+                logger.info(f"INBOUND_LOOKUP | looking up assistant for DID={called_did}")
+                return await self._get_assistant_by_phone(called_did)
+
+            logger.error("INBOUND_NO_DID | could not determine called number")
+            return None
+
+        except Exception as e:
+            logger.error(f"ASSISTANT_RESOLUTION_ERROR | error={str(e)}")
+            return None
+
+    def _extract_did_from_room(self, room_name: str) -> Optional[str]:
+        """Extract DID from room name."""
+        try:
+            # Handle patterns like "did-1234567890"
+            if room_name.startswith("did-"):
+                return room_name[4:]
+
+            # For assistant rooms, we need to get the called number from job metadata
+            # The room name format like "assistant-_+12017656193_jDHeRsycXttN" contains caller's number
+            # We need to get the called number from the SIP webhook metadata
+            if room_name.startswith("assistant-"):
+                # Try to extract from room name first (fallback)
+                parts = room_name.split("_")
+                if len(parts) >= 2:
+                    phone_part = parts[1]  # This might be caller's number, not called number
+                    return phone_part
+
+            # Handle other patterns
+            if "-" in room_name:
+                parts = room_name.split("-")
+                if len(parts) >= 2:
+                    return parts[-1]
+
+            return None
+        except Exception:
+            return None
+
+    async def _get_assistant_by_id(self, assistant_id: str) -> Optional[Dict[str, Any]]:
+        """Get assistant configuration by assistant ID."""
+        try:
+            assistant_result = self.supabase.client.table("assistant").select("*").eq("id", assistant_id).execute()
+            
+            if assistant_result.data and len(assistant_result.data) > 0:
+                assistant_data = assistant_result.data[0]
+                logger.info(f"ASSISTANT_FOUND_BY_ID | assistant_id={assistant_id}")
+                logger.info(f"ASSISTANT_CONFIG_DEBUG | knowledge_base_id={assistant_data.get('knowledge_base_id')} | use_rag={assistant_data.get('use_rag')}")
+                return assistant_data
+            
+            logger.warning(f"No assistant found for ID: {assistant_id}")
+            return None
+        except Exception as e:
+            logger.error(f"DATABASE_ERROR | assistant_id={assistant_id} | error={str(e)}")
+            return None
+
+    async def _get_assistant_by_phone(self, phone_number: str) -> Optional[Dict[str, Any]]:
+        """Get assistant configuration by phone number."""
+        try:
+            # First, find the assistant_id for this phone number
+            phone_result = self.supabase.client.table("phone_number").select("inbound_assistant_id").eq("number", phone_number).execute()
+            
+            if not phone_result.data or len(phone_result.data) == 0:
+                logger.warning(f"No assistant found for phone number: {phone_number}")
+                return None
+            
+            assistant_id = phone_result.data[0]["inbound_assistant_id"]
+            
+            # Now fetch the assistant configuration
+            assistant_result = self.supabase.client.table("assistant").select("*").eq("id", assistant_id).execute()
+            
+            if assistant_result.data and len(assistant_result.data) > 0:
+                return assistant_result.data[0]
+
+            return None
+        except Exception as e:
+            logger.error(f"DATABASE_ERROR | phone={phone_number} | error={str(e)}")
+            return None
+
+    async def _create_agent(self, config: Dict[str, Any]) -> Agent:
+        """Create appropriate agent based on configuration."""
+        instructions = config.get("prompt", "You are a helpful assistant.")
+
+        # Add date context to prevent past date tool calls
+        from zoneinfo import ZoneInfo
+        tz_name = (config.get("cal_timezone") or "Asia/Karachi")
+        now_local = datetime.datetime.now(ZoneInfo(tz_name))
+        instructions += (
+            f"\n\nCONTEXT:\n"
+            f"- Current local time: {now_local.isoformat()}\n"
+            f"- Timezone: {tz_name}\n"
+            f"- When the user says a date like '7th October', always interpret it as the next FUTURE occurrence in {tz_name}. "
+            f"Never call tools with past dates; if a parsed date is in the past year, bump it to the next year."
         )
-        logging.info("PARTICIPANT_CONNECTED | identity=%s | type=%s | metadata=%s",
-                     participant.identity, type(participant).__name__, participant.metadata)
-        if hasattr(participant, 'attributes') and participant.attributes:
-            logging.info("SIP_PARTICIPANT_ATTRIBUTES | attributes=%s", participant.attributes)
-    except asyncio.TimeoutError:
-        logging.error("PARTICIPANT_CONNECTION_TIMEOUT | room=%s", room_name)
-        await ctx.api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
-        return
 
-    # --- Campaign metadata extraction (room metadata) ----------------
-    campaign_prompt = ""
-    contact_info = {}
-    contact_name = None
-    if hasattr(ctx.room, 'metadata') and ctx.room.metadata:
-        try:
-            room_meta = json.loads(ctx.room.metadata) if isinstance(ctx.room.metadata, str) else ctx.room.metadata
-            campaign_prompt = room_meta.get('campaignPrompt', '') or ''
-            contact_info = room_meta.get('contactInfo', {}) or {}
-            contact_name = contact_info.get('name') or room_meta.get('contactName')
-            logging.info("CAMPAIGN_METADATA | has_prompt=%s | contact_name=%s | contact_phone=%s | room_meta_keys=%s",
-                         bool(campaign_prompt),
-                         contact_name or 'Unknown',
-                         contact_info.get('phone', 'Unknown'),
-                         list(room_meta.keys()) if room_meta else [])
-        except Exception as e:
-            logging.warning("Failed to parse room metadata for campaign info: %s", str(e))
-    else:
-        logging.info("NO_ROOM_METADATA | has_metadata_attr=%s | metadata_exists=%s",
-                     hasattr(ctx.room, 'metadata'), bool(getattr(ctx.room, 'metadata', None)))
+        # Add analysis configuration to instructions
+        analysis_config = await self._build_analysis_instructions(config)
+        if analysis_config:
+            instructions += "\n\n" + analysis_config
 
-    # --- Call tracking setup ----------------------------------------
-    start_time = datetime.datetime.now()
-    call_id = str(uuid.uuid4())
-    logging.info("CALL_START | call_id=%s | start_time=%s", call_id, start_time.isoformat())
+        # Add first message handling (like old implementation)
+        first_message = config.get("first_message", "")
+        force_first = os.getenv("FORCE_FIRST_MESSAGE", "true").lower() != "false"
+        if force_first and first_message:
+            instructions += f' IMPORTANT: Start the conversation by saying exactly: "{first_message}" Do not repeat or modify this greeting.'
+            logger.info(f"FIRST_MESSAGE_SET | first_message={first_message}")
 
-    # --- Recording setup (Twilio SID discovery) ---------------------
-    recording_sid = None
-    call_sid = None
-    try:
-        logging.info("PARTICIPANT_DEBUG | participant_type=%s | has_attributes=%s",
-                     type(participant).__name__, hasattr(participant, 'attributes'))
-        if hasattr(participant, 'attributes') and participant.attributes:
-            logging.info("PARTICIPANT_ATTRIBUTES_DEBUG | attributes=%s", participant.attributes)
-            if hasattr(participant.attributes, 'get'):
-                call_sid = participant.attributes.get('sip.twilio.callSid')
-                if call_sid:
-                    logging.info("CALL_SID_FROM_PARTICIPANT_ATTRIBUTES | call_sid=%s", call_sid)
-            if not call_sid and hasattr(participant.attributes, 'sip'):
-                sip_attrs = participant.attributes.sip
-                if hasattr(sip_attrs, 'twilio') and hasattr(sip_attrs.twilio, 'callSid'):
-                    call_sid = sip_attrs.twilio.callSid
-                    if call_sid:
-                        logging.info("CALL_SID_FROM_SIP_ATTRIBUTES | call_sid=%s", call_sid)
-        else:
-            logging.info("NO_PARTICIPANT_ATTRIBUTES | has_attributes=%s", hasattr(participant, 'attributes'))
-    except Exception as e:
-        logging.warning("Failed to get call_sid from participant attributes: %s", str(e))
+        # Log final instructions for debugging
+        logger.info(f"FINAL_INSTRUCTIONS_LENGTH | length={len(instructions)}")
+        logger.info(f"FINAL_INSTRUCTIONS_PREVIEW | preview={instructions[:500]}...")
 
-    if not call_sid and hasattr(ctx.room, 'metadata') and ctx.room.metadata:
-        try:
-            room_meta = json.loads(ctx.room.metadata) if isinstance(ctx.room.metadata, str) else ctx.room.metadata
-            call_sid = room_meta.get('call_sid') or room_meta.get('CallSid') or room_meta.get('provider_id')
-            if call_sid:
-                logging.info("CALL_SID_FROM_ROOM_METADATA | call_sid=%s", call_sid)
-        except Exception as e:
-            logging.warning("Failed to parse room metadata for call_sid: %s", str(e))
-
-    if not call_sid and hasattr(participant, 'metadata') and participant.metadata:
-        try:
-            participant_meta = json.loads(participant.metadata) if isinstance(participant.metadata, str) else participant.metadata
-            call_sid = participant_meta.get('call_sid') or participant_meta.get('CallSid') or participant_meta.get('provider_id')
-            if call_sid:
-                logging.info("CALL_SID_FROM_PARTICIPANT_METADATA | call_sid=%s", call_sid)
-        except Exception as e:
-            logging.warning("Failed to parse participant metadata for call_sid: %s", str(e))
-
-    if call_sid and recording_service.is_enabled():
-        try:
-            logging.info("STARTING_RECORDING_IMMEDIATELY | call_sid=%s", call_sid)
-            recording_result = await recording_service.start_recording(
-                call_sid=call_sid,
-                recording_options={
-                    "RecordingChannels": "dual",
-                    "RecordingTrack": "both",
-                    "PlayBeep": True,
-                    "Trim": "do-not-trim",
-                    "Transcribe": True,
-                }
+        # Check if RAG is enabled (match old implementation - only require knowledge_base_id)
+        knowledge_base_id = config.get("knowledge_base_id")
+        logger.info(f"RAG_CONFIG_CHECK | knowledge_base_id={knowledge_base_id}")
+        
+        if knowledge_base_id:
+            logger.info(f"RAG_ENABLED | Creating RAGAgent with knowledge_base_id={knowledge_base_id}")
+            # Add RAG tools to instructions (like old implementation)
+            instructions += " Additional tools available: search_knowledge, get_detailed_info (for knowledge base queries)."
+            logger.info("RAG_TOOLS | Knowledge base tools added to instructions")
+            agent = RAGAgent(
+                instructions=instructions,
+                knowledge_base_id=knowledge_base_id,
+                company_id=config.get("company_id"),
+                supabase=self.supabase
             )
-            if recording_result:
-                recording_sid = recording_result.get("sid")
-                logging.info("RECORDING_STARTED | call_sid=%s | recording_sid=%s", call_sid, recording_sid)
+        else:
+            # Create regular booking agent
+            calendar = None
+            if config.get("cal_api_key") and config.get("cal_event_type_id"):
+                # Validate and convert event_type_id to proper format
+                event_type_id = config.get("cal_event_type_id")
+                try:
+                    # Convert to string first, then validate it's a valid number
+                    if isinstance(event_type_id, str):
+                        # Remove any non-numeric characters except for the event type format
+                        cleaned_id = event_type_id.strip()
+                        # Handle Cal.com event type format like "cal_1759650430507_boxv695kh"
+                        if cleaned_id.startswith("cal_"):
+                            # Extract the numeric part
+                            parts = cleaned_id.split("_")
+                            if len(parts) >= 2:
+                                numeric_part = parts[1]
+                                if numeric_part.isdigit():
+                                    event_type_id = int(numeric_part)
+                                else:
+                                    logger.error(f"INVALID_EVENT_TYPE_ID | cannot extract number from {cleaned_id}")
+                                    event_type_id = None
+                            else:
+                                logger.error(f"INVALID_EVENT_TYPE_ID | malformed cal.com ID {cleaned_id}")
+                                event_type_id = None
+                        elif cleaned_id.isdigit():
+                            event_type_id = int(cleaned_id)
+                        else:
+                            logger.error(f"INVALID_EVENT_TYPE_ID | not a valid number {cleaned_id}")
+                            event_type_id = None
+                    elif isinstance(event_type_id, (int, float)):
+                        event_type_id = int(event_type_id)
+                    else:
+                        logger.error(f"INVALID_EVENT_TYPE_ID | unexpected type {type(event_type_id)}: {event_type_id}")
+                        event_type_id = None
+                except (ValueError, TypeError) as e:
+                    logger.error(f"EVENT_TYPE_ID_CONVERSION_ERROR | error={str(e)} | value={event_type_id}")
+                    event_type_id = None
+                
+                if event_type_id:
+                    # Get timezone from config, default to Asia/Karachi for Pakistan
+                    cal_timezone = config.get("cal_timezone") or "Asia/Karachi"
+                    logger.info(f"CALENDAR_CONFIG | api_key={'*' * 10} | event_type_id={event_type_id} | timezone={cal_timezone}")
+                    calendar = CalComCalendar(
+                        api_key=config.get("cal_api_key"),
+                        event_type_id=event_type_id,
+                        timezone=cal_timezone
+                    )
+                    # Initialize the calendar
+                    try:
+                        await calendar.initialize()
+                        logger.info("CALENDAR_INITIALIZED | calendar setup successful")
+                    except Exception as e:
+                        logger.error(f"CALENDAR_INIT_FAILED | error={str(e)}")
+                        calendar = None
+                else:
+                    logger.error("CALENDAR_CONFIG_FAILED | invalid event_type_id")
             else:
-                logging.warning("RECORDING_START_FAILED | call_sid=%s", call_sid)
+                logger.warning("CALENDAR_NOT_CONFIGURED | missing cal_api_key or cal_event_type_id")
+
+            logger.info(f"RAG_DISABLED | Creating BookingAgent instead of RAGAgent")
+            agent = BookingAgent(
+                instructions=instructions,
+                calendar=calendar
+            )
+            
+            # Debug logging for calendar validation
+            logging.info("AGENT_CREATED | has_calendar=%s | calendar_type=%s", 
+                        agent.calendar is not None, 
+                        type(agent.calendar).__name__ if agent.calendar else None)
+            if agent.calendar:
+                logging.info("CALENDAR_DETAILS | api_key_present=%s | event_type_id=%s | timezone=%s",
+                            bool(getattr(agent.calendar, '_api_key', None)),
+                            getattr(agent.calendar, 'event_type_id', None),
+                            getattr(agent.calendar, 'tz', None))
+
+        # Set analysis fields if configured
+        analysis_fields = config.get("structured_data_fields", [])
+        logger.info(f"ANALYSIS_FIELDS_DEBUG | raw_config={config.get('structured_data_fields')} | processed_fields={analysis_fields}")
+        if analysis_fields:
+            agent.set_analysis_fields(analysis_fields)
+            logger.info(f"ANALYSIS_FIELDS_SET | count={len(analysis_fields)} | fields={[f.get('name', 'unnamed') for f in analysis_fields]}")
+        else:
+            logger.warning("NO_ANALYSIS_FIELDS_CONFIGURED | assistant has no structured_data_fields")
+
+        return agent
+
+    async def _classify_data_fields_with_llm(self, structured_data: list) -> Dict[str, list]:
+        """Use LLM to classify which fields should be asked vs extracted."""
+        try:
+            import openai
+            openai_api_key = os.getenv("OPENAI_API_KEY")
+            if not openai_api_key:
+                logger.warning("OPENAI_API_KEY not configured for field classification")
+                return {"ask_user": [], "extract_from_conversation": []}
+
+            client = openai.AsyncOpenAI(api_key=openai_api_key)
+            
+            # Prepare field descriptions
+            fields_json = json.dumps([
+                {
+                    "name": field.get("name", ""),
+                    "description": field.get("description", ""),
+                    "type": field.get("type", "string")
+                }
+                for field in structured_data
+            ], indent=2)
+            
+            classification_prompt = f"""You are analyzing data fields for a voice conversation system. For each field, decide whether it should be:
+1. "ask_user" - Information that should be directly asked from the user during the conversation
+2. "extract_from_conversation" - Information that should be extracted/inferred from the conversation after it ends
+
+Fields to classify:
+{fields_json}
+
+Guidelines:
+- Ask user for: contact details, preferences, specific choices, personal information, scheduling details
+- Extract from conversation: summaries, outcomes, sentiment, quality metrics, call analysis, key points discussed
+
+Return a JSON object with two arrays. You must respond with valid JSON format only:
+{{
+  "ask_user": ["field_name1", "field_name2"],
+  "extract_from_conversation": ["field_name3", "field_name4"]
+}}"""
+
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that classifies data fields for voice conversations."},
+                        {"role": "user", "content": classification_prompt}
+                    ],
+                    max_tokens=500,
+                    temperature=0.1,
+                    response_format={"type": "json_object"}
+                ),
+                timeout=10
+            )
+
+            classification = json.loads(response.choices[0].message.content.strip())
+            logger.info(f"FIELD_CLASSIFICATION | ask_user={len(classification.get('ask_user', []))} | extract={len(classification.get('extract_from_conversation', []))}")
+            return classification
+
         except Exception as e:
-            logging.exception("RECORDING_ERROR | call_sid=%s | error=%s", call_sid, str(e))
-    else:
-        if not call_sid:
-            logging.warning("RECORDING_SKIPPED | no_call_sid_found")
-        if not recording_service.is_enabled():
-            logging.warning("RECORDING_SKIPPED | service_disabled")
+            logger.error(f"FIELD_CLASSIFICATION_ERROR | error={str(e)}")
+            # Fallback: put all fields in ask_user
+            return {
+                "ask_user": [field.get("name", "") for field in structured_data],
+                "extract_from_conversation": []
+            }
 
-    # ----------------------------------------------------------------
-    # From this point, BRANCH:
-    #   - OUTBOUND (campaign dialer): NO Assistant resolution, NO calendar; use lightweight Agent.
-    #   - INBOUND: resolve Assistant & calendar and use services.assistant.Assistant.
-    # ----------------------------------------------------------------
+    async def _build_analysis_instructions(self, config: Dict[str, Any]) -> str:
+        """Build analysis instructions based on assistant configuration."""
+        instructions = []
+        
+        # Add structured data collection instructions
+        structured_data = config.get("structured_data_fields", [])
+        logger.info(f"ANALYSIS_INSTRUCTIONS_DEBUG | structured_data_count={len(structured_data)} | data={structured_data}")
+        if structured_data:
+            # Use LLM to classify fields
+            try:
+                classification = await self._classify_data_fields_with_llm(structured_data)
+            except Exception as e:
+                logger.error(f"CLASSIFICATION_ERROR | error={str(e)}")
+                # Fallback to basic classification
+                classification = {
+                    "ask_user": [field.get("name", "") for field in structured_data],
+                    "extract_from_conversation": []
+                }
+            
+            # Create field lookup
+            field_map = {field.get("name", ""): field for field in structured_data}
+            
+            # Build instructions for fields to ask
+            ask_fields = []
+            for field_name in classification.get("ask_user", []):
+                field = field_map.get(field_name)
+                if field:
+                    ask_fields.append(f"- {field.get('name', '')}: {field.get('description', '')} (type: {field.get('type', 'string')})")
+            
+            if ask_fields:
+                instructions.append("PRIORITY DATA COLLECTION:")
+                instructions.append("You have access to collect_analysis_data(field_name, field_value, field_type) function.")
+                instructions.append("IMPORTANT: After your first greeting, immediately start collecting the following data from the user:")
+                instructions.extend(ask_fields)
+                instructions.append("Ask for this information naturally and conversationally. Use collect_analysis_data silently whenever you have a value - this tool completes without requiring a response.")
+                instructions.append("Collect ALL required data fields before moving to other topics like booking or general conversation.")
+                instructions.append("Continue natural conversation flow - do NOT repeat yourself or say the same thing twice.")
+            
+            # Build instructions for fields to extract
+            extract_fields = []
+            for field_name in classification.get("extract_from_conversation", []):
+                field = field_map.get(field_name)
+                if field:
+                    extract_fields.append(f"- {field.get('name', '')}: {field.get('description', '')} (type: {field.get('type', 'string')})")
+            
+            if extract_fields:
+                instructions.append("\nAI-EXTRACTED FIELDS:")
+                instructions.append("The following fields will be automatically extracted from the conversation using AI analysis:")
+                instructions.extend(extract_fields)
+                instructions.append("DO NOT ask the user for these fields - they will be analyzed and extracted automatically from the conversation.")
 
-    # --- OpenAI + VAD configuration (shared) ------------------------
-    openai_api_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API")
-    if not openai_api_key:
-        logging.warning("OPENAI_API_KEY/OPENAI_API not set; OpenAI plugins will fail to auth.")
+        # Add call summary instructions
+        call_summary = config.get("analysis_summary_prompt")
+        if call_summary:
+            instructions.append("\nCALL SUMMARY:")
+            instructions.append(f"At the end of the call, a summary will be generated using: {call_summary}")
 
-    stt_model = os.getenv("OPENAI_STT_MODEL", "gpt-4o-transcribe")
-    tts_model = os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
-    tts_voice = os.getenv("OPENAI_TTS_VOICE", "alloy")
+        # Add success evaluation instructions
+        custom_success_prompt = config.get("analysis_evaluation_prompt")
+        if custom_success_prompt:
+            instructions.append("\nSUCCESS EVALUATION:")
+            instructions.append(f"At the end of the call, success will be evaluated based on: {custom_success_prompt}")
 
-    # VAD
-    vad = ctx.proc.userdata.get("vad") if hasattr(ctx, "proc") else None
-    if vad is None:
+        return "\n".join(instructions)
+
+    def _validate_model_names(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate and fix model names to prevent API errors."""
+        # Valid OpenAI models
+        valid_openai_llm_models = {
+            "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo",
+            "gpt-4o-2024-08-06", "gpt-4-turbo-2024-04-09", "gpt-3.5-turbo-0125"
+        }
+        
+        valid_openai_tts_models = {
+            "tts-1", "tts-1-hd"
+        }
+        
+        valid_openai_stt_models = {
+            "whisper-1"
+        }
+        
+        valid_elevenlabs_models = {
+            "eleven_turbo_v2", "eleven_multilingual_v2", "eleven_monolingual_v1"
+        }
+        
+        valid_groq_models = {
+            "llama-3.1-8b-instant", "llama-3.1-70b-versatile", "llama-3.3-70b-versatile",
+            "mixtral-8x7b-32768", "gemma2-9b-it"
+        }
+        
+        # Fix LLM model with comprehensive mapping (like old implementation)
+        llm_provider = config.get("llm_provider_setting", "OpenAI")
+        llm_model = config.get("llm_model_setting", "gpt-4o-mini")
+        original_model = llm_model
+        
+        # Map model names to API format based on provider (from old implementation)
+        if llm_provider == "OpenAI":
+            if llm_model == "GPT-4o Mini":
+                llm_model = "gpt-4o-mini"
+            elif llm_model == "GPT-4o":
+                llm_model = "gpt-4o"
+            elif llm_model == "GPT-4":
+                llm_model = "gpt-4"
+            elif llm_model == "GPT-3.5 Turbo":
+                llm_model = "gpt-3.5-turbo"
+        elif llm_provider == "Groq":
+            # Handle decommissioned models - map old models to new ones (from old implementation)
+            model_mapping = {
+                "llama3-8b-8192": "llama-3.1-8b-instant",
+                "llama3-70b-8192": "llama-3.3-70b-versatile",
+                "mixtral-8x7b-32768": "llama-3.1-8b-instant",
+                "gemma2-9b-it": "llama-3.1-8b-instant"
+            }
+            llm_model = model_mapping.get(llm_model, llm_model)
+        elif llm_provider == "Cerebras":
+            # Cerebras models are already in correct format
+            pass
+        
+        if original_model != llm_model:
+            logger.info(f"MODEL_NAME_MAPPED | provider={llm_provider} | original={original_model} | mapped={llm_model}")
+            config["llm_model_setting"] = llm_model
+        
+        # Final validation after mapping
+        if llm_provider == "OpenAI" and llm_model not in valid_openai_llm_models:
+            logger.warning(f"INVALID_OPENAI_LLM_MODEL | model={llm_model} | using fallback=gpt-4o-mini")
+            config["llm_model_setting"] = "gpt-4o-mini"
+        elif llm_provider == "Groq" and llm_model not in valid_groq_models:
+            logger.warning(f"INVALID_GROQ_MODEL | model={llm_model} | using fallback=llama-3.1-8b-instant")
+            config["llm_model_setting"] = "llama-3.1-8b-instant"
+        
+        # Fix TTS model with mapping (like old implementation)
+        voice_provider = config.get("voice_provider_setting", "OpenAI")
+        voice_model = config.get("voice_model_setting", "tts-1")
+        original_voice_model = voice_model
+        
+        # Map TTS model names (from old implementation)
+        if voice_provider == "OpenAI":
+            if voice_model == "gpt-4o-mini-tts":
+                voice_model = "tts-1"
+            elif voice_model.startswith("eleven_"):
+                voice_model = "tts-1"  # Fallback for ElevenLabs models when using OpenAI
+        
+        if original_voice_model != voice_model:
+            logger.info(f"TTS_MODEL_MAPPED | provider={voice_provider} | original={original_voice_model} | mapped={voice_model}")
+            config["voice_model_setting"] = voice_model
+        
+        # Final validation after mapping
+        if voice_provider == "OpenAI" and voice_model not in valid_openai_tts_models:
+            logger.warning(f"INVALID_OPENAI_TTS_MODEL | model={voice_model} | using fallback=tts-1")
+            config["voice_model_setting"] = "tts-1"
+        elif voice_provider == "ElevenLabs" and voice_model not in valid_elevenlabs_models:
+            logger.warning(f"INVALID_ELEVENLABS_MODEL | model={voice_model} | using fallback=eleven_turbo_v2")
+            config["voice_model_setting"] = "eleven_turbo_v2"
+        
+        # Fix STT model
+        stt_model = config.get("stt_model", "whisper-1")
+        if stt_model not in valid_openai_stt_models:
+            logger.warning(f"INVALID_STT_MODEL | model={stt_model} | using fallback=whisper-1")
+            config["stt_model"] = "whisper-1"
+        
+        return config
+
+    def _create_session(self, config: Dict[str, Any]) -> AgentSession:
+        """Create agent session with proper configuration."""
+        # Validate and fix model names to prevent API errors
+        config = self._validate_model_names(config)
+        
+        # Prewarm VAD for better performance
         vad = silero.VAD.load()
 
-    # ===================== OUTBOUND PATH ============================
-    if phone_number is not None:
-        # Build campaign-only instructions (no assistant, no calendar)
-        outbound_instructions = build_campaign_outbound_instructions(
-            contact_name=contact_name,
-            campaign_prompt=campaign_prompt
-        )
-        logging.info("PROMPT_TRACE_FINAL (OUTBOUND) | sha256=%s | len=%d | preview=%s",
-                     sha256_text(outbound_instructions), len(outbound_instructions), preview(outbound_instructions))
+        # Get configuration from assistant data
+        llm_provider = config.get("llm_provider_setting", "OpenAI")
+        llm_model = config.get("llm_model_setting", "gpt-4o-mini")
+        temperature = config.get("temperature_setting", 0.1)
+        max_tokens = config.get("max_token_setting", 250)
 
-        # LLM config for outbound: use env/defaults, not per-assistant
-        llm_model = os.getenv("OPENAI_LLM_MODEL", "gpt-4o-mini")
-        temperature = float(os.getenv("OPENAI_TEMPERATURE", "0.3"))
-        max_tokens = int(os.getenv("OPENAI_MAX_TOKENS", "250"))
+        voice_provider = config.get("voice_provider_setting", "OpenAI")
+        voice_model = config.get("voice_model_setting", "gpt-4o-mini-tts")
+        voice_name = config.get("voice_name_setting", "alloy")
 
-        # Voice config for outbound: use env/defaults
-        outbound_voice_provider = os.getenv("VOICE_PROVIDER", "OpenAI")
-        outbound_voice_model = os.getenv("VOICE_MODEL", tts_model)
-        outbound_voice_name = os.getenv("VOICE_NAME", tts_voice)
-        
-        # Configure TTS for outbound
-        if outbound_voice_provider == "ElevenLabs":
-            elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-            if elevenlabs_api_key and ELEVENLABS_AVAILABLE:
-                try:
-                    outbound_tts = lk_elevenlabs.TTS(
-                        voice_id=outbound_voice_name,
-                        api_key=elevenlabs_api_key,
-                        model=outbound_voice_model,
-                        streaming_latency=int(os.getenv("VOICE_OPTIMIZE_STREAMING", "2")),
-                        inactivity_timeout=300,  # 5 minutes timeout
-                        auto_mode=True  # Reduces latency and improves stability
-                    )
-                    logging.info("OUTBOUND_ELEVENLABS_TTS_CONFIGURED | voice_id=%s", outbound_voice_name)
-                except Exception as e:
-                    logging.error("ELEVENLABS_TTS_ERROR | error=%s | falling back to OpenAI TTS for outbound", str(e))
-                    # Map ElevenLabs voice to OpenAI voice for fallback
-                    openai_voice = "alloy"  # Default OpenAI voice
-                    openai_tts_model = "tts-1" if outbound_voice_model.startswith("eleven_") else outbound_voice_model
-                    outbound_tts = lk_openai.TTS(model=openai_tts_model, voice=openai_voice, api_key=openai_api_key)
-            else:
-                if not ELEVENLABS_AVAILABLE:
-                    logging.warning("ELEVENLABS_NOT_AVAILABLE | falling back to OpenAI TTS for outbound")
-                else:
-                    logging.warning("ELEVENLABS_API_KEY_NOT_SET | falling back to OpenAI TTS for outbound")
-                # Map ElevenLabs voice to OpenAI voice for fallback
-                openai_voice = "alloy"  # Default OpenAI voice
-                openai_tts_model = "tts-1" if outbound_voice_model.startswith("eleven_") else outbound_voice_model
-                outbound_tts = lk_openai.TTS(model=openai_tts_model, voice=openai_voice, api_key=openai_api_key)
-        else:
-            outbound_tts = lk_openai.TTS(model=outbound_voice_model, voice=outbound_voice_name, api_key=openai_api_key)
-            logging.info("OUTBOUND_OPENAI_TTS_CONFIGURED | model=%s | voice=%s", outbound_voice_model, outbound_voice_name)
+        # Create LLM based on provider
+        llm = self._create_llm(llm_provider, llm_model, temperature, max_tokens, config)
 
-        # Configure LLM for outbound - Check if we should use REST API
-        if is_rest_model(llm_model):
-            logging.info("OUTBOUND_REST_LLM_CONFIGURED | model=%s | using REST API", llm_model)
-            outbound_llm = create_rest_llm(
-                model=llm_model,
-                api_key=openai_api_key,
-                base_url=get_rest_config().rest_api_base_url
-            )
-        else:
-            outbound_llm = lk_openai.LLM(
-                model=llm_model,
-                api_key=openai_api_key,
-                temperature=temperature,
-                tool_choice="none",  # outbound
-            )
-            logging.info("OUTBOUND_OPENAI_LLM_CONFIGURED | model=%s | temperature=%s", llm_model, temperature)
+        # Create TTS based on provider
+        tts = self._create_tts(voice_provider, voice_model, voice_name, config)
 
-        session = AgentSession(
-            turn_detection="vad",
+        # Create STT (always OpenAI for now)
+        stt_model = config.get("stt_model", "whisper-1")
+        stt = openai.STT(model=stt_model)
+
+        return AgentSession(
             vad=vad,
-            stt=lk_openai.STT(model=stt_model, api_key=openai_api_key),
-            llm=outbound_llm,
-            tts=outbound_tts,
+            stt=stt,
+            llm=llm,
+            tts=tts,
+            allow_interruptions=True,
+            min_endpointing_delay=0.5,
+            max_endpointing_delay=6.0,
         )
 
-        logging.info("STARTING_SESSION (OUTBOUND) | instructions_length=%d | has_calendar=%s",
-                     len(outbound_instructions), False)
-
-        await session.start(
-            room=ctx.room,
-            agent=Agent(instructions=outbound_instructions),
-        )
-        logging.info("SESSION_STARTED (OUTBOUND) | session_active=%s", session is not None)
-
-        async def save_call_on_shutdown_outbound():
-            end_time = datetime.datetime.now()
-            logging.info("CALL_END | call_id=%s | end_time=%s", call_id, end_time.isoformat())
-            session_history = []
-            try:
-                if hasattr(session, 'history') and session.history:
-                    history_dict = session.history.to_dict()
-                    if "items" in history_dict:
-                        session_history = history_dict["items"]
-                        logging.info("SESSION_HISTORY_RETRIEVED | items_count=%d", len(session_history))
-                    else:
-                        logging.warning("SESSION_HISTORY_NO_ITEMS | history_dict_keys=%s",
-                                        list(history_dict.keys()) if history_dict else "None")
-                else:
-                    logging.warning("SESSION_HISTORY_NOT_AVAILABLE | has_history_attr=%s | history_exists=%s",
-                                    hasattr(session, 'history'), bool(getattr(session, 'history', None)))
-            except Exception as e:
-                logging.warning("Failed to get session history: %s", str(e))
-
-            # Extract campaign_id from job metadata
-            campaign_id = None
-            contact_name = "Unknown"
-            try:
-                dial_info = json.loads(ctx.job.metadata)
-                campaign_id = dial_info.get("campaignId")
-                contact_name = dial_info.get("contactName", "Unknown")
-                logging.info("CAMPAIGN_METADATA | campaign_id=%s | contact_name=%s", campaign_id, contact_name)
-            except Exception as e:
-                logging.warning("Failed to parse campaign metadata: %s", str(e))
-
-            # Save to campaign_calls table if we have campaign_id
-            if campaign_id and call_sid:
-                await save_campaign_call_to_supabase(
-                    call_sid=call_sid,
-                    campaign_id=campaign_id,
-                    phone_number=phone_number or "unknown",
-                    contact_name=contact_name,
-                    start_time=start_time,
-                    end_time=end_time,
-                    session_history=session_history,
-                    participant_identity=participant.identity if participant else None,
-                    recording_sid=recording_sid,
-                    assistant_id=assistant_id_from_job
-                )
-            else:
-                logging.warning("CAMPAIGN_CALL_SKIPPED | campaign_id=%s | call_sid=%s", campaign_id, call_sid)
-
-            # Also save to call_history for general tracking
-            assistant_id = assistant_id_from_job or "campaign"
-            await save_call_history_to_supabase(
-                call_id=call_id,
-                assistant_id=assistant_id,
-                called_did=called_did or "unknown",
-                start_time=start_time,
-                end_time=end_time,
-                session_history=session_history,
-                participant_identity=participant.identity if participant else None,
-                recording_sid=recording_sid,
-                call_sid=call_sid
-            )
-
-            # Send n8n webhook if assistant has n8n config
-            if assistant_id and assistant_id != "campaign":
-                try:
-                    # Fetch assistant n8n configuration
-                    n8n_config = await fetch_assistant_n8n_config(assistant_id)
-                    if n8n_config:
-                        # Build call data for n8n payload
-                        call_data = {
-                            "call_id": call_id,
-                            "from_number": phone_number or "unknown",
-                            "to_number": called_did or "unknown",
-                            "call_duration": int((end_time - start_time).total_seconds()),
-                            "transcript_url": None,  # Can be added if available
-                            "recording_url": None,   # Can be added if available
-                            "call_direction": "outbound",
-                            "call_status": "completed",
-                            "start_time": start_time.isoformat(),
-                            "end_time": end_time.isoformat(),
-                            "participant_identity": participant.identity if participant else None
-                        }
-
-                        # Build and send n8n payload
-                        webhook_configs = n8n_config.get("webhooks", [])
-                        payload = build_n8n_payload(n8n_config, call_data, session_history, webhook_configs, agent)
-                        if payload and webhook_configs:
-                            # Send to each configured webhook
-                            for webhook_config in webhook_configs:
-                                webhook_url = webhook_config.get("param")  # This should contain the actual URL
-                                if webhook_url:
-                                    response = await send_n8n_webhook(webhook_url, payload)
-                                    
-                                    if response:
-                                        logging.info("N8N_WEBHOOK_COMPLETED | assistant_id=%s | call_id=%s | webhook_name=%s", 
-                                                   assistant_id, call_id, webhook_config.get("name", "Unknown"))
-                                    else:
-                                        logging.warning("N8N_WEBHOOK_FAILED | assistant_id=%s | call_id=%s | webhook_name=%s", 
-                                                      assistant_id, call_id, webhook_config.get("name", "Unknown"))
-                    else:
-                        logging.info("N8N_CONFIG_NOT_FOUND | assistant_id=%s | skipping webhook", assistant_id)
-                except Exception as e:
-                    logging.error("N8N_WEBHOOK_ERROR | assistant_id=%s | call_id=%s | error=%s", 
-                                 assistant_id, call_id, str(e))
-
-        ctx.add_shutdown_callback(save_call_on_shutdown_outbound)
-
-        logging.info("STARTING_SESSION_RUN (OUTBOUND) | user_input=empty")
-        await session.run(user_input="")
-        logging.info("SESSION_RUN_COMPLETED (OUTBOUND)")
-        return  # ✅ stop here; do not fall through to inbound logic
-
-    # ===================== INBOUND PATH =============================
-    # --- Resolve assistantId (INBOUND ONLY) -------------------------
-    resolver_meta: dict = {}
-    resolver_label: str = "none"
-
-    p_meta, p_kind = ({}, "none")
-    if participant.metadata:
-        p_meta, p_kind = _parse_json_or_b64(participant.metadata)
-
-    r_meta_raw = getattr(ctx.room, "metadata", "") or ""
-    r_meta, r_kind = ({}, "none")
-    if r_meta_raw:
-        r_meta, r_kind = _parse_json_or_b64(r_meta_raw)
-
-    id_sources: list[tuple[str, dict]] = [
-        (f"participant.{p_kind}", p_meta),
-        (f"room.{r_kind}", r_meta),
-    ]
-
-    assistant_id, id_src = choose_from_sources(
-        id_sources,
-        ("assistantId",),
-        ("assistant", "id"),
-        default=None,
-    )
-
-    backend_url = os.getenv("BACKEND_URL", "http://localhost:4000").rstrip("/")
-    resolver_path = os.getenv("ASSISTANT_RESOLVER_PATH", "/api/v1/livekit/assistant").lstrip("/")
-    base_resolver = f"{backend_url}/{resolver_path}".rstrip("/")
-
-    if not assistant_id and called_did:
-        q = urllib.parse.urlencode({"number": called_did})
-        for path in ("by-number", ""):
-            url = f"{base_resolver}/{path}?{q}" if path else f"{base_resolver}?{q}"
-            data = _http_get_json(url)
-            if data and data.get("success") and isinstance(data.get("assistant"), dict):
-                assistant_id = data["assistant"].get("id") or None
-                if assistant_id:
-                    resolver_meta = {
-                        "assistant": {
-                            "id": assistant_id,
-                            "name": data["assistant"].get("name"),
-                            "prompt": data["assistant"].get("prompt"),
-                            "firstMessage": data["assistant"].get("firstMessage"),
-                        },
-                        "cal_api_key": data.get("cal_api_key"),
-                        "cal_event_type_id": (
-                            str(data.get("cal_event_type_id"))
-                            if data.get("cal_event_type_id") is not None else None
-                        ),
-                        "cal_timezone": data.get("cal_timezone"),
-                    }
-                    resolver_label = "resolver.by_number"
-                    id_src = f"{resolver_label}.assistant.id"
-                    break
-
-    if assistant_id:
-        supabase_url = os.getenv("SUPABASE_URL", "").strip()
-        supabase_key = (
-            os.getenv("SUPABASE_SERVICE_ROLE", "").strip()
-            or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-        )
-        logging.info("SUPABASE_CHECK | url_present=%s | key_present=%s | create_client=%s",
-                     bool(supabase_url), bool(supabase_key), create_client is not None)
-        used_supabase = False
-        if create_client and supabase_url and supabase_key:
-            try:
-                sb: Client = create_client(supabase_url, supabase_key)  # type: ignore
-                resp = sb.table("assistant").select(
-                    "id, name, prompt, first_message, cal_api_key, cal_event_type_id, cal_timezone, llm_provider_setting, llm_model_setting, temperature_setting, max_token_setting, knowledge_base_id, "
-                    "voice_provider_setting, voice_model_setting, voice_name_setting, background_sound_setting, input_min_characters, voice_stability, voice_clarity_similarity, voice_speed, "
-                    "use_speaker_boost, voice_optimize_streaming_latency, voice_seconds, voice_backoff_seconds, silence_timeout, maximum_duration, smart_endpointing, "
-                    "n8n_webhook_url, n8n_webhook_fields, groq_model, groq_temperature, groq_max_tokens, cerebras_model, cerebras_temperature, cerebras_max_tokens"
-                ).eq("id", assistant_id).single().execute()
-                row = resp.data
-                print("row", row)
-                if row:
-                    resolver_meta = {
-                        "assistant": {
-                            "id": row.get("id") or assistant_id,
-                            "name": row.get("name") or "Assistant",
-                            "prompt": row.get("prompt") or "",
-                            "firstMessage": row.get("first_message") or "",
-                            "llm_provider": row.get("llm_provider_setting") or "OpenAI",
-                            "llm_model": row.get("llm_model_setting") or "gpt-4o-mini",
-                            "temperature": row.get("temperature_setting") or 0.1,
-                            "max_tokens": row.get("max_token_setting") or 250,
-                        },
-                        "voice": {
-                            "provider": row.get("voice_provider_setting") or "OpenAI",
-                            "model": row.get("voice_model_setting") or "gpt-4o-mini-tts",
-                            "voice": row.get("voice_name_setting") or "alloy",
-                            "background_sound": row.get("background_sound_setting") or "none",
-                            "input_min_characters": row.get("input_min_characters") or 10,
-                            "stability": row.get("voice_stability") or 0.71,
-                            "clarity": row.get("voice_clarity_similarity") or 0.75,
-                            "speed": row.get("voice_speed") or 1.0,
-                            "use_speaker_boost": row.get("use_speaker_boost") or True,
-                            "optimize_streaming": row.get("voice_optimize_streaming_latency") or 2,
-                            "voice_seconds": row.get("voice_seconds") or 0.2,
-                            "backoff_seconds": row.get("voice_backoff_seconds") or 1,
-                            "silence_timeout": row.get("silence_timeout") or 30,
-                            "max_duration": row.get("maximum_duration") or 1800,
-                            "smart_endpointing": row.get("smart_endpointing") or True,
-                        },
-                        "cal_api_key": row.get("cal_api_key"),
-                        "cal_event_type_id": row.get("cal_event_type_id"),
-                        "cal_timezone": row.get("cal_timezone") or "UTC",
-                        "knowledge_base_id": row.get("knowledge_base_id"),
-                        # N8N webhook configuration
-                        "n8n_webhook_url": row.get("n8n_webhook_url"),
-                        "n8n_webhook_fields": row.get("n8n_webhook_fields", []),
-                    }
-                    resolver_label = "resolver.supabase"
-                    used_supabase = True
-            except Exception:
-                logging.exception("SUPABASE_ERROR | assistant fetch failed")
-
-        if not used_supabase:
-            url = f"{base_resolver}/{assistant_id}"
-            data = _http_get_json(url)
-            if data and data.get("success") and isinstance(data.get("assistant"), dict):
-                a = data["assistant"]
-                resolver_meta = {
-                    "assistant": {
-                        "id": a.get("id") or assistant_id,
-                        "name": a.get("name"),
-                        "prompt": a.get("prompt"),
-                        "firstMessage": a.get("firstMessage"),
-                        "llm_provider": a.get("llm_provider_setting") or "OpenAI",
-                        "llm_model": a.get("llm_model_setting") or "gpt-4o-mini",
-                        "temperature": a.get("temperature_setting") or 0.1,
-                        "max_tokens": a.get("max_token_setting") or 250,
-                    },
-                    "voice": {
-                        "provider": a.get("voice_provider_setting") or "OpenAI",
-                        "model": a.get("voice_model_setting") or "gpt-4o-mini-tts",
-                        "voice": a.get("voice_name_setting") or "alloy",
-                        "background_sound": a.get("background_sound_setting") or "none",
-                        "input_min_characters": a.get("input_min_characters") or 10,
-                        "stability": a.get("voice_stability") or 0.71,
-                        "clarity": a.get("voice_clarity_similarity") or 0.75,
-                        "speed": a.get("voice_speed") or 1.0,
-                        "use_speaker_boost": a.get("use_speaker_boost") or True,
-                        "optimize_streaming": a.get("voice_optimize_streaming_latency") or 2,
-                        "voice_seconds": a.get("voice_seconds") or 0.2,
-                        "backoff_seconds": a.get("voice_backoff_seconds") or 1,
-                        "silence_timeout": a.get("silence_timeout") or 30,
-                        "max_duration": a.get("maximum_duration") or 1800,
-                        "smart_endpointing": a.get("smart_endpointing") or True,
-                    },
-                    "cal_api_key": data.get("cal_api_key"),
-                    "cal_event_type_id": (
-                        str(data.get("cal_event_type_id"))
-                        if data.get("cal_event_type_id") is not None else None
-                    ),
-                    "cal_timezone": data.get("cal_timezone"),
-                }
-                resolver_label = "resolver.id_http"
-            else:
-                resolver_label = "resolver.error"
-
-    logging.info("ASSISTANT_ID | value=%s | source=%s | resolver=%s", assistant_id or "<none>", id_src, resolver_label)
-
-    if not assistant_id or not resolver_meta.get("assistant"):
-        logging.error("NO_ASSISTANT_FOUND | assistant_id=%s | resolver_meta_present=%s",
-                      assistant_id or "<none>", bool(resolver_meta.get("assistant")))
-        logging.warning("Using minimal defaults - assistant data not found")
-        resolver_meta = {
-            "assistant": {
-                "id": assistant_id or "unknown",
-                "name": "Assistant",
-                "prompt": "You are a helpful voice assistant.",
-                "firstMessage": "",
-                "llm_provider": "OpenAI",
-                "llm_model": "gpt-4o-mini",
-                "temperature": 0.1,
-                "max_tokens": 250,
-            },
-            "voice": {
-                "provider": "OpenAI",
-                "model": "gpt-4o-mini-tts",
-                "voice": "alloy",
-                "background_sound": "none",
-                "input_min_characters": 10,
-                "stability": 0.71,
-                "clarity": 0.75,
-                "speed": 1.0,
-                "use_speaker_boost": True,
-                "optimize_streaming": 2,
-                "voice_seconds": 0.2,
-                "backoff_seconds": 1,
-                "silence_timeout": 30,
-                "max_duration": 1800,
-                "smart_endpointing": True,
+    def _create_llm(self, provider: str, model: str, temperature: float, max_tokens: int, config: Dict[str, Any]):
+        """Create LLM based on provider."""
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        
+        if provider == "Groq" and GROQ_AVAILABLE:
+            groq_api_key = os.getenv("GROQ_API_KEY")
+            groq_model = config.get("groq_model") or model
+            groq_temperature = config.get("groq_temperature") or temperature
+            groq_max_tokens = config.get("groq_max_tokens") or max_tokens
+            
+            # Handle decommissioned models
+            model_mapping = {
+                "llama3-8b-8192": "llama-3.1-8b-instant",
+                "llama3-70b-8192": "llama-3.3-70b-versatile",
+                "mixtral-8x7b-32768": "llama-3.1-8b-instant",
+                "gemma2-9b-it": "llama-3.1-8b-instant"
             }
-        }
-
-    # --- Build INBOUND instructions (assistant + optional campaign info) ----
-    assistant_name = (resolver_meta.get("assistant") or {}).get("name") or "Assistant"
-    base_prompt = (resolver_meta.get("assistant") or {}).get("prompt") or "You are a helpful voice assistant."
-    first_message = (resolver_meta.get("assistant") or {}).get("firstMessage") or ""
-
-    if campaign_prompt and contact_info:
-        enhanced_prompt = campaign_prompt.replace('{name}', contact_info.get('name', 'there'))
-        enhanced_prompt = enhanced_prompt.replace('{email}', contact_info.get('email', 'your email'))
-        enhanced_prompt = enhanced_prompt.replace('{phone}', contact_info.get('phone', 'your phone number'))
-        prompt = f"""{base_prompt}
-
-CAMPAIGN CONTEXT:
-You are handling an inbound call. If relevant, follow this script:
-{enhanced_prompt}
-
-CONTACT INFORMATION:
-- Name: {contact_info.get('name', 'Unknown')}
-- Email: {contact_info.get('email', 'Not provided')}
-- Phone: {contact_info.get('phone', 'Not provided')}
-"""
-        logging.info("ENHANCED_PROMPT | campaign_prompt_length=%d | contact_name=%s | enhanced_prompt=%s",
-                     len(enhanced_prompt), contact_info.get('name', 'Unknown'), enhanced_prompt)
-    else:
-        logging.info("NO_CAMPAIGN_CONTEXT | campaign_prompt=%s | contact_info=%s", campaign_prompt, contact_info)
-        prompt = base_prompt
-
-    # Check N8N webhook configuration for data collection requirements
-    n8n_config = None
-    print(f"DEBUG: N8N_CONFIG_CHECK | webhook_url={resolver_meta.get('n8n_webhook_url') if resolver_meta else None} | webhook_fields={resolver_meta.get('n8n_webhook_fields') if resolver_meta else None}")
-    logging.info("N8N_CONFIG_CHECK | webhook_url=%s | webhook_fields=%s", 
-                resolver_meta.get("n8n_webhook_url") if resolver_meta else None,
-                resolver_meta.get("n8n_webhook_fields") if resolver_meta else None)
-    
-    if resolver_meta and resolver_meta.get("n8n_webhook_url") and resolver_meta.get("n8n_webhook_fields"):
-        webhook_url = resolver_meta.get("n8n_webhook_url")
-        webhook_fields = resolver_meta.get("n8n_webhook_fields", [])
-        if webhook_url and webhook_fields and len(webhook_fields) > 0:
-            n8n_config = {
-                "assistant_id": assistant_id,
-                "assistant_name": resolver_meta.get("assistant", {}).get("name", "Assistant"),
-                "webhook_url": webhook_url,
-                "webhook_fields": webhook_fields
-            }
-            print(f"DEBUG: N8N_CONFIG_CREATED | webhook_url={webhook_url} | fields_count={len(webhook_fields)}")
-            logging.info("N8N_CONFIG_CREATED | webhook_url=%s | fields_count=%d", webhook_url, len(webhook_fields))
-    
-    # Build data collection instructions based on N8N webhook settings
-    data_collection_instructions = ""
-    if n8n_config and n8n_config.get("webhook_fields"):
-        # Extract webhook field names and descriptions to understand what data to collect
-        webhook_fields = n8n_config.get("webhook_fields", [])
-        field_descriptions = [field.get("description", "") for field in webhook_fields if field.get("description")]
-        field_names = [field.get("name", "") for field in webhook_fields if field.get("name")]
-        
-        logging.info("N8N_FIELDS_PROCESSING | field_names=%s | field_descriptions=%s", field_names, field_descriptions)
-        
-        if field_descriptions and field_names:
-            # Use the new dynamic instruction generation
-            data_collection_instructions = generate_dynamic_collection_instructions(webhook_fields)
-            print(f"DEBUG: N8N_DATA_COLLECTION_INSTRUCTIONS_CREATED | length={len(data_collection_instructions)}")
-            logging.info("N8N_DATA_COLLECTION_INSTRUCTIONS_CREATED | length=%d", len(data_collection_instructions))
-
-    flow_instructions = """
-GUIDED CALL POLICY (be natural, not rigid):
-- Prefer one tool call per caller turn. (Parallel tool calls are disabled.)
-- Only pass values the caller actually said—no placeholders.
-- If they mention symptoms, be empathetic, then ask if they want to book.
-- If they want to book:
-  1) Ask for the reason -> set_notes(reason).
-  2) Ask for a day -> list_slots_on_day(day), read numbered options.
-  3) They pick -> choose_slot(option).
-  4) Collect name -> email -> phone (one by one).
-  5) Read back summary. If yes -> confirm_details_yes(); if no -> confirm_details_no() and fix it, then repeat.
-""".strip()
-
-    instructions = prompt + "\n\n" + flow_instructions
-    
-    # Debug: Print the final instructions to see what the agent is getting
-    print(f"DEBUG: FINAL_INSTRUCTIONS_LENGTH | length={len(instructions)}")
-    print(f"DEBUG: FINAL_INSTRUCTIONS_PREVIEW | preview={instructions[:500]}...")
-    logging.info("FINAL_INSTRUCTIONS_LENGTH | length=%d", len(instructions))
-
-    # Calendar (INBOUND ONLY)
-    cal_api_key = resolver_meta.get("cal_api_key")
-    cal_event_type_id = resolver_meta.get("cal_event_type_id")
-    cal_timezone = resolver_meta.get("cal_timezone") or "UTC"
-
-    calendar: Calendar | None = None
-    if cal_api_key and cal_event_type_id:
-        try:
-            calendar = CalComCalendar(
-                api_key=str(cal_api_key),
-                timezone=str(cal_timezone or "UTC"),
-                event_type_id=int(cal_event_type_id),
-            )
-            await calendar.initialize()
-            instructions += " Tools available: confirm_wants_to_book_yes, set_notes, list_slots_on_day, choose_slot, provide_name, provide_email, provide_phone, confirm_details_yes, confirm_details_no, finalize_booking."
-            logging.info("CALENDAR_READY | event_type_id=%s | tz=%s", cal_event_type_id, cal_timezone)
-        except Exception:
-            logging.exception("Failed to initialize Cal.com calendar")
-    
-    # Add data collection tools if N8N is configured
-    if n8n_config and n8n_config.get("webhook_fields"):
-        instructions += " Additional tools for data collection: collect_webhook_data(field_name, field_value) - use this to store each piece of information you collect from the caller."
-        instructions += " CRITICAL: You MUST ask for webhook data FIRST before doing any RAG searches or knowledge base queries!"
-        print(f"DEBUG: N8N_TOOLS_ADDED | webhook_tools_added=true")
-        logging.info("N8N_TOOLS_ADDED | webhook_tools_added=true")
-    else:
-        print(f"DEBUG: N8N_TOOLS_ADDED | webhook_tools_added=false")
-        logging.info("N8N_TOOLS_ADDED | webhook_tools_added=false")
-
-    # Add RAG tools if knowledge base is available
-    knowledge_base_id = resolver_meta.get("knowledge_base_id")
-    if knowledge_base_id:
-        instructions += " Additional tools available: search_knowledge, get_detailed_info (for knowledge base queries)."
-        logging.info("RAG_TOOLS | Knowledge base tools added to instructions")
-    
-    # Add webhook data collection instructions LAST (highest priority)
-    if data_collection_instructions:
-        instructions += "\n\n" + data_collection_instructions
-        # Add a final, very explicit instruction
-        instructions += "\n\n🚨 FINAL REMINDER: After saying your first message, when the user responds, you MUST ask for their company name using collect_webhook_data tool! 🚨"
-        print(f"DEBUG: N8N_INSTRUCTIONS_ADDED | data_collection_added=true")
-        logging.info("N8N_INSTRUCTIONS_ADDED | data_collection_added=true")
-    else:
-        print(f"DEBUG: N8N_INSTRUCTIONS_ADDED | data_collection_added=false")
-        logging.info("N8N_INSTRUCTIONS_ADDED | data_collection_added=false")
-    
-    # Debug: Print the final instructions with webhook data collection
-    print(f"DEBUG: FINAL_INSTRUCTIONS_WITH_WEBHOOK | length={len(instructions)}")
-    print(f"DEBUG: FINAL_INSTRUCTIONS_END | end={instructions[-500:]}")
-    logging.info("FINAL_INSTRUCTIONS_WITH_WEBHOOK | length=%d", len(instructions))
-
-    # First message (INBOUND greets)
-    force_first = (os.getenv("FORCE_FIRST_MESSAGE", "true").lower() != "false")
-    if force_first and first_message:
-        if data_collection_instructions:
-            # If webhook data collection is required, modify the first message instruction
-            instructions += f' IMPORTANT: Begin the call by saying: "{first_message}" Then IMMEDIATELY ask for the webhook data as specified above.'
-        else:
-            instructions += f' IMPORTANT: Begin the call by saying: "{first_message}"'
-        logging.info("INBOUND_FIRST_MESSAGE_SET | first_message=%s", first_message)
-
-    logging.info("PROMPT_TRACE_FINAL (INBOUND) | sha256=%s | len=%d | preview=%s",
-                 sha256_text(instructions), len(instructions), preview(instructions))
-
-    # INBOUND model config comes from assistant data
-    assistant_data = resolver_meta.get("assistant", {})
-    llm_provider = assistant_data.get("llm_provider", "OpenAI")
-    llm_model = assistant_data.get("llm_model", os.getenv("OPENAI_LLM_MODEL", "gpt-4o-mini"))
-    original_model = llm_model
-    
-    # Map model names to API format based on provider
-    if llm_provider == "OpenAI":
-        if llm_model == "GPT-4o Mini":
-            llm_model = "gpt-4o-mini"
-        elif llm_model == "GPT-4o":
-            llm_model = "gpt-4o"
-        elif llm_model == "GPT-4":
-            llm_model = "gpt-4"
-    elif llm_provider == "Groq":
-        # Groq models are already in correct format
-        pass
-    elif llm_provider == "Anthropic":
-        if llm_model == "Claude 3.5 Sonnet":
-            llm_model = "claude-3-5-sonnet-20241022"
-        elif llm_model == "Claude 3 Opus":
-            llm_model = "claude-3-opus-20240229"
-        elif llm_model == "Claude 3 Haiku":
-            llm_model = "claude-3-haiku-20240307"
-    elif llm_provider == "Google":
-        if llm_model == "Gemini Pro":
-            llm_model = "gemini-pro"
-        elif llm_model == "Gemini Pro Vision":
-            llm_model = "gemini-pro-vision"
-    elif llm_provider == "Cerebras":
-        # Cerebras models are already in correct format
-        pass
-    
-    if original_model != llm_model:
-        logging.info("MODEL_NAME_FIXED | provider=%s | original=%s | fixed=%s", llm_provider, original_model, llm_model)
-
-    temperature = assistant_data.get("temperature", 0.1)
-    max_tokens = assistant_data.get("max_tokens", 250)
-
-    # Voice configuration from database
-    voice_data = resolver_meta.get("voice", {})
-    voice_provider = voice_data.get("provider", "OpenAI")
-    voice_model = voice_data.get("model", "gpt-4o-mini-tts")
-    voice_name = voice_data.get("voice", "alloy")
-    
-    # Map voice names to ElevenLabs voice IDs if using ElevenLabs
-    elevenlabs_voice_map = {
-        "rachel": "21m00Tcm4TlvDq8ikWAM",
-        "domi": "AZnzlk1XvdvUeBnXmlld", 
-        "bella": "EXAVITQu4vr4xnSDxMaL",
-        "antoni": "ErXwobaYiN019PkySvjV",
-        "elli": "MF3mGyEYCl7XYWbV9V6O",
-        "josh": "TxGEqnHWrfWFTfGW9XjX",
-        "arnold": "VR6AewLTigWG4xSOukaG"
-    }
-    
-    if voice_provider == "ElevenLabs" and voice_name.lower() in elevenlabs_voice_map:
-        voice_id = elevenlabs_voice_map[voice_name.lower()]
-        logging.info("VOICE_MAPPED | provider=%s | voice_name=%s | voice_id=%s", voice_provider, voice_name, voice_id)
-    else:
-        voice_id = voice_name
-        logging.info("VOICE_USED | provider=%s | voice_name=%s", voice_provider, voice_name)
-
-    # Configure TTS based on voice provider
-    if voice_provider == "ElevenLabs":
-        # Use ElevenLabs TTS
-        elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-        if elevenlabs_api_key and ELEVENLABS_AVAILABLE:
-            try:
-                tts = lk_elevenlabs.TTS(
-                    voice_id=voice_id,
-                    api_key=elevenlabs_api_key,
-                    model=voice_model,
-                    streaming_latency=voice_data.get("optimize_streaming", 2),
-                    inactivity_timeout=300,  # 5 minutes timeout
-                    auto_mode=True  # Reduces latency and improves stability
+            original_model = groq_model
+            groq_model = model_mapping.get(groq_model, groq_model)
+            if original_model != groq_model:
+                logger.info(f"GROQ_MODEL_MAPPED | old_model={original_model} | new_model={groq_model}")
+            
+            if groq_api_key:
+                llm = lk_groq.LLM(
+                    model=groq_model,
+                    api_key=groq_api_key,
+                    temperature=groq_temperature,
+                    parallel_tool_calls=False,
+                    tool_choice="auto",
                 )
-                logging.info("ELEVENLABS_TTS_CONFIGURED | voice_id=%s | model=%s | streaming_latency=%s", 
-                           voice_id, voice_model, voice_data.get("optimize_streaming", 2))
-            except Exception as e:
-                logging.error("ELEVENLABS_TTS_ERROR | error=%s | falling back to OpenAI TTS", str(e))
-                # Map ElevenLabs voice to OpenAI voice for fallback
-                openai_voice = "alloy"  # Default OpenAI voice
-                openai_tts_model = "tts-1" if voice_model.startswith("eleven_") else voice_model
-                tts = lk_openai.TTS(model=openai_tts_model, voice=openai_voice, api_key=openai_api_key)
-        else:
-            if not ELEVENLABS_AVAILABLE:
-                logging.warning("ELEVENLABS_NOT_AVAILABLE | falling back to OpenAI TTS")
+                logger.info(f"GROQ_LLM_CONFIGURED | model={groq_model} | temperature={groq_temperature}")
+                return llm
             else:
-                logging.warning("ELEVENLABS_API_KEY_NOT_SET | falling back to OpenAI TTS")
-            # Map ElevenLabs voice to OpenAI voice for fallback
-            openai_voice = "alloy"  # Default OpenAI voice
-            openai_tts_model = "tts-1" if voice_model.startswith("eleven_") else voice_model
-            tts = lk_openai.TTS(model=openai_tts_model, voice=openai_voice, api_key=openai_api_key)
-    else:
-        # Use OpenAI TTS
-        tts = lk_openai.TTS(model=voice_model, voice=voice_id, api_key=openai_api_key)
-        logging.info("OPENAI_TTS_CONFIGURED | model=%s | voice=%s", voice_model, voice_id)
+                logger.warning("GROQ_API_KEY_NOT_SET | falling back to OpenAI LLM")
 
-    # Configure LLM based on provider
-    if llm_provider == "Groq" and lk_groq:
-        # Use global GROQ_API_KEY from environment
-        groq_api_key = os.getenv("GROQ_API_KEY")
-        groq_model = assistant_data.get("groq_model") or llm_model
-        
-        # Handle decommissioned models - map old models to new ones
-        model_mapping = {
-            "llama3-8b-8192": "llama-3.1-8b-instant",
-            "llama3-70b-8192": "llama-3.3-70b-versatile",
-            "mixtral-8x7b-32768": "llama-3.1-8b-instant",
-            "gemma2-9b-it": "llama-3.1-8b-instant"  # Map deprecated Gemma to Llama
-        }
-        original_model = groq_model
-        groq_model = model_mapping.get(groq_model, groq_model)
-        if original_model != groq_model:
-            logging.info("GROQ_MODEL_MAPPED | old_model=%s | new_model=%s", original_model, groq_model)
-        
-        groq_temperature = assistant_data.get("groq_temperature") or temperature
-        groq_max_tokens = assistant_data.get("groq_max_tokens") or max_tokens
-        
-        if groq_api_key:
-            llm = lk_groq.LLM(
-                model=groq_model,
-                api_key=groq_api_key,
-                temperature=groq_temperature,
-                parallel_tool_calls=False,
-                tool_choice="auto",
-            )
-            logging.info("GROQ_LLM_CONFIGURED | model=%s | temperature=%s | max_tokens=%s", 
-                        groq_model, groq_temperature, groq_max_tokens)
-        else:
-            logging.warning("GROQ_API_KEY_NOT_SET | falling back to OpenAI LLM")
-            llm = lk_openai.LLM(
-                model=llm_model,
-                api_key=openai_api_key,
-                temperature=temperature,
-                parallel_tool_calls=False,
-                tool_choice="auto",
-            )
-    elif llm_provider == "Cerebras" and CEREBRAS_AVAILABLE:
-        # Use global CEREBRAS_API_KEY from environment
-        cerebras_api_key = os.getenv("CEREBRAS_API_KEY")
-        cerebras_model = assistant_data.get("cerebras_model") or llm_model
-        cerebras_temperature = assistant_data.get("cerebras_temperature") or temperature
-        cerebras_max_tokens = assistant_data.get("cerebras_max_tokens") or max_tokens
-        
-        if cerebras_api_key:
-            # Create OpenAI-compatible client for Cerebras
-            cerebras_openai_client = cerebras_client.OpenAI(
-                api_key=cerebras_api_key,
-                base_url="https://api.cerebras.ai/v1"
-            )
-            llm = lk_openai.LLM(
-                model=cerebras_model,
-                api_key=cerebras_api_key,
-                base_url="https://api.cerebras.ai/v1",
-                temperature=cerebras_temperature,
-                parallel_tool_calls=False,
-                tool_choice="auto",
-            )
-            logging.info("CEREBRAS_LLM_CONFIGURED | model=%s | temperature=%s | max_tokens=%s", 
-                        cerebras_model, cerebras_temperature, cerebras_max_tokens)
-        else:
-            logging.warning("CEREBRAS_API_KEY_NOT_SET | falling back to OpenAI LLM")
-            llm = lk_openai.LLM(
-                model=llm_model,
-                api_key=openai_api_key,
-                temperature=temperature,
-                parallel_tool_calls=False,
-                tool_choice="auto",
-            )
-    else:
-        # Default to OpenAI LLM - Check if we should use REST API
-        if is_rest_model(llm_model):
-            logging.info("REST_LLM_CONFIGURED | model=%s | using REST API", llm_model)
-            llm = create_rest_llm(
-                model=llm_model,
-                api_key=openai_api_key,
-                base_url=get_rest_config().rest_api_base_url
-            )
-        else:
-            llm = lk_openai.LLM(
-                model=llm_model,
-                api_key=openai_api_key,
-                temperature=temperature,
-                parallel_tool_calls=False,
-                tool_choice="auto",
-            )
-            logging.info("OPENAI_LLM_CONFIGURED | model=%s | temperature=%s", llm_model, temperature)
-
-    session = AgentSession(
-        turn_detection="vad",
-        vad=vad,
-        stt=lk_openai.STT(model=stt_model, api_key=openai_api_key),
-        llm=llm,
-        tts=tts,
-    )
-
-    logging.info("STARTING_SESSION (INBOUND) | instructions_length=%d | has_calendar=%s",
-                 len(instructions), calendar is not None)
-
-    # Choose between RAG-enabled assistant or regular assistant
-    knowledge_base_id = resolver_meta.get("knowledge_base_id")
-    
-    if knowledge_base_id:
-        logging.info(f"RAG_ASSISTANT | Using RAG-enabled assistant with KB: {knowledge_base_id}")
-        # company_id will be retrieved from knowledge base in RAG service
-        agent = RAGAssistant(
-            instructions=instructions, 
-            calendar=calendar,
-            knowledge_base_id=knowledge_base_id,
-            company_id=None  # Will be retrieved from knowledge base
-        )
-    else:
-        logging.info("RAG_ASSISTANT | Using regular assistant (no knowledge base)")
-        agent = Assistant(instructions=instructions, calendar=calendar)
-    
-    await session.start(
-        room=ctx.room,
-        agent=agent,
-    )
-
-    logging.info("SESSION_STARTED (INBOUND) | session_active=%s", session is not None)
-
-    async def save_call_on_shutdown_inbound():
-        end_time = datetime.datetime.now()
-        logging.info("CALL_END | call_id=%s | end_time=%s", call_id, end_time.isoformat())
-
-        session_history = []
-        try:
-            if hasattr(session, 'history') and session.history:
-                history_dict = session.history.to_dict()
-                if "items" in history_dict:
-                    session_history = history_dict["items"]
-                    logging.info("SESSION_HISTORY_RETRIEVED | items_count=%d", len(session_history))
-                else:
-                    logging.warning("SESSION_HISTORY_NO_ITEMS | history_dict_keys=%s",
-                                    list(history_dict.keys()) if history_dict else "None")
+        elif provider == "Cerebras" and CEREBRAS_AVAILABLE:
+            cerebras_api_key = os.getenv("CEREBRAS_API_KEY")
+            cerebras_model = config.get("cerebras_model") or model
+            cerebras_temperature = config.get("cerebras_temperature") or temperature
+            cerebras_max_tokens = config.get("cerebras_max_tokens") or max_tokens
+            
+            if cerebras_api_key:
+                llm = openai.LLM(
+                    model=cerebras_model,
+                    api_key=cerebras_api_key,
+                    base_url="https://api.cerebras.ai/v1",
+                    temperature=cerebras_temperature,
+                    parallel_tool_calls=False,
+                    tool_choice="auto",
+                )
+                logger.info(f"CEREBRAS_LLM_CONFIGURED | model={cerebras_model} | temperature={cerebras_temperature}")
+                return llm
             else:
-                logging.warning("SESSION_HISTORY_NOT_AVAILABLE | has_history_attr=%s | history_exists=%s",
-                                hasattr(session, 'history'), bool(getattr(session, 'history', None)))
-        except Exception as e:
-            logging.warning("Failed to get session history: %s", str(e))
+                logger.warning("CEREBRAS_API_KEY_NOT_SET | falling back to OpenAI LLM")
 
-        await save_call_history_to_supabase(
-            call_id=call_id,
-            assistant_id=assistant_id or "unknown",
-            called_did=called_did or "unknown",
-            start_time=start_time,
-            end_time=end_time,
-            session_history=session_history,
-            participant_identity=participant.identity if participant else None,
-            recording_sid=recording_sid,
-            call_sid=call_sid
+        # Default to OpenAI LLM
+        llm = openai.LLM(
+            model=model,
+            api_key=openai_api_key,
+            temperature=temperature,
+            parallel_tool_calls=False,
+            tool_choice="auto",
         )
+        logger.info(f"OPENAI_LLM_CONFIGURED | model={model} | temperature={temperature}")
+        return llm
 
-        # Send n8n webhook if assistant has n8n config
-        if assistant_id and assistant_id != "unknown" and n8n_config:
-            try:
-                # Build call data for n8n payload
-                call_data = {
-                    "call_id": call_id,
-                    "from_number": called_did or "unknown",
-                    "to_number": "inbound",  # Inbound calls don't have a specific "to" number
-                    "call_duration": int((end_time - start_time).total_seconds()),
-                    "transcript_url": None,  # Can be added if available
-                    "recording_url": None,   # Can be added if available
-                    "call_direction": "inbound",
-                    "call_status": "completed",
-                    "start_time": start_time.isoformat(),
-                    "end_time": end_time.isoformat(),
-                    "participant_identity": participant.identity if participant else None
+    def _create_tts(self, provider: str, model: str, voice_name: str, config: Dict[str, Any]):
+        """Create TTS based on provider."""
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        
+        if provider == "ElevenLabs" and ELEVENLABS_AVAILABLE:
+            elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
+            force_openai_tts = os.getenv("FORCE_OPENAI_TTS", "false").lower() == "true"
+            
+            if force_openai_tts:
+                logger.warning("FORCE_OPENAI_TTS_ENABLED | skipping ElevenLabs, using OpenAI TTS")
+                # Map ElevenLabs model to OpenAI model for fallback (from old implementation)
+                openai_tts_model = "tts-1" if model.startswith("eleven_") else model
+                return openai.TTS(model=openai_tts_model, voice="alloy", api_key=openai_api_key)
+            
+            if elevenlabs_api_key:
+                # Map voice names to ElevenLabs voice IDs
+                elevenlabs_voice_map = {
+                    "rachel": "21m00Tcm4TlvDq8ikWAM",
+                    "domi": "AZnzlk1XvdvUeBnXmlld", 
+                    "bella": "EXAVITQu4vr4xnSDxMaL",
+                    "antoni": "ErXwobaYiN019PkySvjV",
+                    "elli": "MF3mGyEYCl7XYWbV9V6O",
+                    "josh": "TxGEqnHWrfWFTfGW9XjX",
+                    "arnold": "VR6AewLTigWG4xSOukaG"
                 }
-
-                # Get collected webhook data from agent
-                webhook_data = {}
-                if hasattr(agent, 'get_webhook_data'):
-                    webhook_data = agent.get_webhook_data()
-                    logging.info("WEBHOOK_DATA_RETRIEVED | data=%s", webhook_data)
-
-                # Build and send n8n payload using the new system
-                webhook_url = n8n_config.get("webhook_url")
-                webhook_fields = n8n_config.get("webhook_fields", [])
                 
-                if webhook_url and webhook_data:
-                    payload = build_n8n_payload(n8n_config, call_data, session_history, webhook_fields, agent)
+                voice_id = elevenlabs_voice_map.get(voice_name.lower(), voice_name)
+                optimize_streaming = config.get("voice_optimize_streaming_latency", 2)
+                
+                try:
+                    tts = lk_elevenlabs.TTS(
+                        voice_id=voice_id,
+                        api_key=elevenlabs_api_key,
+                        model=model,
+                        streaming_latency=optimize_streaming,
+                        inactivity_timeout=30,
+                        auto_mode=True,
+                        timeout=15,
+                        retry_attempts=2,
+                        retry_delay=0.5
+                    )
+                    logger.info(f"ELEVENLABS_TTS_CONFIGURED | voice_id={voice_id} | model={model}")
+                    return tts
+                except Exception as e:
+                    logger.error(f"ELEVENLABS_TTS_ERROR | error={str(e)} | falling back to OpenAI TTS")
+                    # Map ElevenLabs voice to OpenAI voice for fallback (from old implementation)
+                    openai_voice = "alloy"  # Default OpenAI voice
+                    openai_tts_model = "tts-1" if model.startswith("eleven_") else model
+                    return openai.TTS(model=openai_tts_model, voice=openai_voice, api_key=openai_api_key)
+            else:
+                logger.warning("ELEVENLABS_API_KEY_NOT_SET | falling back to OpenAI TTS")
+                # Map ElevenLabs voice to OpenAI voice for fallback (from old implementation)
+                openai_voice = "alloy"  # Default OpenAI voice
+                openai_tts_model = "tts-1" if model.startswith("eleven_") else model
+                return openai.TTS(model=openai_tts_model, voice=openai_voice, api_key=openai_api_key)
+
+        # Default to OpenAI TTS
+        tts = openai.TTS(model=model, voice=voice_name, api_key=openai_api_key)
+        logger.info(f"OPENAI_TTS_CONFIGURED | model={model} | voice={voice_name}")
+        return tts
+
+    async def _generate_call_summary(self, config: Dict[str, Any], session_history: list, agent) -> Optional[str]:
+        """Generate call summary using LLM."""
+        try:
+            call_summary_prompt = config.get("analysis_summary_prompt")
+            if not call_summary_prompt:
+                return None
+
+            # Get session history as text
+            conversation_text = self._extract_conversation_text(session_history)
+            if not conversation_text:
+                return None
+
+            # Validate config before creating LLM
+            config = self._validate_model_names(config)
+
+            # Create LLM for summary generation
+            llm = self._create_llm(
+                config.get("llm_provider_setting", "OpenAI"),
+                config.get("llm_model_setting", "gpt-4o-mini"),
+                config.get("temperature_setting", 0.1),
+                config.get("max_token_setting", 250),
+                config
+            )
+
+            # Generate summary
+            summary_prompt = f"{call_summary_prompt}\n\nConversation:\n{conversation_text}"
+            
+            # Use LLM to generate summary
+            response = await llm.agenerate(
+                messages=[{"role": "user", "content": summary_prompt}],
+                max_tokens=config.get("max_token_setting", 250)
+            )
+            
+            summary = response.choices[0].message.content.strip()
+            logger.info(f"CALL_SUMMARY_GENERATED | length={len(summary)}")
+            return summary
+
+        except Exception as e:
+            logger.error(f"CALL_SUMMARY_ERROR | error={str(e)}")
+            return None
+
+    async def _evaluate_call_success(self, config: Dict[str, Any], session_history: list, agent) -> Optional[bool]:
+        """Evaluate if call was successful using LLM."""
+        try:
+            success_prompt = config.get("analysis_evaluation_prompt")
+            if not success_prompt:
+                return None
+
+            # Get session history as text
+            conversation_text = self._extract_conversation_text(session_history)
+            if not conversation_text:
+                return None
+
+            # Validate config before creating LLM
+            config = self._validate_model_names(config)
+
+            # Create LLM for success evaluation
+            llm = self._create_llm(
+                config.get("llm_provider_setting", "OpenAI"),
+                config.get("llm_model_setting", "gpt-4o-mini"),
+                config.get("temperature_setting", 0.1),
+                config.get("max_token_setting", 100),
+                config
+            )
+
+            # Evaluate success
+            evaluation_prompt = f"{success_prompt}\n\nConversation:\n{conversation_text}\n\nWas this call successful? Answer only 'YES' or 'NO'."
+            
+            response = await llm.agenerate(
+                messages=[{"role": "user", "content": evaluation_prompt}],
+                max_tokens=10
+            )
+            
+            result = response.choices[0].message.content.strip().upper()
+            success = result == "YES"
+            logger.info(f"CALL_SUCCESS_EVALUATED | result={result} | success={success}")
+            return success
+
+        except Exception as e:
+            logger.error(f"CALL_SUCCESS_EVALUATION_ERROR | error={str(e)}")
+            return None
+
+    def _extract_conversation_text(self, session_history: list) -> str:
+        """Extract conversation text from session history."""
+        try:
+            conversation_parts = []
+            for item in session_history:
+                if isinstance(item, dict):
+                    role = item.get("role", "")
+                    content = item.get("content", "")
+                    if role and content:
+                        if isinstance(content, list):
+                            content = " ".join([str(c) for c in content if c])
+                        conversation_parts.append(f"{role}: {content}")
+            
+            return "\n".join(conversation_parts)
+        except Exception as e:
+            logger.error(f"CONVERSATION_EXTRACTION_ERROR | error={str(e)}")
+            return ""
+
+    async def _process_call_analysis(
+        self, 
+        assistant_id: str, 
+        transcription: list, 
+        call_duration: int, 
+        agent, 
+        assistant_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Process comprehensive call analysis like the old code."""
+        analysis_data = {
+            "call_summary": None,
+            "call_success": None,
+            "structured_data": {}
+        }
+        
+        try:
+            logger.info(f"PROCESS_CALL_ANALYSIS_START | assistant_id={assistant_id} | transcription_items={len(transcription)}")
+            
+            # Generate call summary if configured
+            call_summary_prompt = assistant_config.get("analysis_summary_prompt")
+            if call_summary_prompt:
+                try:
+                    analysis_data["call_summary"] = await self._generate_call_summary_with_llm(
+                        transcription=transcription,
+                        prompt=call_summary_prompt,
+                        timeout=assistant_config.get("analysis_summary_timeout", 30)
+                    )
+                    logger.info(f"CALL_SUMMARY_GENERATED | assistant_id={assistant_id} | length={len(analysis_data['call_summary']) if analysis_data['call_summary'] else 0}")
+                except Exception as e:
+                    logger.warning(f"CALL_SUMMARY_FAILED | assistant_id={assistant_id} | error={str(e)}")
+            
+            # Evaluate call success if configured
+            success_prompt = assistant_config.get("analysis_evaluation_prompt")
+            if success_prompt:
+                try:
+                    analysis_data["call_success"] = await self._evaluate_call_success_with_llm(
+                        transcription=transcription,
+                        prompt=success_prompt,
+                        timeout=assistant_config.get("analysis_evaluation_timeout", 15)
+                    )
+                    logger.info(f"CALL_SUCCESS_EVALUATED | assistant_id={assistant_id} | success={analysis_data['call_success']}")
+                except Exception as e:
+                    logger.warning(f"CALL_SUCCESS_EVALUATION_FAILED | assistant_id={assistant_id} | error={str(e)}")
+            
+            # Process structured data extraction
+            structured_data_fields = assistant_config.get("structured_data_fields", [])
+            logger.info(f"STRUCTURED_DATA_CONFIG_CHECK | assistant_id={assistant_id} | fields_count={len(structured_data_fields)}")
+            
+            # Always try to get data directly from agent
+            agent_structured_data = {}
+            if agent and hasattr(agent, 'get_structured_data'):
+                agent_structured_data = agent.get_structured_data()
+                logger.info(f"AGENT_STRUCTURED_DATA_RETRIEVED | assistant_id={assistant_id} | fields_count={len(agent_structured_data)}")
+            
+            # If we have configured fields, also try AI extraction
+            if structured_data_fields and len(structured_data_fields) > 0:
+                try:
+                    ai_structured_data = await self._extract_structured_data_with_ai(
+                        transcription=transcription,
+                        fields=structured_data_fields,
+                        prompt=assistant_config.get("analysis_structured_data_prompt"),
+                        properties=assistant_config.get("analysis_structured_data_properties", {}),
+                        timeout=assistant_config.get("analysis_structured_data_timeout", 20),
+                        agent=agent
+                    )
+                    # Merge AI extracted data with agent data (agent data takes precedence)
+                    final_structured_data = {**ai_structured_data, **agent_structured_data}
+                    analysis_data["structured_data"] = final_structured_data
+                    logger.info(f"STRUCTURED_DATA_EXTRACTED_WITH_AI | assistant_id={assistant_id} | ai_fields={len(ai_structured_data)} | agent_fields={len(agent_structured_data)} | final_fields={len(final_structured_data)}")
+                except Exception as e:
+                    logger.warning(f"AI_STRUCTURED_DATA_EXTRACTION_FAILED | assistant_id={assistant_id} | error={str(e)}")
+                    # Fallback to agent data only
+                    analysis_data["structured_data"] = agent_structured_data
+            else:
+                # No configured fields, just use agent data
+                analysis_data["structured_data"] = agent_structured_data
+                logger.info(f"STRUCTURED_DATA_EXTRACTED_AGENT_ONLY | assistant_id={assistant_id} | fields_count={len(agent_structured_data)}")
+            
+        except Exception as e:
+            logger.error(f"ANALYSIS_PROCESSING_ERROR | assistant_id={assistant_id} | error={str(e)}")
+            # Fallback to basic agent data
+            if agent and hasattr(agent, 'get_structured_data'):
+                try:
+                    fallback_data = agent.get_structured_data()
+                    analysis_data["structured_data"] = fallback_data
+                    logger.info(f"STRUCTURED_DATA_FALLBACK_SUCCESS | assistant_id={assistant_id} | fields_count={len(fallback_data)}")
+                except Exception as fallback_error:
+                    logger.warning(f"STRUCTURED_DATA_FALLBACK_FAILED | assistant_id={assistant_id} | error={str(fallback_error)}")
+        
+        return analysis_data
+
+    async def _generate_call_summary_with_llm(self, transcription: list, prompt: str, timeout: int = 30) -> str:
+        """Generate call summary using LLM like the old code."""
+        try:
+            logger.info(f"CALL_SUMMARY_DEBUG | transcription_items={len(transcription)}")
+            
+            # Prepare transcription text
+            transcript_text = ""
+            for item in transcription:
+                if isinstance(item, dict) and "content" in item:
+                    role = item.get("role", "unknown")
+                    content = item["content"]
+                    if isinstance(content, str):
+                        transcript_text += f"{role}: {content}\n"
+                        logger.info(f"TRANSCRIPT_ITEM | role={role} | content_length={len(content)}")
+            
+            logger.info(f"TRANSCRIPT_TEXT_LENGTH | length={len(transcript_text)}")
+            
+            if not transcript_text.strip():
+                logger.warning("EMPTY_TRANSCRIPT_TEXT | returning default message")
+                return "No conversation content available for summary."
+
+            # Use OpenAI API for summary generation
+            import openai
+            openai_api_key = os.getenv("OPENAI_API_KEY")
+            if not openai_api_key:
+                logger.warning("OPENAI_API_KEY not configured for call summary")
+                return "Summary generation not available - API key not configured."
+
+            # Use async OpenAI client
+            client = openai.AsyncOpenAI(api_key=openai_api_key)
+            
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": prompt},
+                        {"role": "user", "content": f"Please summarize this call:\n\n{transcript_text}"}
+                    ],
+                    max_tokens=500,
+                    temperature=0.3
+                ),
+                timeout=timeout
+            )
+
+            return response.choices[0].message.content.strip()
+
+        except asyncio.TimeoutError:
+            logger.warning(f"CALL_SUMMARY_TIMEOUT | timeout={timeout}s")
+            return "Summary generation timed out."
+        except Exception as e:
+            logger.warning(f"CALL_SUMMARY_ERROR | error={str(e)}")
+            return f"Summary generation failed: {str(e)}"
+
+    async def _evaluate_call_success_with_llm(self, transcription: list, prompt: str, timeout: int = 15) -> bool:
+        """Evaluate call success using LLM like the old code."""
+        try:
+            # Prepare transcription text
+            transcript_text = ""
+            for item in transcription:
+                if isinstance(item, dict) and "content" in item:
+                    role = item.get("role", "unknown")
+                    content = item["content"]
+                    if isinstance(content, str):
+                        transcript_text += f"{role}: {content}\n"
+            
+            if not transcript_text.strip():
+                return False
+
+            # Use OpenAI API for success evaluation
+            import openai
+            openai_api_key = os.getenv("OPENAI_API_KEY")
+            if not openai_api_key:
+                logger.warning("OPENAI_API_KEY not configured for success evaluation")
+                return False
+
+            client = openai.AsyncOpenAI(api_key=openai_api_key)
+            
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": prompt},
+                        {"role": "user", "content": f"Please evaluate this call:\n\n{transcript_text}\n\nWas this call successful? Answer only 'YES' or 'NO'."}
+                    ],
+                    max_tokens=10,
+                    temperature=0.1
+                ),
+                timeout=timeout
+            )
+
+            result = response.choices[0].message.content.strip().upper()
+            return result == "YES"
+
+        except asyncio.TimeoutError:
+            logger.warning(f"SUCCESS_EVALUATION_TIMEOUT | timeout={timeout}s")
+            return False
+        except Exception as e:
+            logger.warning(f"SUCCESS_EVALUATION_ERROR | error={str(e)}")
+            return False
+
+    async def _extract_structured_data_with_ai(
+        self, 
+        transcription: list, 
+        fields: list, 
+        prompt: str = None, 
+        properties: dict = None, 
+        timeout: int = 20, 
+        agent = None
+    ) -> dict:
+        """Extract structured data from call transcription using AI like the old code."""
+        try:
+            logger.info(f"EXTRACT_STRUCTURED_DATA_START | fields_count={len(fields)} | transcription_items={len(transcription)}")
+            
+            # Prepare transcription text
+            transcript_text = ""
+            for item in transcription:
+                if isinstance(item, dict) and "content" in item:
+                    role = item.get("role", "unknown")
+                    content = item["content"]
+                    if isinstance(content, str):
+                        transcript_text += f"{role}: {content}\n"
+            
+            if not transcript_text.strip():
+                logger.warning("EXTRACT_STRUCTURED_DATA_EMPTY_TRANSCRIPT")
+                return {}
+
+            # Get structured data from agent if available
+            agent_data = {}
+            if agent and hasattr(agent, 'get_structured_data'):
+                agent_data = agent.get_structured_data()
+                logger.info(f"AGENT_DATA_RETRIEVED | fields_count={len(agent_data)}")
+
+            # Generate prompt if not provided - ensure ALL fields are included
+            if not prompt:
+                field_descriptions = []
+                for field in fields:
+                    if isinstance(field, dict):
+                        name = field.get("name", "unknown")
+                        description = field.get("description", "No description")
+                        field_type = field.get("type", "string")
+                        field_descriptions.append(f"- {name}: {description} (type: {field_type})")
+                
+                prompt = f"""Extract the following information from the conversation. You MUST provide a value for EVERY field listed below:
+
+{chr(10).join(field_descriptions)}
+
+IMPORTANT: 
+- For analysis fields (summary, outcome, keypoints, etc.), generate appropriate values based on the conversation content
+- For user-provided fields, extract the actual information mentioned by the user
+- If a field is not explicitly mentioned, generate a reasonable value based on the conversation context
+- Return the data as a JSON object with ALL field names as keys
+- Do not use null unless absolutely no information is available
+- You must respond with valid JSON format only"""
+
+            # Use OpenAI API for structured data extraction
+            import openai
+            openai_api_key = os.getenv("OPENAI_API_KEY")
+            if not openai_api_key:
+                logger.warning("OPENAI_API_KEY not configured for structured data extraction")
+                return agent_data  # Return agent data as fallback
+
+            client = openai.AsyncOpenAI(api_key=openai_api_key)
+            
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": prompt},
+                        {"role": "user", "content": f"Extract the requested information from this conversation:\n\n{transcript_text}"}
+                    ],
+                    max_tokens=1000,
+                    temperature=0.1,
+                    response_format={"type": "json_object"}
+                ),
+                timeout=timeout
+            )
+
+            # Parse the response as JSON
+            try:
+                extracted_data = json.loads(response.choices[0].message.content.strip())
+                logger.info(f"STRUCTURED_DATA_EXTRACTED | fields_count={len(extracted_data)}")
+                
+                # Ensure all configured fields are present in the result
+                final_data = {}
+                for field in fields:
+                    if isinstance(field, dict):
+                        field_name = field.get("name", "")
+                        if field_name in extracted_data:
+                            final_data[field_name] = extracted_data[field_name]
+                        else:
+                            # Generate a default value for missing fields
+                            field_type = field.get("type", "string")
+                            if field_type == "string":
+                                final_data[field_name] = "Not specified"
+                            elif field_type == "number":
+                                final_data[field_name] = 0
+                            elif field_type == "boolean":
+                                final_data[field_name] = False
+                            else:
+                                final_data[field_name] = "Not specified"
+                            logger.info(f"MISSING_FIELD_DEFAULT | field={field_name} | default={final_data[field_name]}")
+                
+                # Merge with agent data (agent data takes precedence)
+                final_data = {**final_data, **agent_data}
+                
+                logger.info(f"STRUCTURED_DATA_FINAL | total_fields={len(final_data)} | agent_fields={len(agent_data)} | ai_fields={len(extracted_data)}")
+                return final_data
+                
+            except json.JSONDecodeError as e:
+                logger.warning(f"STRUCTURED_DATA_JSON_PARSE_ERROR | error={str(e)}")
+                return agent_data  # Return agent data as fallback
+
+        except asyncio.TimeoutError:
+            logger.warning(f"STRUCTURED_DATA_EXTRACTION_TIMEOUT | timeout={timeout}s")
+            return agent_data  # Return agent data as fallback
+        except Exception as e:
+            logger.warning(f"STRUCTURED_DATA_EXTRACTION_ERROR | error={str(e)}")
+            return agent_data  # Return agent data as fallback
+
+    async def _perform_post_call_analysis(self, config: Dict[str, Any], session_history: list, agent) -> Dict[str, Any]:
+        """Perform complete post-call analysis."""
+        analysis_results = {
+            "call_summary": None,
+            "call_success": None,
+            "structured_data": {},
+            "analysis_timestamp": datetime.datetime.now().isoformat()
+        }
+
+        try:
+            # Process session history into transcription format
+            transcription = []
+            for item in session_history:
+                if isinstance(item, dict) and "role" in item and "content" in item:
+                    content = item["content"]
+                    # Handle different content formats
+                    if isinstance(content, list):
+                        content_parts = []
+                        for c in content:
+                            if c and str(c).strip():
+                                content_parts.append(str(c).strip())
+                        content = " ".join(content_parts)
+                    elif not isinstance(content, str):
+                        content = str(content)
                     
-                    response = await send_n8n_webhook(webhook_url, payload)
+                    # Only add non-empty content
+                    if content and content.strip():
+                        transcription.append({
+                            "role": item["role"],
+                            "content": content.strip()
+                        })
+            
+            logger.info(f"POST_CALL_ANALYSIS_TRANSCRIPTION | items={len(transcription)}")
+            
+            # Use comprehensive analysis processing like the old code
+            analysis_data = await self._process_call_analysis(
+                assistant_id=config.get("id"),
+                transcription=transcription,  # Use processed transcription
+                call_duration=300,  # Approximate duration
+                agent=agent,
+                assistant_config=config
+            )
+            
+            # Merge analysis results
+            analysis_results.update(analysis_data)
+            
+            logger.info(f"POST_CALL_ANALYSIS_COMPLETE | summary={bool(analysis_results['call_summary'])} | success={analysis_results['call_success']} | data_fields={len(analysis_results['structured_data'])}")
+
+        except Exception as e:
+            logger.error(f"POST_CALL_ANALYSIS_ERROR | error={str(e)}")
+            # Fallback to basic analysis
+            try:
+                if hasattr(agent, 'get_structured_data'):
+                    analysis_results["structured_data"] = agent.get_structured_data()
+            except Exception as fallback_error:
+                logger.error(f"FALLBACK_ANALYSIS_ERROR | error={str(fallback_error)}")
+
+        return analysis_results
+
+    async def _save_call_history_to_database(
+        self, 
+        ctx: JobContext, 
+        assistant_config: Dict[str, Any], 
+        session_history: list, 
+        analysis_results: Dict[str, Any],
+        participant,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime
+    ) -> None:
+        """Save call history and analysis data to database."""
+        try:
+            # Generate call ID from room name
+            call_id = ctx.room.name
+            
+            # Calculate call duration from provided start and end times
+            call_duration = int((end_time - start_time).total_seconds())
+            
+            # Extract call_sid like in old implementation
+            call_sid = self._extract_call_sid(ctx, participant)
+            
+            # Process transcription from session history
+            transcription = []
+            logger.info(f"SESSION_HISTORY_DEBUG | items_count={len(session_history)}")
+            
+            for i, item in enumerate(session_history):
+                logger.info(f"SESSION_ITEM_{i} | type={type(item)} | content={str(item)[:100]}...")
+                if isinstance(item, dict) and "role" in item and "content" in item:
+                    content = item["content"]
+                    # Handle different content formats
+                    if isinstance(content, list):
+                        content_parts = []
+                        for c in content:
+                            if c and str(c).strip():
+                                content_parts.append(str(c).strip())
+                        content = " ".join(content_parts)
+                    elif not isinstance(content, str):
+                        content = str(content)
                     
-                    if response:
-                        logging.info("N8N_WEBHOOK_COMPLETED | assistant_id=%s | call_id=%s | webhook_url=%s", 
-                                   assistant_id, call_id, webhook_url)
-                    else:
-                        logging.warning("N8N_WEBHOOK_FAILED | assistant_id=%s | call_id=%s | webhook_url=%s", 
-                                      assistant_id, call_id, webhook_url)
-                else:
-                    logging.info("N8N_WEBHOOK_SKIPPED | webhook_url=%s | webhook_data=%s", webhook_url, webhook_data)
-            except Exception as e:
-                logging.error("N8N_WEBHOOK_ERROR | assistant_id=%s | call_id=%s | error=%s", 
-                             assistant_id, call_id, str(e))
+                    # Only add non-empty content
+                    if content and content.strip():
+                        transcription.append({
+                            "role": item["role"],
+                            "content": content.strip()
+                        })
+                        logger.info(f"TRANSCRIPTION_ADDED | role={item['role']} | content_length={len(content.strip())}")
+            
+            logger.info(f"TRANSCRIPTION_PREPARED | session_items={len(session_history)} | transcription_items={len(transcription)}")
+            
+            # Determine call status
+            call_status = self._determine_call_status(call_duration, transcription)
+            
+            # Extract contact name from analysis results
+            contact_name = None
+            if analysis_results.get("structured_data") and isinstance(analysis_results["structured_data"], dict):
+                structured_data = analysis_results["structured_data"]
+                # Try different possible name fields
+                contact_name = (
+                    structured_data.get("name") or 
+                    structured_data.get("full_name") or 
+                    structured_data.get("contact_name") or
+                    structured_data.get("customer_name") or
+                    structured_data.get("client_name")
+                )
+                logger.info(f"CONTACT_NAME_EXTRACTED | from_analysis={contact_name} | structured_data_keys={list(structured_data.keys())}")
+            
+            # Use contact name if available, otherwise fall back to participant identity or phone number
+            participant_identity = (
+                contact_name or 
+                (participant.identity if participant else None) or 
+                self._extract_phone_from_room(ctx.room.name)
+            )
+            
+            logger.info(f"PARTICIPANT_IDENTITY_DETERMINED | phone={self._extract_phone_from_room(ctx.room.name)}")
+
+            # Prepare call data
+            call_data = {
+                "call_id": call_id,
+                "assistant_id": assistant_config.get("id"),
+                "phone_number": self._extract_phone_from_room(ctx.room.name),
+                "participant_identity": self._extract_phone_from_room(ctx.room.name),
+                "start_time": start_time.isoformat(),
+                "end_time": end_time.isoformat(),
+                "call_duration": call_duration,
+                "call_status": call_status,
+                "transcription": transcription if transcription else [],
+                "call_sid": call_sid,
+                "created_at": datetime.datetime.now().isoformat()
+            }
+            
+            # Add analysis results
+            if analysis_results.get("call_summary"):
+                call_data["call_summary"] = analysis_results["call_summary"]
+            if analysis_results.get("call_success") is not None:
+                call_data["success_evaluation"] = analysis_results["call_success"]
+            if analysis_results.get("structured_data"):
+                call_data["structured_data"] = analysis_results["structured_data"]
+            
+            # Save to database
+            result = self.supabase.client.table("call_history").insert(call_data).execute()
+            
+            if result.data:
+                logger.info(f"CALL_HISTORY_SAVED | call_id={call_id} | call_sid={call_sid} | duration={call_duration}s | status={call_status} | transcription_items={len(transcription)}")
+                if transcription:
+                    sample_transcript = transcription[0] if len(transcription) > 0 else {}
+                    logger.info(f"TRANSCRIPTION_SAMPLE | first_entry={sample_transcript}")
+            else:
+                logger.error(f"CALL_HISTORY_SAVE_FAILED | call_id={call_id}")
+                
+        except Exception as e:
+            logger.error(f"CALL_HISTORY_SAVE_ERROR | error={str(e)}")
+
+    def _determine_call_status(self, call_duration: int, transcription: list) -> str:
+        """Determine call status based on duration and transcription."""
+        if call_duration < 10:
+            return "short_call"
+        elif call_duration < 30:
+            return "brief_call"
+        elif len(transcription) < 3:
+            return "minimal_interaction"
         else:
-            logging.info("N8N_CONFIG_NOT_FOUND | assistant_id=%s | skipping webhook", assistant_id)
+            return "completed"
 
-    ctx.add_shutdown_callback(save_call_on_shutdown_inbound)
+    def _extract_call_sid(self, ctx: JobContext, participant) -> Optional[str]:
+        """Extract call_sid from various sources like in old implementation."""
+        call_sid = None
+        
+        try:
+            # Try to get call_sid from participant attributes
+            if hasattr(participant, 'attributes') and participant.attributes:
+                if hasattr(participant.attributes, 'get'):
+                    call_sid = participant.attributes.get('sip.twilio.callSid')
+                    if call_sid:
+                        logger.info(f"CALL_SID_FROM_PARTICIPANT_ATTRIBUTES | call_sid={call_sid}")
+                
+                # Try SIP attributes if not found
+                if not call_sid and hasattr(participant.attributes, 'sip'):
+                    sip_attrs = participant.attributes.sip
+                    if hasattr(sip_attrs, 'twilio') and hasattr(sip_attrs.twilio, 'callSid'):
+                        call_sid = sip_attrs.twilio.callSid
+                        if call_sid:
+                            logger.info(f"CALL_SID_FROM_SIP_ATTRIBUTES | call_sid={call_sid}")
+        except Exception as e:
+            logger.warning(f"Failed to get call_sid from participant attributes: {str(e)}")
 
-    logging.info("STARTING_SESSION_RUN (INBOUND) | user_input=empty")
-    await session.run(user_input="")
-    logging.info("SESSION_RUN_COMPLETED (INBOUND)")
+        # Try room metadata if not found
+        if not call_sid and hasattr(ctx.room, 'metadata') and ctx.room.metadata:
+            try:
+                room_meta = json.loads(ctx.room.metadata) if isinstance(ctx.room.metadata, str) else ctx.room.metadata
+                call_sid = room_meta.get('call_sid') or room_meta.get('CallSid') or room_meta.get('provider_id')
+                if call_sid:
+                    logger.info(f"CALL_SID_FROM_ROOM_METADATA | call_sid={call_sid}")
+            except Exception as e:
+                logger.warning(f"Failed to parse room metadata for call_sid: {str(e)}")
+
+        # Try participant metadata if not found
+        if not call_sid and hasattr(participant, 'metadata') and participant.metadata:
+            try:
+                participant_meta = json.loads(participant.metadata) if isinstance(participant.metadata, str) else participant.metadata
+                call_sid = participant_meta.get('call_sid') or participant_meta.get('CallSid') or participant_meta.get('provider_id')
+                if call_sid:
+                    logger.info(f"CALL_SID_FROM_PARTICIPANT_METADATA | call_sid={call_sid}")
+            except Exception as e:
+                logger.warning(f"Failed to parse participant metadata for call_sid: {str(e)}")
+
+        if not call_sid:
+            logger.warning("CALL_SID_NOT_FOUND | no call_sid available from any source")
+        
+        return call_sid
+
+    def _extract_phone_from_room(self, room_name: str) -> str:
+        """Extract phone number from room name."""
+        try:
+            # Handle patterns like "assistant-_+12017656193_tVG5An7aEcnF"
+            if room_name.startswith("assistant-"):
+                parts = room_name.split("_")
+                if len(parts) >= 2:
+                    phone_part = parts[1]
+                    if phone_part.startswith("+"):
+                        return phone_part
+            return "unknown"
+        except Exception:
+            return "unknown"
+
 
 def prewarm(proc: agents.JobProcess):
-    """Preload VAD so it’s instantly available for sessions."""
+    """Preload VAD for better performance."""
     try:
         proc.userdata["vad"] = silero.VAD.load()
-    except Exception:
-        logging.exception("Failed to prewarm Silero VAD")
+        logger.info("VAD_PREWARMED")
+    except Exception as e:
+        logger.error(f"VAD_PREWARM_ERROR | error={str(e)}")
+
+
+async def entrypoint(ctx: JobContext):
+    """Main entry point following LiveKit patterns."""
+    handler = CallHandler()
+    await handler.handle_call(ctx)
+
 
 if __name__ == "__main__":
-    # Check required environment variables
-    required_vars = ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"]
+    # Validate required environment variables
+    required_vars = ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "OPENAI_API_KEY"]
     missing_vars = [var for var in required_vars if not os.getenv(var)]
 
     if missing_vars:
-        logging.error("❌ Missing required environment variables: %s", ", ".join(missing_vars))
-        logging.error("Please set these variables in your .env file or environment")
+        logger.error(f"❌ Missing required environment variables: {', '.join(missing_vars)}")
         sys.exit(1)
 
     # Log configuration
-    livekit_url = os.getenv("LIVEKIT_URL")
     agent_name = os.getenv("LK_AGENT_NAME", "ai")
-    sip_trunk_id = os.getenv("SIP_TRUNK_ID")
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    
-    logging.info("🚀 Starting LiveKit agent")
-    logging.info("📡 LiveKit URL: %s", livekit_url)
-    logging.info("🤖 Agent name: %s", agent_name)
-    logging.info("📞 SIP_TRUNK_ID (fallback): %s", sip_trunk_id)
-    logging.info("📋 Metadata-driven trunk selection: ENABLED")
-    logging.info("🔍 Environment check: LIVEKIT_URL=%s, LIVEKIT_API_KEY=%s, LIVEKIT_API_SECRET=%s",
-                 bool(os.getenv("LIVEKIT_URL")), bool(os.getenv("LIVEKIT_API_KEY")), bool(os.getenv("LIVEKIT_API_SECRET")))
+    logger.info("STARTING_LIVEKIT_AGENT")
+    logger.info(f"LIVEKIT_URL={os.getenv('LIVEKIT_URL')}")
+    logger.info(f"OPENAI_MODEL={os.getenv('OPENAI_LLM_MODEL', 'gpt-4o-mini')}")
+    logger.info(f"🤖 Agent name: {agent_name}")
 
-    logging.info("🔧 WorkerOptions: agent_name=%s, entrypoint_fnc=%s", agent_name, entrypoint.__name__)
-    logging.info("🎯 Agent is ready to receive dispatches!")
-
-    agents.cli.run_app(
-        agents.WorkerOptions(
-            entrypoint_fnc=entrypoint,
-            prewarm_fnc=prewarm,  # ✅ ensures VAD is ready
-            agent_name=agent_name,
-        )
-    )
+    # Run the agent
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm, agent_name=agent_name))

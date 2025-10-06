@@ -14,6 +14,11 @@ class SupabaseClient:
         self.logger = logging.getLogger(__name__)
         self.db_client = get_database_client()
     
+    @property
+    def client(self):
+        """Get the underlying Supabase client."""
+        return self.db_client.client if self.db_client else None
+    
     def is_available(self) -> bool:
         """Check if Supabase client is available."""
         return self.db_client is not None and self.db_client.is_available()

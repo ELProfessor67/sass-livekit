@@ -20,6 +20,15 @@ export interface ModelData {
   idleMessages: string[];
   idleMessageMaxSpokenCount: number;
   silenceTimeoutSeconds: number;
+  // Calendar credentials (populated from integration)
+  calApiKey?: string;
+  calEventTypeId?: string;
+  calEventTypeSlug?: string;
+  calTimezone?: string;
+  // WhatsApp credentials (populated from integration)
+  whatsappCredentialsId?: string;
+  whatsappNumber?: string;
+  whatsappKey?: string;
 }
 
 export interface VoiceData {
@@ -55,6 +64,7 @@ export interface StructuredDataField {
   name: string;
   type: string;
   description: string;
+  required?: boolean;
 }
 
 export interface AnalysisData {
@@ -62,6 +72,13 @@ export interface AnalysisData {
   callSummary: string;
   successEvaluation: boolean;
   customSuccessPrompt: string;
+  // Analysis timeout settings
+  summaryTimeout: number;
+  evaluationTimeout: number;
+  structuredDataTimeout: number;
+  // Structured data configuration
+  structuredDataPrompt: string;
+  structuredDataProperties: any;
 }
 
 export interface AdvancedData {
@@ -92,14 +109,6 @@ export interface AdvancedData {
   // SMS fields
   firstSms: string;
   smsPrompt: string;
-  // WhatsApp Business fields
-  whatsappNumber: string;
-  whatsappKey: string;
-  // Optional Cal.com integration (stored locally for now)
-  calApiKey?: string;
-  calEventTypeId?: string;
-  calEventTypeSlug?: string;
-  calTimezone?: string;
 }
 
 export interface SMSData {

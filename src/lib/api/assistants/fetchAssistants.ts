@@ -8,6 +8,7 @@ export interface Assistant {
   first_message?: string;
   first_sms?: string;
   sms_prompt?: string;
+  whatsapp_credentials_id?: string;
   status: "draft" | "active" | "inactive";
   created_at: string;
   updated_at: string;
@@ -25,7 +26,7 @@ export const fetchAssistants = async (): Promise<AssistantsResponse> => {
   try {
     const { data: assistants, error } = await supabase
       .from('assistant')
-      .select('id, name, prompt, first_message, first_sms, sms_prompt, created_at, updated_at')
+      .select('id, name, prompt, first_message, first_sms, sms_prompt, whatsapp_credentials_id, created_at, updated_at')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -49,6 +50,7 @@ export const fetchAssistants = async (): Promise<AssistantsResponse> => {
       first_message: assistant.first_message,
       first_sms: assistant.first_sms,
       sms_prompt: assistant.sms_prompt,
+      whatsapp_credentials_id: assistant.whatsapp_credentials_id,
       status: 'active', // Default status since we don't have this field yet
       created_at: assistant.created_at,
       updated_at: assistant.updated_at

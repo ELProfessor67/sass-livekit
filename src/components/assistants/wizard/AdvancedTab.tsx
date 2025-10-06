@@ -13,7 +13,6 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Plus, X, ChevronDown, Shield, Mic, Video, Music, Phone, MessageSquare, ArrowRightLeft, Check } from "lucide-react";
 import { AdvancedData } from "./types";
 import { WizardSlider } from "./WizardSlider";
-import { setupCalEventType } from "@/lib/api/calls/setupCalEventType";
 
 interface AdvancedTabProps {
   data: AdvancedData;
@@ -21,9 +20,6 @@ interface AdvancedTabProps {
 }
 
 export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
-  const [calSubmitting, setCalSubmitting] = React.useState(false);
-  const [calError, setCalError] = React.useState<string | null>(null);
-  const [calSuccess, setCalSuccess] = React.useState<string | null>(null);
   const [isCountryDropdownOpen, setIsCountryDropdownOpen] = useState(false);
 
   const countries = [
@@ -369,156 +365,6 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
         </CardContent>
       </Card>
 
-      {/* Calendar Integration (Optional) */}
-      <Card variant="default">
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <div>
-            <h3 className="text-lg font-medium">Calendar Integration (Optional)</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Provide Cal.com credentials to enable in-call scheduling. Leave blank to disable.
-            </p>
-          </div>
-          <ChevronDown className="h-5 w-5 text-muted-foreground" />
-        </CardHeader>
-        <CardContent className="space-y-[var(--space-xl)]">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-xl)]">
-            <div className="space-y-[var(--space-md)]">
-              <Label className="text-sm font-medium">Cal.com API Key</Label>
-              <Input
-                type="password"
-                placeholder="cal_live_..."
-                value={data.calApiKey || ""}
-                onChange={(e) => onChange({ calApiKey: e.target.value })}
-              />
-            </div>
-            <div className="space-y-[var(--space-md)]">
-              <Label className="text-sm font-medium">Event Type Slug</Label>
-              <Input
-                placeholder="e.g. team/demo-call"
-                value={data.calEventTypeSlug || ""}
-                onChange={(e) => onChange({ calEventTypeSlug: e.target.value })}
-              />
-            </div>
-            <div className="space-y-[var(--space-md)]">
-              <Label className="text-sm font-medium">Timezone</Label>
-              <Input
-                placeholder="e.g. America/Los_Angeles"
-                value={data.calTimezone || ""}
-                onChange={(e) => onChange({ calTimezone: e.target.value })}
-              />
-            </div>
-            <div className="space-y-[var(--space-md)]">
-              <Label className="text-sm font-medium">Event Type ID</Label>
-              <Input
-                placeholder="Auto-filled after connection"
-                value={data.calEventTypeId || ""}
-                onChange={(e) => onChange({ calEventTypeId: e.target.value })}
-                disabled
-              />
-            </div>
-          </div>
-
-          {/* Cal.com Connection Button */}
-          <div className="flex items-center gap-4">
-            <Button
-              onClick={async () => {
-                if (!data.calApiKey || !data.calEventTypeSlug || !data.calTimezone) {
-                  setCalError("Please fill in API Key, Event Type Slug, and Timezone");
-                  return;
-                }
-                
-                setCalSubmitting(true);
-                setCalError(null);
-                setCalSuccess(null);
-                
-                try {
-                  const resp = await setupCalEventType({ 
-                    apiKey: data.calApiKey, 
-                    eventTypeSlug: data.calEventTypeSlug, 
-                    timezone: data.calTimezone 
-                  });
-                  
-                  onChange({ calEventTypeId: resp.eventTypeId });
-                  setCalSuccess(`Connected: ${resp.eventTypeSlug} (#${resp.eventTypeId})`);
-                } catch (e: any) {
-                  setCalError(e?.message || 'Failed to connect');
-                } finally {
-                  setCalSubmitting(false);
-                }
-              }}
-              disabled={calSubmitting || !data.calApiKey || !data.calEventTypeSlug || !data.calTimezone}
-            >
-              {calSubmitting ? 'Connecting…' : 'Connect Cal.com'}
-            </Button>
-            
-            {calSuccess && (
-              <span className="text-sm text-green-600 font-medium">{calSuccess}</span>
-            )}
-            {calError && (
-              <span className="text-sm text-destructive font-medium">{calError}</span>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* WhatsApp Business Configuration */}
-      <Card variant="default" className="border-dashed border-muted-foreground/20">
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <div>
-            <h3 className="text-lg font-medium">
-              WhatsApp Business Configuration
-              <span className="ml-2 text-sm font-normal text-muted-foreground">(Optional)</span>
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Configure WhatsApp Business settings for messaging conversations with your assistant. 
-              Leave blank to disable WhatsApp integration.
-            </p>
-          </div>
-          <ChevronDown className="h-5 w-5 text-muted-foreground" />
-        </CardHeader>
-        <CardContent className="space-y-[var(--space-xl)]">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-xl)]">
-            <div className="space-y-[var(--space-md)]">
-              <Label className="text-sm font-medium">
-                WhatsApp Business Number
-                <span className="ml-1 text-xs text-muted-foreground font-normal">(Optional)</span>
-              </Label>
-              <Input
-                type="tel"
-                placeholder="+1234567890 (leave blank to disable)"
-                value={data.whatsappNumber}
-                onChange={(e) => onChange({ whatsappNumber: e.target.value })}
-              />
-              <p className="text-xs text-muted-foreground">
-                Your WhatsApp Business phone number (include country code). Leave blank to disable WhatsApp integration.
-              </p>
-            </div>
-            <div className="space-y-[var(--space-md)]">
-              <Label className="text-sm font-medium">
-                WhatsApp Business API Key
-                <span className="ml-1 text-xs text-muted-foreground font-normal">(Optional)</span>
-              </Label>
-              <Input
-                type="password"
-                placeholder="Enter your WhatsApp Business API key (leave blank to disable)"
-                value={data.whatsappKey}
-                onChange={(e) => onChange({ whatsappKey: e.target.value })}
-              />
-              <p className="text-xs text-muted-foreground">
-                Your WhatsApp Business API access token. Leave blank to disable WhatsApp integration.
-              </p>
-            </div>
-          </div>
-          
-          {/* Optional Integration Note */}
-          <div className="p-3 bg-muted/30 rounded-md border border-muted-foreground/10">
-            <p className="text-xs text-muted-foreground">
-              <strong>Note:</strong> WhatsApp Business integration is completely optional. 
-              Your assistant will work perfectly without it. Only configure these fields if you want to enable WhatsApp messaging capabilities.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* SMS Configuration */}
       <Card variant="default">

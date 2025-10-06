@@ -67,9 +67,11 @@ class CallProcessor:
                 import json
                 dial_info = json.loads(metadata)
                 if dial_info.get("phone_number") and dial_info.get("agentId"):
+                    self.logger.info(f"CALL_TYPE_DETERMINED | type=outbound | phone={dial_info.get('phone_number')}")
                     return "outbound"
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.warning(f"Failed to parse job metadata for call type determination: {e}")
         
         # Default to inbound
+        self.logger.info("CALL_TYPE_DETERMINED | type=inbound")
         return "inbound"

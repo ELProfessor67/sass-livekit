@@ -808,7 +808,7 @@ livekitSipRouter.get('/assistant/:id', async (req, res) => {
 
     const { data: assistant, error } = await supa
       .from('assistant')
-      .select('id, name, prompt, first_message, cal_api_key, cal_event_type_id, cal_timezone, llm_provider_setting, llm_model_setting, temperature_setting, max_token_setting')
+      .select('id, name, prompt, first_message, calendar, cal_api_key, cal_event_type_id, cal_event_type_slug, cal_timezone, llm_provider_setting, llm_model_setting, temperature_setting, max_token_setting')
       .eq('id', id)
       .single();
     if (error) throw error;
@@ -829,8 +829,10 @@ livekitSipRouter.get('/assistant/:id', async (req, res) => {
         temperature_setting: assistant.temperature_setting || 0.1,
         max_token_setting: assistant.max_token_setting || 250,
       },
+      calendar_integration_id: assistant.calendar || undefined,
       cal_api_key: assistant.cal_api_key || undefined,
       cal_event_type_id: assistant.cal_event_type_id || undefined,
+      cal_event_type_slug: assistant.cal_event_type_slug || undefined,
       cal_timezone: assistant.cal_timezone || undefined,
     };
     log(ctx, 'assistant resolved', { id, hasPrompt: !!assistant.prompt, hasFirst: !!assistant.first_message });

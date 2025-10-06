@@ -7,11 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ChevronDown, ChevronRight, Loader2, Plus, ExternalLink, X, Search, Phone } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Plus, ExternalLink, X, Search, Phone, Calendar, CheckCircle2, AlertCircle, MessageSquare } from "lucide-react";
 import { ModelData } from "./types";
 import { WizardSlider } from "./WizardSlider";
 import { Input } from "@/components/ui/input";
 import { getKnowledgeBases, type KnowledgeBase } from "@/lib/api/knowledgeBase";
+import { CalendarCredentialsService, type UserCalendarCredentials } from "@/lib/calendar-credentials";
+import { CalendarEventTypeService, type CalendarEventType } from "@/lib/calendar-event-types";
+import { WhatsAppCredentialsService, type UserWhatsAppCredentials } from "@/lib/whatsapp-credentials";
+// EventTypeSelector removed - using simple event slug input instead
+import { useToast } from "@/hooks/use-toast";
 
 // Predefined idle message options
 const IDLE_MESSAGE_OPTIONS = [
@@ -41,6 +46,11 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
   const [loadingKnowledgeBases, setLoadingKnowledgeBases] = useState(false);
   const [knowledgeBaseError, setKnowledgeBaseError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [calendarCredentials, setCalendarCredentials] = useState<UserCalendarCredentials[]>([]);
+  const [loadingCalendarCredentials, setLoadingCalendarCredentials] = useState(false);
+  const [whatsappCredentials, setWhatsappCredentials] = useState<UserWhatsAppCredentials[]>([]);
+  const [loadingWhatsappCredentials, setLoadingWhatsappCredentials] = useState(false);
+  const { toast } = useToast();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Debug logging
@@ -70,11 +80,94 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
     onChange({ idleMessages: [] });
   };
 
+  // Filter idle message options based on search term
   const filteredIdleOptions = IDLE_MESSAGE_OPTIONS.filter(option =>
     option.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Fetch knowledge bases on component mount
+  const handleCalendarChange = (calendarIntegrationId: string) => {
+    console.log("Calendar change triggered:", calendarIntegrationId);
+    console.log("Available calendar credentials:", calendarCredentials);
+    
+    if (calendarIntegrationId === "None") {
+      // Clear calendar credentials
+      onChange({ 
+        calendar: "None",
+        calApiKey: "",
+        calEventTypeId: "",
+        calEventTypeSlug: "",
+        calTimezone: "UTC"
+      });
+      return;
+    }
+
+    // Find the selected calendar integration
+    const selectedIntegration = calendarCredentials.find(cred => cred.id === calendarIntegrationId);
+    console.log("Selected integration:", selectedIntegration);
+    
+    if (selectedIntegration) {
+      // Populate calendar credentials from the integration (without event type details)
+      const updateData = {
+        calendar: calendarIntegrationId,
+        calApiKey: selectedIntegration.api_key,
+        calTimezone: selectedIntegration.timezone || "UTC",
+        // Clear event type fields - they will be set when user selects an event type
+        calEventTypeId: "",
+        calEventTypeSlug: ""
+      };
+      console.log("Updating calendar data:", updateData);
+      onChange(updateData);
+    }
+  };
+
+  const handleWhatsAppChange = (whatsappIntegrationId: string) => {
+    if (whatsappIntegrationId === "None") {
+      // Clear WhatsApp credentials
+      onChange({ 
+        whatsappCredentialsId: "",
+        whatsappNumber: "",
+        whatsappKey: ""
+      });
+      return;
+    }
+
+    // Find the selected WhatsApp integration
+    const selectedIntegration = whatsappCredentials.find(cred => cred.id === whatsappIntegrationId);
+    if (selectedIntegration) {
+      // Populate WhatsApp credentials from the integration
+      onChange({
+        whatsappCredentialsId: whatsappIntegrationId,
+        whatsappNumber: selectedIntegration.whatsapp_number,
+        whatsappKey: selectedIntegration.whatsapp_key
+      });
+    }
+  };
+
+  const handleEventTypeChange = (eventType: CalendarEventType | null) => {
+    if (eventType) {
+      // Update calendar credentials with selected event type
+      onChange({
+        calEventTypeId: eventType.event_type_id,
+        calEventTypeSlug: eventType.event_type_slug
+      });
+    } else {
+      // Clear event type fields
+      onChange({
+        calEventTypeId: "",
+        calEventTypeSlug: ""
+      });
+    }
+  };
+
+  const handleEventSlugChange = (eventSlug: string) => {
+    // Just update the slug - event type will be created during assistant save
+    onChange({
+      calEventTypeSlug: eventSlug,
+      calEventTypeId: "" // Will be set when event type is created
+    });
+  };
+
+  // Fetch knowledge bases and calendar credentials on component mount
   useEffect(() => {
     const fetchKnowledgeBases = async () => {
       try {
@@ -90,8 +183,45 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
       }
     };
 
+    const fetchCalendarCredentials = async () => {
+      try {
+        setLoadingCalendarCredentials(true);
+        const credentials = await CalendarCredentialsService.getAllCredentials();
+        console.log("Loaded calendar credentials:", credentials);
+        setCalendarCredentials(credentials);
+      } catch (error) {
+        console.error('Failed to fetch calendar credentials:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load calendar integrations.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoadingCalendarCredentials(false);
+      }
+    };
+
+    const fetchWhatsAppCredentials = async () => {
+      try {
+        setLoadingWhatsappCredentials(true);
+        const credentials = await WhatsAppCredentialsService.getAllCredentials();
+        setWhatsappCredentials(credentials);
+      } catch (error) {
+        console.error('Failed to fetch WhatsApp credentials:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load WhatsApp integrations.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoadingWhatsappCredentials(false);
+      }
+    };
+
     fetchKnowledgeBases();
-  }, []);
+    fetchCalendarCredentials();
+    fetchWhatsAppCredentials();
+  }, [toast]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[540px]">
@@ -315,16 +445,122 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
 
             {/* Calendar */}
             <div>
-              <Label className="block text-sm font-medium mb-2">Calendar</Label>
-              <Select value={data.calendar} onValueChange={(value) => onChange({ calendar: value })}>
+              <Label className="block text-sm font-medium mb-2">Calendar Integration</Label>
+              <Select value={data.calendar} onValueChange={(value) => handleCalendarChange(value)}>
                 <SelectTrigger className="h-10">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
                   <SelectItem value="None">None</SelectItem>
-                  <SelectItem value="Cal.com">Cal.com</SelectItem>
+                  {calendarCredentials.map((cred) => (
+                    <SelectItem key={cred.id} value={cred.id}>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4" />
+                        <span>{cred.label}</span>
+                        {cred.is_active && (
+                          <CheckCircle2 className="w-3 h-3 text-green-500" />
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              {loadingCalendarCredentials && (
+                <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading calendar integrations...
+                </div>
+              )}
+              {!loadingCalendarCredentials && calendarCredentials.length === 0 && (
+                <div className="mt-2 p-3 bg-muted/50 rounded-md">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertCircle className="w-4 h-4 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      No calendar integrations found.
+                    </p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Configure calendar integrations in Settings to enable scheduling features.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open('/settings', '_blank')}
+                    className="text-xs"
+                  >
+                    <ExternalLink className="h-3 w-3 mr-1" />
+                    Go to Settings
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Event Type Slug Input */}
+            {data.calendar && data.calendar !== "None" && (
+              <div>
+                <Label className="block text-sm font-medium mb-2">Event Type Slug</Label>
+                <Input
+                  placeholder="e.g., team/demo-call"
+                  value={data.calEventTypeSlug || ""}
+                  onChange={(e) => handleEventSlugChange(e.target.value)}
+                  className="h-10"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  This will automatically create an event type in your calendar when you save the assistant
+                </p>
+              </div>
+            )}
+
+            {/* WhatsApp Integration */}
+            <div>
+              <Label className="block text-sm font-medium mb-2">WhatsApp Integration</Label>
+              <Select value={data.whatsappCredentialsId || "None"} onValueChange={(value) => handleWhatsAppChange(value)}>
+                <SelectTrigger className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-60">
+                  <SelectItem value="None">None</SelectItem>
+                  {whatsappCredentials.map((cred) => (
+                    <SelectItem key={cred.id} value={cred.id}>
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4" />
+                        <span>{cred.label}</span>
+                        {cred.is_active && (
+                          <CheckCircle2 className="w-3 h-3 text-green-500" />
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {loadingWhatsappCredentials && (
+                <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading WhatsApp integrations...
+                </div>
+              )}
+              {!loadingWhatsappCredentials && whatsappCredentials.length === 0 && (
+                <div className="mt-2 p-3 bg-muted/50 rounded-md">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertCircle className="w-4 h-4 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      No WhatsApp integrations found.
+                    </p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Configure WhatsApp integrations in Settings to enable messaging features.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open('/settings', '_blank')}
+                    className="text-xs"
+                  >
+                    <ExternalLink className="h-3 w-3 mr-1" />
+                    Go to Settings
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Conversation Start */}

@@ -8,6 +8,7 @@ import { Search, MessageSquare, Phone } from "lucide-react";
 import { Conversation } from "./types";
 import { normalizeResolution } from "@/components/dashboard/call-outcomes/utils";
 import { cn } from "@/lib/utils";
+import { formatPhoneNumber } from "@/utils/formatUtils";
 
 interface ConversationsListProps {
   conversations: Conversation[];
@@ -28,6 +29,107 @@ export function ConversationsList({
       .join('')
       .toUpperCase()
       .slice(0, 2);
+  };
+
+  // Get display name based on whether we have structured name or not
+  const getDisplayName = (conversation: Conversation): string => {
+    // First, check if conversation already has a displayName (from ContactSummary)
+    if (conversation.displayName && conversation.displayName !== formatPhoneNumber(conversation.phoneNumber)) {
+      // If displayName contains both name and phone (format: "Name - Phone"), extract just the name
+      if (conversation.displayName.includes(' - ')) {
+        return conversation.displayName.split(' - ')[0];
+      }
+      // If it's just the name, return it
+      return conversation.displayName;
+    }
+
+    // Check if conversation has calls with structured data
+    if (conversation.calls && conversation.calls.length > 0) {
+      // Sort calls by date to get the most recent one
+      const sortedCalls = [...conversation.calls].sort((a, b) => 
+        new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime()
+      );
+      
+      const latestCall = sortedCalls[0];
+      
+      // Check if the call has structured_data (analysis results)
+      let structuredData = null;
+      if (latestCall.analysis && typeof latestCall.analysis === 'object') {
+        structuredData = latestCall.analysis;
+      } else if ((latestCall as any).structured_data && typeof (latestCall as any).structured_data === 'object') {
+        structuredData = (latestCall as any).structured_data;
+      }
+
+      if (structuredData) {
+        // Helper function to extract value from structured data field
+        const extractValue = (field: any): string | undefined => {
+          if (typeof field === 'string') {
+            return field;
+          } else if (field && typeof field === 'object' && field.value) {
+            return field.value;
+          }
+          return undefined;
+        };
+
+        // Try to find customer name in structured data
+        const customerNameField = structuredData['Customer Name'] || structuredData['name'] || structuredData['full_name'] || structuredData['contact_name'] || structuredData['client_name'];
+        if (customerNameField) {
+          const extractedName = extractValue(customerNameField);
+          if (extractedName && extractedName.trim() !== '') {
+            return extractedName; // Only name, no phone number
+          }
+        }
+      }
+    }
+    
+    // Fallback to formatted phone number if no name found
+    return formatPhoneNumber(conversation.phoneNumber);
+  };
+
+  // Check if we have a contact name for this conversation
+  const hasContactName = (conversation: Conversation): boolean => {
+    // First, check if conversation already has a displayName (from ContactSummary)
+    if (conversation.displayName && conversation.displayName !== formatPhoneNumber(conversation.phoneNumber)) {
+      // If displayName contains both name and phone (format: "Name - Phone"), we have a name
+      if (conversation.displayName.includes(' - ')) {
+        return true;
+      }
+      // If it's just the name (not a phone number), we have a name
+      return conversation.displayName !== formatPhoneNumber(conversation.phoneNumber);
+    }
+
+    if (conversation.calls && conversation.calls.length > 0) {
+      const sortedCalls = [...conversation.calls].sort((a, b) => 
+        new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime()
+      );
+      
+      const latestCall = sortedCalls[0];
+      
+      let structuredData = null;
+      if (latestCall.analysis && typeof latestCall.analysis === 'object') {
+        structuredData = latestCall.analysis;
+      } else if ((latestCall as any).structured_data && typeof (latestCall as any).structured_data === 'object') {
+        structuredData = (latestCall as any).structured_data;
+      }
+
+      if (structuredData) {
+        const extractValue = (field: any): string | undefined => {
+          if (typeof field === 'string') {
+            return field;
+          } else if (field && typeof field === 'object' && field.value) {
+            return field.value;
+          }
+          return undefined;
+        };
+
+        const customerNameField = structuredData['Customer Name'] || structuredData['name'] || structuredData['full_name'] || structuredData['contact_name'] || structuredData['client_name'];
+        if (customerNameField) {
+          const extractedName = extractValue(customerNameField);
+          return extractedName && extractedName.trim() !== '';
+        }
+      }
+    }
+    return false;
   };
 
   const getOutcomeBadgeColor = (outcome?: string) => {
@@ -96,7 +198,7 @@ export function ConversationsList({
                 <div className="flex items-start gap-1">
                   <Avatar className="h-8 w-8 flex-shrink-0">
                     <AvatarFallback className="text-[10px] font-medium bg-muted text-muted-foreground">
-                      {getInitials(conversation.displayName)}
+                      {getInitials(getDisplayName(conversation))}
                     </AvatarFallback>
                   </Avatar>
                   
@@ -105,7 +207,7 @@ export function ConversationsList({
                       <div className="flex items-center space-x-1.5">
                         {getChannelIndicator(conversation)}
                         <h3 className="text-sm font-medium text-foreground truncate">
-                          {conversation.displayName}
+                          {getDisplayName(conversation)}
                         </h3>
                       </div>
                       <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2">
@@ -114,10 +216,6 @@ export function ConversationsList({
                     </div>
                     
                     <div className="flex items-center justify-between">
-                      <p className="text-xs text-muted-foreground truncate">
-                        {conversation.phoneNumber}
-                      </p>
-                      
                       <div className="flex items-center gap-1">
                         {/* New message indicators */}
                         {conversation.hasNewSMS && (

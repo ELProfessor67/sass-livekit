@@ -219,6 +219,7 @@ export type Database = {
           analysis_structured_data_timeout: number | null
           analysis_summary_prompt: string | null
           analysis_summary_timeout: number | null
+          structured_data_fields: Json | null
           audio_recording_format:
             | Database["public"]["Enums"]["audio_recording_format"]
             | null
@@ -299,6 +300,7 @@ export type Database = {
           analysis_structured_data_timeout?: number | null
           analysis_summary_prompt?: string | null
           analysis_summary_timeout?: number | null
+          structured_data_fields?: Json | null
           audio_recording_format?:
             | Database["public"]["Enums"]["audio_recording_format"]
             | null
@@ -381,6 +383,7 @@ export type Database = {
           analysis_structured_data_timeout?: number | null
           analysis_summary_prompt?: string | null
           analysis_summary_timeout?: number | null
+          structured_data_fields?: Json | null
           audio_recording_format?:
             | Database["public"]["Enums"]["audio_recording_format"]
             | null
