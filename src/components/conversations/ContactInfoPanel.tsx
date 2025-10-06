@@ -14,6 +14,8 @@ import { createContactList } from "@/lib/api/contacts/createContactList";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { formatPhoneNumber } from "@/utils/formatUtils";
+import { normalizeResolution } from "@/components/dashboard/call-outcomes/utils";
+import { outcomeMapping } from "@/components/dashboard/call-outcomes/OutcomeMapping";
 
 interface ContactInfoPanelProps {
   conversation: Conversation;
@@ -55,6 +57,24 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
       .join('')
       .toUpperCase()
       .slice(0, 2);
+  };
+
+  // Get the latest call outcome
+  const getLatestCallOutcome = () => {
+    if (!conversation.calls || conversation.calls.length === 0) {
+      return null;
+    }
+
+    // Sort calls by date to get the most recent one
+    const sortedCalls = [...conversation.calls].sort((a, b) => 
+      new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime()
+    );
+    
+    // Get the most recent call
+    const latestCall = sortedCalls[0];
+    
+    // Return the resolution/outcome from the latest call
+    return latestCall.resolution || latestCall.status || null;
   };
 
   // Extract analysis data from the most recent call
@@ -343,9 +363,39 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
           <div className="space-y-[var(--space-md)]">
             <h3 className="text-sm font-medium text-foreground">Last Call Outcome</h3>
             <div className="p-[var(--space-md)] bg-muted/10 rounded-[var(--radius-md)] border border-border/10">
-              <Badge variant="secondary" className="text-xs px-3 py-1">
-                {conversation.lastCallOutcome || 'No outcome recorded'}
-              </Badge>
+              {(() => {
+                const latestOutcome = getLatestCallOutcome();
+                if (!latestOutcome) {
+                  return (
+                    <Badge variant="secondary" className="text-xs px-3 py-1">
+                      No outcome recorded
+                    </Badge>
+                  );
+                }
+                
+                const normalizedOutcome = normalizeResolution(latestOutcome);
+                const mappedOutcome = outcomeMapping[normalizedOutcome] || outcomeMapping['completed'];
+                
+                return (
+                  <div className="flex items-center gap-2">
+                    <div 
+                      className="w-2 h-2 rounded-full" 
+                      style={{ backgroundColor: mappedOutcome.color }}
+                    />
+                    <Badge 
+                      variant="secondary" 
+                      className="text-xs px-3 py-1"
+                      style={{ 
+                        backgroundColor: `${mappedOutcome.color}20`,
+                        borderColor: `${mappedOutcome.color}40`,
+                        color: mappedOutcome.color
+                      }}
+                    >
+                      {mappedOutcome.name}
+                    </Badge>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 

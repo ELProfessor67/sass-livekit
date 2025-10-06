@@ -244,7 +244,7 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
             status: call.call_status,
             resolution: determineCallResolution(call.transcription, call.call_status),
             call_recording: recordingInfo?.recordingUrl || '',
-            summary: generateCallSummary(call.transcription),
+            summary: call.call_summary,
             transcript: processedTranscript,
             analysis: call.structured_data || null,
             address: '',
@@ -832,7 +832,7 @@ export const fetchConversationDetails = async (
             status: call.call_status,
             resolution: determineCallResolution(call.transcription, call.call_status),
             call_recording: recordingInfo?.recordingUrl || '',
-            summary: generateCallSummary(call.transcription),
+            summary: call.call_summary,
             transcript: processedTranscript,
             analysis: call.structured_data || null,
             address: '',
@@ -1106,7 +1106,7 @@ export const loadConversationHistory = async (
             status: call.call_status,
             resolution: determineCallResolution(call.transcription, call.call_status),
             call_recording: recordingInfo?.recordingUrl || '',
-            summary: generateCallSummary(call.transcription),
+            summary: call.call_summary,
             transcript: processedTranscript,
             analysis: null,
             address: '',
@@ -1261,7 +1261,7 @@ export const fetchNewMessagesSince = async (
                 status: call.call_status,
                 resolution: determineCallResolution(call.transcription, call.call_status),
                 call_recording: recordingInfo?.recordingUrl || '',
-                summary: generateCallSummary(call.transcription),
+                summary: call.call_summary,
                 transcript: processedTranscript,
                 analysis: null,
                 address: '',
@@ -1453,17 +1453,30 @@ function generateCallSummary(transcription: Array<{ role: string; content: any }
     .map(extractContent)
     .join(' ');
 
-  // Create a brief summary
+  // Create a more comprehensive summary
   const summary = [];
 
-  if (customerMessages.includes('appointment') || customerMessages.includes('schedule')) {
+  // Check for appointment/scheduling related content
+  if (customerMessages.includes('appointment') || customerMessages.includes('schedule') || customerMessages.includes('book')) {
     summary.push('Customer interested in scheduling appointment');
   }
 
-  if (customerMessages.includes('window') || customerMessages.includes('replacement')) {
-    summary.push('Customer inquired about window replacement services');
+  // Check for service inquiries
+  if (customerMessages.includes('window') || customerMessages.includes('replacement') || customerMessages.includes('door')) {
+    summary.push('Customer inquired about window/door replacement services');
   }
 
+  // Check for pricing inquiries
+  if (customerMessages.includes('price') || customerMessages.includes('cost') || customerMessages.includes('quote')) {
+    summary.push('Customer asked about pricing');
+  }
+
+  // Check for consultation requests
+  if (customerMessages.includes('consultation') || customerMessages.includes('measure') || customerMessages.includes('estimate')) {
+    summary.push('Customer requested consultation or estimate');
+  }
+
+  // Check agent responses
   if (agentMessages.includes('appointment') || agentMessages.includes('schedule')) {
     summary.push('Agent provided scheduling information');
   }
@@ -1472,5 +1485,19 @@ function generateCallSummary(transcription: Array<{ role: string; content: any }
     summary.push('Agent offered free consultation');
   }
 
-  return summary.length > 0 ? summary.join('. ') + '.' : 'General inquiry about services';
+  // If no specific keywords found, try to create a summary from the first few messages
+  if (summary.length === 0) {
+    const allMessages = transcription.map(extractContent).filter(msg => msg.trim().length > 0);
+    if (allMessages.length > 0) {
+      // Take the first meaningful message and truncate it
+      const firstMessage = allMessages[0];
+      if (firstMessage.length > 50) {
+        summary.push(firstMessage.substring(0, 50) + '...');
+      } else {
+        summary.push(firstMessage);
+      }
+    }
+  }
+
+  return summary.length > 0 ? summary.join('. ') + '.' : 'Call completed - no specific details available';
 }

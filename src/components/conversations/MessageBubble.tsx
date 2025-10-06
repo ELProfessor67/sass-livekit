@@ -9,9 +9,11 @@ import { Conversation } from "./types";
 import { normalizeResolution } from "@/components/dashboard/call-outcomes/utils";
 import { CompactAudioPlayer } from "@/components/ui/compact-audio-player";
 import { InlineTranscriptView } from "./InlineTranscriptView";
+import { SummaryExpandDialog } from "./SummaryExpandDialog";
 import { SMSMessage } from "@/lib/api/sms/smsService";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { ExternalLink } from "lucide-react";
 
 interface MessageBubbleProps {
   message: {
@@ -336,9 +338,35 @@ export function MessageBubble({ message, conversation, showAvatar = true, onRetr
 
           {/* Summary */}
           {message.summary && (
-            <p className="text-xs text-foreground mb-2 leading-relaxed">
-              {message.summary}
-            </p>
+            <div className="mb-2">
+              <div className="flex items-start gap-1">
+                <div className="flex-1">
+                  <p 
+                    className="text-xs text-foreground leading-relaxed"
+                    style={{
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}
+                  >
+                    {message.summary}
+                  </p>
+                </div>
+                <SummaryExpandDialog
+                  summary={message.summary}
+                  trigger={
+                    <button
+                      className="flex-shrink-0 p-1 text-muted-foreground hover:text-foreground transition-colors"
+                      title="View full summary"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                    </button>
+                  }
+                />
+              </div>
+            </div>
           )}
 
           {/* Recording */}
