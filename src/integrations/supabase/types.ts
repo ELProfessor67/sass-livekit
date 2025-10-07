@@ -253,23 +253,16 @@ export type Database = {
           inbound_webhook_url: string | null
           input_min_characters: number | null
           knowledge_base_id: string | null
+          language_setting: string | null
           llm_model_setting: string | null
           llm_provider_setting: string | null
-          max_idle_messages: number | null
-          max_token_setting: number | null
-          maximum_duration: number | null
+          max_call_duration: number | null
           name: string | null
           pci_compliance: boolean | null
           prompt: string | null
           silence_timeout: number | null
           smart_endpointing: boolean | null
           temperature_setting: number | null
-          transcriber_confidence_threshold: number | null
-          transcriber_keywords: string | null
-          transcriber_language: string | null
-          transcriber_model: string | null
-          transcriber_provider: string | null
-          transcriber_use_numbers: boolean | null
           updated_at: string | null
           use_speaker_boost: boolean | null
           user_id: string | null
@@ -336,8 +329,10 @@ export type Database = {
           inbound_webhook_url?: string | null
           input_min_characters?: number | null
           knowledge_base_id?: string | null
+          language_setting?: string | null
           llm_model_setting?: string | null
           llm_provider_setting?: string | null
+          max_call_duration?: number | null
           max_idle_messages?: number | null
           max_token_setting?: number | null
           maximum_duration?: number | null
@@ -347,12 +342,6 @@ export type Database = {
           silence_timeout?: number | null
           smart_endpointing?: boolean | null
           temperature_setting?: number | null
-          transcriber_confidence_threshold?: number | null
-          transcriber_keywords?: string | null
-          transcriber_language?: string | null
-          transcriber_model?: string | null
-          transcriber_provider?: string | null
-          transcriber_use_numbers?: boolean | null
           updated_at?: string | null
           use_speaker_boost?: boolean | null
           user_id?: string | null
@@ -419,8 +408,10 @@ export type Database = {
           inbound_webhook_url?: string | null
           input_min_characters?: number | null
           knowledge_base_id?: string | null
+          language_setting?: string | null
           llm_model_setting?: string | null
           llm_provider_setting?: string | null
+          max_call_duration?: number | null
           max_idle_messages?: number | null
           max_token_setting?: number | null
           maximum_duration?: number | null
@@ -430,12 +421,6 @@ export type Database = {
           silence_timeout?: number | null
           smart_endpointing?: boolean | null
           temperature_setting?: number | null
-          transcriber_confidence_threshold?: number | null
-          transcriber_keywords?: string | null
-          transcriber_language?: string | null
-          transcriber_model?: string | null
-          transcriber_provider?: string | null
-          transcriber_use_numbers?: boolean | null
           updated_at?: string | null
           use_speaker_boost?: boolean | null
           user_id?: string | null

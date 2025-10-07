@@ -14,6 +14,7 @@ import { SMSMessage } from "@/lib/api/sms/smsService";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { ExternalLink } from "lucide-react";
+import { formatSummaryForDisplay } from "@/utils/summaryUtils";
 
 interface MessageBubbleProps {
   message: {
@@ -351,11 +352,11 @@ export function MessageBubble({ message, conversation, showAvatar = true, onRetr
                       textOverflow: 'ellipsis'
                     }}
                   >
-                    {message.summary}
+                    {formatSummaryForDisplay(message.summary)}
                   </p>
                 </div>
                 <SummaryExpandDialog
-                  summary={message.summary}
+                  summary={formatSummaryForDisplay(message.summary)}
                   trigger={
                     <button
                       className="flex-shrink-0 p-1 text-muted-foreground hover:text-foreground transition-colors"

@@ -123,7 +123,9 @@ const CreateAssistant = () => {
       provider: "Twilio",
       knowledgeBase: "None",
       calendar: "None",
+      calendarBookingEnabled: false,
       systemPrompt: "",
+      firstMessage: "",
       responseStyle: 0.5,
       characterLimit: 160,
       language: "en",
@@ -247,24 +249,29 @@ const CreateAssistant = () => {
               provider: data.llm_provider_setting || "OpenAI",
               model: data.llm_model_setting || "GPT-4o Mini",
               knowledgeBase: data.knowledge_base_id || "None",
-              calendar: "None", // Not stored in DB yet
+              calendar: data.calendar || "None",
               conversationStart: "assistant-first",
               voice: "rachel-elevenlabs",
               temperature: data.temperature_setting || 0.3,
               maxTokens: data.max_token_setting || 250,
+              language: data.language_setting || "en",
               firstMessage: data.first_message || "",
               systemPrompt: data.prompt || "",
-              language: "en",
               transcriber: {
                 model: data.transcriber_model || "nova-2",
                 language: data.transcriber_language || "en"
               },
               // Call Management Settings
               endCallMessage: data.end_call_message || "",
-              maxCallDuration: data.maximum_duration || 1800,
+              maxCallDuration: data.max_call_duration || 30,
               idleMessages: Array.isArray(data.idle_messages) ? data.idle_messages.filter(item => typeof item === 'string') : [],
               idleMessageMaxSpokenCount: data.max_idle_messages || 3,
-              silenceTimeoutSeconds: data.silence_timeout || 10
+              silenceTimeoutSeconds: data.silence_timeout || 10,
+              // Calendar credentials (populated from integration)
+              calApiKey: data.cal_api_key || "",
+              calEventTypeId: data.cal_event_type_id || "",
+              calEventTypeSlug: data.cal_event_type_slug || "",
+              calTimezone: data.cal_timezone || "UTC"
             },
             voice: {
               provider: data.voice_provider_setting || "ElevenLabs",
@@ -296,12 +303,14 @@ const CreateAssistant = () => {
             },
             sms: {
               provider: "Twilio",
-              knowledgeBase: "None",
-              calendar: "None",
-              systemPrompt: "",
-              responseStyle: 0.5,
-              characterLimit: 160,
-              language: "en",
+              knowledgeBase: data.knowledge_base_id || "None",
+              calendar: data.calendar || "None",
+              calendarBookingEnabled: data.sms_calendar_booking_enabled || false,
+              systemPrompt: data.sms_prompt || "",
+              firstMessage: data.first_sms || "",
+              responseStyle: data.response_style || 0.5,
+              characterLimit: data.character_limit || 160,
+              language: data.language_setting || "en",
               autoReply: true,
               autoReplyDelay: 1,
               businessHours: {
@@ -344,25 +353,23 @@ const CreateAssistant = () => {
               videoRecordingEnabled: data.video_recording || false,
               endCallMessage: data.end_call_message || "",
               endCallPhrases: Array.isArray(data.end_call_phrases) ? data.end_call_phrases.filter(item => typeof item === 'string') : [],
-              maxCallDuration: 1800,
+              maxCallDuration: data.max_call_duration || 30,
               idleMessages: Array.isArray(data.idle_messages) ? data.idle_messages.filter(item => typeof item === 'string') : [],
-              idleMessageMaxSpokenCount: 1,
-              silenceTimeoutSeconds: 30,
-              responseDelaySeconds: 1,
-              llmRequestDelaySeconds: 0.1,
-              numWordsToInterruptAssistant: 2,
-              maxDurationSeconds: 600,
-              backgroundSound: "office",
-              voicemailDetectionEnabled: false,
-              voicemailMessage: "",
-              transferEnabled: false,
-              transferPhoneNumber: "",
-              transferCountryCode: "+1",
-              transferSentence: "",
-              transferCondition: "",
-              transferType: "warm" as const,
-              firstSms: data.first_sms || "",
-              smsPrompt: data.sms_prompt || "",
+              idleMessageMaxSpokenCount: data.max_idle_messages || 3,
+              silenceTimeoutSeconds: data.silence_timeout || 10,
+              responseDelaySeconds: data.response_delay_seconds || 1,
+              llmRequestDelaySeconds: data.llm_request_delay_seconds || 0.1,
+              numWordsToInterruptAssistant: data.num_words_to_interrupt_assistant || 2,
+              maxDurationSeconds: data.max_duration_seconds || 600,
+              backgroundSound: data.background_sound_setting || "office",
+              voicemailDetectionEnabled: data.voicemail_detection_enabled || false,
+              voicemailMessage: data.voicemail_message || "",
+              transferEnabled: data.transfer_enabled || false,
+              transferPhoneNumber: data.transfer_phone_number || "",
+              transferCountryCode: data.transfer_country_code || "+1",
+              transferSentence: data.transfer_sentence || "",
+              transferCondition: data.transfer_condition || "",
+              transferType: (data.transfer_type as "warm" | "cold") || "warm",
               whatsappNumber: (data as any).whatsapp_number || "",
               whatsappKey: (data as any).whatsapp_key || ""
             },
@@ -372,15 +379,7 @@ const CreateAssistant = () => {
             }
           });
 
-          // Load Cal.com config from database
-          if (data.cal_api_key || data.cal_event_type_id || data.cal_event_type_slug || data.cal_timezone) {
-            handleFormDataChange('advanced', {
-              calApiKey: data.cal_api_key,
-              calEventTypeId: data.cal_event_type_id,
-              calEventTypeSlug: data.cal_event_type_slug,
-              calTimezone: data.cal_timezone,
-            });
-          }
+          // Calendar credentials are now loaded directly in the model tab above
         }
       } catch (error) {
         console.error('Error loading assistant:', error);
@@ -442,6 +441,7 @@ const CreateAssistant = () => {
       knowledge_base_id: kbId,
       temperature_setting: formData.model.temperature,
       max_token_setting: formData.model.maxTokens,
+      language_setting: formData.model.language,
       
       // Groq-specific settings (only set if provider is Groq)
       ...(formData.model.provider === "Groq" && {
@@ -476,10 +476,6 @@ const CreateAssistant = () => {
       maximum_duration: formData.voice.maxDuration,
       smart_endpointing: String(formData.voice.smartEndpointing).toLowerCase() === "enabled",
 
-      // Transcriber (best effort mapping)
-      transcriber_provider: "Deepgram",
-      transcriber_model: formData.model.transcriber?.model || null,
-      transcriber_language: formData.model.transcriber?.language || null,
 
       // Analysis
       analysis_summary_prompt: formData.analysis.callSummary || null,
@@ -495,15 +491,20 @@ const CreateAssistant = () => {
       hipaa_compliance: formData.advanced.hipaaCompliant,
       audio_recording_setting: formData.advanced.recordingEnabled,
       video_recording: formData.advanced.videoRecordingEnabled,
-      end_call_message: formData.advanced.endCallMessage || null,
       end_call_phrases: formData.advanced.endCallPhrases?.length ? formData.advanced.endCallPhrases : null,
-      idle_messages: formData.advanced.idleMessages?.length ? formData.advanced.idleMessages : null,
-      max_idle_messages: formData.advanced.idleMessageMaxSpokenCount,
       wait_seconds: formData.voice.waitSeconds,
 
+      // Call Management Settings (from Model tab)
+      end_call_message: formData.model.endCallMessage || null,
+      max_call_duration: formData.model.maxCallDuration || 30,
+      idle_messages: formData.model.idleMessages?.length ? formData.model.idleMessages : null,
+      max_idle_messages: formData.model.idleMessageMaxSpokenCount || 3,
+      silence_timeout: formData.model.silenceTimeoutSeconds || 10,
+
       // SMS fields
-      first_sms: formData.advanced.firstSms || null,
-      sms_prompt: formData.advanced.smsPrompt || null,
+      first_sms: formData.sms.firstMessage || null,
+      sms_prompt: formData.sms.systemPrompt || null,
+      sms_calendar_booking_enabled: formData.sms.calendarBookingEnabled || false,
 
       // WhatsApp Integration
       whatsapp_credentials_id: formData.model.whatsappCredentialsId || null,

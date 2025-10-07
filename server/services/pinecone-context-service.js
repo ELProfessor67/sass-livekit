@@ -20,7 +20,7 @@ class PineconeContextService {
   }
 
   /**
-   * Retrieve context snippets from a Pinecone Assistant
+   * Retrieve context snippets from a Pinecone Assistant using chat API
    * @param {string} companyId - The company ID
    * @param {string} knowledgeBaseId - The knowledge base ID
    * @param {string} query - The search query
@@ -37,10 +37,10 @@ class PineconeContextService {
       // Get assistant instance
       const assistant = this.pinecone.Assistant(assistantName);
       
-      // Default options
+      // Default options for context
       const defaultOptions = {
-        top_k: 16,
-        snippet_size: 2048
+        topK: 16,
+        snippetSize: 2048
       };
       
       // Merge with provided options
@@ -48,21 +48,31 @@ class PineconeContextService {
       
       console.log(`Using assistant '${assistantName}' with options:`, contextOptions);
       
-      // Retrieve context snippets
-      const response = await assistant.context({
-        query: query,
-        top_k: contextOptions.top_k,
-        snippet_size: contextOptions.snippet_size
+      // Use chat API to get context snippets
+      const response = await assistant.chat({
+        messages: [{ role: 'user', content: query }],
+        contextOptions: {
+          topK: contextOptions.topK,
+          snippetSize: contextOptions.snippetSize
+        }
       });
       
-      console.log(`Retrieved ${response.snippets?.length || 0} context snippets`);
+      // Extract snippets from citations
+      const snippets = response.citations?.map(citation => ({
+        content: citation.references?.[0]?.highlight?.content || '',
+        score: 1.0, // Default score since chat API doesn't provide relevance scores
+        reference: citation.references?.[0]
+      })) || [];
+      
+      console.log(`Retrieved ${snippets.length} context snippets from chat response`);
       
       return {
         success: true,
-        snippets: response.snippets || [],
+        snippets: snippets,
         query: query,
         assistantName: assistantName,
-        options: contextOptions
+        options: contextOptions,
+        response: response
       };
 
     } catch (error) {

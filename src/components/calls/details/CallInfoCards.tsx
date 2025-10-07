@@ -6,6 +6,7 @@ import { BodyText, SubHeading } from "@/components/ui/typography";
 import { Phone, Calendar, Clock, ArrowDownLeft, ArrowUpRight, MessageSquare } from "lucide-react";
 import { outcomeMapping } from "@/components/dashboard/call-outcomes/OutcomeMapping";
 import { OutcomeBadge } from "@/components/ui/outcome-badge";
+import { formatSummaryForDisplay } from "@/utils/summaryUtils";
 
 interface CallInfoCardsProps {
   callData: Call;
@@ -135,7 +136,7 @@ export function CallInfoCards({ callData }: CallInfoCardsProps) {
             {callData.summary && (
               <div>
                 <div className="text-sm text-muted-foreground mb-2">Summary</div>
-                <p className="text-sm">{callData.summary}</p>
+                <p className="text-sm">{formatSummaryForDisplay(callData.summary)}</p>
               </div>
             )}
           </div>

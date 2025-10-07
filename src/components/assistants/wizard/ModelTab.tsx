@@ -7,14 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ChevronDown, ChevronRight, Loader2, Plus, ExternalLink, X, Search, Phone, Calendar, CheckCircle2, AlertCircle, MessageSquare } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, X, Search, Phone, Calendar, CheckCircle2 } from "lucide-react";
 import { ModelData } from "./types";
 import { WizardSlider } from "./WizardSlider";
 import { Input } from "@/components/ui/input";
 import { getKnowledgeBases, type KnowledgeBase } from "@/lib/api/knowledgeBase";
 import { CalendarCredentialsService, type UserCalendarCredentials } from "@/lib/calendar-credentials";
 import { CalendarEventTypeService, type CalendarEventType } from "@/lib/calendar-event-types";
-import { WhatsAppCredentialsService, type UserWhatsAppCredentials } from "@/lib/whatsapp-credentials";
 // EventTypeSelector removed - using simple event slug input instead
 import { useToast } from "@/hooks/use-toast";
 
@@ -40,7 +39,6 @@ interface ModelTabProps {
 }
 
 export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
-  const [isTranscriberOpen, setIsTranscriberOpen] = React.useState(false);
   const [isCallManagementOpen, setIsCallManagementOpen] = React.useState(false);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [loadingKnowledgeBases, setLoadingKnowledgeBases] = useState(false);
@@ -48,13 +46,13 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [calendarCredentials, setCalendarCredentials] = useState<UserCalendarCredentials[]>([]);
   const [loadingCalendarCredentials, setLoadingCalendarCredentials] = useState(false);
-  const [whatsappCredentials, setWhatsappCredentials] = useState<UserWhatsAppCredentials[]>([]);
-  const [loadingWhatsappCredentials, setLoadingWhatsappCredentials] = useState(false);
   const { toast } = useToast();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  // Debug logging
-  console.log('ModelTab data:', { provider: data.provider, model: data.model });
+  // Check if assistant has calendar API key
+  const hasCalendarApiKey = () => {
+    return !!data.calApiKey;
+  };
 
   // Idle message helper functions
   const removeIdleMessage = (index: number) => {
@@ -120,28 +118,6 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
     }
   };
 
-  const handleWhatsAppChange = (whatsappIntegrationId: string) => {
-    if (whatsappIntegrationId === "None") {
-      // Clear WhatsApp credentials
-      onChange({ 
-        whatsappCredentialsId: "",
-        whatsappNumber: "",
-        whatsappKey: ""
-      });
-      return;
-    }
-
-    // Find the selected WhatsApp integration
-    const selectedIntegration = whatsappCredentials.find(cred => cred.id === whatsappIntegrationId);
-    if (selectedIntegration) {
-      // Populate WhatsApp credentials from the integration
-      onChange({
-        whatsappCredentialsId: whatsappIntegrationId,
-        whatsappNumber: selectedIntegration.whatsapp_number,
-        whatsappKey: selectedIntegration.whatsapp_key
-      });
-    }
-  };
 
   const handleEventTypeChange = (eventType: CalendarEventType | null) => {
     if (eventType) {
@@ -201,71 +177,52 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
       }
     };
 
-    const fetchWhatsAppCredentials = async () => {
-      try {
-        setLoadingWhatsappCredentials(true);
-        const credentials = await WhatsAppCredentialsService.getAllCredentials();
-        setWhatsappCredentials(credentials);
-      } catch (error) {
-        console.error('Failed to fetch WhatsApp credentials:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load WhatsApp integrations.",
-          variant: "destructive",
-        });
-      } finally {
-        setLoadingWhatsappCredentials(false);
-      }
-    };
 
     fetchKnowledgeBases();
     fetchCalendarCredentials();
-    fetchWhatsAppCredentials();
   }, [toast]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[540px]">
       {/* Left Column - Main Content */}
-      <div className="lg:col-span-8 flex flex-col">
-        <div className="flex-1 space-y-6">
-          {/* Header Section */}
-          <div className="mb-6">
-            <h2 className="text-[28px] font-light tracking-[0.2px] mb-2">Model Configuration</h2>
-            <p className="text-base text-muted-foreground max-w-xl">
-              Configure your assistant's core AI model and behavior settings
-            </p>
-          </div>
+      <div className="lg:col-span-8 flex flex-col h-full">
+        {/* Header Section */}
+        <div className="mb-6">
+          <h2 className="text-[28px] font-light tracking-[0.2px] mb-2">Model Configuration</h2>
+          <p className="text-base text-muted-foreground max-w-xl">
+            Configure your assistant's core AI model and behavior settings
+          </p>
+        </div>
 
-          {/* First Message Section */}
-          <div>
-            <label className="block text-base font-semibold tracking-[0.2px] mb-2">
-              First Message (Call Greeting)
-            </label>
-            <p className="text-sm text-muted-foreground mb-2">
-              This is the first message your assistant will say when a call starts
-            </p>
-            <Textarea
-              placeholder="Hi! This is [Your Name] from [Your Company]. How may I help you today?"
-              value={data.firstMessage}
-              onChange={(e) => onChange({ firstMessage: e.target.value })}
-              className="h-12 text-[15px] resize-none"
-              rows={2}
-            />
-          </div>
+        {/* First Message Section */}
+        <div className="mb-6">
+          <label className="block text-base font-semibold tracking-[0.2px] mb-2">
+            First Message (Call Greeting)
+          </label>
+          <p className="text-sm text-muted-foreground mb-2">
+            This is the first message your assistant will say when a call starts
+          </p>
+          <Textarea
+            placeholder="Hi! This is [Your Name] from [Your Company]. How may I help you today?"
+            value={data.firstMessage}
+            onChange={(e) => onChange({ firstMessage: e.target.value })}
+            className="h-12 text-[15px] resize-none"
+            rows={2}
+          />
+        </div>
 
-          {/* System Prompt Section */}
-          <div className="flex-1">
-            <label className="block text-base font-semibold tracking-[0.2px] mb-2">
-              System Prompt
-            </label>
-            <Textarea
-              placeholder="You are Helen, a professional dental receptionist. You should help patients schedule appointments, answer questions about services, and provide general information about the clinic..."
-              value={data.systemPrompt}
-              onChange={(e) => onChange({ systemPrompt: e.target.value })}
-              className="min-h-[220px] h-full text-[15px] leading-relaxed resize-y"
-              rows={12}
-            />
-          </div>
+        {/* System Prompt Section */}
+        <div className="flex-1 flex flex-col">
+          <label className="block text-base font-semibold tracking-[0.2px] mb-2">
+            System Prompt
+          </label>
+          <Textarea
+            placeholder="You are Helen, a professional dental receptionist. You should help patients schedule appointments, answer questions about services, and provide general information about the clinic..."
+            value={data.systemPrompt}
+            onChange={(e) => onChange({ systemPrompt: e.target.value })}
+            className="flex-1 min-h-[220px] text-[15px] leading-relaxed resize-y"
+            rows={12}
+          />
         </div>
       </div>
 
@@ -376,7 +333,6 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                     }}
                     className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    Refresh
                   </button>
                 )}
               </div>
@@ -425,28 +381,24 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                 <p className="text-xs text-destructive mt-1">{knowledgeBaseError}</p>
               )}
               {!loadingKnowledgeBases && knowledgeBases.length === 0 && !knowledgeBaseError && (
-                <div className="mt-2 p-2 bg-muted/50 rounded-md">
-                  <p className="text-xs text-muted-foreground mb-2">
-                    No knowledge bases found. Create one to provide context to your assistant.
-                  </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  No knowledge bases found. Create one{" "}
                   <a 
                     href="/knowledge-base" 
                     target="_blank" 
                     rel="noopener noreferrer"
-                    className="inline-flex items-center text-xs text-primary hover:text-primary/80 transition-colors"
+                    className="text-primary hover:text-primary/80 underline"
                   >
-                    <Plus className="h-3 w-3 mr-1" />
-                    Create Knowledge Base
-                    <ExternalLink className="h-3 w-3 ml-1" />
+                    here
                   </a>
-                </div>
+                </p>
               )}
             </div>
 
             {/* Calendar */}
             <div>
               <Label className="block text-sm font-medium mb-2">Calendar Integration</Label>
-              <Select value={data.calendar} onValueChange={(value) => handleCalendarChange(value)}>
+              <Select value={hasCalendarApiKey() ? "Selected" : (data.calendar || "None")} onValueChange={(value) => handleCalendarChange(value)}>
                 <SelectTrigger className="h-10">
                   <SelectValue />
                 </SelectTrigger>
@@ -472,26 +424,17 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                 </div>
               )}
               {!loadingCalendarCredentials && calendarCredentials.length === 0 && (
-                <div className="mt-2 p-3 bg-muted/50 rounded-md">
-                  <div className="flex items-center gap-2 mb-2">
-                    <AlertCircle className="w-4 h-4 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
-                      No calendar integrations found.
-                    </p>
-                  </div>
-                  <p className="text-xs text-muted-foreground mb-2">
-                    Configure calendar integrations in Settings to enable scheduling features.
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => window.open('/settings', '_blank')}
-                    className="text-xs"
+                <p className="text-xs text-muted-foreground mt-2">
+                  Calendar not connected. Configure{" "}
+                  <a 
+                    href="/settings" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-primary hover:text-primary/80 underline"
                   >
-                    <ExternalLink className="h-3 w-3 mr-1" />
-                    Go to Settings
-                  </Button>
-                </div>
+                    here
+                  </a>
+                </p>
               )}
             </div>
 
@@ -511,57 +454,6 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
               </div>
             )}
 
-            {/* WhatsApp Integration */}
-            <div>
-              <Label className="block text-sm font-medium mb-2">WhatsApp Integration</Label>
-              <Select value={data.whatsappCredentialsId || "None"} onValueChange={(value) => handleWhatsAppChange(value)}>
-                <SelectTrigger className="h-10">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="max-h-60">
-                  <SelectItem value="None">None</SelectItem>
-                  {whatsappCredentials.map((cred) => (
-                    <SelectItem key={cred.id} value={cred.id}>
-                      <div className="flex items-center gap-2">
-                        <MessageSquare className="w-4 h-4" />
-                        <span>{cred.label}</span>
-                        {cred.is_active && (
-                          <CheckCircle2 className="w-3 h-3 text-green-500" />
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {loadingWhatsappCredentials && (
-                <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Loading WhatsApp integrations...
-                </div>
-              )}
-              {!loadingWhatsappCredentials && whatsappCredentials.length === 0 && (
-                <div className="mt-2 p-3 bg-muted/50 rounded-md">
-                  <div className="flex items-center gap-2 mb-2">
-                    <AlertCircle className="w-4 h-4 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
-                      No WhatsApp integrations found.
-                    </p>
-                  </div>
-                  <p className="text-xs text-muted-foreground mb-2">
-                    Configure WhatsApp integrations in Settings to enable messaging features.
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => window.open('/settings', '_blank')}
-                    className="text-xs"
-                  >
-                    <ExternalLink className="h-3 w-3 mr-1" />
-                    Go to Settings
-                  </Button>
-                </div>
-              )}
-            </div>
 
             {/* Conversation Start */}
             <div>
@@ -628,70 +520,6 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
         </div>
       </div>
 
-      {/* Bottom Expandable Section */}
-      <div className="lg:col-span-12 mt-6">
-        <Collapsible open={isTranscriberOpen} onOpenChange={setIsTranscriberOpen}>
-          <CollapsibleTrigger className="w-full p-4 border rounded-lg flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-5 h-5">
-                {isTranscriberOpen ? (
-                  <ChevronDown className="w-5 h-5" />
-                ) : (
-                  <ChevronRight className="w-5 h-5" />
-                )}
-              </div>
-              <h3 className="text-base font-semibold">Transcriber Configuration</h3>
-            </div>
-            <div className="w-4 h-4">
-              {isTranscriberOpen ? (
-                <ChevronDown className="w-4 h-4" />
-              ) : (
-                <ChevronRight className="w-4 h-4" />
-              )}
-            </div>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="px-4 pb-4 pt-1">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label className="block text-sm font-medium mb-2">Model</Label>
-                <Select
-                  value={data.transcriber.model}
-                  onValueChange={(value) => onChange({
-                    transcriber: { ...data.transcriber, model: value }
-                  })}
-                >
-                  <SelectTrigger className="h-10">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="nova-2">Nova-2</SelectItem>
-                    <SelectItem value="whisper-1">Whisper-1</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="block text-sm font-medium mb-2">Language</Label>
-                <Select
-                  value={data.transcriber.language}
-                  onValueChange={(value) => onChange({
-                    transcriber: { ...data.transcriber, language: value }
-                  })}
-                >
-                  <SelectTrigger className="h-10">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="en">English</SelectItem>
-                    <SelectItem value="es">Spanish</SelectItem>
-                    <SelectItem value="fr">French</SelectItem>
-                    <SelectItem value="de">German</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-      </div>
 
       {/* Call Management Settings */}
       <div className="lg:col-span-12 mt-[var(--space-xl)]">

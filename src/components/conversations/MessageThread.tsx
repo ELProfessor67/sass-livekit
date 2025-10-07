@@ -8,9 +8,6 @@ import { format, isSameDay } from "date-fns";
 import { Conversation } from "./types";
 import { MessageBubble } from "./MessageBubble";
 import { ModernMessageInput } from "./ModernMessageInput";
-import { RealTimeTranscription } from "./RealTimeTranscription";
-import { normalizeResolution } from "@/components/dashboard/call-outcomes/utils";
-import { TranscriptionSegment } from "@/lib/transcription/RealTimeTranscriptionService";
 import { SMSMessage } from "@/lib/api/sms/smsService";
 import { fetchAssistants, Assistant } from "@/lib/api/assistants/fetchAssistants";
 import { fetchPhoneNumberMappings, PhoneNumberMapping } from "@/lib/api/phoneNumbers/fetchPhoneNumberMappings";
@@ -30,7 +27,6 @@ interface MessageThreadProps {
 }
 
 export function MessageThread({ conversation, messageFilter, onMessageFilterChange }: MessageThreadProps) {
-  const [showTranscription, setShowTranscription] = useState(false);
   
   // Debug: Log when conversation prop changes
   useEffect(() => {
@@ -44,7 +40,6 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
       lastActivity: conversation.lastActivityTimestamp?.toISOString()
     });
   }, [conversation]);
-  const [liveTranscription, setLiveTranscription] = useState<TranscriptionSegment[]>([]);
   const [assistants, setAssistants] = useState<Assistant[]>([]);
   const [loadingAssistants, setLoadingAssistants] = useState(false);
   const [phoneMappings, setPhoneMappings] = useState<PhoneNumberMapping[]>([]);
@@ -307,27 +302,6 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
     .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
 
-  // Add live transcription segments as messages
-  const liveTranscriptionMessages = liveTranscription.map(segment => ({
-    id: `live_${segment.id}`,
-    type: 'call' as const,
-    timestamp: new Date(segment.timestamp),
-    direction: segment.speaker === 'customer' ? 'inbound' : 'outbound',
-    duration: '0:00',
-    status: segment.isFinal ? 'completed' : 'live',
-    resolution: undefined,
-    summary: undefined,
-    recording: undefined,
-    transcript: [{
-      speaker: segment.speaker === 'customer' ? 'Customer' : segment.speaker === 'agent' ? 'Agent' : 'System',
-      time: format(new Date(segment.timestamp), 'HH:mm'),
-      text: segment.text
-    }],
-    date: format(new Date(segment.timestamp), 'yyyy-MM-dd'),
-    time: format(new Date(segment.timestamp), 'HH:mm'),
-    isLive: !segment.isFinal,
-    confidence: segment.confidence
-  }));
 
   // Filter messages by selected agent and message type
   const filteredMessages = messages.filter(message => {
@@ -363,7 +337,7 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
   });
 
   // Combine and sort all messages by created_at timestamp (WhatsApp style - newest at bottom)
-  const allMessages = [...filteredMessages, ...liveTranscriptionMessages]
+  const allMessages = [...filteredMessages]
     .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
   // Debug message filter changes
@@ -495,16 +469,6 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
 
       {/* Messages Area */}
       <div className="flex-1 flex flex-col min-h-0">
-        {showTranscription && (
-          <div className="border-b border-border/50">
-            <RealTimeTranscription
-              conversationId={conversation.id}
-              onTranscriptionUpdate={setLiveTranscription}
-              className="p-4"
-            />
-          </div>
-        )}
-
         {/* scrollable messages */}
         <div className="flex-1 min-h-0">
           <ScrollArea

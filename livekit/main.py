@@ -14,8 +14,8 @@ import datetime
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from the livekit/.env file
+load_dotenv("livekit/.env")
 
 # LiveKit imports
 from livekit import agents, api
@@ -32,10 +32,12 @@ from livekit.agents import (
     RoomInputOptions,
     RoomOutputOptions,
     AutoSubscribe,
+    UserStateChangedEvent,
 )
 
 # Plugin imports
 from livekit.plugins import openai, silero, deepgram
+from livekit.agents.tts import FallbackAdapter
 
 # Additional provider imports
 try:
@@ -68,6 +70,51 @@ from utils.logging_hardening import configure_safe_logging
 # Configure logging with security hardening
 configure_safe_logging(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+class PersistentFailureTTS:
+    """TTS wrapper that permanently switches to fallback after first failure."""
+    
+    def __init__(self, primary_tts, fallback_tts, failure_key="ELEVENLABS_FAILURE_COUNT"):
+        self.primary_tts = primary_tts
+        self.fallback_tts = fallback_tts
+        self.failure_key = failure_key
+        self.has_failed = False
+        self.logger = logging.getLogger(__name__)
+        
+        # Check if we've already failed before
+        failure_count = int(os.getenv(failure_key, "0"))
+        if failure_count > 0:
+            self.has_failed = True
+            self.logger.info(f"PERSISTENT_FAILURE_TTS | {failure_key}={failure_count} | using fallback permanently")
+    
+    def _mark_failure(self):
+        """Mark this TTS as failed and update environment."""
+        if not self.has_failed:
+            self.has_failed = True
+            failure_count = int(os.getenv(self.failure_key, "0")) + 1
+            os.environ[self.failure_key] = str(failure_count)
+            self.logger.warning(f"TTS_FAILURE_MARKED | {self.failure_key}={failure_count} | switching to fallback permanently")
+    
+    async def synthesize(self, text: str, **kwargs):
+        """Synthesize text with automatic fallback on failure."""
+        if self.has_failed:
+            self.logger.info("PERSISTENT_FAILURE_TTS | using fallback due to previous failure")
+            return await self.fallback_tts.synthesize(text, **kwargs)
+        
+        try:
+            return await self.primary_tts.synthesize(text, **kwargs)
+        except Exception as e:
+            self.logger.error(f"TTS_PRIMARY_FAILED | error={str(e)} | switching to fallback")
+            self._mark_failure()
+            return await self.fallback_tts.synthesize(text, **kwargs)
+    
+    def __getattr__(self, name):
+        """Delegate all other attributes to the current active TTS."""
+        if self.has_failed:
+            return getattr(self.fallback_tts, name)
+        else:
+            return getattr(self.primary_tts, name)
 
 
 class CallHandler:
@@ -119,15 +166,71 @@ class CallHandler:
             )
 
             logger.info(f"SESSION_STARTED | room={ctx.room.name}")
+            
+            # Setup idle message handling using LiveKit's user state management
+            idle_message_task = None
+            idle_message_count = 0
+            
+            if assistant_config.get("idle_messages") and len(assistant_config.get("idle_messages", [])) > 0:
+                logger.info(f"IDLE_MESSAGE_HANDLING_SETUP | room={ctx.room.name}")
+                
+                async def handle_user_away():
+                    nonlocal idle_message_count
+                    max_idle_messages = assistant_config.get("max_idle_messages", 3)
+                    
+                    # Try to ping the user with idle messages
+                    for i in range(max_idle_messages):
+                        if idle_message_count >= max_idle_messages:
+                            break
+                            
+                        import random
+                        idle_message = random.choice(assistant_config.get("idle_messages", []))
+                        logger.info(f"IDLE_MESSAGE_TRIGGERED | message='{idle_message}' | count={idle_message_count + 1}")
+                        
+                        await session.generate_reply(
+                            instructions=f"Say exactly this: '{idle_message}'"
+                        )
+                        idle_message_count += 1
+                        
+                        # Wait 10 seconds between idle messages
+                        await asyncio.sleep(10)
+                    
+                    # If we've reached max idle messages, end the call
+                    if idle_message_count >= max_idle_messages:
+                        logger.info(f"MAX_IDLE_MESSAGES_REACHED | ending call after {max_idle_messages} idle messages")
+                        end_call_message = assistant_config.get("end_call_message", "Thank you for calling. Goodbye!")
+                        await session.generate_reply(
+                            instructions=f"Say exactly this: '{end_call_message}'"
+                        )
+                        session.shutdown()
+                
+                @session.on("user_state_changed")
+                def _user_state_changed(ev: UserStateChangedEvent):
+                    nonlocal idle_message_task
+                    if ev.new_state == "away":
+                        logger.info(f"USER_STATE_AWAY | starting idle message sequence")
+                        idle_message_task = asyncio.create_task(handle_user_away())
+                        return
+                    
+                    # User is back (listening, speaking, etc.)
+                    if idle_message_task is not None:
+                        logger.info(f"USER_STATE_ACTIVE | cancelling idle message task")
+                        idle_message_task.cancel()
+                        idle_message_task = None
 
             # Capture start time for call duration calculation
             start_time = datetime.datetime.now()
-
+            
+            # Get call management settings for monitoring
+            max_call_duration_minutes = assistant_config.get("max_call_duration", 30)
+            max_call_duration_seconds = max_call_duration_minutes * 60
+            
             # Create shutdown callback for post-call analysis and history saving
             # This ensures all conversation data is captured before analysis
             async def save_call_on_shutdown():
                 end_time = datetime.datetime.now()
-                logger.info(f"CALL_END | room={ctx.room.name} | end_time={end_time.isoformat()}")
+                call_duration = (end_time - start_time).total_seconds()
+                logger.info(f"CALL_END | room={ctx.room.name} | duration={call_duration:.1f}s | max_duration={max_call_duration_seconds}s")
 
                 session_history = []
                 try:
@@ -167,13 +270,28 @@ class CallHandler:
 
             # Register shutdown callback to ensure proper cleanup and analysis
             ctx.add_shutdown_callback(save_call_on_shutdown)
+            
+            # Cancel idle message task on shutdown
+            if idle_message_task:
+                ctx.add_shutdown_callback(lambda: idle_message_task.cancel() if idle_message_task else None)
 
-            # Wait for participant to disconnect
+            # Wait for participant to disconnect with call duration timeout
             try:
-                # Wait for the participant to disconnect using room events
-                # RemoteParticipant doesn't have wait_for_disconnect, so we use room events
-                await asyncio.sleep(1)  # Give a moment for any final processing
+                # Wait for the session to complete with call duration timeout
+                # This will automatically end the call if it exceeds the maximum duration
+                await asyncio.wait_for(
+                    self._wait_for_session_completion(session, ctx),
+                    timeout=max_call_duration_seconds
+                )
                 logger.info(f"PARTICIPANT_DISCONNECTED | room={ctx.room.name}")
+            except asyncio.TimeoutError:
+                logger.warning(f"CALL_DURATION_EXCEEDED | room={ctx.room.name} | duration={max_call_duration_seconds}s")
+                # End the call by deleting the room
+                try:
+                    await ctx.api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
+                    logger.info(f"CALL_FORCE_ENDED | room={ctx.room.name} | reason=duration_exceeded")
+                except Exception as e:
+                    logger.error(f"FAILED_TO_END_CALL | room={ctx.room.name} | error={str(e)}")
             except Exception as e:
                 logger.warning(f"DISCONNECT_WAIT_FAILED | room={ctx.room.name} | error={str(e)}")
                 # Continue - shutdown callback will handle cleanup
@@ -366,10 +484,16 @@ class CallHandler:
             f"Never call tools with past dates; if a parsed date is in the past year, bump it to the next year."
         )
 
-        # Add analysis configuration to instructions
-        analysis_config = await self._build_analysis_instructions(config)
-        if analysis_config:
-            instructions += "\n\n" + analysis_config
+        # Add call management settings to instructions
+        call_management_config = self._build_call_management_instructions(config)
+        if call_management_config:
+            instructions += "\n\n" + call_management_config
+
+        # Add analysis instructions for structured data collection
+        analysis_instructions = await self._build_analysis_instructions(config)
+        if analysis_instructions:
+            instructions += "\n\n" + analysis_instructions
+            logger.info(f"ANALYSIS_INSTRUCTIONS_ADDED | length={len(analysis_instructions)}")
 
         # Add first message handling (like old implementation)
         first_message = config.get("first_message", "")
@@ -388,8 +512,8 @@ class CallHandler:
         
         if knowledge_base_id:
             logger.info(f"RAG_ENABLED | Creating RAGAgent with knowledge_base_id={knowledge_base_id}")
-            # Add RAG tools to instructions (like old implementation)
-            instructions += " Additional tools available: search_knowledge, get_detailed_info (for knowledge base queries)."
+            # Add RAG tools to instructions (like agents-main examples)
+            instructions += "\n\nKNOWLEDGE BASE ACCESS:\nYou have access to a knowledge base with information about the company. When users ask questions about:\n- Company history, background, or founding information\n- Products, services, or menu items\n- Business details, locations, or operations\n- Any factual information about the company\n\nIMPORTANT: Always use the query_knowledge_base tool FIRST when users ask about company facts, history, or company information. Do not answer factual questions about the company without searching the knowledge base first.\n\nExample: If user asks 'Tell me about company history', immediately call query_knowledge_base with the query 'company history' before responding."
             logger.info("RAG_TOOLS | Knowledge base tools added to instructions")
             agent = RAGAgent(
                 instructions=instructions,
@@ -710,6 +834,45 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
         
         return config
 
+    def _build_call_management_instructions(self, config: Dict[str, Any]) -> str:
+        """Build call management instructions from configuration."""
+        instructions = []
+        
+        # End call message
+        end_call_message = config.get("end_call_message")
+        if end_call_message:
+            instructions.append(f"END_CALL_MESSAGE: When the call is ending, say exactly: '{end_call_message}'")
+        
+        # Idle messages
+        idle_messages = config.get("idle_messages", [])
+        max_idle_messages = config.get("max_idle_messages", 3)
+        silence_timeout = config.get("silence_timeout", 10)
+        
+        if idle_messages and isinstance(idle_messages, list):
+            instructions.append(f"IDLE_MESSAGE_HANDLING:")
+            instructions.append(f"- If the user is silent for {silence_timeout} seconds, use one of these idle messages:")
+            for i, message in enumerate(idle_messages, 1):
+                instructions.append(f"  {i}. '{message}'")
+            instructions.append(f"- Maximum idle messages to send: {max_idle_messages}")
+            instructions.append(f"- After {max_idle_messages} idle messages, end the call politely")
+        
+        # Call duration limit
+        max_call_duration = config.get("max_call_duration", 30)
+        instructions.append(f"CALL_DURATION_LIMIT: This call will automatically end after {max_call_duration} minutes to prevent excessive charges")
+        instructions.append(f"CALL_MONITORING: Be aware that the system will automatically terminate this call after {max_call_duration} minutes")
+        
+        return "\n".join(instructions) if instructions else ""
+
+    async def _wait_for_session_completion(self, session: AgentSession, ctx: JobContext) -> None:
+        """Wait for the session to complete naturally."""
+        try:
+            # Wait for the participant to disconnect using room events
+            # RemoteParticipant doesn't have wait_for_disconnect, so we use room events
+            await asyncio.sleep(1)  # Give a moment for any final processing
+        except Exception as e:
+            logger.warning(f"SESSION_COMPLETION_WAIT_FAILED | room={ctx.room.name} | error={str(e)}")
+            raise
+
     def _create_session(self, config: Dict[str, Any]) -> AgentSession:
         """Create agent session with proper configuration."""
         # Validate and fix model names to prevent API errors
@@ -736,7 +899,30 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
 
         # Create STT (always OpenAI for now)
         stt_model = config.get("stt_model", "whisper-1")
-        stt = openai.STT(model=stt_model)
+        language_setting = config.get("language_setting", "en")
+        
+        # Map combined language codes to Whisper-supported codes
+        language_mapping = {
+            "en-es": "en",  # Default to English for combined languages
+            "en": "en",
+            "es": "es", 
+            "pt": "pt",
+            "fr": "fr",
+            "de": "de",
+            "nl": "nl",
+            "no": "no",
+            "ar": "ar"
+        }
+        whisper_language = language_mapping.get(language_setting, "en")
+        
+        stt = openai.STT(model=stt_model, language=whisper_language)
+
+        # Get call management settings from config
+        max_call_duration_minutes = config.get("max_call_duration", 30)
+        silence_timeout_seconds = config.get("silence_timeout", 10)
+        
+        # Convert max call duration from minutes to seconds for session timeout
+        max_call_duration_seconds = max_call_duration_minutes * 60
 
         return AgentSession(
             vad=vad,
@@ -746,6 +932,7 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
             allow_interruptions=True,
             min_endpointing_delay=0.5,
             max_endpointing_delay=6.0,
+            user_away_timeout=silence_timeout_seconds,
         )
 
     def _create_llm(self, provider: str, model: str, temperature: float, max_tokens: int, config: Dict[str, Any]):
@@ -815,65 +1002,56 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
         return llm
 
     def _create_tts(self, provider: str, model: str, voice_name: str, config: Dict[str, Any]):
-        """Create TTS based on provider."""
+        """Create TTS based on provider with official LiveKit FallbackAdapter."""
         openai_api_key = os.getenv("OPENAI_API_KEY")
         
-        if provider == "ElevenLabs" and ELEVENLABS_AVAILABLE:
-            elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-            force_openai_tts = os.getenv("FORCE_OPENAI_TTS", "false").lower() == "true"
-            
-            if force_openai_tts:
-                logger.warning("FORCE_OPENAI_TTS_ENABLED | skipping ElevenLabs, using OpenAI TTS")
-                # Map ElevenLabs model to OpenAI model for fallback (from old implementation)
-                openai_tts_model = "tts-1" if model.startswith("eleven_") else model
-                return openai.TTS(model=openai_tts_model, voice="alloy", api_key=openai_api_key)
-            
-            if elevenlabs_api_key:
-                # Map voice names to ElevenLabs voice IDs
-                elevenlabs_voice_map = {
-                    "rachel": "21m00Tcm4TlvDq8ikWAM",
-                    "domi": "AZnzlk1XvdvUeBnXmlld", 
-                    "bella": "EXAVITQu4vr4xnSDxMaL",
-                    "antoni": "ErXwobaYiN019PkySvjV",
-                    "elli": "MF3mGyEYCl7XYWbV9V6O",
-                    "josh": "TxGEqnHWrfWFTfGW9XjX",
-                    "arnold": "VR6AewLTigWG4xSOukaG"
-                }
-                
-                voice_id = elevenlabs_voice_map.get(voice_name.lower(), voice_name)
-                optimize_streaming = config.get("voice_optimize_streaming_latency", 2)
-                
-                try:
-                    tts = lk_elevenlabs.TTS(
-                        voice_id=voice_id,
-                        api_key=elevenlabs_api_key,
-                        model=model,
-                        streaming_latency=optimize_streaming,
-                        inactivity_timeout=30,
-                        auto_mode=True,
-                        timeout=15,
-                        retry_attempts=2,
-                        retry_delay=0.5
-                    )
-                    logger.info(f"ELEVENLABS_TTS_CONFIGURED | voice_id={voice_id} | model={model}")
-                    return tts
-                except Exception as e:
-                    logger.error(f"ELEVENLABS_TTS_ERROR | error={str(e)} | falling back to OpenAI TTS")
-                    # Map ElevenLabs voice to OpenAI voice for fallback (from old implementation)
-                    openai_voice = "alloy"  # Default OpenAI voice
-                    openai_tts_model = "tts-1" if model.startswith("eleven_") else model
-                    return openai.TTS(model=openai_tts_model, voice=openai_voice, api_key=openai_api_key)
-            else:
-                logger.warning("ELEVENLABS_API_KEY_NOT_SET | falling back to OpenAI TTS")
-                # Map ElevenLabs voice to OpenAI voice for fallback (from old implementation)
-                openai_voice = "alloy"  # Default OpenAI voice
-                openai_tts_model = "tts-1" if model.startswith("eleven_") else model
-                return openai.TTS(model=openai_tts_model, voice=openai_voice, api_key=openai_api_key)
-
-        # Default to OpenAI TTS
-        tts = openai.TTS(model=model, voice=voice_name, api_key=openai_api_key)
-        logger.info(f"OPENAI_TTS_CONFIGURED | model={model} | voice={voice_name}")
-        return tts
+        # Create TTS instances list for fallback
+        tts_instances = []
+        
+        # DISABLE ELEVENLABS COMPLETELY - NO MORE TIMEOUTS!
+        elevenlabs_disabled = True
+        logger.info("ELEVENLABS_DISABLED | using OpenAI TTS only to prevent timeouts")
+        
+        # ElevenLabs is disabled - skip all ElevenLabs logic
+        
+        # Always add OpenAI TTS as reliable fallback
+        # Map ElevenLabs voice names to OpenAI voices for better user experience
+        openai_voice_map = {
+            "rachel": "nova",      # Female, clear voice
+            "domi": "shimmer",     # Female, energetic voice  
+            "bella": "nova",       # Female, clear voice
+            "antoni": "echo",      # Male, warm voice
+            "elli": "nova",        # Female, clear voice
+            "josh": "echo",        # Male, warm voice
+            "arnold": "fable",     # Male, deep voice
+            "alloy": "alloy",      # Default OpenAI voice
+            "nova": "nova",        # OpenAI voice
+            "shimmer": "shimmer",  # OpenAI voice
+            "echo": "echo",        # OpenAI voice
+            "fable": "fable",      # OpenAI voice
+            "onyx": "onyx"         # OpenAI voice
+        }
+        
+        openai_voice = openai_voice_map.get(voice_name.lower(), "alloy")
+        openai_tts_model = "tts-1" if model.startswith("eleven_") else model
+        
+        # Create OpenAI TTS with reliable settings
+        openai_tts = openai.TTS(
+            model=openai_tts_model, 
+            voice=openai_voice, 
+            api_key=openai_api_key
+        )
+        logger.info(f"OPENAI_TTS_CONFIGURED | model={openai_tts_model} | voice={openai_voice}")
+        tts_instances.append(openai_tts)
+        logger.info(f"OPENAI_ADDED_TO_FALLBACK | total_instances={len(tts_instances)}")
+        
+        # Since ElevenLabs is disabled, we only have OpenAI TTS
+        if len(tts_instances) == 0:
+            raise ValueError("No TTS instances available")
+        
+        # Use OpenAI TTS directly - no fallback needed
+        logger.info("OPENAI_TTS_DIRECT | using OpenAI TTS only (ElevenLabs disabled)")
+        return tts_instances[0]
 
     async def _generate_call_summary(self, config: Dict[str, Any], session_history: list, agent) -> Optional[str]:
         """Generate call summary using LLM."""
@@ -1045,9 +1223,17 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
                     analysis_data["structured_data"] = final_structured_data
                     logger.info(f"STRUCTURED_DATA_EXTRACTED_WITH_AI | assistant_id={assistant_id} | ai_fields={len(ai_structured_data)} | agent_fields={len(agent_structured_data)} | final_fields={len(final_structured_data)}")
                 except Exception as e:
-                    logger.warning(f"AI_STRUCTURED_DATA_EXTRACTION_FAILED | assistant_id={assistant_id} | error={str(e)}")
-                    # Fallback to agent data only
-                    analysis_data["structured_data"] = agent_structured_data
+                    logger.error(f"AI_STRUCTURED_DATA_EXTRACTION_FAILED | assistant_id={assistant_id} | error={str(e)} | fields_count={len(structured_data_fields)} | transcription_items={len(transcription)}")
+                    logger.error(f"AI_EXTRACTION_FALLBACK | assistant_id={assistant_id} | falling_back_to_agent_data_only | agent_fields={len(agent_structured_data)}")
+                    # Fallback to agent data only - but log this as an error, not a warning
+                    # Add a flag to indicate AI extraction failed
+                    fallback_data = agent_structured_data.copy()
+                    fallback_data["_ai_extraction_failed"] = {
+                        "error": str(e),
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "configured_fields_count": len(structured_data_fields)
+                    }
+                    analysis_data["structured_data"] = fallback_data
             else:
                 # No configured fields, just use agent data
                 analysis_data["structured_data"] = agent_structured_data
@@ -1275,14 +1461,17 @@ IMPORTANT:
                 return final_data
                 
             except json.JSONDecodeError as e:
-                logger.warning(f"STRUCTURED_DATA_JSON_PARSE_ERROR | error={str(e)}")
+                logger.error(f"STRUCTURED_DATA_JSON_PARSE_ERROR | error={str(e)} | fields_count={len(fields)}")
+                logger.error(f"JSON_ERROR_DETAILS | response_content={response.choices[0].message.content[:200] if response else 'No response'} | transcription_length={len(transcript_text)}")
                 return agent_data  # Return agent data as fallback
 
         except asyncio.TimeoutError:
-            logger.warning(f"STRUCTURED_DATA_EXTRACTION_TIMEOUT | timeout={timeout}s")
+            logger.error(f"STRUCTURED_DATA_EXTRACTION_TIMEOUT | timeout={timeout}s | fields_count={len(fields)} | transcription_length={len(transcript_text)}")
+            logger.error(f"TIMEOUT_DETAILS | assistant_id={getattr(agent, 'assistant_id', 'unknown')} | openai_api_configured={bool(os.getenv('OPENAI_API_KEY'))}")
             return agent_data  # Return agent data as fallback
         except Exception as e:
-            logger.warning(f"STRUCTURED_DATA_EXTRACTION_ERROR | error={str(e)}")
+            logger.error(f"STRUCTURED_DATA_EXTRACTION_ERROR | error={str(e)} | fields_count={len(fields)} | transcription_length={len(transcript_text)}")
+            logger.error(f"EXTRACTION_ERROR_DETAILS | assistant_id={getattr(agent, 'assistant_id', 'unknown')} | openai_api_configured={bool(os.getenv('OPENAI_API_KEY'))} | fields={[f.get('name', 'unknown') for f in fields]}")
             return agent_data  # Return agent data as fallback
 
     async def _perform_post_call_analysis(self, config: Dict[str, Any], session_history: list, agent) -> Dict[str, Any]:
@@ -1438,7 +1627,8 @@ IMPORTANT:
             if analysis_results.get("call_summary"):
                 call_data["call_summary"] = analysis_results["call_summary"]
             if analysis_results.get("call_success") is not None:
-                call_data["success_evaluation"] = analysis_results["call_success"]
+                # Convert boolean to string for database storage
+                call_data["success_evaluation"] = "SUCCESS" if analysis_results["call_success"] else "FAILED"
             if analysis_results.get("structured_data"):
                 call_data["structured_data"] = analysis_results["structured_data"]
             

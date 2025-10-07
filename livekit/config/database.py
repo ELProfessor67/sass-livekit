@@ -87,7 +87,8 @@ class DatabaseClient:
                 "cerebras_model, cerebras_temperature, cerebras_max_tokens, structured_data_fields, "
                 "analysis_summary_prompt, analysis_evaluation_prompt, analysis_structured_data_prompt, "
                 "analysis_structured_data_properties, analysis_summary_timeout, analysis_evaluation_timeout, "
-                "analysis_structured_data_timeout"
+                "analysis_structured_data_timeout, end_call_message, idle_messages, max_idle_messages, "
+                "silence_timeout, max_call_duration"
             ).eq("id", assistant_id).single().execute()
             
             if result.data:

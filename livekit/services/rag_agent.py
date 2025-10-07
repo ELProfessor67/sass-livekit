@@ -65,10 +65,12 @@ class RAGAgent(Agent):
         # Collected data for N8N integration
         self._collected_data: Dict[str, Any] = {}
         
-        # RAG state
-        self._last_rag_query: Optional[str] = None
-        self._last_rag_context: Optional[str] = None
+        # RAG state (simplified for LLM-triggered approach)
         self._rag_cache: Dict[str, str] = {}
+        
+        # Log that RAG tools are available
+        logging.info(f"RAG_AGENT_INITIALIZED | rag_enabled={self.rag_enabled} | knowledge_base_id={self.knowledge_base_id}")
+        logging.info("RAG_TOOLS_REGISTERED | query_knowledge_base, get_detailed_information")
 
     async def on_enter(self):
         """Called when the agent is added to the session."""
@@ -81,76 +83,12 @@ class RAGAgent(Agent):
         new_message: ChatMessage,
     ) -> None:
         """
-        RAG integration: Retrieve relevant context from knowledge base
-        when user completes a turn
+        No automatic RAG processing - RAG is now LLM-triggered through function tools
         """
-        if not self.rag_enabled or not self.knowledge_base_id:
-            return
-        
-        try:
-            # Extract text content from the message
-            if hasattr(new_message, 'content'):
-                if isinstance(new_message.content, list):
-                    # If content is a list, join the elements
-                    user_text = ' '.join(str(item) for item in new_message.content)
-                else:
-                    user_text = str(new_message.content)
-            else:
-                user_text = str(new_message)
-            if not user_text or len(user_text.strip()) < 3:
-                return
-            
-            # Check if we should perform RAG lookup
-            if self._should_perform_rag_lookup(user_text):
-                logging.info(f"RAG_ASSISTANT | Performing RAG lookup for query: '{user_text[:100]}...'")
-                
-                # Get context from knowledge base
-                context = await self._get_rag_context(user_text)
-                if context:
-                    # Add context to the chat context
-                    turn_ctx.add_message(
-                        role="assistant",
-                        content=f"Additional information relevant to your query: {context}"
-                    )
-                    logging.info(f"RAG_ASSISTANT | Added context to chat: {len(context)} characters")
-                else:
-                    logging.info("RAG_ASSISTANT | No relevant context found")
-                    
-        except Exception as e:
-            logging.error(f"RAG_ASSISTANT | Error in on_user_turn_completed: {e}")
+        # RAG processing is now handled through function tools when the LLM determines it needs context
+        pass
     
-    def _should_perform_rag_lookup(self, user_text: str) -> bool:
-        """
-        Determine if we should perform RAG lookup based on user input
-        """
-        # Skip very short inputs
-        if len(user_text.strip()) < 5:
-            return False
-        
-        # Skip if it's the same query as last time (avoid redundant lookups)
-        if user_text.strip().lower() == self._last_rag_query:
-            return False
-        
-        # Skip booking-related queries (they don't need knowledge base context)
-        booking_keywords = [
-            "book", "schedule", "appointment", "time", "available", 
-            "confirm", "name", "email", "phone", "details"
-        ]
-        user_lower = user_text.lower()
-        if any(keyword in user_lower for keyword in booking_keywords):
-            return False
-        
-        # Skip simple greetings
-        greeting_patterns = [
-            r"^(hi|hello|hey|good morning|good afternoon|good evening)",
-            r"^(thanks?|thank you)",
-            r"^(yes|no|ok|okay|sure|alright)"
-        ]
-        for pattern in greeting_patterns:
-            if re.match(pattern, user_text.strip(), re.IGNORECASE):
-                return False
-        
-        return True
+    # Removed _should_perform_rag_lookup - RAG is now LLM-triggered through function tools
     
     async def _get_rag_context(self, query: str) -> Optional[str]:
         """
@@ -175,8 +113,6 @@ class RAGAgent(Agent):
                 logging.info(f"RAG_ASSISTANT | Received context: {len(context)} characters")
                 # Cache the result
                 self._rag_cache[cache_key] = context
-                self._last_rag_query = query.strip().lower()
-                self._last_rag_context = context
                 
                 # Limit cache size
                 if len(self._rag_cache) > 10:
@@ -192,54 +128,55 @@ class RAGAgent(Agent):
             logging.error(f"RAG_ASSISTANT | Error getting RAG context: {e}")
             return None
 
-    # ---------- RAG-specific function tools ----------
-    @function_tool(name="search_knowledge")
-    async def search_knowledge(self, ctx: RunContext, query: str) -> str:
+    # ---------- LLM-triggered RAG function tools (like agents-main) ----------
+    @function_tool(name="query_knowledge_base")
+    async def query_knowledge_base(self, ctx: RunContext, query: str) -> str:
         """
-        Search the knowledge base for information related to the query
+        Search the knowledge base for information about the company, history, products, or services.
+        Use this tool whenever the user asks about company facts, history, company information, products, or services.
+        Examples: "Tell me about company history", "What products do you offer", "When was the company founded"
         """
-        if not self.rag_enabled:
+        if not self.rag_enabled or not self.knowledge_base_id:
             return "I don't have access to a knowledge base right now."
         
-        # Check if webhook data has been collected first
-        if hasattr(self, '_webhook_data') and self._webhook_data:
-            webhook_fields_count = len(self._webhook_data)
-            logging.info(f"RAG_ASSISTANT | Webhook data collected: {webhook_fields_count} fields")
-        else:
-            logging.info("RAG_ASSISTANT | No webhook data collected yet, proceeding with RAG search")
-        
         try:
-            logging.info(f"RAG_ASSISTANT | Knowledge search requested: '{query}'")
+            logging.info(f"RAG_FUNCTION_CALLED | query='{query}'")
             
-            # Get context from knowledge base
+            # Get context from knowledge base using the existing RAG service
             context = await self._get_rag_context(query)
             if context:
+                logging.info(f"RAG_CONTEXT_RETRIEVED | length={len(context)}")
                 return f"Based on our knowledge base: {context}"
             else:
+                logging.info("RAG_NO_CONTEXT_FOUND")
                 return "I couldn't find specific information about that in our knowledge base. Is there anything else I can help you with?"
                 
         except Exception as e:
-            logging.error(f"RAG_ASSISTANT | Error in search_knowledge: {e}")
+            logging.error(f"RAG_FUNCTION_ERROR | error={e}")
             return "I had trouble searching our knowledge base. Let me try to help you in another way."
 
-    @function_tool(name="get_detailed_info")
-    async def get_detailed_info(self, ctx: RunContext, topic: str) -> str:
+    @function_tool(name="get_detailed_information")
+    async def get_detailed_information(self, ctx: RunContext, topic: str) -> str:
         """
-        Get detailed information about a specific topic from the knowledge base
+        Get comprehensive information about a specific topic from the knowledge base.
+        Use this when the user asks for detailed explanations or comprehensive information.
         """
-        if not self.rag_enabled:
+        if not self.rag_enabled or not self.knowledge_base_id:
             return "I don't have access to detailed information right now."
         
         try:
+            logging.info(f"RAG_DETAILED_INFO_REQUESTED | topic='{topic}'")
+            
             # Use multiple related queries for better coverage
             queries = [
                 topic,
                 f"what is {topic}",
                 f"information about {topic}",
-                f"details on {topic}"
+                f"details on {topic}",
+                f"explanation of {topic}"
             ]
             
-            # Search with multiple queries
+            # Search with multiple queries using the existing RAG service
             context = await rag_service.search_multiple_queries(
                 knowledge_base_id=self.knowledge_base_id,
                 queries=queries,
@@ -247,12 +184,14 @@ class RAGAgent(Agent):
             )
             
             if context:
+                logging.info(f"RAG_DETAILED_CONTEXT_RETRIEVED | length={len(context)}")
                 return f"Here's detailed information about {topic}: {context}"
             else:
+                logging.info("RAG_DETAILED_NO_CONTEXT_FOUND")
                 return f"I couldn't find detailed information about {topic} in our knowledge base. Would you like me to help you with something else?"
                 
         except Exception as e:
-            logging.error(f"RAG_ASSISTANT | Error in get_detailed_info: {e}")
+            logging.error(f"RAG_DETAILED_FUNCTION_ERROR | error={e}")
             return "I had trouble retrieving detailed information. Let me try to help you in another way."
 
     # ---------- Inherited helper methods from BookingAgent ----------

@@ -783,7 +783,6 @@ export default function Contacts() {
                                     <DropdownMenuItem onClick={() => handleEditContact(contact)}>
                                       Edit Contact
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem>Call Contact</DropdownMenuItem>
                                     <DropdownMenuItem 
                                       className="text-destructive"
                                       onClick={() => handleDeleteContact(contact)}

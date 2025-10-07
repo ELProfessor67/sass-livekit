@@ -2,7 +2,7 @@ import React from "react";
 import { Slider } from "@/components/ui/slider";
 
 interface WizardSliderProps {
-  value: number;
+  value?: number;
   onChange: (value: number) => void;
   min?: number;
   max?: number;
@@ -22,6 +22,9 @@ export const WizardSlider: React.FC<WizardSliderProps> = ({
   rightLabel,
   showValue = true,
 }) => {
+  // Ensure value is a valid number
+  const numericValue = typeof value === 'number' && !isNaN(value) ? value : min;
+  
   return (
     <div className="space-y-[var(--space-md)]">
       <div className="flex items-center justify-between">
@@ -32,7 +35,7 @@ export const WizardSlider: React.FC<WizardSliderProps> = ({
         )}
         {showValue && (
           <span className="text-[var(--text-sm)] font-[var(--font-medium)] text-theme-primary">
-            {value.toFixed(step < 1 ? 1 : 0)}
+            {numericValue.toFixed(step < 1 ? 1 : 0)}
           </span>
         )}
         {rightLabel && (
@@ -42,7 +45,7 @@ export const WizardSlider: React.FC<WizardSliderProps> = ({
         )}
       </div>
       <Slider
-        value={[value]}
+        value={[numericValue]}
         onValueChange={([newValue]) => onChange(newValue)}
         min={min}
         max={max}

@@ -7,6 +7,7 @@ import { SectionHeading, BodyText, SecondaryText } from "@/components/ui/typogra
 import { RecordingPlayer } from "@/components/dashboard/calls/RecordingPlayer";
 import { Call, TranscriptEntry } from "../types";
 import { MessagesView } from "./MessagesView";
+import { formatSummaryForDisplay } from "@/utils/summaryUtils";
 
 interface CallContentTabsProps {
   callData: Call;
@@ -53,7 +54,7 @@ export function CallContentTabs({
             </SecondaryText>
           </CardHeader>
           <CardContent>
-            <BodyText>{callData.summary}</BodyText>
+            <BodyText>{formatSummaryForDisplay(callData.summary)}</BodyText>
           </CardContent>
         </Card>
       </TabsContent>

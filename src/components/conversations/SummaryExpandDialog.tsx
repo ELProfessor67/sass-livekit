@@ -1,5 +1,6 @@
 import React from "react";
 import { ThemedDialog, ThemedDialogContent, ThemedDialogHeader, ThemedDialogTrigger } from "@/components/ui/themed-dialog";
+import { formatSummaryForDisplay } from "@/utils/summaryUtils";
 
 interface SummaryExpandDialogProps {
   summary: string;
@@ -27,7 +28,7 @@ export function SummaryExpandDialog({
         <div className="mt-4 overflow-hidden">
           <div className="p-4 bg-muted/30 rounded-lg border border-border/20 max-h-[60vh] overflow-y-auto">
             <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
-              {summary}
+              {formatSummaryForDisplay(summary)}
             </p>
           </div>
         </div>

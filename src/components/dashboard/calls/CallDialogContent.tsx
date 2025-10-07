@@ -13,6 +13,7 @@ import { RecordingPlayer } from "./RecordingPlayer";
 import { getOutcomeBadge } from "../call-outcomes/utils";
 import { formatCallDuration, getCustomerName } from "@/utils/formatUtils";
 import { ThemeCard } from "@/components/theme/ThemeCard";
+import { formatSummaryForDisplay } from "@/utils/summaryUtils";
 
 interface CallDialogContentProps {
   call: any;
@@ -81,7 +82,7 @@ export function CallDialogContent({ call }: CallDialogContentProps) {
         <TabsContent value="summary" className="mt-4">
           <ThemeCard variant="default">
             <CardContent className="p-6">
-              <p className="text-sm leading-relaxed text-theme-secondary">{call.summary}</p>
+              <p className="text-sm leading-relaxed text-theme-secondary">{formatSummaryForDisplay(call.summary)}</p>
             </CardContent>
           </ThemeCard>
         </TabsContent>

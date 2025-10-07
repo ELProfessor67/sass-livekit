@@ -10,10 +10,6 @@ export interface ModelData {
   firstMessage: string;
   systemPrompt: string;
   language: string;
-  transcriber: {
-    model: string;
-    language: string;
-  };
   // Call Management Settings
   endCallMessage: string;
   maxCallDuration: number;
@@ -25,10 +21,6 @@ export interface ModelData {
   calEventTypeId?: string;
   calEventTypeSlug?: string;
   calTimezone?: string;
-  // WhatsApp credentials (populated from integration)
-  whatsappCredentialsId?: string;
-  whatsappNumber?: string;
-  whatsappKey?: string;
 }
 
 export interface VoiceData {
@@ -87,12 +79,7 @@ export interface AdvancedData {
   recordingEnabled: boolean;
   audioRecordingFormat: string;
   videoRecordingEnabled: boolean;
-  endCallMessage: string;
   endCallPhrases: string[];
-  maxCallDuration: number;
-  idleMessages: string[];
-  idleMessageMaxSpokenCount: number;
-  silenceTimeoutSeconds: number;
   responseDelaySeconds: number;
   llmRequestDelaySeconds: number;
   numWordsToInterruptAssistant: number;
@@ -106,16 +93,15 @@ export interface AdvancedData {
   transferSentence: string;
   transferCondition: string;
   transferType: "warm" | "cold";
-  // SMS fields
-  firstSms: string;
-  smsPrompt: string;
 }
 
 export interface SMSData {
   provider: string;
   knowledgeBase: string;
   calendar: string;
+  calendarBookingEnabled: boolean;
   systemPrompt: string;
+  firstMessage: string;
   responseStyle: number;
   characterLimit: number;
   language: string;

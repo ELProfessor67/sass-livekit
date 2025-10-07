@@ -12,6 +12,7 @@ import { normalizeResolution } from "@/components/dashboard/call-outcomes/utils"
 import { CompactAudioPlayer } from "@/components/ui/compact-audio-player";
 import { CallRecordingDisplay } from "./CallRecordingDisplay";
 import { formatPhoneNumber } from "@/utils/formatUtils";
+import { formatSummaryForDisplay } from "@/utils/summaryUtils";
 
 interface ConversationDetailProps {
   conversation: Conversation;
@@ -134,7 +135,7 @@ export function ConversationDetail({ conversation }: ConversationDetailProps) {
             
             {call.summary && (
               <p className="text-sm text-foreground mb-3">
-                {call.summary}
+                {formatSummaryForDisplay(call.summary)}
               </p>
             )}
             

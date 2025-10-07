@@ -21,7 +21,18 @@ class SMSDatabaseService {
             llm_provider_setting,
             llm_model_setting,
             temperature_setting,
-            max_token_setting
+            max_token_setting,
+            groq_model,
+            groq_temperature,
+            groq_max_tokens,
+            character_limit,
+            response_style,
+            language_setting,
+            knowledge_base_id,
+            cal_api_key,
+            cal_event_type_id,
+            cal_event_type_slug,
+            cal_timezone
           )
         `)
         .eq('number', phoneNumber)
