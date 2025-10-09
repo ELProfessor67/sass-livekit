@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getCurrentUserIdAsync } from "@/lib/user-context";
 
 export interface UserCalendarCredentials {
   id: string;
@@ -32,13 +33,12 @@ export class CalendarCredentialsService {
    */
   static async getActiveCredentials(): Promise<UserCalendarCredentials | null> {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
+      const userId = await getCurrentUserIdAsync();
 
       const { data, error } = await supabase
         .from("user_calendar_credentials")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .eq("is_active", true)
         .single();
 
@@ -196,13 +196,12 @@ export class CalendarCredentialsService {
    */
   static async getAllCredentials(): Promise<UserCalendarCredentials[]> {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
+      const userId = await getCurrentUserIdAsync();
 
       const { data, error } = await supabase
         .from("user_calendar_credentials")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .order("created_at", { ascending: false });
 
       if (error) throw error;

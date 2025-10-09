@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { getCurrentUserIdAsync } from '@/lib/user-context';
 
 const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
 
@@ -193,20 +194,16 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
     headers['Authorization'] = `Bearer ${session.access_token}`;
   }
   
-  if (session?.user?.id) {
-    headers['user-id'] = session.user.id;
-  }
+  // Use the current user ID (impersonated or authenticated)
+  const userId = await getCurrentUserIdAsync();
+  headers['user-id'] = userId;
   
   return headers;
 }
 
 // Helper function to get company ID from user
 async function getCompanyId(): Promise<string> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    throw new Error('User not authenticated');
-  }
-  return user.id; // Using user ID as company ID for now
+  return await getCurrentUserIdAsync();
 }
 
 // API service class

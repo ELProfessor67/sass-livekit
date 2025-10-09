@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getCurrentUserIdAsync } from "@/lib/user-context";
 
 export interface Assistant {
   id: string;
@@ -24,9 +25,13 @@ export interface AssistantsResponse {
  */
 export const fetchAssistants = async (): Promise<AssistantsResponse> => {
   try {
+    const userId = await getCurrentUserIdAsync();
+    console.log('Fetching assistants for user ID:', userId);
+    
     const { data: assistants, error } = await supabase
       .from('assistant')
       .select('id, name, prompt, first_message, first_sms, sms_prompt, whatsapp_credentials_id, created_at, updated_at')
+      .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) {

@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getCurrentUserIdAsync } from "@/lib/user-context";
 
 export interface CsvFile {
   id: string;
@@ -21,9 +22,13 @@ export interface CsvFilesResponse {
  */
 export const fetchCsvFiles = async (): Promise<CsvFilesResponse> => {
   try {
+    const userId = await getCurrentUserIdAsync();
+    console.log('Fetching CSV files for user ID:', userId);
+    
     const { data: csvFiles, error } = await supabase
       .from('csv_files')
       .select('*')
+      .eq('user_id', userId)
       .order('uploaded_at', { ascending: false });
 
     if (error) {

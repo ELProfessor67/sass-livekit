@@ -216,7 +216,29 @@
 [data-radix-dialog-content] .text-gray-600,
 [data-radix-dialog-content] .text-gray-500,
 [data-radix-dialog-content] .text-foreground,
-[data-radix-dialog-content] .text-card-foreground {
+[data-radix-dialog-content] .text-card-foreground,
+[data-radix-dialog-content] .text-muted-foreground {
+  color: #ffffff !important;
+}
+
+/* Ultra-specific targeting for dialog titles and descriptions */
+[data-radix-dialog-content] h1,
+[data-radix-dialog-content] h2,
+[data-radix-dialog-content] h3,
+[data-radix-dialog-content] h4,
+[data-radix-dialog-content] h5,
+[data-radix-dialog-content] h6,
+[data-radix-dialog-content] [data-radix-dialog-title],
+[data-radix-dialog-content] [data-radix-dialog-description],
+[data-radix-dialog-content] .text-lg,
+[data-radix-dialog-content] .text-sm {
+  color: #ffffff !important;
+}
+
+/* Force close button to be white */
+[data-radix-dialog-content] button[data-state="open"],
+[data-radix-dialog-content] [data-radix-dialog-close],
+[data-radix-dialog-content] svg {
   color: #ffffff !important;
 }
 

@@ -30,6 +30,11 @@ interface AuthContextType {
   signUp: (name: string, email: string, password: string, metadata?: { phone?: string; countryCode?: string }) => Promise<{ success: boolean; message: string }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<void>;
+  // Impersonation functions
+  impersonateUser: (userId: string) => Promise<{ success: boolean; message: string }>;
+  exitImpersonation: () => Promise<void>;
+  isImpersonating: boolean;
+  originalUser: User | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -49,6 +54,8 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isImpersonating, setIsImpersonating] = useState(false);
+  const [originalUser, setOriginalUser] = useState<User | null>(null);
 
   useEffect(() => {
     // Check for existing session
@@ -56,6 +63,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
+          // Check for existing impersonation state FIRST
+          const impersonationData = localStorage.getItem('impersonation');
+          if (impersonationData) {
+            try {
+              const parsed = JSON.parse(impersonationData);
+              if (parsed.isImpersonating && parsed.originalUserId === session.user.id && parsed.impersonatedUserData) {
+                console.log('Restoring impersonation state:', parsed.impersonatedUserData);
+                // Restore impersonation state directly
+                setOriginalUser({
+                  id: session.user.id,
+                  email: session.user.email,
+                  fullName: (session.user.user_metadata as any)?.name || null,
+                  phone: (session.user.user_metadata as any)?.contactPhone || (session.user.user_metadata as any)?.phone || null,
+                  countryCode: (session.user.user_metadata as any)?.countryCode || null,
+                  role: 'admin',
+                  isActive: true,
+                  company: null,
+                  industry: null,
+                });
+                setIsImpersonating(true);
+                setUser(parsed.impersonatedUserData);
+                setLoading(false);
+                return; // Skip normal profile loading
+              }
+            } catch (error) {
+              console.error('Error restoring impersonation state:', error);
+              localStorage.removeItem('impersonation');
+            }
+          }
+          
+          // Only load profile if not impersonating
           await loadUserProfile(session.user);
         }
       } catch (error) {
@@ -71,9 +109,31 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === 'SIGNED_IN' && session?.user) {
-          await loadUserProfile(session.user);
+          // Check if we're currently impersonating before loading profile
+          const impersonationData = localStorage.getItem('impersonation');
+          let isCurrentlyImpersonating = false;
+          
+          if (impersonationData) {
+            try {
+              const parsed = JSON.parse(impersonationData);
+              isCurrentlyImpersonating = parsed.isImpersonating === true;
+            } catch (error) {
+              console.error('Error parsing impersonation data in auth listener:', error);
+              localStorage.removeItem('impersonation');
+            }
+          }
+          
+          if (!isCurrentlyImpersonating) {
+            console.log('Not impersonating, loading profile for:', session.user.email);
+            await loadUserProfile(session.user);
+          } else {
+            console.log('Currently impersonating, skipping profile load in auth listener');
+          }
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
+          setIsImpersonating(false);
+          setOriginalUser(null);
+          localStorage.removeItem('impersonation');
         }
       }
     );
@@ -88,17 +148,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Skip database operations entirely for now to prevent hanging
       console.log('Skipping database operations, using basic profile');
       
-      // Just use the basic user data from auth
+      // Determine role based on user ID (hardcoded for now)
+      const adminUserIds = ['7a0187a4-a2b7-4df7-bf92-bf6da1e26846']; // Add more admin IDs here
+      const userRole = adminUserIds.includes(authUser.id) ? 'admin' : 'user';
+      
+      // Just use the basic user data from auth with role
       const basicUser = {
         id: authUser.id,
         email: authUser.email,
         fullName: (authUser.user_metadata as any)?.name || null,
         phone: (authUser.user_metadata as any)?.contactPhone || (authUser.user_metadata as any)?.phone || null,
         countryCode: (authUser.user_metadata as any)?.countryCode || null,
+        role: userRole,
+        isActive: true,
+        company: null,
+        industry: null,
       };
       
       console.log('Using basic user profile:', basicUser);
       setUser(basicUser);
+      setLoading(false);
     } catch (error) {
       console.error("Error loading user profile:", error);
       const fallbackUser = {
@@ -107,9 +176,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         fullName: (authUser.user_metadata as any)?.name || null,
         phone: (authUser.user_metadata as any)?.contactPhone || (authUser.user_metadata as any)?.phone || null,
         countryCode: (authUser.user_metadata as any)?.countryCode || null,
+        role: 'user', // Default role
+        isActive: true,
+        company: null,
+        industry: null,
       };
       console.log('Using fallback user profile:', fallbackUser);
       setUser(fallbackUser);
+      setLoading(false);
     }
   };
 
@@ -130,14 +204,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         console.log('AuthContext: Setting basic user data immediately...');
         
         // Set basic user data immediately to unblock the UI
+        const adminUserIds = ['7a0187a4-a2b7-4df7-bf92-bf6da1e26846']; // Add more admin IDs here
+        const userRole = adminUserIds.includes(data.user.id) ? 'admin' : 'user';
+        
         const basicUser = {
           id: data.user.id,
           email: data.user.email,
           fullName: (data.user.user_metadata as any)?.name || null,
           phone: (data.user.user_metadata as any)?.contactPhone || (data.user.user_metadata as any)?.phone || null,
           countryCode: (data.user.user_metadata as any)?.countryCode || null,
+          role: userRole,
+          isActive: true,
+          company: null,
+          industry: null,
         };
         setUser(basicUser);
+        setLoading(false); // Stop loading immediately
         console.log('AuthContext: Basic user data set, login complete');
         
         // Set onboarding as completed in localStorage to prevent redirect
@@ -184,10 +266,102 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const impersonateUser = async (userId: string) => {
+    try {
+      // Check if current user is admin
+      if (!user || user.role !== 'admin') {
+        return { success: false, message: 'Only admins can impersonate users' };
+      }
+
+      console.log('Starting impersonation for user ID:', userId);
+
+      // Store original user immediately
+      setOriginalUser(user);
+      setIsImpersonating(true);
+
+      // Get the target user's data
+      const { data: targetUser, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching target user:', error);
+        setIsImpersonating(false);
+        setOriginalUser(null);
+        return { success: false, message: 'Failed to fetch user data' };
+      }
+
+      // Check if target user is admin (prevent admin impersonation)
+      if ((targetUser as any).role === 'admin') {
+        setIsImpersonating(false);
+        setOriginalUser(null);
+        return { success: false, message: 'Cannot impersonate admin users' };
+      }
+
+      // Create impersonated user object
+      const impersonatedUser: User = {
+        id: targetUser.id,
+        email: (targetUser.contact as any)?.email || null,
+        fullName: targetUser.name,
+        phone: (targetUser.contact as any)?.phone || null,
+        countryCode: (targetUser.contact as any)?.countryCode || null,
+        role: (targetUser as any).role || 'user',
+        isActive: targetUser.is_active,
+        company: (targetUser as any).company,
+        industry: (targetUser as any).industry,
+        createdAt: targetUser.created_on,
+        updatedAt: targetUser.updated_at,
+      };
+
+      console.log('Setting impersonated user:', impersonatedUser);
+
+      // Store impersonation state in localStorage FIRST
+      localStorage.setItem('impersonation', JSON.stringify({
+        isImpersonating: true,
+        originalUserId: user.id,
+        targetUserId: userId,
+        impersonatedUserData: impersonatedUser
+      }));
+
+      // Set the impersonated user AFTER localStorage is set
+      setUser(impersonatedUser);
+
+      return { success: true, message: `Now impersonating ${impersonatedUser.fullName || impersonatedUser.email}` };
+    } catch (error) {
+      console.error('Impersonation error:', error);
+      setIsImpersonating(false);
+      setOriginalUser(null);
+      return { success: false, message: 'Failed to impersonate user' };
+    }
+  };
+
+  const exitImpersonation = async () => {
+    try {
+      if (!isImpersonating || !originalUser) {
+        return;
+      }
+
+      // Restore original user
+      setUser(originalUser);
+      setIsImpersonating(false);
+      setOriginalUser(null);
+
+      // Clear impersonation state from localStorage
+      localStorage.removeItem('impersonation');
+    } catch (error) {
+      console.error('Exit impersonation error:', error);
+    }
+  };
+
   const signOut = async () => {
     try {
       await supabase.auth.signOut();
       setUser(null);
+      setIsImpersonating(false);
+      setOriginalUser(null);
+      localStorage.removeItem('impersonation');
     } catch (error) {
       console.error('Sign out error:', error);
     }
@@ -222,8 +396,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signIn,
     signUp,
     signOut,
-    updateProfile
+    updateProfile,
+    impersonateUser,
+    exitImpersonation,
+    isImpersonating,
+    originalUser
   };
+
+  console.log('AuthProvider: Rendering with user:', user?.email, 'loading:', loading, 'isImpersonating:', isImpersonating);
 
   return (
     <AuthContext.Provider value={value}>

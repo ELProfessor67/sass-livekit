@@ -11,3 +11,4 @@ COMMENT ON COLUMN public.assistant.max_call_duration IS 'Maximum call duration i
 CREATE INDEX IF NOT EXISTS idx_assistant_max_call_duration ON public.assistant(max_call_duration) 
 WHERE max_call_duration IS NOT NULL;
 
+

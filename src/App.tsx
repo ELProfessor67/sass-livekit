@@ -28,6 +28,7 @@ import SignUp from "./pages/SignUp";
 import Login from "./pages/Login";
 import Onboarding from "./pages/Onboarding";
 import VoiceAgent from "./pages/VoiceAgent";
+import AdminPanel from "./pages/AdminPanel";
 
 // Create a client with better error handling and retry limits
 const queryClient = new QueryClient({
@@ -125,6 +126,7 @@ function AnimatedRoutes() {
         <Route path="/calls" element={<Calls />} />
         <Route path="/calls/:id" element={<CallDetails />} />
         <Route path="/voiceagent" element={<VoiceAgent />} />
+        <Route path="/admin" element={<AdminPanel />} />
         <Route path="/conversations" element={<Conversations />} />
         <Route path="/contacts" element={<Contacts />} />
         <Route path="/campaigns" element={<Campaigns />} />
@@ -143,19 +145,19 @@ function AnimatedRoutes() {
 
 const App = () => (
   <ThemeProvider defaultTheme="dark">
-    <AuthProvider>
-      <BusinessUseCaseProvider>
-        <QueryClientProvider client={queryClient}>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
+    <BrowserRouter>
+      <AuthProvider>
+        <BusinessUseCaseProvider>
+          <QueryClientProvider client={queryClient}>
+            <TooltipProvider>
+              <Toaster />
+              <Sonner />
               <AnimatedRoutes />
-            </BrowserRouter>
-          </TooltipProvider>
-        </QueryClientProvider>
-      </BusinessUseCaseProvider>
-    </AuthProvider>
+            </TooltipProvider>
+          </QueryClientProvider>
+        </BusinessUseCaseProvider>
+      </AuthProvider>
+    </BrowserRouter>
   </ThemeProvider>
 );
 

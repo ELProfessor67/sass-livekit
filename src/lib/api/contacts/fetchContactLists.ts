@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getCurrentUserIdAsync } from "@/lib/user-context";
 
 export interface ContactList {
   id: string;
@@ -19,12 +20,16 @@ export interface ContactListsResponse {
  */
 export const fetchContactLists = async (): Promise<ContactListsResponse> => {
   try {
+    const userId = await getCurrentUserIdAsync();
+    console.log('Fetching contact lists for user ID:', userId);
+    
     const { data: contactLists, error } = await supabase
       .from('contact_lists')
       .select(`
         *,
         contacts:contacts(count)
       `)
+      .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) {

@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { createCalComEventType } from "@/lib/api/calcom";
+import { getCurrentUserIdAsync } from "@/lib/user-context";
 
 export interface CalendarEventType {
   id: string;
@@ -50,8 +51,7 @@ export class CalendarEventTypeService {
    */
   static async getAllEventTypes(): Promise<CalendarEventType[]> {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
+      const userId = await getCurrentUserIdAsync();
 
       const { data, error } = await supabase
         .from("calendar_event_types")
@@ -59,7 +59,7 @@ export class CalendarEventTypeService {
           *,
           calendar_credential:user_calendar_credentials!inner(user_id)
         `)
-        .eq("calendar_credential.user_id", user.id)
+        .eq("calendar_credential.user_id", userId)
         .order("created_at", { ascending: false });
 
       if (error) throw error;

@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getCurrentUserIdAsync } from "@/lib/user-context";
 
 export interface Campaign {
   id: string;
@@ -44,6 +45,9 @@ export interface CampaignsResponse {
  */
 export const fetchCampaigns = async (): Promise<CampaignsResponse> => {
   try {
+    const userId = await getCurrentUserIdAsync();
+    console.log('Fetching campaigns for user ID:', userId);
+    
     const { data: campaigns, error } = await supabase
       .from('campaigns')
       .select(`
@@ -52,6 +56,7 @@ export const fetchCampaigns = async (): Promise<CampaignsResponse> => {
         contact_list:contact_lists(name),
         csv_file:csv_files(name)
       `)
+      .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) {

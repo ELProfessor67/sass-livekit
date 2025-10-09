@@ -4,6 +4,25 @@ import { Conversation } from "@/components/conversations/types";
 import { fetchRecordingUrlCached, RecordingInfo } from "../recordings/fetchRecordingUrl";
 import { SMSMessage } from "@/lib/api/sms/smsService";
 import { formatPhoneNumber } from "@/utils/formatUtils";
+import { getCurrentUserIdAsync } from "@/lib/user-context";
+
+/**
+ * Get assistant IDs for the current user
+ */
+async function getUserAssistantIds(): Promise<string[]> {
+  const userId = await getCurrentUserIdAsync();
+  const { data: assistants, error } = await supabase
+    .from('assistant')
+    .select('id')
+    .eq('user_id', userId);
+  
+  if (error) {
+    console.error('Error fetching user assistants:', error);
+    return [];
+  }
+  
+  return assistants?.map(a => a.id) || [];
+}
 
 /**
  * PROGRESSIVE LOADING CONVERSATIONS API
@@ -86,9 +105,22 @@ export interface LoadMoreHistoryResponse {
  */
 export const fetchConversations = async (shouldSort: boolean = true): Promise<ConversationsResponse> => {
   try {
+    const userId = await getCurrentUserIdAsync();
+    const assistantIds = await getUserAssistantIds();
+    console.log('Fetching conversations for user ID:', userId, 'with assistants:', assistantIds);
+    
+    if (assistantIds.length === 0) {
+      console.log('No assistants found for user, returning empty conversations');
+      return {
+        conversations: [],
+        total: 0
+      };
+    }
+    
     const { data: callHistory, error } = await supabase
       .from('call_history')
       .select('*')
+      .in('assistant_id', assistantIds)
       .order('start_time', { ascending: false });
 
     if (error) {
@@ -110,10 +142,11 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
     const smsMessagesMap = new Map<string, SMSMessage[]>();
     
     try {
-      console.log('📱 Fetching all SMS messages...');
+      console.log('📱 Fetching SMS messages for user ID:', userId);
       const { data: smsMessages, error: smsError } = await supabase
         .from('sms_messages')
         .select('*')
+        .eq('user_id', userId)
         .order('date_created', { ascending: false });
 
       if (!smsError && smsMessages) {
@@ -435,7 +468,14 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
  */
 export const fetchContactList = async (limit: number = 50): Promise<ContactSummary[]> => {
   try {
-    console.log('📋 Fetching contact list...');
+    const userId = await getCurrentUserIdAsync();
+    const assistantIds = await getUserAssistantIds();
+    console.log('📋 Fetching contact list for user ID:', userId, 'with assistants:', assistantIds);
+    
+    if (assistantIds.length === 0) {
+      console.log('No assistants found for user, returning empty contact list');
+      return [];
+    }
     
     // Check if the required tables exist by trying to access them
     let callHistory: any[] = [];
@@ -446,6 +486,7 @@ export const fetchContactList = async (limit: number = 50): Promise<ContactSumma
       const { data: callData, error: callError } = await supabase
         .from('call_history')
         .select('phone_number, participant_identity, start_time, call_duration, call_status, transcription, call_summary, success_evaluation, structured_data')
+        .in('assistant_id', assistantIds)
         .order('start_time', { ascending: false })
         .limit(limit * 10);
 
@@ -465,6 +506,7 @@ export const fetchContactList = async (limit: number = 50): Promise<ContactSumma
       const { data: smsData, error: smsError } = await supabase
         .from('sms_messages')
         .select('from_number, to_number, direction, date_created')
+        .eq('user_id', userId)
         .order('date_created', { ascending: false });
 
       if (smsError) {
@@ -693,7 +735,18 @@ export const fetchConversationDetails = async (
   days: number = 7
 ): Promise<ConversationDetailsResponse> => {
   try {
-    console.log(`📞 Fetching conversation details for ${phoneNumber} (last ${days} days)`);
+    const userId = await getCurrentUserIdAsync();
+    const assistantIds = await getUserAssistantIds();
+    console.log(`📞 Fetching conversation details for ${phoneNumber} (last ${days} days) for user ID: ${userId} with assistants:`, assistantIds);
+    
+    if (assistantIds.length === 0) {
+      console.log('No assistants found for user, returning empty conversation details');
+      return {
+        calls: [],
+        smsMessages: [],
+        hasMoreHistory: false
+      };
+    }
     
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - days);
@@ -706,6 +759,7 @@ export const fetchConversationDetails = async (
         .from('call_history')
         .select('*')
         .eq('phone_number', phoneNumber)
+        .in('assistant_id', assistantIds)
         .gte('start_time', cutoffISO)
         .order('start_time', { ascending: false });
 
@@ -727,6 +781,7 @@ export const fetchConversationDetails = async (
         .from('sms_messages')
         .select('*')
         .or(`from_number.eq.${phoneNumber},to_number.eq.${phoneNumber}`)
+        .eq('user_id', userId)
         .gte('date_created', cutoffISO)
         .order('date_created', { ascending: false });
 
@@ -1022,13 +1077,26 @@ export const loadConversationHistory = async (
   limit: number = 20
 ): Promise<LoadMoreHistoryResponse> => {
   try {
-    console.log(`📜 Loading more history for ${phoneNumber} (offset: ${offset}, limit: ${limit})`);
+    const userId = await getCurrentUserIdAsync();
+    const assistantIds = await getUserAssistantIds();
+    console.log(`📜 Loading more history for ${phoneNumber} (offset: ${offset}, limit: ${limit}) for user ID: ${userId} with assistants:`, assistantIds);
+    
+    if (assistantIds.length === 0) {
+      console.log('No assistants found for user, returning empty history');
+      return {
+        calls: [],
+        smsMessages: [],
+        hasMoreHistory: false,
+        nextOffset: 0
+      };
+    }
 
     // Get the cutoff date based on offset (assuming we're loading older data)
     const { data: recentCall, error: recentCallError } = await supabase
       .from('call_history')
       .select('start_time')
       .eq('phone_number', phoneNumber)
+      .in('assistant_id', assistantIds)
       .order('start_time', { ascending: false })
       .limit(1);
 
@@ -1046,6 +1114,7 @@ export const loadConversationHistory = async (
       .from('call_history')
       .select('*')
       .eq('phone_number', phoneNumber)
+      .in('assistant_id', assistantIds)
       .lt('start_time', cutoffDate)
       .order('start_time', { ascending: false })
       .range(offset, offset + limit - 1);
@@ -1173,7 +1242,18 @@ export const fetchNewMessagesSince = async (
   hasNewData: boolean;
 }> => {
   try {
-    console.log(`🔄 Fetching new messages for ${phoneNumber} since ${sinceTimestamp}`);
+    const userId = await getCurrentUserIdAsync();
+    const assistantIds = await getUserAssistantIds();
+    console.log(`🔄 Fetching new messages for ${phoneNumber} since ${sinceTimestamp} for user ID: ${userId} with assistants:`, assistantIds);
+    
+    if (assistantIds.length === 0) {
+      console.log('No assistants found for user, returning empty new messages');
+      return {
+        newSMSMessages: [],
+        newCalls: [],
+        hasNewData: false
+      };
+    }
     
     // Fetch new SMS messages
     let newSMSMessages: SMSMessage[] = [];
@@ -1182,6 +1262,7 @@ export const fetchNewMessagesSince = async (
         .from('sms_messages')
         .select('*')
         .or(`from_number.eq.${phoneNumber},to_number.eq.${phoneNumber}`)
+        .eq('user_id', userId)
         .gt('date_created', sinceTimestamp)
         .order('date_created', { ascending: true });
 
@@ -1216,6 +1297,7 @@ export const fetchNewMessagesSince = async (
         .from('call_history')
         .select('*')
         .eq('phone_number', phoneNumber)
+        .in('assistant_id', assistantIds)
         .gt('start_time', sinceTimestamp)
         .order('start_time', { ascending: true });
 

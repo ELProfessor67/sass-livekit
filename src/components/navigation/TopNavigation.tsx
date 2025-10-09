@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/components/ThemeProvider";
 import { useAccountMinutes } from "@/hooks/useAccountMinutes";
-import { Bell, Search, BarChart3, Phone, Bot, MessageSquare, Users, Megaphone, User, Settings, CreditCard, Zap, LogOut } from "lucide-react";
+import { Bell, Search, BarChart3, Phone, Bot, MessageSquare, Users, Megaphone, User, Settings, CreditCard, Zap, LogOut, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggleMinimal } from "@/components/ThemeToggle";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -13,11 +13,13 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { toast } from "sonner";
 export default function TopNavigation() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, signOut } = useAuth();
+  const { user, signOut, isImpersonating, originalUser, exitImpersonation } = useAuth();
   const isAuthenticated = !!user;
+  const isAdmin = user?.role === 'admin';
   const { uiStyle } = useTheme();
   const { remainingMinutes, planName, percentageUsed, isLoading: minutesLoading } = useAccountMinutes();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -46,6 +48,15 @@ export default function TopNavigation() {
     label: "Calls",
     to: "/calls"
   }];
+
+  // Add admin panel to nav items if user is admin
+  if (isAdmin) {
+    navItems.push({
+      icon: <Shield size={16} />,
+      label: "Admin",
+      to: "/admin"
+    });
+  }
   return <header className="relative z-50 transition-all duration-300">
       <div className="container mx-auto px-6 py-3">
         <div className="flex items-center justify-between">
@@ -54,6 +65,27 @@ export default function TopNavigation() {
             <h1 className="font-sans font-light text-xl tracking-tight text-foreground">
               AI Call Center
             </h1>
+            
+            {/* Impersonation Indicator */}
+            {isImpersonating && originalUser && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-orange-500/20 border border-orange-500/30 rounded-full">
+                <Shield className="h-4 w-4 text-orange-500" />
+                <span className="text-sm text-orange-500 font-medium">
+                  Impersonating: {user?.fullName || user?.email}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={async () => {
+                    await exitImpersonation();
+                    toast.success('Exited impersonation mode');
+                  }}
+                  className="h-6 w-6 p-0 hover:bg-orange-500/20"
+                >
+                  <LogOut className="h-3 w-3 text-orange-500" />
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Center section - Navigation */}
