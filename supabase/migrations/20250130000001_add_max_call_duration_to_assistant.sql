@@ -12,3 +12,4 @@ CREATE INDEX IF NOT EXISTS idx_assistant_max_call_duration ON public.assistant(m
 WHERE max_call_duration IS NOT NULL;
 
 
+

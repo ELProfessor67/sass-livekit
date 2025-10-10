@@ -145,28 +145,58 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log('Loading user profile for:', authUser.email);
       
-      // Skip database operations entirely for now to prevent hanging
-      console.log('Skipping database operations, using basic profile');
-      
-      // Determine role based on user ID (hardcoded for now)
-      const adminUserIds = ['7a0187a4-a2b7-4df7-bf92-bf6da1e26846']; // Add more admin IDs here
-      const userRole = adminUserIds.includes(authUser.id) ? 'admin' : 'user';
-      
-      // Just use the basic user data from auth with role
-      const basicUser = {
+      // Fetch user profile from database to get the actual role
+      const { data: profile, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", authUser.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error fetching user profile:", error);
+        // Fallback to basic auth user data with default role
+        const fallbackUser = {
+          id: authUser.id,
+          email: authUser.email,
+          fullName: (authUser.user_metadata as any)?.name || null,
+          phone: (authUser.user_metadata as any)?.contactPhone || (authUser.user_metadata as any)?.phone || null,
+          countryCode: (authUser.user_metadata as any)?.countryCode || null,
+          role: 'user', // Default role
+          isActive: true,
+          company: null,
+          industry: null,
+        };
+        console.log('Using fallback user profile:', fallbackUser);
+        setUser(fallbackUser);
+        setLoading(false);
+        return;
+      }
+
+      // Use the actual profile data from database
+      const user: User = {
         id: authUser.id,
         email: authUser.email,
-        fullName: (authUser.user_metadata as any)?.name || null,
-        phone: (authUser.user_metadata as any)?.contactPhone || (authUser.user_metadata as any)?.phone || null,
-        countryCode: (authUser.user_metadata as any)?.countryCode || null,
-        role: userRole,
-        isActive: true,
-        company: null,
-        industry: null,
+        fullName: profile?.name || (authUser.user_metadata as any)?.name || null,
+        phone: profile?.contact?.phone || (authUser.user_metadata as any)?.contactPhone || (authUser.user_metadata as any)?.phone || null,
+        countryCode: profile?.contact?.countryCode || (authUser.user_metadata as any)?.countryCode || null,
+        company: profile?.company || null,
+        industry: profile?.industry || null,
+        teamSize: profile?.team_size || null,
+        role: profile?.role || 'user', // Use actual role from database
+        useCase: profile?.use_case || null,
+        theme: profile?.theme || null,
+        notifications: profile?.notifications || null,
+        goals: profile?.goals || null,
+        onboardingCompleted: profile?.onboarding_completed || null,
+        plan: profile?.plan || null,
+        trialEndsAt: profile?.trial_ends_at || null,
+        isActive: profile?.is_active || true,
+        createdAt: profile?.created_at || null,
+        updatedAt: profile?.updated_at || null,
       };
-      
-      console.log('Using basic user profile:', basicUser);
-      setUser(basicUser);
+
+      console.log('Loaded user profile from database:', user);
+      setUser(user);
       setLoading(false);
     } catch (error) {
       console.error("Error loading user profile:", error);
