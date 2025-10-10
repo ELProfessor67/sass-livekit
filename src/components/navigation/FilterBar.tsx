@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import TimeRangeSelector from "@/components/dashboard/TimeRangeSelector";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useTheme } from "@/components/ThemeProvider";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface FilterBarProps {
   onRangeChange: (range: { from: Date; to: Date }) => void;
@@ -20,48 +21,37 @@ export default function FilterBar({
   const navigate = useNavigate();
   const location = useLocation();
   const { uiStyle } = useTheme();
+  const { user } = useAuth();
   
   const {
     data: userData
   } = useQuery({
-    queryKey: ['user-profile'],
+    queryKey: ['user-profile', user?.id],
     queryFn: async () => {
-      const {
-        data: {
-          user
-        }
-      } = await supabase.auth.getUser();
-      if (!user) return null;
-      const {
-        data: usersTable,
-        error: usersError
-      } = await supabase.from('users').select('*').eq('id', '5cd6e70a-2dc4-479e-8b74-2ee8007f7764').single();
-      console.log('Full users table row:', usersTable);
-      if (usersError) {
-        console.error('Error fetching from users table:', usersError);
-      }
+      if (!user?.id) return null;
+      
       const {
         data: profile,
         error
-      } = await supabase.from('users').select('contact, name').eq('id', '5cd6e70a-2dc4-479e-8b74-2ee8007f7764').single();
+      } = await supabase.from('users').select('contact, name').eq('id', user.id).maybeSingle();
       if (error) {
         console.error('Error fetching user profile:', error);
         return null;
       }
-      console.log('Raw profile data:', profile);
+      // console.log('Raw profile data:', profile);
       if (profile?.name) {
-        console.log('Using name directly from users table:', profile.name);
+        // console.log('Using name directly from users table:', profile.name);
         return {
           firstName: profile.name
         };
       }
       if (profile?.contact) {
-        console.log('Contact field exists:', profile.contact);
+        // console.log('Contact field exists:', profile.contact);
         let contactData;
         if (typeof profile.contact === 'string') {
           try {
             contactData = JSON.parse(profile.contact);
-            console.log('Parsed contact data from string:', contactData);
+            // console.log('Parsed contact data from string:', contactData);
           } catch (e) {
             console.error('Failed to parse contact string:', e);
             contactData = {
@@ -72,23 +62,18 @@ export default function FilterBar({
           contactData = profile.contact;
           console.log('Contact data already an object:', contactData);
         }
-        const firstName = contactData?.firstName || contactData?.first_name || contactData?.name || usersTable?.name || 'User';
-        console.log('Extracted firstName:', firstName);
+        const firstName = contactData?.firstName || contactData?.first_name || contactData?.name || 'User';
+        // console.log('Extracted firstName:', firstName);
         return {
           firstName
         };
       }
-      if (usersTable?.name) {
-        console.log('Using name from users table as fallback:', usersTable.name);
-        return {
-          firstName: usersTable.name
-        };
-      }
-      console.log('Using default name "User" as fallback');
+      // console.log('Using default name "User" as fallback');
       return {
         firstName: 'User'
       };
-    }
+    },
+    enabled: !!user?.id // Only run query when user exists
   });
 
   // Handle date range changes and share them with the Calls page

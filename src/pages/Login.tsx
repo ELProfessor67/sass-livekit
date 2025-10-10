@@ -55,7 +55,7 @@ export default function Login() {
           description: "You've been signed in successfully.",
         });
         const onboardingCompleted = localStorage.getItem("onboarding-completed") === "true";
-        navigate(onboardingCompleted ? "/" : "/onboarding");
+        navigate(onboardingCompleted ? "/dashboard" : "/onboarding");
       } else {
         console.log('Sign in failed:', result.message);
         toast({

@@ -208,7 +208,7 @@ export default function TopNavigation() {
                         className="cursor-pointer flex items-center gap-3 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl"
                         onClick={() => {
                           signOut();
-                          navigate('/login');
+                          navigate('/');
                         }}
                       >
                         <LogOut className="h-4 w-4" />

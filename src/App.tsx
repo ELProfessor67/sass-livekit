@@ -45,6 +45,23 @@ const queryClient = new QueryClient({
 });
 
 function AnimatedRoutes() {
+  function ProtectedAuthPage({ children }: { children: React.ReactNode }) {
+    const { user, loading } = useAuth();
+    
+    // If user is authenticated, redirect to dashboard
+    if (user && !loading) {
+      return <Navigate to="/dashboard" replace />;
+    }
+    
+    // If still loading, show loading state
+    if (loading) {
+      return <div>Loading...</div>;
+    }
+    
+    // If not authenticated, show the auth page
+    return <>{children}</>;
+  }
+
   function RequireOnboarding() {
     const location = useLocation();
     const { user, loading } = useAuth();
@@ -114,8 +131,8 @@ function AnimatedRoutes() {
 
   return (
     <Routes>
-      <Route path="/signup" element={<SignUp />} />
-      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<ProtectedAuthPage><SignUp /></ProtectedAuthPage>} />
+      <Route path="/login" element={<ProtectedAuthPage><Login /></ProtectedAuthPage>} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route element={<RequireOnboarding />}>
         <Route path="/dashboard" element={<Index />} />
@@ -145,7 +162,12 @@ function AnimatedRoutes() {
 
 const App = () => (
   <ThemeProvider defaultTheme="dark">
-    <BrowserRouter>
+    <BrowserRouter
+      future={{
+        v7_startTransition: true,
+        v7_relativeSplatPath: true
+      }}
+    >
       <AuthProvider>
         <BusinessUseCaseProvider>
           <QueryClientProvider client={queryClient}>

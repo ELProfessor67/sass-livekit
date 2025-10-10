@@ -56,141 +56,178 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [originalUser, setOriginalUser] = useState<User | null>(null);
+  const [lastFetchedUserId, setLastFetchedUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check for existing session
-    const checkSession = async () => {
+    let mounted = true;
+
+    const fetchUserAndProfile = async () => {
+      if (!mounted) return;
+      
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          // Check for existing impersonation state FIRST
-          const impersonationData = localStorage.getItem('impersonation');
-          if (impersonationData) {
-            try {
-              const parsed = JSON.parse(impersonationData);
-              if (parsed.isImpersonating && parsed.originalUserId === session.user.id && parsed.impersonatedUserData) {
-                console.log('Restoring impersonation state:', parsed.impersonatedUserData);
-                // Restore impersonation state directly
-                setOriginalUser({
-                  id: session.user.id,
-                  email: session.user.email,
-                  fullName: (session.user.user_metadata as any)?.name || null,
-                  phone: (session.user.user_metadata as any)?.contactPhone || (session.user.user_metadata as any)?.phone || null,
-                  countryCode: (session.user.user_metadata as any)?.countryCode || null,
-                  role: 'admin',
-                  isActive: true,
-                  company: null,
-                  industry: null,
-                });
-                setIsImpersonating(true);
-                setUser(parsed.impersonatedUserData);
-                setLoading(false);
-                return; // Skip normal profile loading
-              }
-            } catch (error) {
-              console.error('Error restoring impersonation state:', error);
-              localStorage.removeItem('impersonation');
-            }
-          }
-          
-          // Only load profile if not impersonating
-          await loadUserProfile(session.user);
+        // Get the current user from auth server (more reliable than getSession)
+        const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
+        
+        if (userError) {
+          console.error('Error getting user:', userError);
+          setUser(null);
+          setLoading(false);
+          return;
         }
+
+        if (!authUser) {
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+
+        // Check for existing impersonation state FIRST
+        const impersonationData = localStorage.getItem('impersonation');
+        if (impersonationData) {
+          try {
+            const parsed = JSON.parse(impersonationData);
+            if (parsed.isImpersonating && parsed.originalUserId === authUser.id && parsed.impersonatedUserData) {
+              console.log('Restoring impersonation state:', parsed.impersonatedUserData);
+              // Restore impersonation state directly
+              setOriginalUser({
+                id: authUser.id,
+                email: authUser.email,
+                fullName: (authUser.user_metadata as any)?.name || null,
+                phone: (authUser.user_metadata as any)?.contactPhone || (authUser.user_metadata as any)?.phone || null,
+                countryCode: (authUser.user_metadata as any)?.countryCode || null,
+                role: null,
+                isActive: true,
+                company: null,
+                industry: null,
+              });
+              setIsImpersonating(true);
+              setUser(parsed.impersonatedUserData);
+              setLoading(false);
+              return; // Skip normal profile loading
+            }
+          } catch (error) {
+            console.error('Error restoring impersonation state:', error);
+            localStorage.removeItem('impersonation');
+          }
+        }
+        
+        // Load profile if not impersonating
+        await loadUserProfile(authUser);
+        setLastFetchedUserId(authUser.id);
       } catch (error) {
-        console.error('Error checking session:', error);
-      } finally {
+        console.error('Error in fetchUserAndProfile:', error);
+        setUser(null);
         setLoading(false);
       }
     };
 
-    checkSession();
+    // Initial fetch
+    fetchUserAndProfile();
 
-    // Listen for auth changes
+    // Listen for auth changes - but only on specific events to avoid loops
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (!mounted) return;
+        
+        console.log('Auth event:', event);
+        
         if (event === 'SIGNED_IN' && session?.user) {
-          // Check if we're currently impersonating before loading profile
-          const impersonationData = localStorage.getItem('impersonation');
-          let isCurrentlyImpersonating = false;
-          
-          if (impersonationData) {
-            try {
-              const parsed = JSON.parse(impersonationData);
-              isCurrentlyImpersonating = parsed.isImpersonating === true;
-            } catch (error) {
-              console.error('Error parsing impersonation data in auth listener:', error);
-              localStorage.removeItem('impersonation');
+          // Only fetch if this is a different user than we last fetched
+          setLastFetchedUserId(prev => {
+            if (prev !== session.user.id) {
+              console.log('New user signed in, fetching profile for:', session.user.id);
+              fetchUserAndProfile();
+              return session.user.id;
+            } else {
+              console.log('Same user already fetched, skipping profile fetch');
+              return prev;
             }
-          }
-          
-          if (!isCurrentlyImpersonating) {
-            console.log('Not impersonating, loading profile for:', session.user.email);
-            await loadUserProfile(session.user);
-          } else {
-            console.log('Currently impersonating, skipping profile load in auth listener');
-          }
+          });
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
           setIsImpersonating(false);
           setOriginalUser(null);
+          setLastFetchedUserId(null);
           localStorage.removeItem('impersonation');
+          setLoading(false);
+        } else if (event === 'INITIAL_SESSION' && session?.user) {
+          // Only fetch on initial session if we haven't fetched this user yet
+          setLastFetchedUserId(prev => {
+            if (prev !== session.user.id) {
+              console.log('Initial session, fetching profile for:', session.user.id);
+              fetchUserAndProfile();
+              return session.user.id;
+            }
+            return prev;
+          });
         }
       }
     );
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []); // Empty dependency array - only run once on mount
 
   const loadUserProfile = async (authUser: any) => {
     try {
       console.log('Loading user profile for:', authUser.email);
       
-      // First, try to fetch just the role field to avoid hanging
-      let userRole = 'user'; // Default role
-      
-      try {
-        const { data: roleData, error: roleError } = await supabase
-          .from("users")
-          .select("role")
-          .eq("id", authUser.id)
-          .maybeSingle();
+      // Use Supabase client to fetch user data from database
+      const { data: userData, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authUser.id)
+        .maybeSingle();
 
-        if (!roleError && roleData?.role) {
-          userRole = roleData.role;
-          console.log('Fetched role from database:', userRole);
-        } else {
-          console.log('No role found in database, using default:', userRole);
-        }
-      } catch (roleFetchError) {
-        console.error("Error fetching role:", roleFetchError);
-        console.log('Using default role due to error:', userRole);
+      if (error) {
+        console.error('Error fetching user profile:', error);
+        // Fallback to basic user data from auth metadata
+        const basicUser = {
+          id: authUser.id,
+          email: authUser.email,
+          fullName: (authUser.user_metadata as any)?.name || null,
+          phone: (authUser.user_metadata as any)?.contactPhone || (authUser.user_metadata as any)?.phone || null,
+          countryCode: (authUser.user_metadata as any)?.countryCode || null,
+          role: null,
+          isActive: true,
+          company: null,
+          industry: null,
+        };
+        setUser(basicUser);
+        setLoading(false);
+        return;
       }
-      
-      // Use basic user data with the fetched role
-      const basicUser = {
+
+      // Use database data if available, otherwise fallback to auth metadata
+      const user = {
         id: authUser.id,
         email: authUser.email,
-        fullName: (authUser.user_metadata as any)?.name || null,
-        phone: (authUser.user_metadata as any)?.contactPhone || (authUser.user_metadata as any)?.phone || null,
-        countryCode: (authUser.user_metadata as any)?.countryCode || null,
-        role: userRole,
-        isActive: true,
-        company: null,
-        industry: null,
+        fullName: userData?.name || (authUser.user_metadata as any)?.name || null,
+        phone: (userData?.contact as any)?.phone || (authUser.user_metadata as any)?.contactPhone || (authUser.user_metadata as any)?.phone || null,
+        countryCode: (userData?.contact as any)?.countryCode || (authUser.user_metadata as any)?.countryCode || null,
+        role: (userData as any)?.role || null,
+        isActive: userData?.is_active ?? true,
+        company: (userData as any)?.company || null,
+        industry: (userData as any)?.industry || null,
+        createdAt: userData?.created_on || null,
+        updatedAt: userData?.updated_at || null,
       };
       
-      console.log('Using basic user profile with fetched role:', basicUser);
-      setUser(basicUser);
+      console.log('Loaded user profile:', user);
+      setUser(user);
       setLoading(false);
     } catch (error) {
       console.error("Error loading user profile:", error);
+      // Final fallback
       const fallbackUser = {
         id: authUser.id,
         email: authUser.email,
         fullName: (authUser.user_metadata as any)?.name || null,
         phone: (authUser.user_metadata as any)?.contactPhone || (authUser.user_metadata as any)?.phone || null,
         countryCode: (authUser.user_metadata as any)?.countryCode || null,
-        role: 'user', // Default role
+        role: null,
         isActive: true,
         company: null,
         industry: null,
@@ -213,40 +250,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       console.log('AuthContext: Supabase auth successful, user:', data.user?.email);
       
-      // If we have a session, set basic user data immediately
-      if (data.user) {
-        console.log('AuthContext: Setting basic user data immediately...');
-        
-        // Set basic user data immediately to unblock the UI
-        const adminUserIds = ['7a0187a4-a2b7-4df7-bf92-bf6da1e26846']; // Add more admin IDs here
-        const userRole = adminUserIds.includes(data.user.id) ? 'admin' : 'user';
-        
-        const basicUser = {
-          id: data.user.id,
-          email: data.user.email,
-          fullName: (data.user.user_metadata as any)?.name || null,
-          phone: (data.user.user_metadata as any)?.contactPhone || (data.user.user_metadata as any)?.phone || null,
-          countryCode: (data.user.user_metadata as any)?.countryCode || null,
-          role: userRole,
-          isActive: true,
-          company: null,
-          industry: null,
-        };
-        setUser(basicUser);
-        setLoading(false); // Stop loading immediately
-        console.log('AuthContext: Basic user data set, login complete');
-        
-        // Set onboarding as completed in localStorage to prevent redirect
-        localStorage.setItem("onboarding-completed", "true");
-        
-        // Load full profile in background (completely async, no blocking)
-        setTimeout(() => {
-          console.log('AuthContext: Loading full profile in background...');
-          loadUserProfile(data.user).catch(error => {
-            console.warn('AuthContext: Background profile loading failed:', error);
-          });
-        }, 100);
-      }
+      // Set onboarding as completed in localStorage to prevent redirect
+      localStorage.setItem("onboarding-completed", "true");
+      
+      // The auth state change listener will handle loading the user profile
+      console.log('AuthContext: Sign in successful, auth state change will handle profile loading');
       
       return { success: true, message: 'Sign in successful' };
     } catch (error) {
@@ -293,15 +301,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setOriginalUser(user);
       setIsImpersonating(true);
 
-      // Get the target user's data
-      const { data: targetUser, error } = await supabase
+      // Get the target user's data using Supabase client
+      const { data: targetUser, error: fetchError } = await supabase
         .from('users')
         .select('*')
         .eq('id', userId)
         .single();
 
-      if (error) {
-        console.error('Error fetching target user:', error);
+      if (fetchError) {
+        console.error('Error fetching target user:', fetchError);
         setIsImpersonating(false);
         setOriginalUser(null);
         return { success: false, message: 'Failed to fetch user data' };
@@ -321,7 +329,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         fullName: targetUser.name,
         phone: (targetUser.contact as any)?.phone || null,
         countryCode: (targetUser.contact as any)?.countryCode || null,
-        role: (targetUser as any).role || 'user',
+        role: (targetUser as any).role || null,
         isActive: targetUser.is_active,
         company: (targetUser as any).company,
         industry: (targetUser as any).industry,
@@ -385,14 +393,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (!user) return;
 
     try {
-      const { data, error } = await supabase
-        .from("users")
+      // Use Supabase client to update user profile
+      const { error } = await supabase
+        .from('users')
         .update(updates)
-        .eq("id", user.id)
-        .select()
-        .single();
+        .eq('id', user.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error updating profile:', error);
+        return;
+      }
 
       // Reload user profile
       const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -417,7 +427,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     originalUser
   };
 
-  console.log('AuthProvider: Rendering with user:', user?.email, 'loading:', loading, 'isImpersonating:', isImpersonating);
+  // console.log('AuthProvider: Rendering with user:', user?.email, 'loading:', loading, 'isImpersonating:', isImpersonating);
 
   return (
     <AuthContext.Provider value={value}>
