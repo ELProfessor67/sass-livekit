@@ -145,58 +145,42 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log('Loading user profile for:', authUser.email);
       
-      // Fetch user profile from database to get the actual role
-      const { data: profile, error } = await supabase
-        .from("users")
-        .select("*")
-        .eq("id", authUser.id)
-        .maybeSingle();
+      // First, try to fetch just the role field to avoid hanging
+      let userRole = 'user'; // Default role
+      
+      try {
+        const { data: roleData, error: roleError } = await supabase
+          .from("users")
+          .select("role")
+          .eq("id", authUser.id)
+          .maybeSingle();
 
-      if (error) {
-        console.error("Error fetching user profile:", error);
-        // Fallback to basic auth user data with default role
-        const fallbackUser = {
-          id: authUser.id,
-          email: authUser.email,
-          fullName: (authUser.user_metadata as any)?.name || null,
-          phone: (authUser.user_metadata as any)?.contactPhone || (authUser.user_metadata as any)?.phone || null,
-          countryCode: (authUser.user_metadata as any)?.countryCode || null,
-          role: 'user', // Default role
-          isActive: true,
-          company: null,
-          industry: null,
-        };
-        console.log('Using fallback user profile:', fallbackUser);
-        setUser(fallbackUser);
-        setLoading(false);
-        return;
+        if (!roleError && roleData?.role) {
+          userRole = roleData.role;
+          console.log('Fetched role from database:', userRole);
+        } else {
+          console.log('No role found in database, using default:', userRole);
+        }
+      } catch (roleFetchError) {
+        console.error("Error fetching role:", roleFetchError);
+        console.log('Using default role due to error:', userRole);
       }
-
-      // Use the actual profile data from database
-      const user: User = {
+      
+      // Use basic user data with the fetched role
+      const basicUser = {
         id: authUser.id,
         email: authUser.email,
-        fullName: profile?.name || (authUser.user_metadata as any)?.name || null,
-        phone: profile?.contact?.phone || (authUser.user_metadata as any)?.contactPhone || (authUser.user_metadata as any)?.phone || null,
-        countryCode: profile?.contact?.countryCode || (authUser.user_metadata as any)?.countryCode || null,
-        company: profile?.company || null,
-        industry: profile?.industry || null,
-        teamSize: profile?.team_size || null,
-        role: profile?.role || 'user', // Use actual role from database
-        useCase: profile?.use_case || null,
-        theme: profile?.theme || null,
-        notifications: profile?.notifications || null,
-        goals: profile?.goals || null,
-        onboardingCompleted: profile?.onboarding_completed || null,
-        plan: profile?.plan || null,
-        trialEndsAt: profile?.trial_ends_at || null,
-        isActive: profile?.is_active || true,
-        createdAt: profile?.created_at || null,
-        updatedAt: profile?.updated_at || null,
+        fullName: (authUser.user_metadata as any)?.name || null,
+        phone: (authUser.user_metadata as any)?.contactPhone || (authUser.user_metadata as any)?.phone || null,
+        countryCode: (authUser.user_metadata as any)?.countryCode || null,
+        role: userRole,
+        isActive: true,
+        company: null,
+        industry: null,
       };
-
-      console.log('Loaded user profile from database:', user);
-      setUser(user);
+      
+      console.log('Using basic user profile with fetched role:', basicUser);
+      setUser(basicUser);
       setLoading(false);
     } catch (error) {
       console.error("Error loading user profile:", error);
