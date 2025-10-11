@@ -34,7 +34,12 @@ export function RecentCallsTable({ currentCalls }: RecentCallsTableProps) {
       failed: { color: 'bg-red-100 text-red-800', label: 'Failed' },
       dropped: { color: 'bg-yellow-100 text-yellow-800', label: 'Dropped' },
       spam: { color: 'bg-orange-100 text-orange-800', label: 'Spam' },
-      no_response: { color: 'bg-gray-100 text-gray-800', label: 'No Response' }
+      no_response: { color: 'bg-gray-100 text-gray-800', label: 'No Response' },
+      qualified: { color: 'bg-blue-100 text-blue-800', label: 'Qualified' },
+      not_qualified: { color: 'bg-red-100 text-red-800', label: 'Not Qualified' },
+      booked_appointment: { color: 'bg-green-100 text-green-800', label: 'Booked Appointment' },
+      call_dropped: { color: 'bg-yellow-100 text-yellow-800', label: 'Call Dropped' },
+      message_to_franchise: { color: 'bg-purple-100 text-purple-800', label: 'Message to Franchise' }
     };
 
     const config = statusConfig[status as keyof typeof statusConfig] ||

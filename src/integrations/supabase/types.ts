@@ -1040,6 +1040,17 @@ export type Database = {
           call_duration: number
           call_status: string
           transcription: Json | null
+          call_outcome: string | null
+          outcome_confidence: number | null
+          outcome_reasoning: string | null
+          outcome_key_points: Json | null
+          outcome_sentiment: string | null
+          follow_up_required: boolean | null
+          follow_up_notes: string | null
+          call_summary: string | null
+          success_evaluation: string | null
+          structured_data: Json | null
+          call_sid: string | null
           created_at: string
           updated_at: string
         }
@@ -1054,6 +1065,17 @@ export type Database = {
           call_duration: number
           call_status?: string
           transcription?: Json | null
+          call_outcome?: string | null
+          outcome_confidence?: number | null
+          outcome_reasoning?: string | null
+          outcome_key_points?: Json | null
+          outcome_sentiment?: string | null
+          follow_up_required?: boolean | null
+          follow_up_notes?: string | null
+          call_summary?: string | null
+          success_evaluation?: string | null
+          structured_data?: Json | null
+          call_sid?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -1068,6 +1090,17 @@ export type Database = {
           call_duration?: number
           call_status?: string
           transcription?: Json | null
+          call_outcome?: string | null
+          outcome_confidence?: number | null
+          outcome_reasoning?: string | null
+          outcome_key_points?: Json | null
+          outcome_sentiment?: string | null
+          follow_up_required?: boolean | null
+          follow_up_notes?: string | null
+          call_summary?: string | null
+          success_evaluation?: string | null
+          structured_data?: Json | null
+          call_sid?: string | null
           created_at?: string
           updated_at?: string
         }

@@ -14,8 +14,6 @@ import { createContactList } from "@/lib/api/contacts/createContactList";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { formatPhoneNumber } from "@/utils/formatUtils";
-import { normalizeResolution } from "@/components/dashboard/call-outcomes/utils";
-import { outcomeMapping } from "@/components/dashboard/call-outcomes/OutcomeMapping";
 
 interface ContactInfoPanelProps {
   conversation: Conversation;
@@ -77,9 +75,28 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
     return latestCall.resolution || latestCall.status || null;
   };
 
+  // Get the latest call timestamp
+  const getLatestCallTimestamp = () => {
+    if (!conversation.calls || conversation.calls.length === 0) {
+      return null;
+    }
+
+    // Sort calls by date to get the most recent one
+    const sortedCalls = [...conversation.calls].sort((a, b) => 
+      new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime()
+    );
+    
+    // Get the most recent call
+    const latestCall = sortedCalls[0];
+    
+    // Return the timestamp from the latest call
+    return latestCall.created_at || latestCall.date || null;
+  };
+
   // Extract analysis data from the most recent call
   const getAnalysisData = (): AnalysisData => {
     if (!conversation.calls || conversation.calls.length === 0) {
+      console.log('ContactInfoPanel: No calls found in conversation');
       return {};
     }
 
@@ -91,13 +108,37 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
     // Get the most recent call
     const latestCall = sortedCalls[0];
     
+    console.log('ContactInfoPanel: Latest call data:', {
+      callId: latestCall.id,
+      callName: latestCall.name,
+      hasAnalysis: !!latestCall.analysis,
+      analysisType: typeof latestCall.analysis,
+      analysisContent: latestCall.analysis
+    });
+    
     // Check if the call has structured_data (analysis results)
     let structuredData = null;
     if (latestCall.analysis && typeof latestCall.analysis === 'object') {
       structuredData = latestCall.analysis;
     } else if ((latestCall as any).structured_data && typeof (latestCall as any).structured_data === 'object') {
       structuredData = (latestCall as any).structured_data;
+    } else if (latestCall.analysis && typeof latestCall.analysis === 'string') {
+      // Handle case where analysis is stored as JSON string
+      try {
+        structuredData = JSON.parse(latestCall.analysis);
+      } catch (e) {
+        console.error('Failed to parse analysis JSON:', e);
+      }
     }
+
+    // Debug logging
+    console.log('ContactInfoPanel Debug:', {
+      latestCallId: latestCall.id,
+      hasAnalysis: !!latestCall.analysis,
+      analysisType: typeof latestCall.analysis,
+      analysisContent: latestCall.analysis,
+      structuredDataKeys: structuredData ? Object.keys(structuredData) : null
+    });
 
     if (!structuredData) {
       return {};
@@ -190,7 +231,17 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
     ...(analysisData.company ? [{ label: "Company", value: analysisData.company, icon: Building }] : []),
     ...(analysisData.location ? [{ label: "Location", value: analysisData.location, icon: MapPin }] : []),
     { label: "Phone", value: formatPhoneNumber(conversation.phoneNumber), icon: Phone },
-    { label: "Last Contact", value: formatDistanceToNow(conversation.lastActivityTimestamp, { addSuffix: true }), icon: Calendar },
+    { 
+      label: "Last Contact", 
+      value: (() => {
+        const latestTimestamp = getLatestCallTimestamp();
+        if (latestTimestamp) {
+          return formatDistanceToNow(new Date(latestTimestamp), { addSuffix: true });
+        }
+        return formatDistanceToNow(conversation.lastActivityTimestamp, { addSuffix: true });
+      })(), 
+      icon: Calendar 
+    },
   ];
 
   const handleSaveContact = async () => {
@@ -367,31 +418,23 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
                 const latestOutcome = getLatestCallOutcome();
                 if (!latestOutcome) {
                   return (
-                    <Badge variant="secondary" className="text-xs px-3 py-1">
+                    <Badge variant="default" className="text-xs text-white bg-white px-3 py-1">
                       No outcome recorded
                     </Badge>
                   );
                 }
                 
-                const normalizedOutcome = normalizeResolution(latestOutcome);
-                const mappedOutcome = outcomeMapping[normalizedOutcome] || outcomeMapping['completed'];
-                
+                // Just show whatever is in the database
                 return (
                   <div className="flex items-center gap-2">
                     <div 
-                      className="w-2 h-2 rounded-full" 
-                      style={{ backgroundColor: mappedOutcome.color }}
+                      className="w-2 h-2 rounded-full bg-blue-500"
                     />
                     <Badge 
                       variant="secondary" 
-                      className="text-xs px-3 py-1"
-                      style={{ 
-                        backgroundColor: `${mappedOutcome.color}20`,
-                        borderColor: `${mappedOutcome.color}40`,
-                        color: mappedOutcome.color
-                      }}
+                      className="text-xs px-3 py-1 bg-blue-100 text-blue-800 border-blue-200"
                     >
-                      {mappedOutcome.name}
+                      {latestOutcome}
                     </Badge>
                   </div>
                 );

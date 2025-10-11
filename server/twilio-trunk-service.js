@@ -480,8 +480,17 @@ export async function enableTrunkRecording({ accountSid, authToken, trunkSid }) 
 
 /**
  * Get recording information for a call
+ * Supports different formats, channels, and metadata-only requests
  */
-export async function getCallRecordingInfo({ accountSid, authToken, callSid }) {
+export async function getCallRecordingInfo({ 
+  accountSid, 
+  authToken, 
+  callSid, 
+  format = 'wav', 
+  channels = 2, 
+  includeMetadata = true, 
+  metadataOnly = false 
+}) {
   if (!accountSid || !authToken || !callSid) {
     throw new Error('accountSid, authToken, and callSid are required');
   }
@@ -497,6 +506,43 @@ export async function getCallRecordingInfo({ accountSid, authToken, callSid }) {
 
     console.log(`Found ${recordings.length} recordings for call ${callSid}`);
 
+    const processedRecordings = recordings.map(rec => {
+      const recordingData = {
+        sid: rec.sid,
+        status: rec.status,
+        duration: rec.duration,
+        channels: rec.channels,
+        source: rec.source,
+        startTime: rec.startTime,
+        url: rec.uri
+      };
+
+      // Include additional metadata if requested
+      if (includeMetadata) {
+        recordingData.mediaUrl = rec.uri; // Twilio's media URL
+        recordingData.encryptionDetails = rec.encryptionDetails;
+        recordingData.price = rec.price;
+        recordingData.priceUnit = rec.priceUnit;
+        recordingData.errorCode = rec.errorCode;
+        recordingData.apiVersion = rec.apiVersion;
+        recordingData.dateCreated = rec.dateCreated;
+        recordingData.dateUpdated = rec.dateUpdated;
+      }
+
+      // If not metadata-only, add format-specific URL
+      if (!metadataOnly) {
+        const baseUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Recordings/${rec.sid}`;
+        recordingData.audioUrl = `${baseUrl}.${format}`;
+        
+        // Add channel parameter for dual-channel support
+        if (channels === 2) {
+          recordingData.audioUrl += '?RequestedChannels=2';
+        }
+      }
+
+      return recordingData;
+    });
+
     return {
       success: true,
       call: {
@@ -509,15 +555,14 @@ export async function getCallRecordingInfo({ accountSid, authToken, callSid }) {
         endTime: call.endTime,
         duration: call.duration
       },
-      recordings: recordings.map(rec => ({
-        sid: rec.sid,
-        status: rec.status,
-        duration: rec.duration,
-        channels: rec.channels,
-        source: rec.source,
-        startTime: rec.startTime,
-        url: rec.uri
-      }))
+      recordings: processedRecordings,
+      metadata: {
+        format,
+        channels,
+        includeMetadata,
+        metadataOnly,
+        totalRecordings: recordings.length
+      }
     };
   } catch (error) {
     console.error('Error getting call recording info:', error);
@@ -550,14 +595,29 @@ export async function deleteMainTrunk({ accountSid, authToken, trunkSid }) {
 
 /**
  * Generate secure password for SIP credentials
+ * Ensures password meets Twilio requirements: min 12 chars, at least one uppercase, lowercase, and number
  */
 export function generateSecurePassword() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+  const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+  const numbers = '0123456789';
+  const special = '!@#$%^&*';
+  const allChars = uppercase + lowercase + numbers + special;
+  
   let password = '';
-  for (let i = 0; i < 16; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  
+  // Ensure at least one character from each required category
+  password += uppercase.charAt(Math.floor(Math.random() * uppercase.length));
+  password += lowercase.charAt(Math.floor(Math.random() * lowercase.length));
+  password += numbers.charAt(Math.floor(Math.random() * numbers.length));
+  
+  // Fill the rest with random characters (minimum 12 total, so 9 more)
+  for (let i = 0; i < 9; i++) {
+    password += allChars.charAt(Math.floor(Math.random() * allChars.length));
   }
-  return password;
+  
+  // Shuffle the password to randomize the position of required characters
+  return password.split('').sort(() => Math.random() - 0.5).join('');
 }
 
 /**

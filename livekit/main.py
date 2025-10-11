@@ -63,6 +63,7 @@ except ImportError:
 # Local imports
 from services.booking_agent import BookingAgent
 from services.rag_agent import RAGAgent
+from services.call_outcome_service import CallOutcomeService
 from integrations.supabase_client import SupabaseClient
 from integrations.calendar_api import CalComCalendar, CalendarResult, CalendarError
 from utils.logging_hardening import configure_safe_logging
@@ -122,6 +123,7 @@ class CallHandler:
 
     def __init__(self):
         self.supabase = SupabaseClient()
+        self.call_outcome_service = CallOutcomeService()
 
     async def handle_call(self, ctx: JobContext) -> None:
         """Handle incoming call with proper LiveKit patterns."""
@@ -167,11 +169,23 @@ class CallHandler:
 
             logger.info(f"SESSION_STARTED | room={ctx.room.name}")
             
+            # Trigger first message if configured
+            first_message = assistant_config.get("first_message", "")
+            force_first = os.getenv("FORCE_FIRST_MESSAGE", "true").lower() != "false"
+            if force_first and first_message:
+                logger.info(f"TRIGGERING_FIRST_MESSAGE | message='{first_message}'")
+                await session.generate_reply(
+                    instructions=f"Say exactly this: '{first_message}'"
+                )
+            
             # Setup idle message handling using LiveKit's user state management
             idle_message_task = None
             idle_message_count = 0
             
-            if assistant_config.get("idle_messages") and len(assistant_config.get("idle_messages", [])) > 0:
+            # Check if idle messages are enabled (default: enabled)
+            idle_messages_enabled = assistant_config.get("idle_messages_enabled", True)
+            
+            if idle_messages_enabled and assistant_config.get("idle_messages") and len(assistant_config.get("idle_messages", [])) > 0:
                 logger.info(f"IDLE_MESSAGE_HANDLING_SETUP | room={ctx.room.name}")
                 
                 async def handle_user_away():
@@ -184,7 +198,11 @@ class CallHandler:
                             break
                             
                         import random
-                        idle_message = random.choice(assistant_config.get("idle_messages", []))
+                        idle_messages = assistant_config.get("idle_messages", [])
+                        if not idle_messages:
+                            break
+                            
+                        idle_message = random.choice(idle_messages)
                         logger.info(f"IDLE_MESSAGE_TRIGGERED | message='{idle_message}' | count={idle_message_count + 1}")
                         
                         await session.generate_reply(
@@ -192,8 +210,21 @@ class CallHandler:
                         )
                         idle_message_count += 1
                         
-                        # Wait 10 seconds between idle messages
-                        await asyncio.sleep(10)
+                        # Wait longer between idle messages to prevent audio feedback loops
+                        # Wait 15 seconds instead of 10 to give user more time to respond
+                        await asyncio.sleep(15)
+                        
+                        # Check if user has become active again before sending next message
+                        # This prevents rapid-fire idle messages
+                        try:
+                            # Give a moment for user state to update
+                            await asyncio.sleep(2)
+                            # If user is no longer away, break the loop
+                            if hasattr(session, '_user_state') and session._user_state != "away":
+                                logger.info(f"USER_BECAME_ACTIVE | breaking idle message loop at count {idle_message_count}")
+                                break
+                        except Exception as e:
+                            logger.warning(f"USER_STATE_CHECK_FAILED | error={str(e)}")
                     
                     # If we've reached max idle messages, end the call
                     if idle_message_count >= max_idle_messages:
@@ -251,7 +282,7 @@ class CallHandler:
 
                 # Perform post-call analysis and save to database
                 try:
-                    analysis_results = await self._perform_post_call_analysis(assistant_config, session_history, agent)
+                    analysis_results = await self._perform_post_call_analysis(assistant_config, session_history, agent, call_duration)
                     logger.info(f"POST_CALL_ANALYSIS_RESULTS | summary={bool(analysis_results.get('call_summary'))} | success={analysis_results.get('call_success')} | data_fields={len(analysis_results.get('structured_data', {}))}")
                     
                     # Save call history and analysis data to database
@@ -437,6 +468,8 @@ class CallHandler:
                 assistant_data = assistant_result.data[0]
                 logger.info(f"ASSISTANT_FOUND_BY_ID | assistant_id={assistant_id}")
                 logger.info(f"ASSISTANT_CONFIG_DEBUG | knowledge_base_id={assistant_data.get('knowledge_base_id')} | use_rag={assistant_data.get('use_rag')}")
+                logger.info(f"ASSISTANT_CALENDAR_DEBUG | cal_api_key present: {bool(assistant_data.get('cal_api_key'))} | cal_event_type_id present: {bool(assistant_data.get('cal_event_type_id'))}")
+                logger.info(f"ASSISTANT_CALENDAR_DEBUG | cal_api_key: {assistant_data.get('cal_api_key', 'NOT_FOUND')[:10]}... | cal_event_type_id: {assistant_data.get('cal_event_type_id', 'NOT_FOUND')}")
                 return assistant_data
             
             logger.warning(f"No assistant found for ID: {assistant_id}")
@@ -506,97 +539,93 @@ class CallHandler:
         logger.info(f"FINAL_INSTRUCTIONS_LENGTH | length={len(instructions)}")
         logger.info(f"FINAL_INSTRUCTIONS_PREVIEW | preview={instructions[:500]}...")
 
-        # Check if RAG is enabled (match old implementation - only require knowledge_base_id)
+        # Create unified agent that combines RAG and booking capabilities
         knowledge_base_id = config.get("knowledge_base_id")
-        logger.info(f"RAG_CONFIG_CHECK | knowledge_base_id={knowledge_base_id}")
+        logger.info(f"UNIFIED_AGENT_CONFIG | knowledge_base_id={knowledge_base_id}")
         
+        # Initialize calendar if credentials are available
+        calendar = None
+        
+        # Debug logging for calendar configuration
+        logger.info(f"CALENDAR_DEBUG | cal_api_key present: {bool(config.get('cal_api_key'))} | cal_event_type_id present: {bool(config.get('cal_event_type_id'))}")
+        logger.info(f"CALENDAR_DEBUG | cal_api_key value: {config.get('cal_api_key', 'NOT_FOUND')[:10]}... | cal_event_type_id value: {config.get('cal_event_type_id', 'NOT_FOUND')}")
+        logger.info(f"CALENDAR_DEBUG | cal_timezone: {config.get('cal_timezone', 'NOT_FOUND')}")
+        
+        if config.get("cal_api_key") and config.get("cal_event_type_id"):
+            # Validate and convert event_type_id to proper format
+            event_type_id = config.get("cal_event_type_id")
+            try:
+                # Convert to string first, then validate it's a valid number
+                if isinstance(event_type_id, str):
+                    # Remove any non-numeric characters except for the event type format
+                    cleaned_id = event_type_id.strip()
+                    # Handle Cal.com event type format like "cal_1759650430507_boxv695kh"
+                    if cleaned_id.startswith("cal_"):
+                        # Extract the numeric part
+                        parts = cleaned_id.split("_")
+                        if len(parts) >= 2:
+                            numeric_part = parts[1]
+                            if numeric_part.isdigit():
+                                event_type_id = int(numeric_part)
+                            else:
+                                logger.error(f"INVALID_EVENT_TYPE_ID | cannot extract number from {cleaned_id}")
+                                event_type_id = None
+                        else:
+                            logger.error(f"INVALID_EVENT_TYPE_ID | malformed cal.com ID {cleaned_id}")
+                            event_type_id = None
+                    elif cleaned_id.isdigit():
+                        event_type_id = int(cleaned_id)
+                    else:
+                        logger.error(f"INVALID_EVENT_TYPE_ID | not a valid number {cleaned_id}")
+                        event_type_id = None
+                elif isinstance(event_type_id, (int, float)):
+                    event_type_id = int(event_type_id)
+                else:
+                    logger.error(f"INVALID_EVENT_TYPE_ID | unexpected type {type(event_type_id)}: {event_type_id}")
+                    event_type_id = None
+            except (ValueError, TypeError) as e:
+                logger.error(f"EVENT_TYPE_ID_CONVERSION_ERROR | error={str(e)} | value={event_type_id}")
+                event_type_id = None
+            
+            if event_type_id:
+                # Get timezone from config, default to Asia/Karachi for Pakistan
+                cal_timezone = config.get("cal_timezone") or "Asia/Karachi"
+                logger.info(f"CALENDAR_CONFIG | api_key={'*' * 10} | event_type_id={event_type_id} | timezone={cal_timezone}")
+                calendar = CalComCalendar(
+                    api_key=config.get("cal_api_key"),
+                    event_type_id=event_type_id,
+                    timezone=cal_timezone
+                )
+                # Initialize the calendar
+                try:
+                    await calendar.initialize()
+                    logger.info("CALENDAR_INITIALIZED | calendar setup successful")
+                except Exception as e:
+                    logger.error(f"CALENDAR_INIT_FAILED | error={str(e)}")
+                    calendar = None
+            else:
+                logger.error("CALENDAR_CONFIG_FAILED | invalid event_type_id")
+        else:
+            logger.warning("CALENDAR_NOT_CONFIGURED | missing cal_api_key or cal_event_type_id")
+
+        # Add RAG tools to instructions if knowledge base is available
         if knowledge_base_id:
-            logger.info(f"RAG_ENABLED | Creating RAGAgent with knowledge_base_id={knowledge_base_id}")
-            # Add RAG tools to instructions (like agents-main examples)
             instructions += "\n\nKNOWLEDGE BASE ACCESS:\nYou have access to a knowledge base with information about the company. When users ask questions about:\n- Company history, background, or founding information\n- Products, services, or menu items\n- Business details, locations, or operations\n- Any factual information about the company\n\nIMPORTANT: Always use the query_knowledge_base tool FIRST when users ask about company facts, history, or company information. Do not answer factual questions about the company without searching the knowledge base first.\n\nExample: If user asks 'Tell me about company history', immediately call query_knowledge_base with the query 'company history' before responding."
             logger.info("RAG_TOOLS | Knowledge base tools added to instructions")
-            agent = RAGAgent(
-                instructions=instructions,
-                knowledge_base_id=knowledge_base_id,
-                company_id=config.get("company_id"),
-                supabase=self.supabase
-            )
-        else:
-            # Create regular booking agent
-            calendar = None
-            if config.get("cal_api_key") and config.get("cal_event_type_id"):
-                # Validate and convert event_type_id to proper format
-                event_type_id = config.get("cal_event_type_id")
-                try:
-                    # Convert to string first, then validate it's a valid number
-                    if isinstance(event_type_id, str):
-                        # Remove any non-numeric characters except for the event type format
-                        cleaned_id = event_type_id.strip()
-                        # Handle Cal.com event type format like "cal_1759650430507_boxv695kh"
-                        if cleaned_id.startswith("cal_"):
-                            # Extract the numeric part
-                            parts = cleaned_id.split("_")
-                            if len(parts) >= 2:
-                                numeric_part = parts[1]
-                                if numeric_part.isdigit():
-                                    event_type_id = int(numeric_part)
-                                else:
-                                    logger.error(f"INVALID_EVENT_TYPE_ID | cannot extract number from {cleaned_id}")
-                                    event_type_id = None
-                            else:
-                                logger.error(f"INVALID_EVENT_TYPE_ID | malformed cal.com ID {cleaned_id}")
-                                event_type_id = None
-                        elif cleaned_id.isdigit():
-                            event_type_id = int(cleaned_id)
-                        else:
-                            logger.error(f"INVALID_EVENT_TYPE_ID | not a valid number {cleaned_id}")
-                            event_type_id = None
-                    elif isinstance(event_type_id, (int, float)):
-                        event_type_id = int(event_type_id)
-                    else:
-                        logger.error(f"INVALID_EVENT_TYPE_ID | unexpected type {type(event_type_id)}: {event_type_id}")
-                        event_type_id = None
-                except (ValueError, TypeError) as e:
-                    logger.error(f"EVENT_TYPE_ID_CONVERSION_ERROR | error={str(e)} | value={event_type_id}")
-                    event_type_id = None
-                
-                if event_type_id:
-                    # Get timezone from config, default to Asia/Karachi for Pakistan
-                    cal_timezone = config.get("cal_timezone") or "Asia/Karachi"
-                    logger.info(f"CALENDAR_CONFIG | api_key={'*' * 10} | event_type_id={event_type_id} | timezone={cal_timezone}")
-                    calendar = CalComCalendar(
-                        api_key=config.get("cal_api_key"),
-                        event_type_id=event_type_id,
-                        timezone=cal_timezone
-                    )
-                    # Initialize the calendar
-                    try:
-                        await calendar.initialize()
-                        logger.info("CALENDAR_INITIALIZED | calendar setup successful")
-                    except Exception as e:
-                        logger.error(f"CALENDAR_INIT_FAILED | error={str(e)}")
-                        calendar = None
-                else:
-                    logger.error("CALENDAR_CONFIG_FAILED | invalid event_type_id")
-            else:
-                logger.warning("CALENDAR_NOT_CONFIGURED | missing cal_api_key or cal_event_type_id")
 
-            logger.info(f"RAG_DISABLED | Creating BookingAgent instead of RAGAgent")
-            agent = BookingAgent(
-                instructions=instructions,
-                calendar=calendar
-            )
-            
-            # Debug logging for calendar validation
-            logging.info("AGENT_CREATED | has_calendar=%s | calendar_type=%s", 
-                        agent.calendar is not None, 
-                        type(agent.calendar).__name__ if agent.calendar else None)
-            if agent.calendar:
-                logging.info("CALENDAR_DETAILS | api_key_present=%s | event_type_id=%s | timezone=%s",
-                            bool(getattr(agent.calendar, '_api_key', None)),
-                            getattr(agent.calendar, 'event_type_id', None),
-                            getattr(agent.calendar, 'tz', None))
-
+        # Create unified agent with both RAG and booking capabilities
+        from services.unified_agent import UnifiedAgent
+        agent = UnifiedAgent(
+            instructions=instructions,
+            calendar=calendar,
+            knowledge_base_id=knowledge_base_id,
+            company_id=config.get("company_id"),
+            supabase=self.supabase
+        )
+        
+        logger.info("UNIFIED_AGENT_CREATED | rag_enabled=%s | calendar_enabled=%s", 
+                   bool(knowledge_base_id), bool(calendar))
+        
         # Set analysis fields if configured
         analysis_fields = config.get("structured_data_fields", [])
         logger.info(f"ANALYSIS_FIELDS_DEBUG | raw_config={config.get('structured_data_fields')} | processed_fields={analysis_fields}")
@@ -650,7 +679,7 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
                 client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
-                        {"role": "system", "content": "You are a helpful assistant that classifies data fields for voice conversations."},
+                        {"role": "system", "content": "You are a helpful assistant that classifies data fields for voice conversations. Always respond with valid JSON only."},
                         {"role": "user", "content": classification_prompt}
                     ],
                     max_tokens=500,
@@ -846,7 +875,7 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
         # Idle messages
         idle_messages = config.get("idle_messages", [])
         max_idle_messages = config.get("max_idle_messages", 3)
-        silence_timeout = config.get("silence_timeout", 10)
+        silence_timeout = config.get("silence_timeout", 15)  # Increased default from 10 to 15
         
         if idle_messages and isinstance(idle_messages, list):
             instructions.append(f"IDLE_MESSAGE_HANDLING:")
@@ -919,7 +948,7 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
 
         # Get call management settings from config
         max_call_duration_minutes = config.get("max_call_duration", 30)
-        silence_timeout_seconds = config.get("silence_timeout", 10)
+        silence_timeout_seconds = config.get("silence_timeout", 15)  # Increased from 10 to 15 seconds
         
         # Convert max call duration from minutes to seconds for session timeout
         max_call_duration_seconds = max_call_duration_minutes * 60
@@ -930,9 +959,9 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
             llm=llm,
             tts=tts,
             allow_interruptions=True,
-            min_endpointing_delay=0.5,
-            max_endpointing_delay=6.0,
-            user_away_timeout=silence_timeout_seconds,
+            min_endpointing_delay=1.0,  # Increased from 0.5 to prevent audio feedback loops
+            max_endpointing_delay=8.0,  # Increased from 6.0 to give more time for user response
+            user_away_timeout=silence_timeout_seconds + 5,  # Add buffer to prevent immediate idle messages
         )
 
     def _create_llm(self, provider: str, model: str, temperature: float, max_tokens: int, config: Dict[str, Any]):
@@ -1207,6 +1236,18 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
                 agent_structured_data = agent.get_structured_data()
                 logger.info(f"AGENT_STRUCTURED_DATA_RETRIEVED | assistant_id={assistant_id} | fields_count={len(agent_structured_data)}")
             
+            # Extract names from call summary if no structured name data exists
+            if analysis_data.get("call_summary") and not agent_structured_data.get("Customer Name"):
+                extracted_name = self._extract_name_from_summary(analysis_data["call_summary"])
+                if extracted_name:
+                    agent_structured_data["Customer Name"] = {
+                        "value": extracted_name,
+                        "type": "string",
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "collection_method": "summary_extraction"
+                    }
+                    logger.info(f"NAME_EXTRACTED_FROM_SUMMARY | assistant_id={assistant_id} | name={extracted_name}")
+            
             # If we have configured fields, also try AI extraction
             if structured_data_fields and len(structured_data_fields) > 0:
                 try:
@@ -1420,7 +1461,7 @@ IMPORTANT:
                     model="gpt-4o-mini",
                     messages=[
                         {"role": "system", "content": prompt},
-                        {"role": "user", "content": f"Extract the requested information from this conversation:\n\n{transcript_text}"}
+                        {"role": "user", "content": f"Extract the requested information from this conversation and return as JSON:\n\n{transcript_text}"}
                     ],
                     max_tokens=1000,
                     temperature=0.1,
@@ -1474,12 +1515,15 @@ IMPORTANT:
             logger.error(f"EXTRACTION_ERROR_DETAILS | assistant_id={getattr(agent, 'assistant_id', 'unknown')} | openai_api_configured={bool(os.getenv('OPENAI_API_KEY'))} | fields={[f.get('name', 'unknown') for f in fields]}")
             return agent_data  # Return agent data as fallback
 
-    async def _perform_post_call_analysis(self, config: Dict[str, Any], session_history: list, agent) -> Dict[str, Any]:
-        """Perform complete post-call analysis."""
+    async def _perform_post_call_analysis(self, config: Dict[str, Any], session_history: list, agent, call_duration: int = 0) -> Dict[str, Any]:
+        """Perform complete post-call analysis including AI-powered outcome determination."""
         analysis_results = {
             "call_summary": None,
             "call_success": None,
             "structured_data": {},
+            "call_outcome": None,
+            "outcome_confidence": None,
+            "outcome_reasoning": None,
             "analysis_timestamp": datetime.datetime.now().isoformat()
         }
 
@@ -1506,13 +1550,55 @@ IMPORTANT:
                             "content": content.strip()
                         })
             
-            logger.info(f"POST_CALL_ANALYSIS_TRANSCRIPTION | items={len(transcription)}")
+            logger.info(f"POST_CALL_ANALYSIS_TRANSCRIPTION | items={len(transcription)} | duration={call_duration}s")
+            
+            # Determine call type for outcome analysis
+            call_type = "inbound"  # Default to inbound, could be determined from context
+            
+            # Use OpenAI to analyze call outcome
+            outcome_analysis = await self.call_outcome_service.analyze_call_outcome(
+                transcription=transcription,
+                call_duration=call_duration,
+                call_type=call_type
+            )
+            
+            if outcome_analysis:
+                analysis_results.update({
+                    "call_outcome": outcome_analysis.outcome,
+                    "outcome_confidence": outcome_analysis.confidence,
+                    "outcome_reasoning": outcome_analysis.reasoning,
+                    "outcome_key_points": outcome_analysis.key_points,
+                    "outcome_sentiment": outcome_analysis.sentiment,
+                    "follow_up_required": outcome_analysis.follow_up_required,
+                    "follow_up_notes": outcome_analysis.follow_up_notes
+                })
+                logger.info(f"AI_OUTCOME_ANALYSIS | outcome={outcome_analysis.outcome} | confidence={outcome_analysis.confidence}")
+            else:
+                # Check actual booking status from agent before fallback analysis
+                actual_booking_status = None
+                if hasattr(agent, '_booking_data') and hasattr(agent._booking_data, 'booked'):
+                    actual_booking_status = agent._booking_data.booked
+                    logger.info(f"ACTUAL_BOOKING_STATUS | booked={actual_booking_status}")
+                
+                # Use actual booking status if available, otherwise fallback to heuristic
+                if actual_booking_status is True:
+                    analysis_results["call_outcome"] = "Booked Appointment"
+                    analysis_results["outcome_confidence"] = 0.9  # High confidence for actual booking
+                    analysis_results["outcome_reasoning"] = "Confirmed booking status from agent"
+                    logger.info(f"BOOKING_STATUS_CONFIRMED | outcome=Booked Appointment")
+                else:
+                    # Fallback to heuristic-based outcome determination
+                    fallback_outcome = self.call_outcome_service.get_fallback_outcome(transcription, call_duration)
+                    analysis_results["call_outcome"] = fallback_outcome
+                    analysis_results["outcome_confidence"] = 0.3  # Low confidence for fallback
+                    analysis_results["outcome_reasoning"] = "Fallback heuristic analysis (OpenAI unavailable)"
+                    logger.warning(f"FALLBACK_OUTCOME_ANALYSIS | outcome={fallback_outcome}")
             
             # Use comprehensive analysis processing like the old code
             analysis_data = await self._process_call_analysis(
                 assistant_id=config.get("id"),
                 transcription=transcription,  # Use processed transcription
-                call_duration=300,  # Approximate duration
+                call_duration=call_duration,
                 agent=agent,
                 assistant_config=config
             )
@@ -1520,7 +1606,7 @@ IMPORTANT:
             # Merge analysis results
             analysis_results.update(analysis_data)
             
-            logger.info(f"POST_CALL_ANALYSIS_COMPLETE | summary={bool(analysis_results['call_summary'])} | success={analysis_results['call_success']} | data_fields={len(analysis_results['structured_data'])}")
+            logger.info(f"POST_CALL_ANALYSIS_COMPLETE | summary={bool(analysis_results['call_summary'])} | success={analysis_results['call_success']} | outcome={analysis_results['call_outcome']} | data_fields={len(analysis_results['structured_data'])}")
 
         except Exception as e:
             logger.error(f"POST_CALL_ANALYSIS_ERROR | error={str(e)}")
@@ -1528,6 +1614,11 @@ IMPORTANT:
             try:
                 if hasattr(agent, 'get_structured_data'):
                     analysis_results["structured_data"] = agent.get_structured_data()
+                # Ensure we have at least a fallback outcome
+                if not analysis_results.get("call_outcome"):
+                    analysis_results["call_outcome"] = "Qualified"
+                    analysis_results["outcome_confidence"] = 0.1
+                    analysis_results["outcome_reasoning"] = "Error in analysis, using default outcome"
             except Exception as fallback_error:
                 logger.error(f"FALLBACK_ANALYSIS_ERROR | error={str(fallback_error)}")
 
@@ -1545,6 +1636,11 @@ IMPORTANT:
     ) -> None:
         """Save call history and analysis data to database."""
         try:
+            # Check if database client is available
+            if not self.supabase.is_available():
+                logger.warning("Database client not available - skipping call history save")
+                return
+            
             # Generate call ID from room name
             call_id = ctx.room.name
             
@@ -1553,6 +1649,7 @@ IMPORTANT:
             
             # Extract call_sid like in old implementation
             call_sid = self._extract_call_sid(ctx, participant)
+            logger.info(f"CALL_SID_EXTRACTED | call_sid={call_sid}")
             
             # Process transcription from session history
             transcription = []
@@ -1582,8 +1679,11 @@ IMPORTANT:
             
             logger.info(f"TRANSCRIPTION_PREPARED | session_items={len(session_history)} | transcription_items={len(transcription)}")
             
-            # Determine call status
-            call_status = self._determine_call_status(call_duration, transcription)
+            # Determine call status from AI analysis results
+            call_status = analysis_results.get("call_outcome", "Qualified")
+            
+            # Log the AI-determined call status
+            logger.info(f"AI_CALL_STATUS_DETERMINED | status={call_status} | confidence={analysis_results.get('outcome_confidence', 'N/A')}")
             
             # Extract contact name from analysis results
             contact_name = None
@@ -1619,8 +1719,7 @@ IMPORTANT:
                 "call_duration": call_duration,
                 "call_status": call_status,
                 "transcription": transcription if transcription else [],
-                "call_sid": call_sid,
-                "created_at": datetime.datetime.now().isoformat()
+                "call_sid": call_sid
             }
             
             # Add analysis results
@@ -1632,11 +1731,28 @@ IMPORTANT:
             if analysis_results.get("structured_data"):
                 call_data["structured_data"] = analysis_results["structured_data"]
             
+            # Add outcome analysis details
+            if analysis_results.get("outcome_confidence"):
+                call_data["outcome_confidence"] = analysis_results["outcome_confidence"]
+            if analysis_results.get("outcome_reasoning"):
+                call_data["outcome_reasoning"] = analysis_results["outcome_reasoning"]
+            if analysis_results.get("outcome_key_points"):
+                call_data["outcome_key_points"] = analysis_results["outcome_key_points"]
+            if analysis_results.get("outcome_sentiment"):
+                call_data["outcome_sentiment"] = analysis_results["outcome_sentiment"]
+            if analysis_results.get("follow_up_required"):
+                call_data["follow_up_required"] = analysis_results["follow_up_required"]
+            if analysis_results.get("follow_up_notes"):
+                call_data["follow_up_notes"] = analysis_results["follow_up_notes"]
+            
+            # Log what we're saving
+            logger.info(f"CALL_DATA_TO_SAVE | call_sid={call_data.get('call_sid')} | call_id={call_data.get('call_id')} | status={call_data.get('call_status')}")
+            
             # Save to database
             result = self.supabase.client.table("call_history").insert(call_data).execute()
             
             if result.data:
-                logger.info(f"CALL_HISTORY_SAVED | call_id={call_id} | call_sid={call_sid} | duration={call_duration}s | status={call_status} | transcription_items={len(transcription)}")
+                logger.info(f"CALL_HISTORY_SAVED | call_id={call_id} | duration={call_duration}s | ai_status={call_status} | confidence={analysis_results.get('outcome_confidence', 'N/A')} | transcription_items={len(transcription)}")
                 if transcription:
                     sample_transcript = transcription[0] if len(transcription) > 0 else {}
                     logger.info(f"TRANSCRIPTION_SAMPLE | first_entry={sample_transcript}")
@@ -1645,17 +1761,6 @@ IMPORTANT:
                 
         except Exception as e:
             logger.error(f"CALL_HISTORY_SAVE_ERROR | error={str(e)}")
-
-    def _determine_call_status(self, call_duration: int, transcription: list) -> str:
-        """Determine call status based on duration and transcription."""
-        if call_duration < 10:
-            return "short_call"
-        elif call_duration < 30:
-            return "brief_call"
-        elif len(transcription) < 3:
-            return "minimal_interaction"
-        else:
-            return "completed"
 
     def _extract_call_sid(self, ctx: JobContext, participant) -> Optional[str]:
         """Extract call_sid from various sources like in old implementation."""
@@ -1717,6 +1822,37 @@ IMPORTANT:
             return "unknown"
         except Exception:
             return "unknown"
+    
+    def _extract_name_from_summary(self, summary: str) -> str:
+        """Extract customer name from call summary text."""
+        if not summary:
+            return None
+        
+        import re
+        
+        # Common patterns for names in summaries
+        patterns = [
+            r'greeting the user,?\s+([A-Z][a-z]+)',  # "greeting the user, Jane"
+            r'customer\s+([A-Z][a-z]+)',  # "customer Jane"
+            r'caller\s+([A-Z][a-z]+)',  # "caller Jane"
+            r'user\s+([A-Z][a-z]+)',  # "user Jane"
+            r'client\s+([A-Z][a-z]+)',  # "client Jane"
+            r'([A-Z][a-z]+)\s+mentioned',  # "Jane mentioned"
+            r'([A-Z][a-z]+)\s+requested',  # "Jane requested"
+            r'([A-Z][a-z]+)\s+asked',  # "Jane asked"
+            r'([A-Z][a-z]+)\s+provided',  # "Jane provided"
+            r'([A-Z][a-z]+)\s+confirmed',  # "Jane confirmed"
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, summary, re.IGNORECASE)
+            if match:
+                name = match.group(1).strip()
+                # Basic validation - should be a proper name
+                if len(name) >= 2 and name.isalpha() and name[0].isupper():
+                    return name
+        
+        return None
 
 
 def prewarm(proc: agents.JobProcess):

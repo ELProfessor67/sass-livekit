@@ -353,9 +353,23 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
       filteredSMS: filteredMessages.filter(m => m.type === 'sms').length,
       filteredCalls: filteredMessages.filter(m => m.type === 'call').length,
       conversationSMS: conversation.smsMessages?.length || 0,
-      conversationCalls: conversation.calls?.length || 0
+      conversationCalls: conversation.calls?.length || 0,
+      phoneMappingsCount: phoneMappings.length,
+      assistantsCount: assistants.length
     });
-  }, [messageFilter, allMessages.length, messages.length, filteredMessages.length, conversation.smsMessages?.length, conversation.calls?.length]);
+
+    // Additional debug for agent filtering
+    if (selectedAgentId !== "all") {
+      console.log('🤖 Agent filtering debug:', {
+        selectedAgentId,
+        callsWithAssistantId: conversation.calls.filter(call => call.assistant_id).length,
+        callsWithoutAssistantId: conversation.calls.filter(call => !call.assistant_id).length,
+        phoneMappingsForAgent: phoneMappings.filter(m => m.inbound_assistant_id === selectedAgentId),
+        smsFromNumbers: conversation.smsMessages?.map(sms => sms.from) || [],
+        smsToNumbers: conversation.smsMessages?.map(sms => sms.to) || []
+      });
+    }
+  }, [messageFilter, allMessages.length, messages.length, filteredMessages.length, conversation.smsMessages?.length, conversation.calls?.length, selectedAgentId, phoneMappings.length, assistants.length]);
 
   // Debug button rendering
   useEffect(() => {
@@ -462,6 +476,19 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
               </div>
             )}
 
+            {/* Agent filter indicator */}
+            {selectedAgentId !== "all" && (
+              <div className="flex items-center space-x-1 text-xs text-muted-foreground">
+                <div className="w-1 h-1 bg-blue-500 rounded-full"></div>
+                <span>
+                  {assistants.find(a => a.id === selectedAgentId)?.name || 'Unknown Agent'}
+                </span>
+                {allMessages.length === 0 && (
+                  <span className="text-orange-500">(no messages)</span>
+                )}
+              </div>
+            )}
+
            
           </div>
         </div>
@@ -486,26 +513,50 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
             )}
 
             <div className="p-3 space-y-4">
-              {sortedDateGroups.map(([dateKey, dayMessages]) => (
-                <div key={dateKey} className="space-y-2">
-                  {/* Date Separator */}
-                  <div className="flex items-center justify-center">
-                    <div className="px-2 py-0.5 bg-muted/50 rounded-full text-[11px] text-muted-foreground">
-                      {format(new Date(dateKey), 'MMM d, yyyy')}
+              {sortedDateGroups.length > 0 ? (
+                sortedDateGroups.map(([dateKey, dayMessages]) => (
+                  <div key={dateKey} className="space-y-2">
+                    {/* Date Separator */}
+                    <div className="flex items-center justify-center">
+                      <div className="px-2 py-0.5 bg-muted/50 rounded-full text-[11px] text-muted-foreground">
+                        {format(new Date(dateKey), 'MMM d, yyyy')}
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Messages for this day */}
-                  {dayMessages.map((message, index) => (
-                    <MessageBubble
-                      key={message.id}
-                      message={message}
-                      conversation={conversation}
-                      showAvatar={index === 0 || dayMessages[index - 1]?.direction !== message.direction}
-                    />
-                  ))}
+                    {/* Messages for this day */}
+                    {dayMessages.map((message, index) => (
+                      <MessageBubble
+                        key={message.id}
+                        message={message}
+                        conversation={conversation}
+                        showAvatar={index === 0 || dayMessages[index - 1]?.direction !== message.direction}
+                      />
+                    ))}
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-center justify-center h-32">
+                  <div className="text-center text-muted-foreground">
+                    <div className="w-12 h-12 mx-auto mb-3 bg-muted/20 rounded-full flex items-center justify-center">
+                      <MessageSquare className="w-6 h-6" />
+                    </div>
+                    <div className="text-sm font-medium mb-1">
+                      {selectedAgentId === "all" ? "No messages found" : "No messages for this agent"}
+                    </div>
+                    <div className="text-xs">
+                      {selectedAgentId === "all" 
+                        ? "This conversation doesn't have any messages yet."
+                        : `No calls or SMS messages are associated with the selected agent.`
+                      }
+                    </div>
+                    {selectedAgentId !== "all" && (
+                      <div className="text-xs mt-2 text-muted-foreground/70">
+                        Try selecting "All Agents" to see all messages, or check if the agent has been assigned to handle this conversation.
+                      </div>
+                    )}
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
           </ScrollArea>
         </div>

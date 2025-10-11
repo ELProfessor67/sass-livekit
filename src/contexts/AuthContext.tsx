@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { TwilioCredentialsService } from '@/lib/twilio-credentials';
+import { supabaseWithRetry } from '@/lib/supabase-retry';
 
 interface User {
   id: string;
@@ -60,9 +62,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     let mounted = true;
+    let isFetching = false; // Add flag to prevent concurrent fetches
 
     const fetchUserAndProfile = async () => {
-      if (!mounted) return;
+      if (!mounted || isFetching) return;
+      
+      isFetching = true;
       
       try {
         // Get the current user from auth server (more reliable than getSession)
@@ -118,6 +123,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         console.error('Error in fetchUserAndProfile:', error);
         setUser(null);
         setLoading(false);
+      } finally {
+        isFetching = false;
       }
     };
 
@@ -134,12 +141,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (event === 'SIGNED_IN' && session?.user) {
           // Only fetch if this is a different user than we last fetched
           setLastFetchedUserId(prev => {
-            if (prev !== session.user.id) {
+            if (prev !== session.user.id && !isFetching) {
               console.log('New user signed in, fetching profile for:', session.user.id);
               fetchUserAndProfile();
               return session.user.id;
             } else {
-              console.log('Same user already fetched, skipping profile fetch');
+              console.log('Same user already fetched or currently fetching, skipping profile fetch');
               return prev;
             }
           });
@@ -149,16 +156,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           setOriginalUser(null);
           setLastFetchedUserId(null);
           localStorage.removeItem('impersonation');
+          // Clear user profile cache
+          if (lastFetchedUserId) {
+            localStorage.removeItem(`user_profile_${lastFetchedUserId}`);
+          }
           setLoading(false);
         } else if (event === 'INITIAL_SESSION' && session?.user) {
           // Only fetch on initial session if we haven't fetched this user yet
           setLastFetchedUserId(prev => {
-            if (prev !== session.user.id) {
+            if (prev !== session.user.id && !isFetching) {
               console.log('Initial session, fetching profile for:', session.user.id);
               fetchUserAndProfile();
               return session.user.id;
+            } else {
+              console.log('Same user already fetched or currently fetching, skipping profile fetch');
+              return prev;
             }
-            return prev;
           });
         }
       }
@@ -174,50 +187,95 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log('Loading user profile for:', authUser.email);
       
-      // Use Supabase client to fetch user data from database
-      const { data: userData, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', authUser.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error fetching user profile:', error);
-        // Fallback to basic user data from auth metadata
-        const basicUser = {
-          id: authUser.id,
-          email: authUser.email,
-          fullName: (authUser.user_metadata as any)?.name || null,
-          phone: (authUser.user_metadata as any)?.contactPhone || (authUser.user_metadata as any)?.phone || null,
-          countryCode: (authUser.user_metadata as any)?.countryCode || null,
-          role: null,
-          isActive: true,
-          company: null,
-          industry: null,
-        };
-        setUser(basicUser);
-        setLoading(false);
-        return;
+      // Check localStorage first for cached user data
+      const cacheKey = `user_profile_${authUser.id}`;
+      const cachedUserData = localStorage.getItem(cacheKey);
+      
+      if (cachedUserData) {
+        try {
+          const parsedData = JSON.parse(cachedUserData);
+          const cacheAge = Date.now() - parsedData.timestamp;
+          const maxAge = 30 * 60 * 1000; // 30 minutes cache
+          
+          if (cacheAge < maxAge) {
+            console.log('Using cached user profile');
+            setUser(parsedData.user);
+            setLoading(false);
+            return;
+          } else {
+            console.log('Cache expired, fetching fresh data');
+            localStorage.removeItem(cacheKey);
+          }
+        } catch (error) {
+          console.warn('Invalid cached user data, fetching fresh data');
+          localStorage.removeItem(cacheKey);
+        }
       }
-
-      // Use database data if available, otherwise fallback to auth metadata
-      const user = {
+      
+      // Create user object from auth metadata (instant, no database call)
+      const userFromAuth = {
         id: authUser.id,
         email: authUser.email,
-        fullName: userData?.name || (authUser.user_metadata as any)?.name || null,
-        phone: (userData?.contact as any)?.phone || (authUser.user_metadata as any)?.contactPhone || (authUser.user_metadata as any)?.phone || null,
-        countryCode: (userData?.contact as any)?.countryCode || (authUser.user_metadata as any)?.countryCode || null,
-        role: (userData as any)?.role || null,
-        isActive: userData?.is_active ?? true,
-        company: (userData as any)?.company || null,
-        industry: (userData as any)?.industry || null,
-        createdAt: userData?.created_on || null,
-        updatedAt: userData?.updated_at || null,
+        fullName: (authUser.user_metadata as any)?.name || authUser.email.split('@')[0],
+        phone: (authUser.user_metadata as any)?.contactPhone || (authUser.user_metadata as any)?.phone || null,
+        countryCode: (authUser.user_metadata as any)?.countryCode || null,
+        role: (authUser.user_metadata as any)?.role || 'user',
+        isActive: true,
+        company: (authUser.user_metadata as any)?.company || null,
+        industry: (authUser.user_metadata as any)?.industry || null,
+        createdAt: authUser.created_at || null,
+        updatedAt: authUser.updated_at || null,
       };
       
-      console.log('Loaded user profile:', user);
-      setUser(user);
+      // Set user immediately from auth data (no loading delay)
+      console.log('Loaded user profile from auth metadata:', userFromAuth);
+      setUser(userFromAuth);
       setLoading(false);
+      
+      // Cache the user data
+      localStorage.setItem(cacheKey, JSON.stringify({
+        user: userFromAuth,
+        timestamp: Date.now()
+      }));
+      
+      // Optionally fetch extended profile data in background (non-blocking)
+      try {
+        const { data: userData, error } = await supabaseWithRetry(async () => {
+          const result = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', authUser.id)
+            .maybeSingle();
+          return result;
+        });
+
+        if (!error && userData) {
+          // Update with database data if available
+          const enhancedUser = {
+            ...userFromAuth,
+            fullName: (userData as any).name || userFromAuth.fullName,
+            phone: ((userData as any).contact as any)?.phone || userFromAuth.phone,
+            countryCode: ((userData as any).contact as any)?.countryCode || userFromAuth.countryCode,
+            role: (userData as any)?.role || userFromAuth.role,
+            company: (userData as any)?.company || userFromAuth.company,
+            industry: (userData as any)?.industry || userFromAuth.industry,
+            createdAt: (userData as any).created_on || userFromAuth.createdAt,
+            updatedAt: (userData as any).updated_at || userFromAuth.updatedAt,
+          };
+          
+          console.log('Enhanced user profile with database data:', enhancedUser);
+          setUser(enhancedUser);
+          
+          // Update cache with enhanced data
+          localStorage.setItem(cacheKey, JSON.stringify({
+            user: enhancedUser,
+            timestamp: Date.now()
+          }));
+        }
+      } catch (error) {
+        console.warn('Background profile enhancement failed (non-critical):', error);
+        // Don't throw - we already have user data from auth
+      }
     } catch (error) {
       console.error("Error loading user profile:", error);
       // Final fallback
@@ -301,12 +359,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setOriginalUser(user);
       setIsImpersonating(true);
 
-      // Get the target user's data using Supabase client
-      const { data: targetUser, error: fetchError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .single();
+      // Get the target user's data using Supabase client with retry
+      const { data: targetUser, error: fetchError } = await supabaseWithRetry(async () => {
+        const result = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', userId)
+          .single();
+        return result;
+      });
 
       if (fetchError) {
         console.error('Error fetching target user:', fetchError);
@@ -324,17 +385,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       // Create impersonated user object
       const impersonatedUser: User = {
-        id: targetUser.id,
-        email: (targetUser.contact as any)?.email || null,
-        fullName: targetUser.name,
-        phone: (targetUser.contact as any)?.phone || null,
-        countryCode: (targetUser.contact as any)?.countryCode || null,
+        id: (targetUser as any).id,
+        email: ((targetUser as any).contact as any)?.email || null,
+        fullName: (targetUser as any).name,
+        phone: ((targetUser as any).contact as any)?.phone || null,
+        countryCode: ((targetUser as any).contact as any)?.countryCode || null,
         role: (targetUser as any).role || null,
-        isActive: targetUser.is_active,
+        isActive: (targetUser as any).is_active,
         company: (targetUser as any).company,
         industry: (targetUser as any).industry,
-        createdAt: targetUser.created_on,
-        updatedAt: targetUser.updated_at,
+        createdAt: (targetUser as any).created_on,
+        updatedAt: (targetUser as any).updated_at,
       };
 
       console.log('Setting impersonated user:', impersonatedUser);
@@ -384,6 +445,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsImpersonating(false);
       setOriginalUser(null);
       localStorage.removeItem('impersonation');
+      
+      // Clear Twilio credentials cache when user logs out
+      TwilioCredentialsService.clearUserCache();
     } catch (error) {
       console.error('Sign out error:', error);
     }

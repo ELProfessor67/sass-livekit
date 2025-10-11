@@ -42,6 +42,8 @@ app.use('/api/v1/livekit', livekitRoomRouter);
 app.use('/api/v1/knowledge-base', knowledgeBaseRouter);
 console.log('Knowledge base routes registered at /api/v1/knowledge-base');
 
+// Recording routes (matching voiceagents pattern exactly)
+
 // Get recording information for a call
 app.get('/api/v1/call/:callSid/recordings', async (req, res) => {
   try {
@@ -67,12 +69,16 @@ app.get('/api/v1/call/:callSid/recordings', async (req, res) => {
 });
 
 // Proxy endpoint to serve recording audio files with authentication
-app.get('/api/v1/recording/:recordingSid/audio', async (req, res) => {
+app.get('/api/v1/call/recording/:recordingSid/audio', async (req, res) => {
   try {
     const { recordingSid } = req.params;
     const { accountSid, authToken } = req.query;
+    
+    // Decode URL-encoded parameters
+    const decodedAccountSid = decodeURIComponent(accountSid);
+    const decodedAuthToken = decodeURIComponent(authToken);
 
-    if (!accountSid || !authToken) {
+    if (!decodedAccountSid || !decodedAuthToken) {
       return res.status(400).json({
         success: false,
         message: 'accountSid and authToken are required'
@@ -80,26 +86,47 @@ app.get('/api/v1/recording/:recordingSid/audio', async (req, res) => {
     }
 
     // Construct the Twilio recording URL
-    const recordingUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Recordings/${recordingSid}.wav`;
-
+    const recordingUrl = `https://api.twilio.com/2010-04-01/Accounts/${decodedAccountSid}/Recordings/${recordingSid}.wav`;
+    
+    // Debug: Log credential info
+    console.log('Audio request debug:', {
+      recordingSid,
+      accountSid: decodedAccountSid,
+      accountSidLength: decodedAccountSid?.length,
+      authTokenLength: decodedAuthToken?.length,
+      authTokenPreview: decodedAuthToken?.substring(0, 10) + '...',
+      recordingUrl
+    });
+    
     // Make authenticated request to Twilio
     const response = await fetch(recordingUrl, {
       headers: {
-        'Authorization': `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`
+        'Authorization': `Basic ${Buffer.from(`${decodedAccountSid}:${decodedAuthToken}`).toString('base64')}`
       }
     });
 
     if (!response.ok) {
       console.error('Failed to fetch recording from Twilio:', response.status, response.statusText);
+      
+      // Get the error response body for better debugging
+      let errorBody = '';
+      try {
+        errorBody = await response.text();
+        console.error('Twilio error response:', errorBody);
+      } catch (e) {
+        console.error('Could not read error response body');
+      }
+      
       return res.status(response.status).json({
         success: false,
-        message: `Failed to fetch recording: ${response.statusText}`
+        message: `Failed to fetch recording: ${response.statusText}`,
+        error: errorBody
       });
     }
 
     // Get the audio data as a buffer
     const audioBuffer = await response.arrayBuffer();
-
+    
     // Set appropriate headers for audio streaming
     res.setHeader('Content-Type', 'audio/wav');
     res.setHeader('Content-Length', audioBuffer.byteLength);
@@ -117,6 +144,8 @@ app.get('/api/v1/recording/:recordingSid/audio', async (req, res) => {
     });
   }
 });
+
+
 
 
 

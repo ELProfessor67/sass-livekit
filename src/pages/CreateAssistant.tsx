@@ -26,6 +26,7 @@ import { N8nTab } from "@/components/assistants/wizard/N8nTab";
 import { AssistantFormData } from "@/components/assistants/wizard/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { ensureUserExists } from '@/lib/supabase-retry';
 
 const tabVariants = {
   initial: { opacity: 0, y: 10 },
@@ -410,28 +411,9 @@ const CreateAssistant = () => {
       calTimezone: formData.model.calTimezone
     });
 
-    // Handle calendar event type auto-creation
-    let calEventTypeId = formData.model.calEventTypeId || null;
-    let calEventTypeSlug = formData.model.calEventTypeSlug || null;
-    
-    if (formData.model.calendar && formData.model.calendar !== "None" && formData.model.calEventTypeSlug && !formData.model.calEventTypeId) {
-      try {
-        // Auto-create event type if slug is provided but no ID exists
-        const { CalendarEventTypeService } = await import("@/lib/calendar-event-types");
-        const eventType = await CalendarEventTypeService.createEventType({
-          calendarCredentialId: formData.model.calendar,
-          eventTypeSlug: formData.model.calEventTypeSlug,
-          label: `${formData.name} - ${formData.model.calEventTypeSlug}`,
-          description: `Auto-created event type for assistant: ${formData.name}`,
-          durationMinutes: 30
-        });
-        calEventTypeId = eventType.event_type_id;
-        calEventTypeSlug = eventType.event_type_slug;
-      } catch (error) {
-        console.error("Failed to create calendar event type:", error);
-        // Continue without event type if creation fails
-      }
-    }
+    // Use existing event type data (no auto-creation)
+    const calEventTypeId = formData.model.calEventTypeId || null;
+    const calEventTypeSlug = formData.model.calEventTypeSlug || null;
 
     return {
       user_id: userId,
@@ -524,32 +506,13 @@ const CreateAssistant = () => {
     } as any;
   };
 
-  const ensureUserProfileExists = async (userId: string, name?: string | null) => {
-    const { data: exists, error: existsError } = await supabase
-      .from('users')
-      .select('id')
-      .eq('id', userId)
-      .maybeSingle();
-    if (existsError) {
-      // Non-fatal; proceed to try insert if not exists
-      console.warn('Error checking users row existence:', existsError);
-    }
-    if (!exists) {
-      const { error: insertError } = await supabase
-        .from('users')
-        .insert({ id: userId, name: name || null });
-      if (insertError) {
-        console.warn('Could not insert users row (may be blocked by RLS):', insertError);
-      }
-    }
-  };
 
   const handleSave = async () => {
     try {
       setIsSaving(true);
       if (!user?.id) throw new Error('You must be signed in to save an assistant.');
 
-      await ensureUserProfileExists(user.id, user.fullName || null);
+      await ensureUserExists(user.id, user.fullName || null);
 
       const payload = await mapFormToAssistantPayload(user.id);
 
@@ -573,7 +536,7 @@ const CreateAssistant = () => {
         if (error) {
           // Retry once if FK missing
           if ((error as any)?.code === '23503') {
-            await ensureUserProfileExists(user.id, user.fullName || null);
+            await ensureUserExists(user.id, user.fullName || null);
             const retry = await supabase.from('assistant').update(payload).eq('id', id);
             if (retry.error) throw retry.error;
           } else {
@@ -590,7 +553,7 @@ const CreateAssistant = () => {
           .single();
         if (error) {
           if ((error as any)?.code === '23503') {
-            await ensureUserProfileExists(user.id, user.fullName || null);
+            await ensureUserExists(user.id, user.fullName || null);
             const retry = await supabase
               .from('assistant')
               .insert(payload)

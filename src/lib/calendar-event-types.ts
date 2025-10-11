@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { createCalComEventType } from "@/lib/api/calcom";
+import { createCalComEventType, getCalComEventTypes } from "@/lib/api/calcom";
 import { getCurrentUserIdAsync } from "@/lib/user-context";
 
 export interface CalendarEventType {
@@ -20,6 +20,56 @@ export interface CalendarEventTypeInput {
   label: string;
   description?: string;
   durationMinutes: number;
+}
+
+export interface CalComEventType {
+  id: number;
+  title: string;
+  slug: string;
+  length: number;
+  description?: string;
+  locations?: any[];
+  bookingFields?: any[];
+  disableGuests?: boolean;
+  slotInterval?: number;
+  minimumBookingNotice?: number;
+  beforeEventBuffer?: number;
+  afterEventBuffer?: number;
+  recurrence?: any;
+  metadata?: any;
+  price?: number;
+  currency?: string;
+  lockTimeZoneToggleOnBookingPage?: boolean;
+  seatsPerTimeSlot?: any;
+  forwardParamsSuccessRedirect?: any;
+  successRedirectUrl?: any;
+  isInstantEvent?: boolean;
+  seatsShowAvailabilityCount?: boolean;
+  scheduleId?: number;
+  bookingLimitsCount?: any;
+  onlyShowFirstAvailableSlot?: boolean;
+  bookingLimitsDuration?: any;
+  bookingWindow?: any[];
+  bookerLayouts?: any;
+  confirmationPolicy?: any;
+  requiresBookerEmailVerification?: boolean;
+  hideCalendarNotes?: boolean;
+  color?: {
+    lightThemeHex: string;
+    darkThemeHex: string;
+  };
+  seats?: any;
+  offsetStart?: number;
+  customName?: string;
+  destinationCalendar?: any;
+  useDestinationCalendarEmail?: boolean;
+  hideCalendarEventDetails?: boolean;
+  hideOrganizerEmail?: boolean;
+  calVideoSettings?: any;
+  hidden?: boolean;
+  bookingRequiresAuthentication?: boolean;
+  ownerId?: number;
+  users?: string[];
 }
 
 /**
@@ -243,6 +293,34 @@ export class CalendarEventTypeService {
       return {};
     }
   }
+
+  /**
+   * Fetch event types directly from Cal.com for a specific calendar credential
+   */
+  static async fetchEventTypesFromCalCom(calendarCredentialId: string): Promise<CalComEventType[]> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not authenticated");
+
+      // Get the calendar credential to access the API key
+      const { data: credential, error: credError } = await supabase
+        .from("user_calendar_credentials")
+        .select("id, api_key, provider")
+        .eq("id", calendarCredentialId)
+        .eq("user_id", user.id)
+        .single();
+
+      if (credError) throw credError;
+      if (!credential) throw new Error("Calendar credential not found");
+
+      // Fetch event types from Cal.com
+      const eventTypes = await getCalComEventTypes(credential.api_key);
+      return eventTypes;
+    } catch (error) {
+      console.error("Error fetching event types from Cal.com:", error);
+      throw error;
+    }
+  }
 }
 
 // Export convenience functions
@@ -256,3 +334,5 @@ export const updateEventType = (id: string, updates: Partial<CalendarEventTypeIn
 export const deleteEventType = (id: string) => CalendarEventTypeService.deleteEventType(id);
 export const getEventTypesGroupedByCredential = () => 
   CalendarEventTypeService.getEventTypesGroupedByCredential();
+export const fetchEventTypesFromCalCom = (calendarCredentialId: string) => 
+  CalendarEventTypeService.fetchEventTypesFromCalCom(calendarCredentialId);

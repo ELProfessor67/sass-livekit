@@ -65,7 +65,7 @@ export async function createCalComEventType(
 }
 
 /**
- * Get all event types from Cal.com
+ * Get all event types from Cal.com using v1 API
  */
 export async function getCalComEventTypes(apiKey: string): Promise<any[]> {
   const url = `https://api.cal.com/v1/event-types?apiKey=${apiKey}`;

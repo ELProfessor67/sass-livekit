@@ -128,6 +128,17 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
       throw error;
     }
 
+    // Debug logging for database results
+    console.log('Database Debug - Raw call history:', {
+      totalCalls: callHistory?.length || 0,
+      sampleCall: callHistory?.[0] ? {
+        id: callHistory[0].id,
+        hasStructuredData: !!callHistory[0].structured_data,
+        structuredDataType: typeof callHistory[0].structured_data,
+        structuredDataContent: callHistory[0].structured_data
+      } : null
+    });
+
     if (!callHistory || callHistory.length === 0) {
       return {
         conversations: [],
@@ -275,7 +286,7 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
             channel: 'voice' as const,
             tags: [],
             status: call.call_status,
-            resolution: determineCallResolution(call.transcription, call.call_status),
+            resolution: determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence),
             call_recording: recordingInfo?.recordingUrl || '',
             summary: call.call_summary,
             transcript: processedTranscript,
@@ -283,7 +294,7 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
             address: '',
             messages: [],
             phone_number: call.phone_number,
-            call_outcome: determineCallResolution(call.transcription, call.call_status),
+            call_outcome: determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence),
             created_at: call.start_time,
             call_sid: (call as any).call_sid,
             recording_info: recordingInfo,
@@ -585,7 +596,7 @@ export const fetchContactList = async (limit: number = 50): Promise<ContactSumma
         
         if (callTime > contact.lastActivity) {
           contact.lastActivity = callTime;
-          contact.lastCallOutcome = determineCallResolution(call.transcription, call.call_status);
+          contact.lastCallOutcome = determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence);
           // Update participant identity to use the latest call's contact name
           contact.participantIdentity = contactName;
         }
@@ -768,6 +779,18 @@ export const fetchConversationDetails = async (
         recentCalls = [];
       } else {
         recentCalls = callData || [];
+        
+        // Debug logging for conversation details
+        console.log('Conversation Details Debug - Raw call data:', {
+          phoneNumber,
+          totalCalls: recentCalls.length,
+          sampleCall: recentCalls[0] ? {
+            id: recentCalls[0].id,
+            hasStructuredData: !!recentCalls[0].structured_data,
+            structuredDataType: typeof recentCalls[0].structured_data,
+            structuredDataContent: recentCalls[0].structured_data
+          } : null
+        });
       }
     } catch (error) {
       console.warn('⚠️ call_history table not accessible for conversation details');
@@ -874,6 +897,15 @@ export const fetchConversationDetails = async (
             contactName = participantName; // Just formatted phone number
           }
 
+          // Debug logging for structured data
+          console.log('API Debug - Call structured_data:', {
+            callId: call.id,
+            hasStructuredData: !!call.structured_data,
+            structuredDataType: typeof call.structured_data,
+            structuredDataContent: call.structured_data,
+            structuredDataKeys: call.structured_data ? Object.keys(call.structured_data) : null
+          });
+
           return {
             id: call.id,
             name: contactName,
@@ -885,7 +917,7 @@ export const fetchConversationDetails = async (
             channel: 'voice' as const,
             tags: [],
             status: call.call_status,
-            resolution: determineCallResolution(call.transcription, call.call_status),
+            resolution: determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence),
             call_recording: recordingInfo?.recordingUrl || '',
             summary: call.call_summary,
             transcript: processedTranscript,
@@ -893,7 +925,7 @@ export const fetchConversationDetails = async (
             address: '',
             messages: [],
             phone_number: call.phone_number,
-            call_outcome: determineCallResolution(call.transcription, call.call_status),
+            call_outcome: determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence),
             created_at: call.start_time,
             call_sid: (call as any).call_sid,
             recording_info: recordingInfo,
@@ -1173,7 +1205,7 @@ export const loadConversationHistory = async (
             channel: 'voice' as const,
             tags: [],
             status: call.call_status,
-            resolution: determineCallResolution(call.transcription, call.call_status),
+            resolution: determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence),
             call_recording: recordingInfo?.recordingUrl || '',
             summary: call.call_summary,
             transcript: processedTranscript,
@@ -1181,7 +1213,7 @@ export const loadConversationHistory = async (
             address: '',
             messages: [],
             phone_number: call.phone_number,
-            call_outcome: determineCallResolution(call.transcription, call.call_status),
+            call_outcome: determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence),
             created_at: call.start_time,
             call_sid: (call as any).call_sid,
             recording_info: recordingInfo,
@@ -1341,7 +1373,7 @@ export const fetchNewMessagesSince = async (
                 channel: 'voice' as const,
                 tags: [],
                 status: call.call_status,
-                resolution: determineCallResolution(call.transcription, call.call_status),
+                resolution: determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence),
                 call_recording: recordingInfo?.recordingUrl || '',
                 summary: call.call_summary,
                 transcript: processedTranscript,
@@ -1349,7 +1381,7 @@ export const fetchNewMessagesSince = async (
                 address: '',
                 messages: [],
                 phone_number: call.phone_number,
-                call_outcome: determineCallResolution(call.transcription, call.call_status),
+                call_outcome: determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence),
                 created_at: call.start_time,
                 call_sid: (call as any).call_sid,
                 recording_info: recordingInfo,
@@ -1441,61 +1473,16 @@ function calculateTotalDuration(calls: any[]): string {
 }
 
 /**
- * Determine call resolution based on transcription and status
+ * Determine call resolution - just return whatever is in the database
  */
-function determineCallResolution(transcription: Array<{ role: string; content: any }>, status: string): string {
-  if (status === 'spam') return 'Spam';
-  if (status === 'dropped') return 'Call Dropped';
-  if (status === 'no_response') return 'No Response';
-
-  if (!transcription || transcription.length === 0) {
-    return status === 'completed' ? 'Completed' : 'Call Dropped';
-  }
-
-  // Safely extract and analyze transcription content
-  const allContent = transcription
-    .map(t => {
-      // Handle different content types safely
-      if (typeof t.content === 'string') {
-        return t.content.toLowerCase();
-      } else if (typeof t.content === 'object' && t.content !== null) {
-        // If content is an object, try to extract text from common properties
-        if (typeof t.content.text === 'string') {
-          return t.content.text.toLowerCase();
-        } else if (typeof t.content.message === 'string') {
-          return t.content.message.toLowerCase();
-        } else if (Array.isArray(t.content)) {
-          return t.content.join(' ').toLowerCase();
-        }
-        return '';
-      } else {
-        return String(t.content || '').toLowerCase();
-      }
-    })
-    .filter(content => content.length > 0)
-    .join(' ');
-
-  if (allContent.includes('appointment') || allContent.includes('booked') || allContent.includes('schedule')) {
-    return 'Booked Appointment';
-  }
-
-  if (allContent.includes('spam') || allContent.includes('unwanted') || allContent.includes('robocall')) {
-    return 'Spam';
-  }
-
-  if (allContent.includes('not qualified') || allContent.includes('not eligible') || allContent.includes('outside service area')) {
-    return 'Not Qualified';
-  }
-
-  if (allContent.includes('message') || allContent.includes('franchise') || allContent.includes('escalate')) {
-    return 'Message to Franchise';
-  }
-
-  if (allContent.includes('thank you') && allContent.includes('goodbye')) {
-    return 'Completed';
-  }
-
-  return status === 'completed' ? 'Completed' : 'Call Dropped';
+function determineCallResolution(
+  transcription: Array<{ role: string; content: any }>, 
+  status: string,
+  aiOutcome?: string,
+  aiConfidence?: number
+): string {
+  // Just return the status from the database as-is
+  return status || 'Unknown';
 }
 
 /**

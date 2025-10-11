@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { TwilioCredentialsService } from "@/lib/twilio-credentials";
 
 export interface RecordingInfo {
   recordingSid: string;
@@ -35,7 +36,7 @@ export interface TwilioRecordingResponse {
 }
 
 /**
- * Fetch recording URL from Twilio using call_sid
+ * Fetch recording URL from Twilio using call_sid (exactly like voiceagents)
  */
 export const fetchRecordingUrl = async (callSid: string): Promise<RecordingInfo | null> => {
   try {
@@ -44,22 +45,37 @@ export const fetchRecordingUrl = async (callSid: string): Promise<RecordingInfo 
       return null;
     }
 
-    // Get Twilio credentials from the server
-    const { data: credentials, error: credError } = await supabase
-      .from('user_twilio_credentials')
-      .select('account_sid, auth_token')
-      .eq('is_active', true)
-      .single();
-
-    if (credError || !credentials) {
-      console.error('Failed to fetch Twilio credentials:', credError);
+    // Get the current session token from Supabase (like voiceagents)
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session?.access_token) {
+      console.error('No authentication token available');
       return null;
     }
 
-    // Call our server API to get recording info from Twilio
+    // Get Twilio credentials using the service (like voiceagents approach)
+    const credentials = await TwilioCredentialsService.getActiveCredentials();
+
+    if (!credentials) {
+      console.error('Failed to fetch Twilio credentials');
+      return null;
+    }
+
+    // Debug: Log credential lengths to check for truncation
+    console.log('Credentials debug:', {
+      accountSid: credentials.account_sid,
+      accountSidLength: credentials.account_sid?.length,
+      authTokenLength: credentials.auth_token?.length,
+      authTokenPreview: credentials.auth_token?.substring(0, 10) + '...'
+    });
+
+    // Call our server API to get recording info from Twilio (like voiceagents)
+    console.log('Fetching recording for callSid:', callSid);
     const response = await fetch(
-      `/api/v1/call/${callSid}/recordings?accountSid=${credentials.account_sid}&authToken=${credentials.auth_token}`
+      `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000'}/api/v1/call/${callSid}/recordings?accountSid=${encodeURIComponent(credentials.account_sid)}&authToken=${encodeURIComponent(credentials.auth_token)}`
     );
+
+    console.log('Recording API response status:', response.status);
 
     if (!response.ok) {
       console.error('Failed to fetch recording from Twilio:', response.status, response.statusText);
@@ -76,9 +92,12 @@ export const fetchRecordingUrl = async (callSid: string): Promise<RecordingInfo 
     // Get the first (and usually only) recording
     const recording = data.recordings[0];
 
-    // Use our proxy endpoint instead of direct Twilio API access
+    // Use our proxy endpoint instead of direct Twilio API access (like voiceagents)
     // This avoids CORS and authentication issues
-    const proxyAudioUrl = `/api/v1/recording/${recording.sid}/audio?accountSid=${credentials.account_sid}&authToken=${credentials.auth_token}`;
+    const proxyAudioUrl = `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000'}/api/v1/call/recording/${recording.sid}/audio?accountSid=${encodeURIComponent(credentials.account_sid)}&authToken=${encodeURIComponent(credentials.auth_token)}`;
+    
+    console.log('Proxy audio URL length:', proxyAudioUrl.length);
+    console.log('Proxy audio URL preview:', proxyAudioUrl.substring(0, 100) + '...');
 
     return {
       recordingSid: recording.sid,
@@ -88,7 +107,7 @@ export const fetchRecordingUrl = async (callSid: string): Promise<RecordingInfo 
       recordingChannels: recording.channels || 2,
       recordingStartTime: recording.startTime,
       recordingSource: recording.source,
-      recordingTrack: 'both' // Default for dual recording
+      recordingTrack: 'both' // Default for dual recording (like voiceagents)
     };
 
   } catch (error) {
@@ -98,7 +117,7 @@ export const fetchRecordingUrl = async (callSid: string): Promise<RecordingInfo 
 };
 
 /**
- * Fetch recording URL with caching to avoid repeated API calls
+ * Fetch recording URL with caching to avoid repeated API calls (exactly like voiceagents)
  */
 const recordingCache = new Map<string, RecordingInfo | null>();
 

@@ -16,41 +16,10 @@ const outcomePriorities: Record<string, number> = {
   'call dropped': 1
 };
 
-// Function to normalize resolution strings - exported so it can be used in other components
+// Function to normalize resolution strings - just return whatever is in the database
 export const normalizeResolution = (resolution: string | undefined | null): string => {
   if (!resolution) return '';
-  resolution = resolution.toLowerCase().trim();
-  
-  // Check for exact matches first to avoid incorrect normalization
-  if (resolution === 'appointment' || resolution === 'booked appointment') {
-    return 'booked appointment';
-  }
-  
-  if (resolution === 'not qualified' || resolution === 'not eligible') {
-    return 'not qualified';
-  }
-  
-  if (resolution === 'escalated' || resolution === 'message to franchisee') {
-    return 'message to franchisee';
-  }
-  
-  if (resolution === 'spam') {
-    return 'spam';
-  }
-  
-  if (resolution === 'call dropped') {
-    return 'call dropped';
-  }
-  
-  // Fallback to partial matching only if no exact match is found
-  if (resolution.includes('appointment')) return 'booked appointment';
-  if (resolution.includes('eligible') || resolution.includes('qualified')) return 'not qualified';
-  if (resolution.includes('franchisee')) return 'message to franchisee';
-  if (resolution.includes('escalated')) return 'escalated';
-  if (resolution.includes('spam')) return 'spam';
-  if (resolution.includes('dropped')) return 'call dropped';
-  
-  return resolution;
+  return resolution.trim();
 };
 
 export const prepareChartData = (callOutcomes: Record<string, number>, dynamicMapping?: Record<string, any>) => {

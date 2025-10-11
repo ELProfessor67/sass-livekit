@@ -13,15 +13,13 @@ import { WizardSlider } from "./WizardSlider";
 import { Input } from "@/components/ui/input";
 import { getKnowledgeBases, type KnowledgeBase } from "@/lib/api/knowledgeBase";
 import { CalendarCredentialsService, type UserCalendarCredentials } from "@/lib/calendar-credentials";
-import { CalendarEventTypeService, type CalendarEventType } from "@/lib/calendar-event-types";
+import { CalendarEventTypeService, type CalendarEventType, type CalComEventType, fetchEventTypesFromCalCom } from "@/lib/calendar-event-types";
 // EventTypeSelector removed - using simple event slug input instead
 import { useToast } from "@/hooks/use-toast";
 
 // Predefined idle message options
 const IDLE_MESSAGE_OPTIONS = [
   "Are you still there?",
-  "Can you hear me?",
-  "Hello?",
   "I'm still here if you need anything",
   "Did you have any other questions?",
   "Let me know if you need help with anything else",
@@ -30,7 +28,9 @@ const IDLE_MESSAGE_OPTIONS = [
   "Take your time, I'll wait",
   "Is everything okay?",
   "Would you like me to repeat anything?",
-  "I'm here when you're ready to continue"
+  "I'm here when you're ready to continue",
+  "Please let me know if you need assistance",
+  "I'm waiting for your response"
 ];
 
 interface ModelTabProps {
@@ -46,6 +46,9 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [calendarCredentials, setCalendarCredentials] = useState<UserCalendarCredentials[]>([]);
   const [loadingCalendarCredentials, setLoadingCalendarCredentials] = useState(false);
+  const [eventTypes, setEventTypes] = useState<CalComEventType[]>([]);
+  const [loadingEventTypes, setLoadingEventTypes] = useState(false);
+  const [eventTypesError, setEventTypesError] = useState<string | null>(null);
   const { toast } = useToast();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
@@ -83,12 +86,12 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
     option.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleCalendarChange = (calendarIntegrationId: string) => {
+  const handleCalendarChange = async (calendarIntegrationId: string) => {
     console.log("Calendar change triggered:", calendarIntegrationId);
     console.log("Available calendar credentials:", calendarCredentials);
     
     if (calendarIntegrationId === "None") {
-      // Clear calendar credentials
+      // Clear calendar credentials and event types
       onChange({ 
         calendar: "None",
         calApiKey: "",
@@ -96,6 +99,8 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
         calEventTypeSlug: "",
         calTimezone: "UTC"
       });
+      setEventTypes([]);
+      setEventTypesError(null);
       return;
     }
 
@@ -104,7 +109,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
     console.log("Selected integration:", selectedIntegration);
     
     if (selectedIntegration) {
-      // Populate calendar credentials from the integration (without event type details)
+      // Populate calendar credentials from the integration
       const updateData = {
         calendar: calendarIntegrationId,
         calApiKey: selectedIntegration.api_key,
@@ -115,16 +120,35 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
       };
       console.log("Updating calendar data:", updateData);
       onChange(updateData);
+
+      // Fetch event types for the selected calendar
+      await fetchEventTypesForCalendar(calendarIntegrationId);
+    }
+  };
+
+  const fetchEventTypesForCalendar = async (calendarCredentialId: string) => {
+    try {
+      setLoadingEventTypes(true);
+      setEventTypesError(null);
+      const eventTypes = await fetchEventTypesFromCalCom(calendarCredentialId);
+      setEventTypes(eventTypes);
+      console.log("Fetched event types:", eventTypes);
+    } catch (error) {
+      console.error('Failed to fetch event types:', error);
+      setEventTypesError(error instanceof Error ? error.message : 'Failed to load event types');
+      setEventTypes([]);
+    } finally {
+      setLoadingEventTypes(false);
     }
   };
 
 
-  const handleEventTypeChange = (eventType: CalendarEventType | null) => {
+  const handleEventTypeChange = (eventType: CalComEventType | null) => {
     if (eventType) {
       // Update calendar credentials with selected event type
       onChange({
-        calEventTypeId: eventType.event_type_id,
-        calEventTypeSlug: eventType.event_type_slug
+        calEventTypeId: eventType.id.toString(),
+        calEventTypeSlug: eventType.slug
       });
     } else {
       // Clear event type fields
@@ -135,13 +159,6 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
     }
   };
 
-  const handleEventSlugChange = (eventSlug: string) => {
-    // Just update the slug - event type will be created during assistant save
-    onChange({
-      calEventTypeSlug: eventSlug,
-      calEventTypeId: "" // Will be set when event type is created
-    });
-  };
 
   // Fetch knowledge bases and calendar credentials on component mount
   useEffect(() => {
@@ -398,7 +415,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
             {/* Calendar */}
             <div>
               <Label className="block text-sm font-medium mb-2">Calendar Integration</Label>
-              <Select value={hasCalendarApiKey() ? "Selected" : (data.calendar || "None")} onValueChange={(value) => handleCalendarChange(value)}>
+              <Select value={data.calendar || "None"} onValueChange={(value) => handleCalendarChange(value)}>
                 <SelectTrigger className="h-10">
                   <SelectValue />
                 </SelectTrigger>
@@ -438,19 +455,59 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
               )}
             </div>
 
-            {/* Event Type Slug Input */}
+            {/* Event Type Selection */}
             {data.calendar && data.calendar !== "None" && (
               <div>
-                <Label className="block text-sm font-medium mb-2">Event Type Slug</Label>
-                <Input
-                  placeholder="e.g., team/demo-call"
-                  value={data.calEventTypeSlug || ""}
-                  onChange={(e) => handleEventSlugChange(e.target.value)}
-                  className="h-10"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  This will automatically create an event type in your calendar when you save the assistant
-                </p>
+                <Label className="block text-sm font-medium mb-2">Event Type</Label>
+                <Select 
+                  value={data.calEventTypeId || "none"} 
+                  onValueChange={(value) => {
+                    if (value === "none") {
+                      handleEventTypeChange(null);
+                    } else {
+                      const selectedEventType = eventTypes.find(et => et.id.toString() === value);
+                      handleEventTypeChange(selectedEventType || null);
+                    }
+                  }}
+                  disabled={loadingEventTypes}
+                >
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder={loadingEventTypes ? "Loading event types..." : "Select an event type"} />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    <SelectItem value="none">None</SelectItem>
+                    {loadingEventTypes ? (
+                      <SelectItem value="loading-event-types" disabled>
+                        <div className="flex items-center space-x-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Loading event types...</span>
+                        </div>
+                      </SelectItem>
+                    ) : eventTypesError ? (
+                      <SelectItem value="event-types-error" disabled>
+                        <span className="text-destructive">Error loading event types</span>
+                      </SelectItem>
+                    ) : eventTypes.length === 0 ? (
+                      <SelectItem value="no-event-types" disabled>
+                        <span className="text-muted-foreground">No event types found</span>
+                      </SelectItem>
+                    ) : (
+                      eventTypes.map((eventType) => (
+                        <SelectItem key={eventType.id} value={eventType.id.toString()}>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{eventType.title}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {eventType.slug} • {eventType.length} min
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                {eventTypesError && (
+                  <p className="text-xs text-destructive mt-1">{eventTypesError}</p>
+                )}
               </div>
             )}
 

@@ -123,14 +123,11 @@ class DatabaseClient:
             call_data = {
                 "call_id": call_id,
                 "assistant_id": assistant_id,
-                "called_did": called_did,
+                "phone_number": called_did,
                 "call_duration": call_duration,
                 "call_status": call_status,
                 "transcription": transcription,
-                "participant_identity": participant_identity,
-                "recording_sid": recording_sid,
-                "call_sid": call_sid,
-                "created_at": "now()"
+                "participant_identity": participant_identity
             }
             
             result = self._client.table("call_history").insert(call_data).execute()

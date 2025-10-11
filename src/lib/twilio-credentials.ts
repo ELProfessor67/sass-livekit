@@ -23,29 +23,71 @@ export interface TwilioCredentialsInput {
  * Service for managing user-specific Twilio credentials
  */
 export class TwilioCredentialsService {
+  // Cache for user authentication to avoid repeated calls
+  private static userCache: { user: any; timestamp: number } | null = null;
+  private static readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+  /**
+   * Get current user with caching to avoid repeated auth calls
+   * Uses session instead of getUser() to be more efficient
+   */
+  private static async getCurrentUser() {
+    const now = Date.now();
+    
+    // Return cached user if still valid
+    if (this.userCache && (now - this.userCache.timestamp) < this.CACHE_DURATION) {
+      return this.userCache.user;
+    }
+
+    // Fetch fresh session data (includes user + token) - more efficient than getUser()
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session?.user) {
+      this.userCache = null;
+      return null;
+    }
+
+    // Cache the user data
+    this.userCache = { user: session.user, timestamp: now };
+    
+    return session.user;
+  }
+
+  /**
+   * Clear user cache (useful for logout or when user changes)
+   */
+  static clearUserCache() {
+    this.userCache = null;
+  }
+
   /**
    * Get the active Twilio credentials for the current user
+   * Since there's no is_active column, we'll get the credential for the current user
    */
   static async getActiveCredentials(): Promise<UserTwilioCredentials | null> {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await this.getCurrentUser();
       if (!user) return null;
+
+      console.log('Fetching credentials for user:', user.id);
 
       const { data, error } = await supabase
         .from("user_twilio_credentials")
         .select("*")
         .eq("user_id", user.id)
-        .eq("is_active", true)
         .single();
 
       if (error) {
         if (error.code === 'PGRST116') {
-          // No rows found
+          // No rows found for this user
+          console.log('No credentials found for user:', user.id);
           return null;
         }
-        throw error;
+        console.error("Error fetching Twilio credentials:", error);
+        return null;
       }
 
+      console.log('Found credentials for user:', user.id);
       return data;
     } catch (error) {
       console.error("Error fetching Twilio credentials:", error);
@@ -59,7 +101,7 @@ export class TwilioCredentialsService {
    */
   static async saveCredentials(credentials: TwilioCredentialsInput): Promise<UserTwilioCredentials> {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await this.getCurrentUser();
       if (!user) throw new Error("User not authenticated");
 
       // First, create the main trunk for the user
@@ -111,7 +153,7 @@ export class TwilioCredentialsService {
     credentials: Partial<TwilioCredentialsInput>
   ): Promise<UserTwilioCredentials> {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await this.getCurrentUser();
       if (!user) throw new Error("User not authenticated");
 
       const updateData: any = {};
@@ -141,7 +183,7 @@ export class TwilioCredentialsService {
    */
   static async deleteCredentials(credentialsId: string): Promise<void> {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await this.getCurrentUser();
       if (!user) throw new Error("User not authenticated");
 
       const { error } = await supabase
@@ -162,7 +204,7 @@ export class TwilioCredentialsService {
    */
   static async getAllCredentials(): Promise<UserTwilioCredentials[]> {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await this.getCurrentUser();
       if (!user) return [];
 
       const { data, error } = await supabase
@@ -185,7 +227,7 @@ export class TwilioCredentialsService {
    */
   static async setActiveCredentials(credentialsId: string): Promise<UserTwilioCredentials> {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await this.getCurrentUser();
       if (!user) throw new Error("User not authenticated");
 
       // First, deactivate all credentials for this user

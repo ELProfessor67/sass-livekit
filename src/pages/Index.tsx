@@ -7,6 +7,7 @@ import DashboardContent from "@/components/dashboard/DashboardContent";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouteChangeData } from "@/hooks/useRouteChange";
+import { getCurrentUserIdAsync } from "@/lib/user-context";
 
 interface CallHistory {
   id: string;
@@ -21,6 +22,24 @@ interface CallHistory {
   transcription: Array<{ role: string; content: any }>;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Get assistant IDs for the current user
+ */
+async function getUserAssistantIds(): Promise<string[]> {
+  const userId = await getCurrentUserIdAsync();
+  const { data: assistants, error } = await supabase
+    .from('assistant')
+    .select('id')
+    .eq('user_id', userId);
+  
+  if (error) {
+    console.error('Error fetching user assistants:', error);
+    return [];
+  }
+  
+  return assistants?.map(a => a.id) || [];
 }
 
 export default function Index() {
@@ -72,9 +91,21 @@ export default function Index() {
 
     try {
       setIsLoadingRealData(true);
+      
+      // Get user's assistant IDs to filter call history
+      const assistantIds = await getUserAssistantIds();
+      console.log('Fetching call history for user assistants:', assistantIds);
+      
+      if (assistantIds.length === 0) {
+        console.log('No assistants found for user, returning empty call history');
+        setRealCallHistory([]);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('call_history' as any)
         .select('*')
+        .in('assistant_id', assistantIds)
         .order('start_time', { ascending: false });
 
       if (error) {

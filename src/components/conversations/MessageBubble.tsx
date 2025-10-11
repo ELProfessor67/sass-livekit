@@ -334,7 +334,7 @@ export function MessageBubble({ message, conversation, showAvatar = true, onRetr
               <span>{message.duration}</span>
             </div>
             <span>•</span>
-            <span>{message.status}</span>
+            <span>{message.resolution || message.status}</span>
           </div>
 
           {/* Summary */}
