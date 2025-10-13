@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { formatPhoneNumber } from "@/utils/formatUtils";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import "./EnhancedImportDialog.css";
 
 interface TwilioNumber {

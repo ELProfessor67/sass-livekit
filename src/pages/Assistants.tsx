@@ -6,7 +6,7 @@ import { AssistantsTab } from "@/components/assistants/tabs/AssistantsTab";
 import { PhoneNumbersTab } from "@/components/assistants/tabs/PhoneNumbersTab";
 import { KnowledgeBaseTab } from "@/components/assistants/tabs/KnowledgeBaseTab";
 import { useRouteChangeData } from "@/hooks/useRouteChange";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 
 const tabVariants = {
   initial: { opacity: 0, y: 10 },

@@ -24,7 +24,7 @@ import { AnalysisTab } from "@/components/assistants/wizard/AnalysisTab";
 import { AdvancedTab } from "@/components/assistants/wizard/AdvancedTab";
 import { N8nTab } from "@/components/assistants/wizard/N8nTab";
 import { AssistantFormData } from "@/components/assistants/wizard/types";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { ensureUserExists } from '@/lib/supabase-retry';
 

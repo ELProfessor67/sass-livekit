@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import TimeRangeSelector from "@/components/dashboard/TimeRangeSelector";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useTheme } from "@/components/ThemeProvider";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 
 interface FilterBarProps {
   onRangeChange: (range: { from: Date; to: Date }) => void;

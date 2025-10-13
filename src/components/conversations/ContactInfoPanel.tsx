@@ -11,7 +11,7 @@ import { ContactProperty } from "./ContactProperty";
 import { createContact } from "@/lib/api/contacts/createContact";
 import { fetchContactLists } from "@/lib/api/contacts/fetchContactLists";
 import { createContactList } from "@/lib/api/contacts/createContactList";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { formatPhoneNumber } from "@/utils/formatUtils";
 

@@ -18,7 +18,7 @@ import { resumeCampaign } from "@/lib/api/campaigns/resumeCampaign";
 import { stopCampaign } from "@/lib/api/campaigns/stopCampaign";
 import { deleteCampaign as deleteCampaignAPI } from "@/lib/api/campaigns/deleteCampaign";
 import { getCampaignStatus } from "@/lib/api/campaigns/getCampaignStatus";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { exportAllCampaignsData } from "@/lib/api/campaigns/exportCampaignData";
 import { exportAllCampaignDataToExcel } from "@/lib/utils/excelExport";
 

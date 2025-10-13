@@ -17,7 +17,6 @@ The admin panel provides comprehensive user management functionality for adminis
 - **User Details**: Comprehensive user information display
 - **Edit Users**: Update user information, roles, and status
 - **Delete Users**: Remove users from the system (with confirmation)
-- **Access Account**: Placeholder for account impersonation feature
 
 ### 🛡️ User Role Management
 - **Change User Roles**: Update existing users to admin or user roles
@@ -81,7 +80,6 @@ Each user row has a three-dot menu with the following options:
 
 - **👁️ View**: View complete user details
 - **✏️ Edit**: Modify user information
-- **👤 Access Account**: Account impersonation (placeholder)
 - **🗑️ Delete**: Remove user (with confirmation)
 
 ### Edit User Dialog
@@ -137,7 +135,6 @@ The admin panel uses the `AdminService` class with the following methods:
 
 ## Future Enhancements
 
-- **Account Impersonation**: Allow admins to log in as other users
 - **Bulk Operations**: Select and modify multiple users at once
 - **User Activity Logs**: Track user actions and system usage
 - **Advanced Filtering**: Filter users by role, status, date range

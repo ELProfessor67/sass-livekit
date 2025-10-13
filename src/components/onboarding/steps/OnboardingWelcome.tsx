@@ -1,7 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { useOnboarding } from "@/hooks/useOnboarding";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { Button } from "@/components/ui/button";
 import { Sparkles, BarChart3, Users, Zap } from "lucide-react";
 

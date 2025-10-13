@@ -11,7 +11,7 @@ import { Settings } from "lucide-react";
 import { fetchAssistants, Assistant } from "@/lib/api/assistants/fetchAssistants";
 import { fetchContactLists, ContactList } from "@/lib/api/contacts/fetchContactLists";
 import { fetchCsvFiles, CsvFile } from "@/lib/api/csv/fetchCsvFiles";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 
 interface CampaignSettingsDialogProps {
   open: boolean;

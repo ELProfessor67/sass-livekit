@@ -22,7 +22,7 @@ import { deleteCsvFile as deleteCsvFileAPI } from "@/lib/api/csv/deleteCsvFile";
 import { DeleteCsvFileDialog } from "@/components/contacts/dialogs/DeleteCsvFileDialog";
 import { EditContactDialog } from "@/components/contacts/dialogs/EditContactDialog";
 import { DeleteContactDialog } from "@/components/contacts/dialogs/DeleteContactDialog";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { fetchContacts } from "@/lib/api/contacts/fetchContacts";
 import { fetchContactLists } from "@/lib/api/contacts/fetchContactLists";
 import { useToast } from "@/hooks/use-toast";

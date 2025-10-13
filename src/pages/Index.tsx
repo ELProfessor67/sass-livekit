@@ -5,7 +5,7 @@ import DashboardLayout from "@/layout/DashboardLayout";
 import FilterBar from "@/components/navigation/FilterBar";
 import DashboardContent from "@/components/dashboard/DashboardContent";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { useRouteChangeData } from "@/hooks/useRouteChange";
 import { getCurrentUserIdAsync } from "@/lib/user-context";
 

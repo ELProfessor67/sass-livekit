@@ -2,7 +2,7 @@ import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useOnboarding } from "@/hooks/useOnboarding";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { OnboardingWelcome } from "./steps/OnboardingWelcome";
 import { BusinessProfileStep } from "./steps/BusinessProfileStep";
 import { UseCaseSelectionStep } from "./steps/UseCaseSelectionStep";

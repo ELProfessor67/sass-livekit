@@ -5,6 +5,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useLocation } from "react-router-dom";
 import { useTheme } from "@/components/ThemeProvider";
 import { useEffect } from "react";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
+import { SupportAccessBanner } from "@/components/admin/SupportAccessBanner";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -13,15 +15,40 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const location = useLocation();
   const { setUIStyle } = useTheme();
+  const { user, isImpersonating, activeSupportSession, endSupportAccess, exitImpersonation } = useAuth();
   
   // Ensure glass theme is applied when on dashboard
   useEffect(() => {
     setUIStyle("glass");
   }, [setUIStyle]);
+
+  const handleEndSupportSession = async () => {
+    await endSupportAccess();
+  };
+
+  const handleExitImpersonation = async () => {
+    await exitImpersonation();
+  };
   
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden">
       <TopNavigation />
+      
+      {/* Support Access Banner - Global */}
+      {isImpersonating && activeSupportSession && (
+        <div className="px-4 py-2">
+          <SupportAccessBanner
+            session={activeSupportSession}
+            targetUser={{
+              name: user?.fullName || 'Unknown User',
+              email: user?.email || 'No email',
+              company: user?.company || undefined,
+            }}
+            onEndSession={handleEndSupportSession}
+            onExitImpersonation={handleExitImpersonation}
+          />
+        </div>
+      )}
       
       <AnimatePresence mode="wait">
         <motion.div 

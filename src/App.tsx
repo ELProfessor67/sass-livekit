@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { BusinessUseCaseProvider } from "./components/BusinessUseCaseProvider";
-import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { AuthProvider, useAuth } from "./contexts/SupportAccessAuthContext";
 import { supabase } from "./integrations/supabase/client";
 import Index from "./pages/Index";
 import LandingPage from "./pages/LandingPage";

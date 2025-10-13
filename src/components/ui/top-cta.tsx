@@ -1,6 +1,6 @@
 import React from 'react'
 import { Home, Settings, Phone, DollarSign, Users, Tag, Wand2, Shield, ArrowRight } from 'lucide-react'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/SupportAccessAuthContext'
 import { useNavigate } from 'react-router-dom'
 
 export const TopCTA = () => {

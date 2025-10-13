@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { CardContent } from "@/components/ui/card";
 import { CreateAssistantDialog } from "@/components/assistants/CreateAssistantDialog";
 import { AssistantDetailsDialog } from "@/components/assistants/AssistantDetailsDialog";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import {

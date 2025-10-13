@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { useTheme } from "@/components/ThemeProvider";
 import { useAccountMinutes } from "@/hooks/useAccountMinutes";
 import { Bell, Search, BarChart3, Phone, Bot, MessageSquare, Users, Megaphone, User, Settings, CreditCard, Zap, LogOut, Shield } from "lucide-react";

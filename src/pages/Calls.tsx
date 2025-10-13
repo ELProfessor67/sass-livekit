@@ -10,7 +10,7 @@ import { useCallsFilter } from "@/components/calls/useCallsFilter";
 import { fetchCalls } from "@/lib/api/calls/fetchCalls";
 import { useLocation } from "react-router-dom";
 import { ThemeContainer, ThemeSection, ThemeCard } from "@/components/theme";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { useQuery } from "@tanstack/react-query";
 
 export default function Calls() {

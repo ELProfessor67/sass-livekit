@@ -4,10 +4,25 @@
 
 /**
  * Get the current user ID - either impersonated user or authenticated user
- * This function checks localStorage for impersonation state and returns the appropriate user ID
+ * This function checks localStorage for impersonation state and support access sessions
  */
 export function getCurrentUserId(): string | null {
-  // Check if we're impersonating by looking at localStorage
+  // First check for support access session
+  const supportSessionData = localStorage.getItem('support_access_session');
+  if (supportSessionData) {
+    try {
+      const parsed = JSON.parse(supportSessionData);
+      if (parsed.impersonatedUserData && parsed.impersonatedUserData.id) {
+        console.log('Using support access user ID:', parsed.impersonatedUserData.id);
+        return parsed.impersonatedUserData.id;
+      }
+    } catch (error) {
+      console.error('Error parsing support access session data in getCurrentUserId:', error);
+      localStorage.removeItem('support_access_session');
+    }
+  }
+
+  // Then check for regular impersonation
   const impersonationData = localStorage.getItem('impersonation');
   if (impersonationData) {
     try {
@@ -21,7 +36,7 @@ export function getCurrentUserId(): string | null {
       localStorage.removeItem('impersonation');
     }
   }
-  
+
   return null; // Will need to fallback to authenticated user
 }
 

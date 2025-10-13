@@ -8,7 +8,7 @@ import { Conversation } from "@/components/conversations/types";
 import { getConversationsProgressive, ContactSummary } from "@/lib/api/conversations/fetchConversations";
 import ConversationsToolbar from "@/components/conversations/ConversationsToolbar";
 import { useConversationsFilter } from "@/components/conversations/hooks/useConversationsFilter";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { useRouteChangeData } from "@/hooks/useRouteChange";
 import { useToast } from "@/hooks/use-toast";
 import { format } from 'date-fns';

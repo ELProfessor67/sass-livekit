@@ -8,7 +8,7 @@
 // import { useLocation, useNavigate } from "react-router-dom";
 // import { createLivekitToken } from "@/lib/api/apiService";
 // import { supabase } from "@/integrations/supabase/client";
-// import { useAuth } from "@/contexts/AuthContext";
+// import { useAuth } from "@/contexts/SupportAccessAuthContext";
 
 // export default function VoiceAgent() {
 //   const navigate = useNavigate();
@@ -256,7 +256,7 @@ import "@livekit/components-styles";
 import { useLocation, useNavigate } from "react-router-dom";
 import { createLivekitToken } from "@/lib/api/apiService";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 
 export default function VoiceAgent() {
   const navigate = useNavigate();

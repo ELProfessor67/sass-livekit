@@ -18,6 +18,8 @@ import { livekitRoomRouter } from './livekit-room.js';
 import { campaignEngine } from './campaign-execution-engine.js';
 import { connect } from '@ngrok/ngrok';
 import knowledgeBaseRouter from './routes/knowledge-base.js';
+import supportAccessRouter from './routes/supportAccess.js';
+import './workers/supportAccessCleanup.js';
 
 
 
@@ -40,7 +42,9 @@ app.use('/api/v1/campaigns', campaignManagementRouter);
 app.use('/api/v1/csv', csvManagementRouter);
 app.use('/api/v1/livekit', livekitRoomRouter);
 app.use('/api/v1/knowledge-base', knowledgeBaseRouter);
+app.use('/api/v1/support-access', supportAccessRouter);
 console.log('Knowledge base routes registered at /api/v1/knowledge-base');
+console.log('Support access routes registered at /api/v1/support-access');
 
 // Recording routes (matching voiceagents pattern exactly)
 

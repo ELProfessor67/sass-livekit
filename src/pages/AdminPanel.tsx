@@ -10,11 +10,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { MoreHorizontal, Search, Edit, Trash2, Eye, UserCheck, Shield } from 'lucide-react';
+import { MoreHorizontal, Search, Edit, Trash2, Eye, Shield } from 'lucide-react';
 import { toast } from 'sonner';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/SupportAccessAuthContext';
 import DashboardLayout from '@/layout/DashboardLayout';
 import { ThemeContainer, ThemeSection, ThemeCard } from '@/components/theme';
+import { SupportAccessDialog } from '@/components/admin/SupportAccessDialog';
+import { SupportAccessBanner } from '@/components/admin/SupportAccessBanner';
+import { ActiveSupportSessions } from '@/components/admin/ActiveSupportSessions';
 
 interface User {
   id: string;
@@ -30,11 +33,20 @@ interface User {
   updated_at: string | null;
   company: string | null;
   industry: string | null;
+  plan?: string | null;
+}
+
+interface UserStats {
+  totalAssistants: number;
+  totalCalls: number;
+  totalHours: number;
+  totalMessages: number;
+  plan: string | null;
 }
 
 
 const AdminPanel = () => {
-  const { user, impersonateUser } = useAuth();
+  const { user, isImpersonating, exitImpersonation, activeSupportSession: contextActiveSupportSession, startSupportAccess } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,11 +55,25 @@ const AdminPanel = () => {
   const [isEditUserOpen, setIsEditUserOpen] = useState(false);
   const [isViewUserOpen, setIsViewUserOpen] = useState(false);
   const [isDeleteUserOpen, setIsDeleteUserOpen] = useState(false);
-  const [isImpersonateUserOpen, setIsImpersonateUserOpen] = useState(false);
   const [editUserData, setEditUserData] = useState<Partial<User>>({});
+  const [userStats, setUserStats] = useState<UserStats | null>(null);
+  const [loadingStats, setLoadingStats] = useState(false);
+  const [allUserStats, setAllUserStats] = useState<Record<string, UserStats>>({});
+  
+  // Support Access state
+  const [activeSupportSession, setActiveSupportSession] = useState<any>(null);
+  const [showActiveSessions, setShowActiveSessions] = useState(false);
 
-  // Check if current user is admin
-  const isAdmin = user?.role === 'admin';
+  // Check if current user is admin OR if we're in a support access session
+  const isAdmin = user?.role === 'admin' || contextActiveSupportSession;
+  
+  // Debug logging
+  console.log('AdminPanel Debug:', {
+    userRole: user?.role,
+    contextActiveSupportSession: contextActiveSupportSession,
+    isAdmin: isAdmin,
+    isImpersonating: isImpersonating
+  });
 
   useEffect(() => {
     if (!isAdmin) {
@@ -66,6 +92,27 @@ const AdminPanel = () => {
     setFilteredUsers(filtered);
   }, [users, searchTerm]);
 
+  // Debug userStats changes
+  useEffect(() => {
+    console.log('🔄 userStats state changed:', userStats);
+  }, [userStats]);
+
+  // Auto-load user statistics when modal opens
+  useEffect(() => {
+    if (isViewUserOpen && selectedUser) {
+      console.log('🔄 Modal opened, auto-loading stats for user:', selectedUser.id);
+      fetchUserStats(selectedUser.id);
+    }
+  }, [isViewUserOpen, selectedUser]);
+
+  // Reset userStats when modal closes
+  useEffect(() => {
+    if (!isViewUserOpen) {
+      setUserStats(null);
+      setLoadingStats(false);
+    }
+  }, [isViewUserOpen]);
+
   const fetchUsers = async () => {
     try {
       setLoading(true);
@@ -76,11 +123,196 @@ const AdminPanel = () => {
 
       if (error) throw error;
       setUsers(data || []);
+      
+      // Fetch stats for all users
+      await fetchAllUserStats(data || []);
     } catch (error) {
       console.error('Error fetching users:', error);
       toast.error('Failed to fetch users');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAllUserStats = async (users: User[]) => {
+    try {
+      const statsPromises = users.map(async (user) => {
+        try {
+          // Fetch assistants count
+          const { data: assistantsData, error: assistantsError } = await supabase
+            .from('assistant')
+            .select('id')
+            .eq('user_id', user.id);
+
+          if (assistantsError) {
+            console.error(`Error fetching assistants for user ${user.id}:`, assistantsError);
+            return {
+              userId: user.id,
+              stats: {
+                totalAssistants: 0,
+                totalCalls: 0,
+                totalHours: 0,
+                totalMessages: 0,
+                plan: user.plan || 'Free'
+              }
+            };
+          }
+
+          // Fetch calls count
+          const { data: callsData, error: callsError } = await supabase
+            .from('call_history')
+            .select('id')
+            .in('assistant_id', assistantsData?.map(a => a.id) || []);
+
+          if (callsError) {
+            console.error(`Error fetching calls for user ${user.id}:`, callsError);
+            // Continue with 0 calls
+          }
+
+          // Fetch SMS messages count
+          const { data: messagesData, error: messagesError } = await supabase
+            .from('sms_messages')
+            .select('id')
+            .eq('user_id', user.id);
+
+          if (messagesError) {
+            console.error(`Error fetching messages for user ${user.id}:`, messagesError);
+            // Continue with 0 messages
+          }
+
+          return {
+            userId: user.id,
+            stats: {
+              totalAssistants: assistantsData?.length || 0,
+              totalCalls: callsData?.length || 0,
+              totalHours: 0, // We'll calculate this separately if needed
+              totalMessages: messagesData?.length || 0,
+              plan: user.plan || 'Free'
+            }
+          };
+        } catch (error) {
+          console.error(`Error fetching stats for user ${user.id}:`, error);
+          return {
+            userId: user.id,
+            stats: {
+              totalAssistants: 0,
+              totalCalls: 0,
+              totalHours: 0,
+              totalMessages: 0,
+              plan: user.plan || 'Free'
+            }
+          };
+        }
+      });
+
+      const results = await Promise.all(statsPromises);
+      const statsMap: Record<string, UserStats> = {};
+      results.forEach(({ userId, stats }) => {
+        statsMap[userId] = stats;
+      });
+      
+      setAllUserStats(statsMap);
+    } catch (error) {
+      console.error('Error fetching all user stats:', error);
+    }
+  };
+
+  const fetchUserStats = async (userId: string) => {
+    try {
+      setLoadingStats(true);
+      console.log('🔍 Fetching stats for user:', userId);
+      
+      // Fetch assistants count
+      const { data: assistantsData, error: assistantsError } = await supabase
+        .from('assistant')
+        .select('id')
+        .eq('user_id', userId);
+
+      console.log('📊 Assistants data:', assistantsData, 'Error:', assistantsError);
+
+      if (assistantsError) {
+        console.error('Error fetching assistants:', assistantsError);
+        // Continue with empty assistants array
+      }
+
+      const assistantIds = assistantsData?.map(a => a.id) || [];
+      console.log('🆔 Assistant IDs:', assistantIds);
+
+      // Fetch calls count and total duration
+      let callsData = [];
+      let callsError = null;
+      if (assistantIds.length > 0) {
+        const callsResult = await supabase
+          .from('call_history')
+          .select('call_duration')
+          .in('assistant_id', assistantIds);
+        
+        callsData = callsResult.data || [];
+        callsError = callsResult.error;
+        
+        console.log('📞 Calls data:', callsData, 'Error:', callsError);
+        
+        if (callsError) {
+          console.error('Error fetching calls:', callsError);
+        }
+      } else {
+        console.log('📞 No assistants found, skipping calls query');
+      }
+
+      // Fetch SMS messages count
+      const { data: messagesData, error: messagesError } = await supabase
+        .from('sms_messages')
+        .select('id')
+        .eq('user_id', userId);
+
+      console.log('💬 Messages data:', messagesData, 'Error:', messagesError);
+
+      if (messagesError) {
+        console.error('Error fetching messages:', messagesError);
+        // Continue with empty messages array
+      }
+
+      // Calculate total hours from call duration (duration is in seconds)
+      const totalSeconds = callsData?.reduce((sum, call) => sum + (call.call_duration || 0), 0) || 0;
+      const totalHours = Math.round((totalSeconds / 3600) * 100) / 100; // Round to 2 decimal places
+
+      // Get user plan (skip if column doesn't exist)
+      let userPlan = 'Free';
+      try {
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('plan')
+          .eq('id', userId)
+          .single();
+
+        console.log('👤 User plan data:', userData, 'Error:', userError);
+
+        if (!userError && userData?.plan) {
+          userPlan = userData.plan;
+        }
+      } catch (planError) {
+        console.log('📋 Plan column not available, using default:', planError.message);
+        // Plan column doesn't exist, use default
+      }
+
+      const stats = {
+        totalAssistants: assistantsData?.length || 0,
+        totalCalls: callsData?.length || 0,
+        totalHours: totalHours,
+        totalMessages: messagesData?.length || 0,
+        plan: userPlan
+      };
+
+      console.log('✅ Final stats:', stats);
+      console.log('🔄 Setting userStats state...');
+      setUserStats(stats);
+      console.log('✅ userStats state set successfully');
+    } catch (error) {
+      console.error('❌ Error fetching user stats:', error);
+      toast.error(`Failed to fetch user statistics: ${error.message}`);
+      setUserStats(null);
+    } finally {
+      setLoadingStats(false);
     }
   };
 
@@ -379,35 +611,65 @@ const AdminPanel = () => {
     }
   };
 
-  const handleAccessAccount = (user: User) => {
-    setSelectedUser(user);
-    setIsImpersonateUserOpen(true);
-  };
 
-  const confirmImpersonation = async () => {
-    if (!selectedUser) return;
 
+  // Support Access handlers
+  const handleSupportAccess = async (sessionData: any) => {
     try {
-      console.log('AdminPanel: Starting impersonation for user:', selectedUser);
-      const result = await impersonateUser(selectedUser.id);
-      console.log('AdminPanel: Impersonation result:', result);
-      
+      // Use the startSupportAccess function from the context
+      const result = await startSupportAccess(sessionData);
       if (result.success) {
         toast.success(result.message);
-        setIsImpersonateUserOpen(false);
-        setSelectedUser(null);
-        // Add a longer delay to ensure state is properly set before redirect
-        setTimeout(() => {
-          console.log('AdminPanel: Redirecting to main app after impersonation');
-          window.location.href = '/';
-        }, 500);
       } else {
         toast.error(result.message);
       }
     } catch (error) {
-      console.error('Error accessing account:', error);
-      toast.error('Failed to access account');
+      console.error('Error starting support access:', error);
+      toast.error('Failed to start support access');
     }
+  };
+
+  const handleEndSupportSession = async () => {
+    if (!contextActiveSupportSession) return;
+
+    try {
+      // Get the current session token from Supabase
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        toast.error('No valid session found. Please log in again.');
+        return;
+      }
+
+      const response = await fetch(`/api/v1/support-access/support-sessions/${contextActiveSupportSession.id}/end`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ reason: 'completed' }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to end support session');
+      }
+
+      setActiveSupportSession(null);
+      await exitImpersonation();
+      toast.success('Support access session ended');
+    } catch (error) {
+      console.error('Error ending support session:', error);
+      toast.error('Failed to end support session');
+    }
+  };
+
+  const handleExitImpersonation = async () => {
+    setActiveSupportSession(null);
+    await exitImpersonation();
+  };
+
+  const handleSessionSelect = (session: any) => {
+    setActiveSupportSession(session);
+    // You could also start impersonation here if needed
   };
 
   const openEditDialog = (user: User) => {
@@ -465,6 +727,13 @@ const AdminPanel = () => {
               </div>
             </ThemeSection>
 
+            {/* Active Support Sessions */}
+            {!isImpersonating && (
+              <div className="mb-6">
+                <ActiveSupportSessions onSessionSelect={handleSessionSelect} />
+              </div>
+            )}
+
             <ThemeCard>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -500,6 +769,9 @@ const AdminPanel = () => {
                     <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Company</TableHead>
+                    <TableHead>Plan</TableHead>
+                    <TableHead>Assistants</TableHead>
+                    <TableHead>Calls</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -515,6 +787,21 @@ const AdminPanel = () => {
                       </Badge>
                       </TableCell>
                       <TableCell>{user.company || 'N/A'}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {allUserStats[user.id]?.plan || user.plan || 'Free'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="font-medium text-blue-400">
+                          {allUserStats[user.id]?.totalAssistants || 0}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="font-medium text-green-400">
+                          {allUserStats[user.id]?.totalCalls || 0}
+                        </span>
+                      </TableCell>
                       <TableCell>
                         <Badge variant={user.is_active ? 'default' : 'destructive'}>
                           {user.is_active ? 'Active' : 'Inactive'}
@@ -536,13 +823,20 @@ const AdminPanel = () => {
                               <Edit className="mr-2 h-4 w-4" />
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => handleAccessAccount(user)}
-                              disabled={user.role === 'admin'}
+                            <SupportAccessDialog
+                              userId={user.id}
+                              userName={user.name || 'Unknown User'}
+                              userEmail={user.contact?.email || 'No email'}
+                              onSupportAccess={handleSupportAccess}
                             >
-                              <UserCheck className="mr-2 h-4 w-4" />
-                              Access Account
-                            </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                disabled={user.role === 'admin'}
+                                onSelect={(e) => e.preventDefault()}
+                              >
+                                <Shield className="mr-2 h-4 w-4" />
+                                Support Access
+                              </DropdownMenuItem>
+                            </SupportAccessDialog>
                             <DropdownMenuItem 
                               onClick={() => openDeleteDialog(user)}
                               className="text-red-600"
@@ -635,8 +929,13 @@ const AdminPanel = () => {
         </Dialog>
 
         {/* View User Dialog */}
-        <Dialog open={isViewUserOpen} onOpenChange={setIsViewUserOpen}>
-          <DialogContent className="sm:max-w-[600px]">
+        <Dialog open={isViewUserOpen} onOpenChange={(open) => {
+          setIsViewUserOpen(open);
+          if (open && selectedUser) {
+            fetchUserStats(selectedUser.id);
+          }
+        }}>
+          <DialogContent className="sm:max-w-[700px]">
             <DialogHeader>
               <DialogTitle>User Details</DialogTitle>
               <DialogDescription>
@@ -644,58 +943,112 @@ const AdminPanel = () => {
               </DialogDescription>
             </DialogHeader>
             {selectedUser && (
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium">Name</Label>
-                    <p className="text-sm text-white">{selectedUser.name || 'N/A'}</p>
+              <div className="grid gap-6 py-4">
+                {/* Basic Information */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-white">Basic Information</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium">Name</Label>
+                      <p className="text-sm text-white">{selectedUser.name || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Email</Label>
+                      <p className="text-sm text-white">{selectedUser.contact?.email || 'N/A'}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium">Phone</Label>
+                      <p className="text-sm text-white">{selectedUser.contact?.phone || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Role</Label>
+                      <Badge variant={selectedUser.role === 'admin' ? 'default' : 'secondary'}>
+                        {selectedUser.role || 'user'}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium">Company</Label>
+                      <p className="text-sm text-white">{selectedUser.company || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Industry</Label>
+                      <p className="text-sm text-white">{selectedUser.industry || 'N/A'}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium">Status</Label>
+                      <Badge variant={selectedUser.is_active ? 'default' : 'destructive'}>
+                        {selectedUser.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Created</Label>
+                      <p className="text-sm text-white">
+                        {selectedUser.created_on ? new Date(selectedUser.created_on).toLocaleString() : 'N/A'}
+                      </p>
+                    </div>
                   </div>
                   <div>
-                    <Label className="text-sm font-medium">Email</Label>
-                    <p className="text-sm text-white">{selectedUser.contact?.email || 'N/A'}</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium">Phone</Label>
-                    <p className="text-sm text-white">{selectedUser.contact?.phone || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Role</Label>
-                    <Badge variant={selectedUser.role === 'admin' ? 'default' : 'secondary'}>
-                      {selectedUser.role || 'user'}
-                    </Badge>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium">Company</Label>
-                    <p className="text-sm text-white">{selectedUser.company || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Industry</Label>
-                    <p className="text-sm text-white">{selectedUser.industry || 'N/A'}</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium">Status</Label>
-                    <Badge variant={selectedUser.is_active ? 'default' : 'destructive'}>
-                      {selectedUser.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Created</Label>
+                    <Label className="text-sm font-medium">Last Updated</Label>
                     <p className="text-sm text-white">
-                      {selectedUser.created_on ? new Date(selectedUser.created_on).toLocaleString() : 'N/A'}
-                    </p>
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">Last Updated</Label>
-                <p className="text-sm text-white">
                       {selectedUser.updated_at ? new Date(selectedUser.updated_at).toLocaleString() : 'N/A'}
                     </p>
+                  </div>
+                </div>
+
+                {/* User Statistics */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-white">Usage Statistics</h3>
+                  {loadingStats ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="text-sm text-gray-400">Loading statistics...</div>
+                    </div>
+                  ) : userStats ? (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-gray-800/50 p-4 rounded-lg">
+                        <Label className="text-sm font-medium text-blue-300">Total Assistants</Label>
+                        <p className="text-2xl font-bold text-white">{userStats.totalAssistants}</p>
+                      </div>
+                      <div className="bg-gray-800/50 p-4 rounded-lg">
+                        <Label className="text-sm font-medium text-green-300">Total Calls</Label>
+                        <p className="text-2xl font-bold text-white">{userStats.totalCalls}</p>
+                      </div>
+                      <div className="bg-gray-800/50 p-4 rounded-lg">
+                        <Label className="text-sm font-medium text-yellow-300">Total Hours</Label>
+                        <p className="text-2xl font-bold text-white">{userStats.totalHours}</p>
+                      </div>
+                      <div className="bg-gray-800/50 p-4 rounded-lg">
+                        <Label className="text-sm font-medium text-purple-300">Total Messages</Label>
+                        <p className="text-2xl font-bold text-white">{userStats.totalMessages}</p>
+                      </div>
+                      <div className="bg-gray-800/50 p-4 rounded-lg col-span-2">
+                        <Label className="text-sm font-medium text-orange-300">Current Plan</Label>
+                        <Badge variant="outline" className="text-lg px-3 py-1">
+                          {userStats.plan || 'Free'}
+                        </Badge>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="text-sm text-red-400">Failed to load statistics</div>
+                      <div className="text-xs text-gray-500">
+                        Debug info: loadingStats={loadingStats.toString()}, userStats={userStats ? 'exists' : 'null'}
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => selectedUser && fetchUserStats(selectedUser.id)}
+                        className="text-xs"
+                      >
+                        Retry Loading Stats
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -755,47 +1108,6 @@ const AdminPanel = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Impersonation Confirmation Dialog */}
-        <Dialog open={isImpersonateUserOpen} onOpenChange={setIsImpersonateUserOpen}>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Access User Account</DialogTitle>
-              <DialogDescription>
-                You are about to impersonate this user. You will see and do everything as this user.
-              </DialogDescription>
-            </DialogHeader>
-            {selectedUser && (
-              <div className="py-4">
-                <p className="text-sm text-white">
-                  You are about to access the account of <strong>{selectedUser.name}</strong> ({selectedUser.contact?.email}).
-                </p>
-                <div className="mt-3 p-3 bg-orange-900/20 border border-orange-500/30 rounded-md">
-                  <p className="text-sm text-orange-200 font-medium">⚠️ Warning:</p>
-                  <p className="text-sm text-orange-200 mt-1">
-                    This will log you in as this user. You will be able to:
-                  </p>
-                  <ul className="text-sm text-orange-200 mt-2 ml-4 list-disc">
-                    <li>View all their data and settings</li>
-                    <li>Create, edit, and delete their content</li>
-                    <li>Make changes on their behalf</li>
-                    <li>Access their integrations and credentials</li>
-                  </ul>
-                  <p className="text-sm text-orange-200 mt-2 font-medium">
-                    Use this feature responsibly!
-                  </p>
-                </div>
-              </div>
-            )}
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsImpersonateUserOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={confirmImpersonation} className="bg-orange-600 hover:bg-orange-700">
-                Access Account
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
         </div>
       </div>
     </ThemeContainer>
