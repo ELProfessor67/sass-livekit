@@ -13,6 +13,8 @@ import asyncio
 import datetime
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
+import httpx
+from openai import AsyncOpenAI
 
 # Load environment variables from the livekit/.env file
 load_dotenv("livekit/.env")
@@ -61,61 +63,38 @@ except ImportError:
     CEREBRAS_AVAILABLE = False
 
 # Local imports
-from services.booking_agent import BookingAgent
-from services.rag_agent import RAGAgent
 from services.call_outcome_service import CallOutcomeService
 from integrations.supabase_client import SupabaseClient
 from integrations.calendar_api import CalComCalendar, CalendarResult, CalendarError
 from utils.logging_hardening import configure_safe_logging
+from utils.latency_logger import (
+    measure_latency_context, 
+    get_tracker, 
+    clear_tracker,
+    LatencyProfiler
+)
 
 # Configure logging with security hardening
 configure_safe_logging(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Enable DEBUG logging for livekit.agents to see detailed transcript information
+logging.getLogger("livekit.agents").setLevel(logging.DEBUG)
 
-class PersistentFailureTTS:
-    """TTS wrapper that permanently switches to fallback after first failure."""
-    
-    def __init__(self, primary_tts, fallback_tts, failure_key="ELEVENLABS_FAILURE_COUNT"):
-        self.primary_tts = primary_tts
-        self.fallback_tts = fallback_tts
-        self.failure_key = failure_key
-        self.has_failed = False
-        self.logger = logging.getLogger(__name__)
-        
-        # Check if we've already failed before
-        failure_count = int(os.getenv(failure_key, "0"))
-        if failure_count > 0:
-            self.has_failed = True
-            self.logger.info(f"PERSISTENT_FAILURE_TTS | {failure_key}={failure_count} | using fallback permanently")
-    
-    def _mark_failure(self):
-        """Mark this TTS as failed and update environment."""
-        if not self.has_failed:
-            self.has_failed = True
-            failure_count = int(os.getenv(self.failure_key, "0")) + 1
-            os.environ[self.failure_key] = str(failure_count)
-            self.logger.warning(f"TTS_FAILURE_MARKED | {self.failure_key}={failure_count} | switching to fallback permanently")
-    
-    async def synthesize(self, text: str, **kwargs):
-        """Synthesize text with automatic fallback on failure."""
-        if self.has_failed:
-            self.logger.info("PERSISTENT_FAILURE_TTS | using fallback due to previous failure")
-            return await self.fallback_tts.synthesize(text, **kwargs)
-        
-        try:
-            return await self.primary_tts.synthesize(text, **kwargs)
-        except Exception as e:
-            self.logger.error(f"TTS_PRIMARY_FAILED | error={str(e)} | switching to fallback")
-            self._mark_failure()
-            return await self.fallback_tts.synthesize(text, **kwargs)
-    
-    def __getattr__(self, name):
-        """Delegate all other attributes to the current active TTS."""
-        if self.has_failed:
-            return getattr(self.fallback_tts, name)
-        else:
-            return getattr(self.primary_tts, name)
+# ---- Shared OpenAI client & HTTP transport (used by all OpenAI calls) ----
+_HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=60.0, write=30.0, pool=30.0)  # Increased read timeout
+_HTTP_CLIENT = httpx.AsyncClient(timeout=_HTTP_TIMEOUT)
+
+_OPENAI_CLIENT = AsyncOpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    http_client=_HTTP_CLIENT,  # ensures streaming reads don't hit short defaults
+    timeout=60.0,              # increased overall guard for better reliability
+    max_retries=5,             # increased retries for better resilience (was 3)
+    default_headers={
+        "User-Agent": "LiveKit-Agent/1.0",
+    },
+)
+# --------------------------------------------------------------------------
 
 
 class CallHandler:
@@ -124,77 +103,231 @@ class CallHandler:
     def __init__(self):
         self.supabase = SupabaseClient()
         self.call_outcome_service = CallOutcomeService()
+        
+        # Pre-warm critical components for faster response
+        self._prewarmed_agents = {}
+        self._prewarmed_llms = {}
+        self._prewarmed_tts = {}
+        self._prewarmed_vad = None
+        self._prewarmed_rag = None
+        
+        # Start pre-warming in background
+        asyncio.create_task(self._prewarm_components())
+
+    async def _prewarm_components(self):
+        """Pre-warm critical components to eliminate cold start latency."""
+        try:
+            logger.info("PREWARM_START | warming up system components")
+            
+            # Pre-warm VAD (Voice Activity Detection)
+            self._prewarmed_vad = silero.VAD.load()
+            logger.info("PREWARM_VAD | VAD loaded successfully")
+            
+            # Pre-warm RAG service
+            from services.rag_service import RAGService
+            self._prewarmed_rag = RAGService()  # RAGService initializes itself in constructor
+            logger.info("PREWARM_RAG | RAG service initialized")
+            
+            # Pre-warm common LLM configurations
+            common_configs = [
+                {"llm_provider_setting": "OpenAI", "llm_model_setting": "gpt-4o-mini"},
+                {"llm_provider_setting": "Groq", "llm_model_setting": "llama-3.1-8b-instant"},
+            ]
+            
+            for config in common_configs:
+                config_key = f"{config['llm_provider_setting']}_{config['llm_model_setting']}"
+                try:
+                    llm = self._create_llm(
+                        config["llm_provider_setting"], 
+                        config["llm_model_setting"], 
+                        0.1, 200, config
+                    )
+                    self._prewarmed_llms[config_key] = llm
+                    logger.info("PREWARM_LLM | %s pre-warmed", config_key)
+                except Exception as e:
+                    logger.warning("PREWARM_LLM_FAILED | %s: %s", config_key, str(e))
+            
+            # Pre-warm TTS
+            try:
+                tts = self._create_tts("OpenAI", "tts-1", "nova", {})
+                self._prewarmed_tts["openai_nova"] = tts
+                logger.info("PREWARM_TTS | OpenAI TTS pre-warmed")
+            except Exception as e:
+                logger.warning("PREWARM_TTS_FAILED | %s", str(e))
+            
+            logger.info("PREWARM_COMPLETE | all components warmed up")
+            
+        except Exception as e:
+            logger.error("PREWARM_ERROR | failed to pre-warm components: %s", str(e))
 
     async def handle_call(self, ctx: JobContext) -> None:
         """Handle incoming call with proper LiveKit patterns."""
+        call_id = ctx.room.name  # Use room name as call ID
+        profiler = LatencyProfiler(call_id, "call_processing")
+        
         try:
-            await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-            logger.info(f"CONNECTED | room={ctx.room.name}")
+            # Measure connection latency
+            async with measure_latency_context("room_connection", call_id):
+                await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+                logger.info(f"CONNECTED | room={ctx.room.name}")
+
+            profiler.checkpoint("connected")
 
             # Log job metadata for debugging
             logger.info(f"JOB_METADATA | metadata={ctx.job.metadata}")
 
-            # Determine call type and extract metadata
-            call_type = self._determine_call_type(ctx)
-            assistant_config = await self._resolve_assistant_config(ctx, call_type)
+            # Measure call type determination and config resolution
+            async with measure_latency_context("call_type_determination", call_id):
+                call_type = self._determine_call_type(ctx)
+                assistant_config = await self._resolve_assistant_config(ctx, call_type)
+
+            profiler.checkpoint("config_resolved", {"call_type": call_type})
 
             if not assistant_config:
                 logger.error(f"NO_ASSISTANT_CONFIG | room={ctx.room.name}")
+                profiler.finish(success=False, error="No assistant config found")
                 return
 
             # Handle outbound calls
             if call_type == "outbound":
-                await self._handle_outbound_call(ctx, assistant_config)
+                async with measure_latency_context("outbound_call_handling", call_id):
+                    await self._handle_outbound_call(ctx, assistant_config)
+                profiler.checkpoint("outbound_handled")
 
-            # Wait for participant
-            participant = await asyncio.wait_for(
-                ctx.wait_for_participant(),
-                timeout=35.0
-            )
-            logger.info(f"PARTICIPANT_CONNECTED | phone={self._extract_phone_from_room(ctx.room.name)}")
+            # Create session and agent BEFORE waiting for participant to start listening immediately
+            async with measure_latency_context("session_creation", call_id):
+                session = self._create_session(assistant_config)
+            profiler.checkpoint("session_created")
 
-            # Create appropriate agent
+            # Create agent
             agent = await self._create_agent(assistant_config)
+            profiler.checkpoint("agent_created")
 
-            # Create session with proper configuration
-            session = self._create_session(assistant_config)
+            # Start the session IMMEDIATELY to begin listening for speech
+            async with measure_latency_context("session_start", call_id):
+                await session.start(
+                    agent=agent,
+                    room=ctx.room,
+                    room_input_options=RoomInputOptions(close_on_disconnect=True),
+                    room_output_options=RoomOutputOptions(transcription_enabled=True)  # Enable transcription for better speech recognition
+                )
+            logger.info(f"SESSION_STARTED | room={ctx.room.name} | listening for speech")
+            profiler.checkpoint("session_started")
 
-            # Start the session
-            await session.start(
-                agent=agent,
-                room=ctx.room,
-                room_input_options=RoomInputOptions(close_on_disconnect=True),
-                room_output_options=RoomOutputOptions(transcription_enabled=True)
-            )
+            # Wait for participant with configurable timeout
+            participant_timeout = float(os.getenv("PARTICIPANT_TIMEOUT_SECONDS", "35.0"))
+            try:
+                async with measure_latency_context("participant_wait", call_id, {"timeout_seconds": participant_timeout}):
+                    participant = await asyncio.wait_for(
+                        ctx.wait_for_participant(),
+                        timeout=participant_timeout
+                    )
+                logger.info(f"PARTICIPANT_CONNECTED | phone={self._extract_phone_from_room(ctx.room.name)}")
+                profiler.checkpoint("participant_connected")
+            except asyncio.TimeoutError:
+                phone_number = self._extract_phone_from_room(ctx.room.name)
+                logger.error(
+                    f"PARTICIPANT_TIMEOUT | "
+                    f"room={ctx.room.name} | "
+                    f"phone={phone_number} | "
+                    f"call_type={call_type} | "
+                    f"timeout={participant_timeout}s | "
+                    f"assistant_id={assistant_config.get('id', 'unknown')} | "
+                    f"room_created={ctx.room.creation_time} | "
+                    f"participants_count={ctx.room.num_participants}"
+                )
+                profiler.finish(success=False, error="Participant connection timeout")
+                
+                # Log timeout for analytics
+                await self._log_call_outcome(
+                    ctx.room.name,
+                    "timeout",
+                    "Participant failed to connect within timeout period",
+                    phone_number,
+                    call_type,
+                    assistant_config.get('id', 'unknown')
+                )
+                
+                # Clean up the room since no participant connected
+                try:
+                    await ctx.api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
+                    logger.info(f"ROOM_CLEANED_UP | room={ctx.room.name} | reason=participant_timeout")
+                except Exception as cleanup_error:
+                    logger.error(f"ROOM_CLEANUP_FAILED | room={ctx.room.name} | error={str(cleanup_error)}")
+                return
+            except Exception as e:
+                phone_number = self._extract_phone_from_room(ctx.room.name)
+                logger.error(
+                    f"PARTICIPANT_WAIT_ERROR | "
+                    f"room={ctx.room.name} | "
+                    f"phone={phone_number} | "
+                    f"call_type={call_type} | "
+                    f"error={str(e)} | "
+                    f"error_type={type(e).__name__}",
+                    exc_info=True
+                )
+                profiler.finish(success=False, error=f"Participant wait error: {str(e)}")
+                
+                # Log error for analytics
+                await self._log_call_outcome(
+                    ctx.room.name,
+                    "error",
+                    f"Participant wait failed: {str(e)}",
+                    phone_number,
+                    call_type,
+                    assistant_config.get('id', 'unknown')
+                )
+                
+                # Clean up the room on any participant wait error
+                try:
+                    await ctx.api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
+                    logger.info(f"ROOM_CLEANED_UP | room={ctx.room.name} | reason=participant_wait_error")
+                except Exception as cleanup_error:
+                    logger.error(f"ROOM_CLEANUP_FAILED | room={ctx.room.name} | error={str(cleanup_error)}")
+                return
 
-            logger.info(f"SESSION_STARTED | room={ctx.room.name}")
+
             
             # Trigger first message if configured
             first_message = assistant_config.get("first_message", "")
             force_first = os.getenv("FORCE_FIRST_MESSAGE", "true").lower() != "false"
             if force_first and first_message:
                 logger.info(f"TRIGGERING_FIRST_MESSAGE | message='{first_message}'")
-                await session.generate_reply(
-                    instructions=f"Say exactly this: '{first_message}'"
-                )
+                # Use direct TTS for static greeting to shave a round trip
+                async with measure_latency_context("first_message_tts", call_id, {"message_length": len(first_message)}):
+                    try:
+                        await session.say(first_message)
+                    except AttributeError:
+                        # Fallback to generate_reply if say() not available
+                        await session.generate_reply(
+                            instructions=f"Say exactly this: '{first_message}'"
+                        )
+                profiler.checkpoint("first_message_sent")
             
             # Setup idle message handling using LiveKit's user state management
             idle_message_task = None
             idle_message_count = 0
+            user_state = "active"  # Track state from events instead of private session state
             
             # Check if idle messages are enabled (default: enabled)
-            idle_messages_enabled = assistant_config.get("idle_messages_enabled", True)
+            # Disable idle messages if they interfere with speech recognition
+            idle_messages_enabled = assistant_config.get("idle_messages_enabled", False)  # Changed default to False
             
             if idle_messages_enabled and assistant_config.get("idle_messages") and len(assistant_config.get("idle_messages", [])) > 0:
                 logger.info(f"IDLE_MESSAGE_HANDLING_SETUP | room={ctx.room.name}")
                 
                 async def handle_user_away():
-                    nonlocal idle_message_count
+                    nonlocal idle_message_count, user_state
                     max_idle_messages = assistant_config.get("max_idle_messages", 3)
                     
                     # Try to ping the user with idle messages
                     for i in range(max_idle_messages):
                         if idle_message_count >= max_idle_messages:
+                            break
+                        
+                        # Check if user has become active again before sending next message
+                        if user_state != "away":
+                            logger.info(f"USER_BECAME_ACTIVE | breaking idle message loop at count {idle_message_count}")
                             break
                             
                         import random
@@ -205,49 +338,58 @@ class CallHandler:
                         idle_message = random.choice(idle_messages)
                         logger.info(f"IDLE_MESSAGE_TRIGGERED | message='{idle_message}' | count={idle_message_count + 1}")
                         
-                        await session.generate_reply(
-                            instructions=f"Say exactly this: '{idle_message}'"
-                        )
+                        # Use direct TTS for idle messages to shave round trips
+                        async with measure_latency_context("idle_message_tts", call_id, {
+                            "message_length": len(idle_message),
+                            "message_count": idle_message_count + 1
+                        }):
+                            try:
+                                await session.say(idle_message)
+                            except AttributeError:
+                                # Fallback to generate_reply if say() not available
+                                await session.generate_reply(
+                                    instructions=f"Say exactly this: '{idle_message}'"
+                                )
                         idle_message_count += 1
                         
                         # Wait longer between idle messages to prevent audio feedback loops
                         # Wait 15 seconds instead of 10 to give user more time to respond
                         await asyncio.sleep(15)
-                        
-                        # Check if user has become active again before sending next message
-                        # This prevents rapid-fire idle messages
-                        try:
-                            # Give a moment for user state to update
-                            await asyncio.sleep(2)
-                            # If user is no longer away, break the loop
-                            if hasattr(session, '_user_state') and session._user_state != "away":
-                                logger.info(f"USER_BECAME_ACTIVE | breaking idle message loop at count {idle_message_count}")
-                                break
-                        except Exception as e:
-                            logger.warning(f"USER_STATE_CHECK_FAILED | error={str(e)}")
                     
                     # If we've reached max idle messages, end the call
                     if idle_message_count >= max_idle_messages:
                         logger.info(f"MAX_IDLE_MESSAGES_REACHED | ending call after {max_idle_messages} idle messages")
                         end_call_message = assistant_config.get("end_call_message", "Thank you for calling. Goodbye!")
-                        await session.generate_reply(
-                            instructions=f"Say exactly this: '{end_call_message}'"
-                        )
+                        # Use direct TTS for end call message
+                        try:
+                            await session.say(end_call_message)
+                        except AttributeError:
+                            # Fallback to generate_reply if say() not available
+                            await session.generate_reply(
+                                instructions=f"Say exactly this: '{end_call_message}'"
+                            )
                         session.shutdown()
                 
                 @session.on("user_state_changed")
                 def _user_state_changed(ev: UserStateChangedEvent):
-                    nonlocal idle_message_task
+                    nonlocal idle_message_task, user_state
+                    old_state = user_state
+                    user_state = ev.new_state
+                    
+                    logger.info(f"USER_STATE_CHANGED | old_state={old_state} | new_state={ev.new_state} | room={ctx.room.name}")
+                    
                     if ev.new_state == "away":
-                        logger.info(f"USER_STATE_AWAY | starting idle message sequence")
+                        logger.warning(f"USER_STATE_AWAY | starting idle message sequence | speech recognition may be affected")
                         idle_message_task = asyncio.create_task(handle_user_away())
                         return
                     
                     # User is back (listening, speaking, etc.)
                     if idle_message_task is not None:
-                        logger.info(f"USER_STATE_ACTIVE | cancelling idle message task")
+                        logger.info(f"USER_STATE_ACTIVE | cancelling idle message task | speech recognition restored")
                         idle_message_task.cancel()
                         idle_message_task = None
+            else:
+                logger.info(f"IDLE_MESSAGES_DISABLED | room={ctx.room.name} | enabled={idle_messages_enabled} | messages_count={len(assistant_config.get('idle_messages', []))}")
 
             # Capture start time for call duration calculation
             start_time = datetime.datetime.now()
@@ -317,7 +459,12 @@ class CallHandler:
                 logger.info(f"PARTICIPANT_DISCONNECTED | room={ctx.room.name}")
             except asyncio.TimeoutError:
                 logger.warning(f"CALL_DURATION_EXCEEDED | room={ctx.room.name} | duration={max_call_duration_seconds}s")
-                # End the call by deleting the room
+                # End the call by shutting down session and deleting the room
+                try:
+                    session.shutdown()
+                except Exception as e:
+                    logger.warning(f"SESSION_SHUTDOWN_ERROR | room={ctx.room.name} | error={str(e)}")
+                
                 try:
                     await ctx.api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
                     logger.info(f"CALL_FORCE_ENDED | room={ctx.room.name} | reason=duration_exceeded")
@@ -331,7 +478,12 @@ class CallHandler:
 
         except Exception as e:
             logger.error(f"CALL_ERROR | room={ctx.room.name} | error={str(e)}", exc_info=True)
+            profiler.finish(success=False, error=str(e))
             raise
+        finally:
+            # Always finish profiling and clear tracker
+            profiler.finish(success=True)
+            clear_tracker(call_id)
 
     def _determine_call_type(self, ctx: JobContext) -> str:
         """Determine if this is inbound or outbound call."""
@@ -462,7 +614,10 @@ class CallHandler:
     async def _get_assistant_by_id(self, assistant_id: str) -> Optional[Dict[str, Any]]:
         """Get assistant configuration by assistant ID."""
         try:
-            assistant_result = self.supabase.client.table("assistant").select("*").eq("id", assistant_id).execute()
+            assistant_result = await asyncio.wait_for(
+                asyncio.to_thread(lambda: self.supabase.client.table("assistant").select("*").eq("id", assistant_id).execute()),
+                timeout=5
+            )
             
             if assistant_result.data and len(assistant_result.data) > 0:
                 assistant_data = assistant_result.data[0]
@@ -482,7 +637,10 @@ class CallHandler:
         """Get assistant configuration by phone number."""
         try:
             # First, find the assistant_id for this phone number
-            phone_result = self.supabase.client.table("phone_number").select("inbound_assistant_id").eq("number", phone_number).execute()
+            phone_result = await asyncio.wait_for(
+                asyncio.to_thread(lambda: self.supabase.client.table("phone_number").select("inbound_assistant_id").eq("number", phone_number).execute()),
+                timeout=5
+            )
             
             if not phone_result.data or len(phone_result.data) == 0:
                 logger.warning(f"No assistant found for phone number: {phone_number}")
@@ -491,7 +649,10 @@ class CallHandler:
             assistant_id = phone_result.data[0]["inbound_assistant_id"]
             
             # Now fetch the assistant configuration
-            assistant_result = self.supabase.client.table("assistant").select("*").eq("id", assistant_id).execute()
+            assistant_result = await asyncio.wait_for(
+                asyncio.to_thread(lambda: self.supabase.client.table("assistant").select("*").eq("id", assistant_id).execute()),
+                timeout=5
+            )
             
             if assistant_result.data and len(assistant_result.data) > 0:
                 return assistant_result.data[0]
@@ -615,12 +776,25 @@ class CallHandler:
 
         # Create unified agent with both RAG and booking capabilities
         from services.unified_agent import UnifiedAgent
+        
+        # Use pre-warmed components if available
+        llm_provider = config.get("llm_provider_setting", "OpenAI")
+        llm_model = config.get("llm_model_setting", "gpt-4o-mini")
+        config_key = f"{llm_provider}_{llm_model}"
+        
+        prewarmed_llm = self._prewarmed_llms.get(config_key)
+        prewarmed_tts = self._prewarmed_tts.get("openai_nova")
+        prewarmed_vad = self._prewarmed_vad
+        
         agent = UnifiedAgent(
             instructions=instructions,
             calendar=calendar,
             knowledge_base_id=knowledge_base_id,
             company_id=config.get("company_id"),
-            supabase=self.supabase
+            supabase=self.supabase,
+            prewarmed_llm=prewarmed_llm,
+            prewarmed_tts=prewarmed_tts,
+            prewarmed_vad=prewarmed_vad
         )
         
         logger.info("UNIFIED_AGENT_CREATED | rag_enabled=%s | calendar_enabled=%s", 
@@ -646,7 +820,7 @@ class CallHandler:
                 logger.warning("OPENAI_API_KEY not configured for field classification")
                 return {"ask_user": [], "extract_from_conversation": []}
 
-            client = openai.AsyncOpenAI(api_key=openai_api_key)
+            client = _OPENAI_CLIENT
             
             # Prepare field descriptions
             fields_json = json.dumps([
@@ -686,7 +860,7 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
                     temperature=0.1,
                     response_format={"type": "json_object"}
                 ),
-                timeout=10
+                timeout=12,
             )
 
             classification = json.loads(response.choices[0].message.content.strip())
@@ -875,7 +1049,7 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
         # Idle messages
         idle_messages = config.get("idle_messages", [])
         max_idle_messages = config.get("max_idle_messages", 3)
-        silence_timeout = config.get("silence_timeout", 15)  # Increased default from 10 to 15
+        silence_timeout = config.get("silence_timeout", 20)  # Increased from 15 to 20 seconds
         
         if idle_messages and isinstance(idle_messages, list):
             instructions.append(f"IDLE_MESSAGE_HANDLING:")
@@ -893,28 +1067,40 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
         return "\n".join(instructions) if instructions else ""
 
     async def _wait_for_session_completion(self, session: AgentSession, ctx: JobContext) -> None:
-        """Wait for the session to complete naturally."""
+        """Block until all remote participants disconnect."""
         try:
-            # Wait for the participant to disconnect using room events
-            # RemoteParticipant doesn't have wait_for_disconnect, so we use room events
-            await asyncio.sleep(1)  # Give a moment for any final processing
+            while True:
+                remotes = getattr(ctx.room, "remote_participants", {}) or {}
+                if not remotes:
+                    break
+
+                all_gone = True
+                for p in remotes.values():
+                    state = getattr(p, "state", None)
+                    # treat anything not explicitly DISCONNECTED as still present
+                    if state is None or str(state).upper() not in {"DISCONNECTED"}:
+                        all_gone = False
+                        break
+
+                if all_gone:
+                    break
+                await asyncio.sleep(1.5)
         except Exception as e:
             logger.warning(f"SESSION_COMPLETION_WAIT_FAILED | room={ctx.room.name} | error={str(e)}")
-            raise
 
     def _create_session(self, config: Dict[str, Any]) -> AgentSession:
         """Create agent session with proper configuration."""
         # Validate and fix model names to prevent API errors
         config = self._validate_model_names(config)
         
-        # Prewarm VAD for better performance
-        vad = silero.VAD.load()
+        # re-use prewarmed VAD, fallback if missing
+        vad = getattr(self, "_prewarmed_vad", None) or silero.VAD.load()
 
-        # Get configuration from assistant data
+        # Get configuration from assistant data - optimized for performance
         llm_provider = config.get("llm_provider_setting", "OpenAI")
-        llm_model = config.get("llm_model_setting", "gpt-4o-mini")
-        temperature = config.get("temperature_setting", 0.1)
-        max_tokens = config.get("max_token_setting", 250)
+        llm_model = config.get("llm_model_setting", "gpt-4o-mini")  # Fast model by default
+        temperature = config.get("temperature_setting", 0.1)  # Lower temperature for consistency
+        max_tokens = config.get("max_token_setting", 200)  # Reduced for faster responses
 
         voice_provider = config.get("voice_provider_setting", "OpenAI")
         voice_model = config.get("voice_model_setting", "gpt-4o-mini-tts")
@@ -926,11 +1112,10 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
         # Create TTS based on provider
         tts = self._create_tts(voice_provider, voice_model, voice_name, config)
 
-        # Create STT (always OpenAI for now)
-        stt_model = config.get("stt_model", "whisper-1")
+        # Create STT - prefer Deepgram streaming for better latency
         language_setting = config.get("language_setting", "en")
         
-        # Map combined language codes to Whisper-supported codes
+        # Map combined language codes to Deepgram-supported codes
         language_mapping = {
             "en-es": "en",  # Default to English for combined languages
             "en": "en",
@@ -942,13 +1127,20 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
             "no": "no",
             "ar": "ar"
         }
-        whisper_language = language_mapping.get(language_setting, "en")
+        deepgram_language = language_mapping.get(language_setting, "en")
         
-        stt = openai.STT(model=stt_model, language=whisper_language)
+        # Use Deepgram streaming STT for better first-token latency
+        stt = deepgram.STT(
+            model="nova-3",
+            interim_results=True,            # barge-in friendly
+            language=deepgram_language,      # map your config same as before
+            endpointing_ms=2000,             # 2 second endpointing to prevent premature cutoff
+            smart_format=True,              # Better formatting of transcripts
+        )
 
         # Get call management settings from config
         max_call_duration_minutes = config.get("max_call_duration", 30)
-        silence_timeout_seconds = config.get("silence_timeout", 15)  # Increased from 10 to 15 seconds
+        silence_timeout_seconds = config.get("silence_timeout", 20)  # Increased from 15 to 20 seconds
         
         # Convert max call duration from minutes to seconds for session timeout
         max_call_duration_seconds = max_call_duration_minutes * 60
@@ -959,9 +1151,9 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
             llm=llm,
             tts=tts,
             allow_interruptions=True,
-            min_endpointing_delay=1.0,  # Increased from 0.5 to prevent audio feedback loops
-            max_endpointing_delay=8.0,  # Increased from 6.0 to give more time for user response
-            user_away_timeout=silence_timeout_seconds + 5,  # Add buffer to prevent immediate idle messages
+            min_endpointing_delay=1.5,   # Increased from 0.4 to prevent premature cutoff
+            max_endpointing_delay=8.0,   # Increased from 5.0 to allow longer speech segments
+            user_away_timeout=silence_timeout_seconds + 30,  # Increased buffer to 50 seconds to prevent premature idle detection
         )
 
     def _create_llm(self, provider: str, model: str, temperature: float, max_tokens: int, config: Dict[str, Any]):
@@ -991,7 +1183,7 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
                     model=groq_model,
                     api_key=groq_api_key,
                     temperature=groq_temperature,
-                    parallel_tool_calls=False,
+                    parallel_tool_calls=True,  # Enable parallel tool calls for better performance
                     tool_choice="auto",
                 )
                 logger.info(f"GROQ_LLM_CONFIGURED | model={groq_model} | temperature={groq_temperature}")
@@ -1011,7 +1203,7 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
                     api_key=cerebras_api_key,
                     base_url="https://api.cerebras.ai/v1",
                     temperature=cerebras_temperature,
-                    parallel_tool_calls=False,
+                    parallel_tool_calls=True,  # Enable parallel tool calls for better performance
                     tool_choice="auto",
                 )
                 logger.info(f"CEREBRAS_LLM_CONFIGURED | model={cerebras_model} | temperature={cerebras_temperature}")
@@ -1019,12 +1211,12 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
             else:
                 logger.warning("CEREBRAS_API_KEY_NOT_SET | falling back to OpenAI LLM")
 
-        # Default to OpenAI LLM
+        # Default to OpenAI LLM with enhanced configuration
         llm = openai.LLM(
             model=model,
-            api_key=openai_api_key,
-            temperature=temperature,
-            parallel_tool_calls=False,
+            client=_OPENAI_CLIENT,  # <-- use the shared AsyncOpenAI client
+            temperature=float(temperature),
+            parallel_tool_calls=True,  # Enable parallel tool calls for better performance
             tool_choice="auto",
         )
         logger.info(f"OPENAI_LLM_CONFIGURED | model={model} | temperature={temperature}")
@@ -1064,13 +1256,13 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
         openai_voice = openai_voice_map.get(voice_name.lower(), "alloy")
         openai_tts_model = "tts-1" if model.startswith("eleven_") else model
         
-        # Create OpenAI TTS with reliable settings
+        # Create OpenAI TTS with optimized settings for speed
         openai_tts = openai.TTS(
-            model=openai_tts_model, 
+            model="tts-1",  # Fastest model
             voice=openai_voice, 
-            api_key=openai_api_key
+            api_key=openai_api_key,
         )
-        logger.info(f"OPENAI_TTS_CONFIGURED | model={openai_tts_model} | voice={openai_voice}")
+        logger.info(f"OPENAI_TTS_CONFIGURED | model=tts-1 | voice={openai_voice}")
         tts_instances.append(openai_tts)
         logger.info(f"OPENAI_ADDED_TO_FALLBACK | total_instances={len(tts_instances)}")
         
@@ -1321,8 +1513,8 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
                 logger.warning("OPENAI_API_KEY not configured for call summary")
                 return "Summary generation not available - API key not configured."
 
-            # Use async OpenAI client
-            client = openai.AsyncOpenAI(api_key=openai_api_key)
+            # Use shared OpenAI client
+            client = _OPENAI_CLIENT
             
             response = await asyncio.wait_for(
                 client.chat.completions.create(
@@ -1334,7 +1526,7 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
                     max_tokens=500,
                     temperature=0.3
                 ),
-                timeout=timeout
+                timeout=min(max(timeout, 20), 60),
             )
 
             return response.choices[0].message.content.strip()
@@ -1368,7 +1560,8 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
                 logger.warning("OPENAI_API_KEY not configured for success evaluation")
                 return False
 
-            client = openai.AsyncOpenAI(api_key=openai_api_key)
+            # Use shared OpenAI client
+            client = _OPENAI_CLIENT
             
             response = await asyncio.wait_for(
                 client.chat.completions.create(
@@ -1380,7 +1573,7 @@ Return a JSON object with two arrays. You must respond with valid JSON format on
                     max_tokens=10,
                     temperature=0.1
                 ),
-                timeout=timeout
+                timeout=min(max(timeout, 10), 45),
             )
 
             result = response.choices[0].message.content.strip().upper()
@@ -1454,7 +1647,8 @@ IMPORTANT:
                 logger.warning("OPENAI_API_KEY not configured for structured data extraction")
                 return agent_data  # Return agent data as fallback
 
-            client = openai.AsyncOpenAI(api_key=openai_api_key)
+            # Use shared OpenAI client
+            client = _OPENAI_CLIENT
             
             response = await asyncio.wait_for(
                 client.chat.completions.create(
@@ -1467,7 +1661,7 @@ IMPORTANT:
                     temperature=0.1,
                     response_format={"type": "json_object"}
                 ),
-                timeout=timeout
+                timeout=min(max(timeout, 20), 60),
             )
 
             # Parse the response as JSON
@@ -1748,8 +1942,8 @@ IMPORTANT:
             # Log what we're saving
             logger.info(f"CALL_DATA_TO_SAVE | call_sid={call_data.get('call_sid')} | call_id={call_data.get('call_id')} | status={call_data.get('call_status')}")
             
-            # Save to database
-            result = self.supabase.client.table("call_history").insert(call_data).execute()
+            # Save to database with timeout protection
+            result = await self._safe_db_insert("call_history", call_data, timeout=6)
             
             if result.data:
                 logger.info(f"CALL_HISTORY_SAVED | call_id={call_id} | duration={call_duration}s | ai_status={call_status} | confidence={analysis_results.get('outcome_confidence', 'N/A')} | transcription_items={len(transcription)}")
@@ -1854,6 +2048,48 @@ IMPORTANT:
         
         return None
 
+    async def _log_call_outcome(
+        self, 
+        room_name: str, 
+        outcome: str, 
+        reason: str, 
+        phone_number: str, 
+        call_type: str, 
+        assistant_id: str
+    ):
+        """Log call outcome for analytics and monitoring."""
+        try:
+            payload = {
+                "room_name": room_name,
+                "outcome": outcome,
+                "reason": reason,
+                "phone_number": phone_number,
+                "call_type": call_type,
+                "assistant_id": assistant_id,
+                "timestamp": datetime.now().isoformat(),
+                "duration_seconds": 0  # No duration for failed connections
+            }
+            
+            await self._safe_db_insert("call_outcomes", payload, timeout=3)
+            logger.info(f"CALL_OUTCOME_LOGGED | room={room_name} | outcome={outcome} | reason={reason}")
+            
+        except Exception as e:
+            logger.error(f"CALL_OUTCOME_LOG_FAILED | room={room_name} | error={str(e)}")
+
+    async def _safe_db_insert(self, table: str, payload: dict, timeout: int = 5):
+        """Safely insert data into database with timeout protection."""
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(lambda: self.supabase.client.table(table).insert(payload).execute()),
+                timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"DATABASE_INSERT_TIMEOUT | table={table} | timeout={timeout}s")
+            raise
+        except Exception as e:
+            logger.error(f"DATABASE_INSERT_ERROR | table={table} | error={str(e)}")
+            raise
+
 
 def prewarm(proc: agents.JobProcess):
     """Preload VAD for better performance."""
@@ -1867,6 +2103,9 @@ def prewarm(proc: agents.JobProcess):
 async def entrypoint(ctx: JobContext):
     """Main entry point following LiveKit patterns."""
     handler = CallHandler()
+    # reuse prewarmed VAD if present
+    if "vad" in ctx.proc.userdata:
+        handler._prewarmed_vad = ctx.proc.userdata["vad"]
     await handler.handle_call(ctx)
 
 
@@ -1887,4 +2126,8 @@ if __name__ == "__main__":
     logger.info(f"🤖 Agent name: {agent_name}")
 
     # Run the agent
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm, agent_name=agent_name))
+    cli.run_app(WorkerOptions(
+        entrypoint_fnc=entrypoint,
+        prewarm_fnc=prewarm,
+        agent_name=agent_name,
+    ))

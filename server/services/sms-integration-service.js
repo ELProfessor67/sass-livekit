@@ -582,7 +582,7 @@ class SMSIntegrationService {
    * Extract phone number from message
    */
   extractPhone(message) {
-    const phoneRegex = /[\+]?[1-9]?[\d\s\-\(\)]{10,}/;
+    const phoneRegex = /[\+]?[1-9]?[\d\s\-\(\)]{7,}/;
     const match = message.match(phoneRegex);
     return match ? match[0].replace(/\D/g, '') : null;
   }

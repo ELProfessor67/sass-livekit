@@ -155,17 +155,14 @@ export class SMSService {
    * Format phone number for Twilio (ensure it starts with +)
    */
   static formatPhoneNumber(phoneNumber: string): string {
-    // Remove all non-digit characters
-    const cleaned = phoneNumber.replace(/\D/g, '');
+    // Remove all non-digit characters except + at the beginning
+    const cleaned = phoneNumber.replace(/[^\d+]/g, '');
     
-    // Add + if not present and number doesn't start with country code
-    if (cleaned.length === 10) {
-      return `+1${cleaned}`; // Assume US number
-    } else if (cleaned.length === 11 && cleaned.startsWith('1')) {
-      return `+${cleaned}`;
-    } else if (cleaned.startsWith('+')) {
-      return phoneNumber;
+    // If it already starts with +, return as is
+    if (cleaned.startsWith('+')) {
+      return cleaned;
     } else {
+      // Add + for international format
       return `+${cleaned}`;
     }
   }
@@ -175,8 +172,8 @@ export class SMSService {
    */
   static isValidPhoneNumber(phoneNumber: string): boolean {
     const formatted = this.formatPhoneNumber(phoneNumber);
-    // Basic validation - should start with + and have 10-15 digits
-    return /^\+\d{10,15}$/.test(formatted);
+    // Basic validation - should start with + and have 7-15 digits (international standard)
+    return /^\+\d{7,15}$/.test(formatted);
   }
 
   /**

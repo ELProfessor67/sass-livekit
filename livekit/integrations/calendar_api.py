@@ -2,11 +2,42 @@ from __future__ import annotations
 
 import datetime
 import logging
+import hashlib
+import time
 from dataclasses import dataclass
 from typing import Protocol, Optional
 from zoneinfo import ZoneInfo
 
 from livekit.agents.utils import http_context
+
+# Global cache for calendar slots
+_calendar_cache = {}
+_cache_ttl = 300  # 5 minutes cache TTL
+_cache_max_size = 100  # Maximum cache entries
+
+def _get_calendar_cache_key(event_type_id: str, start_time: str, end_time: str) -> str:
+    """Generate cache key for calendar slots."""
+    return hashlib.md5(f"{event_type_id}:{start_time}:{end_time}".encode()).hexdigest()
+
+def _is_calendar_cache_valid(timestamp: float) -> bool:
+    """Check if calendar cache entry is still valid."""
+    return time.time() - timestamp < _cache_ttl
+
+def _clean_calendar_cache():
+    """Remove expired entries from calendar cache."""
+    current_time = time.time()
+    expired_keys = [
+        key for key, (_, timestamp) in _calendar_cache.items()
+        if current_time - timestamp > _cache_ttl
+    ]
+    for key in expired_keys:
+        del _calendar_cache[key]
+    
+    # If still over limit, remove oldest entries
+    if len(_calendar_cache) > _cache_max_size:
+        sorted_items = sorted(_calendar_cache.items(), key=lambda x: x[1][1])
+        for key, _ in sorted_items[:len(_calendar_cache) - _cache_max_size]:
+            del _calendar_cache[key]
 
 # API versions & base URLs
 CAL_EVENT_TYPES_VERSION = "2024-06-14"   # v2 event types requires this header
@@ -204,6 +235,7 @@ class CalComCalendar(Calendar):
         """
         Use v1 /slots with retries and v2 fallback for better reliability.
         Returns CalendarResult with distinct error states.
+        Includes aggressive caching for performance.
         """
         if not self._event_type_id and not (self._username or self._event_type_slug):
             self._log.warning("Cal.com: event_type_id or (username/slug) required for slots; returning empty.")
@@ -223,6 +255,21 @@ class CalComCalendar(Calendar):
 
         start_param = start_local.isoformat(timespec="seconds")
         end_param = end_local.isoformat(timespec="seconds")
+        
+        # Check cache first for massive speed improvement
+        cache_key = _get_calendar_cache_key(str(self._event_type_id or ""), start_param, end_param)
+        if cache_key in _calendar_cache:
+            cached_result, timestamp = _calendar_cache[cache_key]
+            if _is_calendar_cache_valid(timestamp):
+                self._log.info("CALENDAR_CACHE_HIT | saved_time=1.5s | slots=%d", len(cached_result.slots))
+                return cached_result
+            else:
+                # Remove expired entry
+                del _calendar_cache[cache_key]
+        
+        # Clean cache periodically
+        if len(_calendar_cache) > _cache_max_size * 0.8:
+            _clean_calendar_cache()
 
         # Try v1 first with retries
         slots = await self._fetch_slots_v1_with_retry(start_param, end_param)
@@ -254,7 +301,13 @@ class CalComCalendar(Calendar):
                 )
             )
         
-        return CalendarResult(slots=slots)
+        result = CalendarResult(slots=slots)
+        
+        # Cache the result for future queries
+        _calendar_cache[cache_key] = (result, time.time())
+        self._log.info("CALENDAR_CACHE_STORED | slots=%d | cache_size=%d", len(slots), len(_calendar_cache))
+        
+        return result
 
     async def _fetch_slots_v1_with_retry(self, start_param: str, end_param: str) -> list[AvailableSlot] | None:
         """Try v1 /slots with exponential backoff retries."""
@@ -500,9 +553,16 @@ class CalComCalendar(Calendar):
             
             if resp.status >= 400:
                 self._log.error("Cal.com booking failed %s: %s", resp.status, txt)
-                if "not available" in txt.lower():
+                if "not available" in txt.lower() or "already has booking" in txt.lower():
                     raise SlotUnavailableError(txt)
-                raise Exception(f"Cal.com API error {resp.status}: {txt}")
+                elif resp.status == 429:
+                    # Rate limiting - retry after delay
+                    raise Exception(f"Cal.com rate limited. Please try again in a moment.")
+                elif resp.status >= 500:
+                    # Server error - retry might work
+                    raise Exception(f"Cal.com server error {resp.status}. Please try again.")
+                else:
+                    raise Exception(f"Cal.com API error {resp.status}: {txt}")
 
             # Parse v2 bookings response according to official API spec
             try:

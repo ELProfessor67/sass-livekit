@@ -5,14 +5,21 @@ export const formatPhoneNumber = (phone?: string): string => {
   // Handle undefined, null or empty phone numbers
   if (!phone) return 'Unknown';
   
-  // Remove any non-digit characters and +1 prefix
-  const cleaned = phone.replace(/\D/g, '').replace(/^1/, '');
+  // Remove any non-digit characters except + at the beginning
+  const cleaned = phone.replace(/[^\d+]/g, '');
   
-  // Ensure we have 10 digits
-  if (cleaned.length !== 10) return phone;
+  // If it starts with +, return as international format
+  if (cleaned.startsWith('+')) {
+    return cleaned;
+  }
   
-  // Format as (XXX) XXX-XXXX - US Formatting
-  return cleaned.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3');
+  // If it's 10 digits, format as US number
+  if (cleaned.length === 10) {
+    return cleaned.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3');
+  }
+  
+  // For other lengths, return as is
+  return phone;
 };
 
 export interface FormattedDateTime {

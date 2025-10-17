@@ -9,10 +9,17 @@ import logging
 from typing import Optional, Dict, List, Any
 from dataclasses import dataclass
 
+import asyncio
+import time
+from typing import Tuple
+
 try:
-    import openai
+    from openai import AsyncOpenAI
 except ImportError:
-    openai = None
+    AsyncOpenAI = None
+
+from utils.latency_logger import measure_latency_context
+
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +39,10 @@ class CallOutcomeService:
     
     def __init__(self):
         self.client = None
-        if openai and os.getenv('OPENAI_API_KEY'):
+        api_key = os.getenv("OPENAI_API_KEY")
+        if AsyncOpenAI and api_key:
             try:
-                openai.api_key = os.getenv('OPENAI_API_KEY')
-                self.client = openai
+                self.client = AsyncOpenAI(api_key=api_key)
                 logger.info("OPENAI_CLIENT_INITIALIZED | Call outcome analysis enabled")
             except Exception as e:
                 logger.error(f"OPENAI_CLIENT_INIT_FAILED | error={str(e)}")
@@ -43,6 +50,18 @@ class CallOutcomeService:
         else:
             logger.warning("OPENAI_CLIENT_NOT_AVAILABLE | OPENAI_API_KEY not configured")
     
+    def _truncate_transcript(self, text: str, max_chars: int = 3500) -> str:
+        """Hard-cap the transcript to keep latency predictable."""
+        if len(text) <= max_chars:
+            return text
+        # Keep last part (most recent turns)
+        return text[-max_chars:]
+
+    def _retry_delays(self) -> Tuple[float, float, float]:
+        """Small, jittered backoff."""
+        return (0.2, 0.6, 1.2)
+
+
     async def analyze_call_outcome(
         self, 
         transcription: List[Dict[str, Any]], 
@@ -64,36 +83,45 @@ class CallOutcomeService:
             logger.warning("OPENAI_CLIENT_NOT_AVAILABLE | Skipping call outcome analysis")
             return None
         
-        try:
-            # Convert transcription to text format
-            transcript_text = self._format_transcription_for_analysis(transcription)
-            
-            if not transcript_text.strip():
-                logger.warning("EMPTY_TRANSCRIPTION | Cannot analyze empty transcription")
+        call_id = f"outcome_analysis_{call_type}_{call_duration}s"
+        
+        async with measure_latency_context("openai_call_outcome_analysis", call_id, {
+            "transcription_length": len(transcription),
+            "call_duration": call_duration,
+            "call_type": call_type
+        }):
+            try:
+                # Convert transcription to text format
+                raw_text = self._format_transcription_for_analysis(transcription)
+                transcript_text = self._truncate_transcript(raw_text)
+
+                
+                if not transcript_text.strip():
+                    logger.warning("EMPTY_TRANSCRIPTION | Cannot analyze empty transcription")
+                    return None
+                
+                # Create the analysis prompt
+                prompt = self._create_analysis_prompt(transcript_text, call_duration, call_type)
+                
+                logger.info(f"CALL_OUTCOME_ANALYSIS_START | transcript_length={len(transcript_text)} | duration={call_duration}s | type={call_type}")
+                
+                # Call OpenAI API
+                response = await self._call_openai_api(prompt)
+                
+                if not response:
+                    logger.error("OPENAI_API_CALL_FAILED | No response received")
+                    return None
+                
+                # Parse the response
+                analysis = self._parse_openai_response(response)
+                
+                logger.info(f"CALL_OUTCOME_ANALYSIS_COMPLETE | outcome={analysis.outcome} | confidence={analysis.confidence}")
+                
+                return analysis
+                
+            except Exception as e:
+                logger.error(f"CALL_OUTCOME_ANALYSIS_ERROR | error={str(e)}")
                 return None
-            
-            # Create the analysis prompt
-            prompt = self._create_analysis_prompt(transcript_text, call_duration, call_type)
-            
-            logger.info(f"CALL_OUTCOME_ANALYSIS_START | transcript_length={len(transcript_text)} | duration={call_duration}s | type={call_type}")
-            
-            # Call OpenAI API
-            response = await self._call_openai_api(prompt)
-            
-            if not response:
-                logger.error("OPENAI_API_CALL_FAILED | No response received")
-                return None
-            
-            # Parse the response
-            analysis = self._parse_openai_response(response)
-            
-            logger.info(f"CALL_OUTCOME_ANALYSIS_COMPLETE | outcome={analysis.outcome} | confidence={analysis.confidence}")
-            
-            return analysis
-            
-        except Exception as e:
-            logger.error(f"CALL_OUTCOME_ANALYSIS_ERROR | error={str(e)}")
-            return None
     
     def _format_transcription_for_analysis(self, transcription: List[Dict[str, Any]]) -> str:
         """Format transcription for OpenAI analysis"""
@@ -174,34 +202,46 @@ Respond with ONLY the JSON object, no additional text.
         return prompt
     
     async def _call_openai_api(self, prompt: str) -> Optional[str]:
-        """Call OpenAI API with the analysis prompt"""
-        try:
-            response = openai.chat.completions.create(
-                model="gpt-4o-mini",  # Using cost-effective model
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert call analyst. Always respond with valid JSON only."
-                    },
-                    {
-                        "role": "user", 
-                        "content": prompt
-                    }
-                ],
-                temperature=0.1,  # Low temperature for consistent results
-                max_tokens=500,
-                timeout=30
-            )
-            
-            if response and response.choices:
-                return response.choices[0].message.content.strip()
-            
+        """Call OpenAI API with strict JSON response, async, and retries."""
+        if not self.client:
             return None
-            
-        except Exception as e:
-            logger.error(f"OPENAI_API_ERROR | error={str(e)}")
-            return None
-    
+
+        call_id = f"openai_api_{len(prompt)}chars"
+        
+        async with measure_latency_context("openai_api_call", call_id, {
+            "prompt_length": len(prompt),
+            "model": "gpt-4o-mini",
+            "max_tokens": 500
+        }):
+            delays = self._retry_delays()
+            last_err = None
+            for attempt, delay in enumerate((*delays, 0), start=1):
+                t0 = time.perf_counter()
+                try:
+                    resp = await self.client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": "You are an expert call analyst. Always respond with valid JSON only."},
+                            {"role": "user", "content": prompt},
+                        ],
+                        temperature=0.1,
+                        max_tokens=500,
+                        response_format={"type": "json_object"},
+                    )
+                    dt_ms = int((time.perf_counter() - t0) * 1000)
+                    logger.info(f"OPENAI_OUTCOME_API_OK | attempt={attempt} | dt_ms={dt_ms}")
+                    if resp and resp.choices:
+                        return resp.choices[0].message.content.strip()
+                    return None
+                except Exception as e:
+                    dt_ms = int((time.perf_counter() - t0) * 1000)
+                    last_err = e
+                    logger.warning(f"OPENAI_OUTCOME_API_RETRY | attempt={attempt} | dt_ms={dt_ms} | error={str(e)}")
+                    if delay > 0:
+                        await asyncio.sleep(delay)
+        logger.error(f"OPENAI_OUTCOME_API_FAILED | error={str(last_err) if last_err else 'unknown'}")
+        return None
+
     def _parse_openai_response(self, response: str) -> CallOutcomeAnalysis:
         """Parse OpenAI response into CallOutcomeAnalysis object"""
         try:

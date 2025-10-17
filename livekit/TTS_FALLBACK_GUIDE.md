@@ -54,10 +54,7 @@ ElevenLabs voices are automatically mapped to similar OpenAI voices:
 ## Testing
 
 ### Test the Fallback System
-```bash
-cd livekit
-python test_tts_fallback.py
-```
+The TTS fallback system is automatically tested during agent initialization. Monitor the logs for fallback activity and configuration messages.
 
 ### Expected Output
 ```
@@ -116,4 +113,4 @@ INFO: ELEVENLABS_FAILED_FALLBACK | using OpenAI TTS directly
 1. **Always set OPENAI_API_KEY** as a reliable fallback
 2. **Use DISABLE_ELEVENLABS=true** if ElevenLabs causes persistent issues
 3. **Monitor logs** for fallback activity
-4. **Test the system** with `test_tts_fallback.py` after configuration changes
+4. **Monitor logs** for fallback activity during agent initialization

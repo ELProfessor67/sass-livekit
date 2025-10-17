@@ -34,10 +34,6 @@ livekit/
 │   ├── helpers.py              # General utility functions
 │   ├── call_analysis.py        # Call status and analysis
 │   └── logging_config.py       # Logging configuration
-└── tests/
-    ├── __init__.py
-    ├── test_assistants.py      # Assistant tests
-    └── test_integrations.py    # Integration tests
 ```
 
 ## 🚀 Quick Start

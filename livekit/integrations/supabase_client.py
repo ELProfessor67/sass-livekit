@@ -5,6 +5,7 @@ Supabase client wrapper for database operations.
 import logging
 from typing import Optional, Dict, Any, List
 from config.database import DatabaseClient, get_database_client
+from utils.latency_logger import measure_latency_context
 
 
 class SupabaseClient:
@@ -29,7 +30,12 @@ class SupabaseClient:
             self.logger.warning("Supabase client not available")
             return None
         
-        return await self.db_client.fetch_assistant(assistant_id)
+        call_id = f"supabase_fetch_{assistant_id}"
+        
+        async with measure_latency_context("supabase_fetch_assistant", call_id, {
+            "assistant_id": assistant_id
+        }):
+            return await self.db_client.fetch_assistant(assistant_id)
     
     async def save_call_history(
         self,
@@ -48,17 +54,23 @@ class SupabaseClient:
             self.logger.warning("Supabase client not available")
             return False
         
-        return await self.db_client.save_call_history(
-            call_id=call_id,
-            assistant_id=assistant_id,
-            called_did=called_did,
-            call_duration=call_duration,
-            call_status=call_status,
-            transcription=transcription,
-            participant_identity=participant_identity,
-            recording_sid=recording_sid,
-            call_sid=call_sid
-        )
+        async with measure_latency_context("supabase_save_call_history", call_id, {
+            "assistant_id": assistant_id,
+            "call_duration": call_duration,
+            "transcription_length": len(transcription),
+            "has_recording": bool(recording_sid)
+        }):
+            return await self.db_client.save_call_history(
+                call_id=call_id,
+                assistant_id=assistant_id,
+                called_did=called_did,
+                call_duration=call_duration,
+                call_status=call_status,
+                transcription=transcription,
+                participant_identity=participant_identity,
+                recording_sid=recording_sid,
+                call_sid=call_sid
+            )
     
     async def save_n8n_spreadsheet_id(self, assistant_id: str, spreadsheet_id: str) -> bool:
         """Save N8N spreadsheet ID for assistant."""
@@ -66,18 +78,24 @@ class SupabaseClient:
             self.logger.warning("Supabase client not available")
             return False
         
-        try:
-            result = self.db_client.client.table("assistant").update({
-                "n8n_spreadsheet_id": spreadsheet_id
-            }).eq("id", assistant_id).execute()
-            
-            if result.data:
-                self.logger.info(f"N8N_SPREADSHEET_SAVED | assistant_id={assistant_id} | spreadsheet_id={spreadsheet_id}")
-                return True
-            else:
-                self.logger.error(f"Failed to save N8N spreadsheet ID: {assistant_id}")
-                return False
+        call_id = f"supabase_update_{assistant_id}"
+        
+        async with measure_latency_context("supabase_update_assistant", call_id, {
+            "assistant_id": assistant_id,
+            "operation": "save_n8n_spreadsheet_id"
+        }):
+            try:
+                result = self.db_client.client.table("assistant").update({
+                    "n8n_spreadsheet_id": spreadsheet_id
+                }).eq("id", assistant_id).execute()
                 
-        except Exception as e:
-            self.logger.error(f"Error saving N8N spreadsheet ID: {e}")
-            return False
+                if result.data:
+                    self.logger.info(f"N8N_SPREADSHEET_SAVED | assistant_id={assistant_id} | spreadsheet_id={spreadsheet_id}")
+                    return True
+                else:
+                    self.logger.error(f"Failed to save N8N spreadsheet ID: {assistant_id}")
+                    return False
+                    
+            except Exception as e:
+                self.logger.error(f"Error saving N8N spreadsheet ID: {e}")
+                return False

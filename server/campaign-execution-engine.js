@@ -420,7 +420,7 @@ class CampaignExecutionEngine {
         phone_number: phoneNumber,
         email: contact.email || contact.email_address || ''
       };
-    }).filter(contact => contact.phone_number && contact.phone_number.length >= 10);
+    }).filter(contact => contact.phone_number && contact.phone_number.length >= 7);
   }
 
 

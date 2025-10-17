@@ -9,8 +9,7 @@ from livekit.agents import JobContext, Agent
 from config.settings import Settings
 from integrations.supabase_client import SupabaseClient
 from integrations.n8n_integration import N8NIntegration
-from services.assistant import Assistant
-from services.rag_assistant import RAGAssistant
+from services.unified_agent import UnifiedAgent
 
 
 class InboundCallHandler:
@@ -95,20 +94,19 @@ class InboundCallHandler:
         try:
             assistant_id = assistant_config.get("id")
             instructions = assistant_config.get("instructions", "")
+            knowledge_base_id = assistant_config.get("knowledge_base_id")
+            company_id = assistant_config.get("company_id")
             
-            # Determine if this is a RAG assistant
-            use_rag = assistant_config.get("use_rag", False)
+            # Create unified agent that handles both RAG and booking capabilities
+            assistant = UnifiedAgent(
+                instructions=instructions,
+                knowledge_base_id=knowledge_base_id,
+                company_id=company_id,
+                supabase=self.supabase
+            )
             
-            if use_rag:
-                # Create RAG assistant
-                assistant = RAGAssistant(
-                    instructions=instructions,
-                    assistant_id=assistant_id,
-                    supabase=self.supabase
-                )
-            else:
-                # Create regular assistant
-                assistant = Assistant(instructions=instructions)
+            # Reset state for new conversation
+            assistant._reset_state()
             
             # Run the assistant
             await assistant.start(ctx)
