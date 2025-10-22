@@ -257,8 +257,8 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                 const defaultModels = {
                   "OpenAI": "GPT-4o Mini",
                   "Anthropic": "Claude 3.5 Sonnet",
-                  "Google": "Gemini Pro",
-                  "Groq": "openai/gpt-oss-120b",
+                  "Google": "Gemini 1.5 Pro",
+                  "Groq": "llama-3.1-8b-instant",
                   "Cerebras": "gpt-oss-120b"
                 };
                 const newModel = defaultModels[value as keyof typeof defaultModels] || "";
@@ -293,31 +293,30 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                     <>
                       <SelectItem value="GPT-4o Mini">GPT-4o Mini</SelectItem>
                       <SelectItem value="GPT-4o">GPT-4o</SelectItem>
-                      <SelectItem value="GPT-4 Turbo">GPT-4 Turbo</SelectItem>
                     </>
                   )}
                   {data.provider === "Anthropic" && (
                     <>
                       <SelectItem value="Claude 3.5 Sonnet">Claude 3.5 Sonnet</SelectItem>
-                      <SelectItem value="Claude 3 Opus">Claude 3 Opus</SelectItem>
-                      <SelectItem value="Claude 3 Haiku">Claude 3 Haiku</SelectItem>
                     </>
                   )}
                   {data.provider === "Google" && (
                     <>
-                      <SelectItem value="Gemini Pro">Gemini Pro</SelectItem>
-                      <SelectItem value="Gemini Pro Vision">Gemini Pro Vision</SelectItem>
+                      <SelectItem value="Gemini 1.5 Pro">Gemini 1.5 Pro</SelectItem>
+                      <SelectItem value="Gemini 1.5 Flash">Gemini 1.5 Flash</SelectItem>
                     </>
                   )}
                   {data.provider === "Groq" && (
                     <>
-                      <SelectItem value="openai/gpt-oss-120b">OpenAI GPT-OSS 120B</SelectItem>
-                      <SelectItem value="openai/gpt-oss-20b">OpenAI GPT-OSS 20B</SelectItem>
+                      <SelectItem value="llama-3.1-8b-instant">Llama 3.1 8B Instant</SelectItem>
+                      <SelectItem value="llama-3.3-70b-versatile">Llama 3.3 70B Versatile</SelectItem>
+                      <SelectItem value="meta-llama/llama-4-maverick-17b-128e-instruct">Llama 4 Maverick 17B</SelectItem>
                     </>
                   )}
                   {data.provider === "Cerebras" && (
                     <>
-                      <SelectItem value="gpt-oss-120b">GPT-OSS 120B</SelectItem>
+                      <SelectItem value="llama-3.3-70b">Llama 3.3 70B</SelectItem>
+                      <SelectItem value="gpt-oss-120b">GPT OSS 120B</SelectItem>
                     </>
                   )}
                 </SelectContent>

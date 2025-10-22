@@ -74,7 +74,7 @@ class GroqConfig:
 class CerebrasConfig:
     """Cerebras API configuration."""
     api_key: str
-    llm_model: str = "llama3.1-8b"
+    llm_model: str = "gpt-oss-120b"
     temperature: float = 0.1
     max_tokens: int = 250
     
@@ -82,9 +82,57 @@ class CerebrasConfig:
     def from_env(cls) -> "CerebrasConfig":
         return cls(
             api_key=os.getenv("CEREBRAS_API_KEY", ""),
-            llm_model=os.getenv("CEREBRAS_LLM_MODEL", "llama3.1-8b"),
+            llm_model=os.getenv("CEREBRAS_LLM_MODEL", "gpt-oss-120b"),
             temperature=float(os.getenv("CEREBRAS_TEMPERATURE", "0.1")),
             max_tokens=int(os.getenv("CEREBRAS_MAX_TOKENS", "250"))
+        )
+
+
+@dataclass
+class RimeConfig:
+    """Rime TTS API configuration."""
+    api_key: str
+    model: str = "mistv2"
+    speaker: str = "rainforest"
+    speed_alpha: float = 0.9
+    reduce_latency: bool = True
+    audio_format: str = "pcm"
+    sample_rate: int = 16000
+    phonemize_between_brackets: bool = False
+    
+    @classmethod
+    def from_env(cls) -> "RimeConfig":
+        return cls(
+            api_key=os.getenv("RIME_API_KEY", ""),
+            model=os.getenv("RIME_MODEL", "mistv2"),
+            speaker=os.getenv("RIME_SPEAKER", "rainforest"),
+            speed_alpha=float(os.getenv("RIME_SPEED_ALPHA", "0.9")),
+            reduce_latency=os.getenv("RIME_REDUCE_LATENCY", "true").lower() == "true",
+            audio_format=os.getenv("RIME_AUDIO_FORMAT", "pcm"),
+            sample_rate=int(os.getenv("RIME_SAMPLE_RATE", "16000")),
+            phonemize_between_brackets=os.getenv("RIME_PHONEMIZE_BETWEEN_BRACKETS", "false").lower() == "true"
+        )
+
+
+@dataclass
+class HumeConfig:
+    """Hume TTS API configuration."""
+    api_key: str
+    voice_name: str = "Colton Rivers"
+    voice_provider: str = "hume"
+    description: str = "The voice exudes calm, serene, and peaceful qualities, like a gentle stream flowing through a quiet forest."
+    speed: float = 1.0
+    instant_mode: bool = True
+    
+    @classmethod
+    def from_env(cls) -> "HumeConfig":
+        return cls(
+            api_key=os.getenv("HUME_API_KEY", ""),
+            voice_name=os.getenv("HUME_VOICE_NAME", "Colton Rivers"),
+            voice_provider=os.getenv("HUME_VOICE_PROVIDER", "hume"),
+            description=os.getenv("HUME_DESCRIPTION", "The voice exudes calm, serene, and peaceful qualities, like a gentle stream flowing through a quiet forest."),
+            speed=float(os.getenv("HUME_SPEED", "1.0")),
+            instant_mode=os.getenv("HUME_INSTANT_MODE", "true").lower() == "true"
         )
 
 
@@ -153,6 +201,7 @@ class Settings:
     openai: OpenAIConfig
     groq: GroqConfig
     cerebras: CerebrasConfig
+    rime: RimeConfig
     supabase: SupabaseConfig
     calendar: CalendarConfig
     
@@ -202,6 +251,7 @@ class Settings:
             openai=OpenAIConfig.from_env(),
             groq=GroqConfig.from_env(),
             cerebras=CerebrasConfig.from_env(),
+            rime=RimeConfig.from_env(),
             supabase=SupabaseConfig.from_env(),
             calendar=CalendarConfig.from_env(),
             force_first_message=os.getenv("FORCE_FIRST_MESSAGE", "true").lower() == "true",
@@ -258,3 +308,126 @@ def reload_settings() -> Settings:
     global _settings
     _settings = Settings.from_env()
     return _settings
+
+
+def validate_model_names(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and fix model names to prevent API errors."""
+    # Valid OpenAI models
+    valid_openai_llm_models = {
+        "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo",
+        "gpt-4o-2024-08-06", "gpt-4-turbo-2024-04-09", "gpt-3.5-turbo-0125"
+    }
+    
+    valid_openai_tts_models = {
+        "tts-1", "tts-1-hd"
+    }
+    
+    valid_openai_stt_models = {
+        "whisper-1"
+    }
+    
+    valid_elevenlabs_models = {
+        "eleven_turbo_v2", "eleven_multilingual_v2", "eleven_monolingual_v1"
+    }
+    
+    valid_groq_models = {
+        "llama-3.1-8b-instant", "llama-3.3-70b-versatile", "meta-llama/llama-4-maverick-17b-128e-instruct"
+    }
+    
+    valid_cerebras_models = {
+        "llama-3.3-70b"
+    }
+    
+    valid_rime_models = {
+        "mistv2", "mist", "lagoon", "rainforest"
+    }
+    
+    # Fix LLM model with comprehensive mapping (like old implementation)
+    llm_provider = config.get("llm_provider_setting", "OpenAI")
+    llm_model = config.get("llm_model_setting", "gpt-4o-mini")
+    original_model = llm_model
+    
+    # Map model names to API format based on provider (from old implementation)
+    if llm_provider == "OpenAI":
+        if llm_model == "GPT-4o Mini":
+            llm_model = "gpt-4o-mini"
+        elif llm_model == "GPT-4o":
+            llm_model = "gpt-4o"
+        elif llm_model == "GPT-4 Turbo":
+            llm_model = "gpt-4-turbo"
+        elif llm_model == "GPT-4":
+            llm_model = "gpt-4"
+        elif llm_model == "GPT-3.5 Turbo":
+            llm_model = "gpt-3.5-turbo"
+    elif llm_provider == "Groq":
+        # Handle decommissioned models - map old models to new ones (from old implementation)
+        model_mapping = {
+            "llama3-8b-8192": "llama-3.1-8b-instant",
+            "llama3-70b-8192": "llama-3.3-70b-versatile"
+        }
+        llm_model = model_mapping.get(llm_model, llm_model)
+    elif llm_provider == "Cerebras":
+        # Cerebras models are already in correct format
+        pass
+    elif llm_provider in ["Anthropic", "Google"]:
+        # Anthropic and Google providers not implemented, fall back to OpenAI
+        logging.warning(f"PROVIDER_NOT_IMPLEMENTED | provider={llm_provider} | falling back to OpenAI")
+        config["llm_provider_setting"] = "OpenAI"
+        llm_provider = "OpenAI"
+        # Map the model to a valid OpenAI model
+        if llm_model in ["Claude 3.5 Sonnet", "Claude 3 Opus", "Claude 3 Haiku"]:
+            llm_model = "gpt-4o"
+        elif llm_model in ["Gemini Pro", "Gemini Pro Vision"]:
+            llm_model = "gpt-4o-mini"
+        else:
+            llm_model = "gpt-4o-mini"
+    
+    if original_model != llm_model:
+        logging.info(f"LLM_MODEL_MAPPED | provider={llm_provider} | original={original_model} | mapped={llm_model}")
+        config["llm_model_setting"] = llm_model
+    
+    # Final validation after mapping
+    if llm_provider == "OpenAI" and llm_model not in valid_openai_llm_models:
+        logging.warning(f"INVALID_OPENAI_LLM_MODEL | model={llm_model} | using fallback=gpt-4o-mini")
+        config["llm_model_setting"] = "gpt-4o-mini"
+    elif llm_provider == "Groq" and llm_model not in valid_groq_models:
+        logging.warning(f"INVALID_GROQ_MODEL | model={llm_model} | using fallback=llama-3.1-8b-instant")
+        config["llm_model_setting"] = "llama-3.1-8b-instant"
+    elif llm_provider == "Cerebras" and llm_model not in valid_cerebras_models:
+        logging.warning(f"INVALID_CEREBRAS_MODEL | model={llm_model} | using fallback=gpt-oss-120b")
+        config["llm_model_setting"] = "gpt-oss-120b"
+    
+    # Fix TTS model with mapping (like old implementation)
+    voice_provider = config.get("voice_provider_setting", "OpenAI")
+    voice_model = config.get("voice_model_setting", "tts-1")
+    original_voice_model = voice_model
+    
+    # Map TTS model names (from old implementation)
+    if voice_provider == "OpenAI":
+        if voice_model == "gpt-4o-mini-tts":
+            voice_model = "tts-1"
+        elif voice_model.startswith("eleven_"):
+            voice_model = "tts-1"  # Fallback for ElevenLabs models when using OpenAI
+    
+    if original_voice_model != voice_model:
+        logging.info(f"TTS_MODEL_MAPPED | provider={voice_provider} | original={original_voice_model} | mapped={voice_model}")
+        config["voice_model_setting"] = voice_model
+    
+    # Final validation after mapping
+    if voice_provider == "OpenAI" and voice_model not in valid_openai_tts_models:
+        logging.warning(f"INVALID_OPENAI_TTS_MODEL | model={voice_model} | using fallback=tts-1")
+        config["voice_model_setting"] = "tts-1"
+    elif voice_provider == "ElevenLabs" and voice_model not in valid_elevenlabs_models:
+        logging.warning(f"INVALID_ELEVENLABS_MODEL | model={voice_model} | using fallback=eleven_turbo_v2")
+        config["voice_model_setting"] = "eleven_turbo_v2"
+    elif voice_provider == "Rime" and voice_model not in valid_rime_models:
+        logging.warning(f"INVALID_RIME_MODEL | model={voice_model} | using fallback=mistv2")
+        config["voice_model_setting"] = "mistv2"
+    
+    # Fix STT model
+    stt_model = config.get("stt_model", "whisper-1")
+    if stt_model not in valid_openai_stt_models:
+        logging.warning(f"INVALID_STT_MODEL | model={stt_model} | using fallback=whisper-1")
+        config["stt_model"] = "whisper-1"
+    
+    return config

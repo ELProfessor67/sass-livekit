@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Card, CardHeader, CardContent, CardTitle, CardDescription } from "@/components/ui/card";
@@ -18,6 +19,185 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
   const [advancedTimingOpen, setAdvancedTimingOpen] = useState(false);
   const [advancedInterruptionOpen, setAdvancedInterruptionOpen] = useState(false);
   const [advancedTimeoutOpen, setAdvancedTimeoutOpen] = useState(false);
+
+  // Filter voices based on selected provider
+  const getFilteredVoices = () => {
+    switch (data.provider) {
+      case "ElevenLabs":
+        return [
+          { value: "Rachel", label: "Rachel" },
+          { value: "Domi", label: "Domi" },
+          { value: "Bella", label: "Bella" },
+          { value: "Antoni", label: "Antoni" },
+          { value: "Elli", label: "Elli" },
+          { value: "Josh", label: "Josh" },
+          { value: "Arnold", label: "Arnold" }
+        ];
+      case "Rime":
+        return [
+          { value: "rainforest", label: "Rainforest" }
+        ];
+      case "Hume":
+        return [
+          { value: "Colton Rivers", label: "Colton Rivers" }
+        ];
+      case "Deepgram":
+        return [
+          { value: "aura-asteria-en", label: "Aura Asteria" },
+          { value: "aura-luna-en", label: "Aura Luna" },
+          { value: "aura-stella-en", label: "Aura Stella" },
+          { value: "aura-athena-en", label: "Aura Athena" },
+          { value: "aura-hera-en", label: "Aura Hera" },
+          { value: "aura-orion-en", label: "Aura Orion" },
+          { value: "aura-arcas-en", label: "Aura Arcas" },
+          { value: "aura-perseus-en", label: "Aura Perseus" },
+          { value: "aura-angus-en", label: "Aura Angus" },
+          { value: "aura-orpheus-en", label: "Aura Orpheus" },
+          { value: "aura-helios-en", label: "Aura Helios" },
+          { value: "aura-zeus-en", label: "Aura Zeus" }
+        ];
+      default:
+        return [];
+    }
+  };
+
+  // Filter models based on selected provider
+  const getFilteredModels = () => {
+    switch (data.provider) {
+      case "ElevenLabs":
+        return [
+          { value: "eleven_turbo_v2", label: "Eleven Turbo v2" },
+          { value: "eleven_multilingual_v2", label: "Eleven Multilingual v2" },
+          { value: "eleven_monolingual_v1", label: "Eleven Monolingual v1" }
+        ];
+      case "Rime":
+        return [
+          { value: "mistv2", label: "Mist v2" }
+        ];
+      case "Hume":
+        return [
+          { value: "hume_default", label: "Hume Default" }
+        ];
+      case "Deepgram":
+        return [
+          { value: "aura-asteria-en", label: "Aura Asteria" },
+          { value: "aura-luna-en", label: "Aura Luna" },
+          { value: "aura-stella-en", label: "Aura Stella" },
+          { value: "aura-athena-en", label: "Aura Athena" },
+          { value: "aura-hera-en", label: "Aura Hera" },
+          { value: "aura-orion-en", label: "Aura Orion" },
+          { value: "aura-arcas-en", label: "Aura Arcas" },
+          { value: "aura-perseus-en", label: "Aura Perseus" },
+          { value: "aura-angus-en", label: "Aura Angus" },
+          { value: "aura-orpheus-en", label: "Aura Orpheus" },
+          { value: "aura-helios-en", label: "Aura Helios" },
+          { value: "aura-zeus-en", label: "Aura Zeus" }
+        ];
+      default:
+        return [];
+    }
+  };
+
+  // Handle provider change and reset voice/model if needed
+  const handleProviderChange = (value: string) => {
+    // Get filtered options for the new provider
+    const getFilteredVoicesForProvider = (provider: string) => {
+      switch (provider) {
+        case "ElevenLabs":
+          return [
+            { value: "Rachel", label: "Rachel" },
+            { value: "Domi", label: "Domi" },
+            { value: "Bella", label: "Bella" },
+            { value: "Antoni", label: "Antoni" },
+            { value: "Elli", label: "Elli" },
+            { value: "Josh", label: "Josh" },
+            { value: "Arnold", label: "Arnold" }
+          ];
+        case "Rime":
+          return [
+            { value: "rainforest", label: "Rainforest" }
+          ];
+        case "Hume":
+          return [
+            { value: "Colton Rivers", label: "Colton Rivers" }
+          ];
+        case "Deepgram":
+          return [
+            { value: "aura-asteria-en", label: "Aura Asteria" },
+            { value: "aura-luna-en", label: "Aura Luna" },
+            { value: "aura-stella-en", label: "Aura Stella" },
+            { value: "aura-athena-en", label: "Aura Athena" },
+            { value: "aura-hera-en", label: "Aura Hera" },
+            { value: "aura-orion-en", label: "Aura Orion" },
+            { value: "aura-arcas-en", label: "Aura Arcas" },
+            { value: "aura-perseus-en", label: "Aura Perseus" },
+            { value: "aura-angus-en", label: "Aura Angus" },
+            { value: "aura-orpheus-en", label: "Aura Orpheus" },
+            { value: "aura-helios-en", label: "Aura Helios" },
+            { value: "aura-zeus-en", label: "Aura Zeus" }
+          ];
+        default:
+          return [];
+      }
+    };
+
+    const getFilteredModelsForProvider = (provider: string) => {
+      switch (provider) {
+        case "ElevenLabs":
+          return [
+            { value: "eleven_turbo_v2", label: "Eleven Turbo v2" },
+            { value: "eleven_multilingual_v2", label: "Eleven Multilingual v2" },
+            { value: "eleven_monolingual_v1", label: "Eleven Monolingual v1" }
+          ];
+        case "Rime":
+          return [
+            { value: "mistv2", label: "Mist v2" }
+          ];
+        case "Hume":
+          return [
+            { value: "hume_default", label: "Hume Default" }
+          ];
+        case "Deepgram":
+          return [
+            { value: "aura-asteria-en", label: "Aura Asteria" },
+            { value: "aura-luna-en", label: "Aura Luna" },
+            { value: "aura-stella-en", label: "Aura Stella" },
+            { value: "aura-athena-en", label: "Aura Athena" },
+            { value: "aura-hera-en", label: "Aura Hera" },
+            { value: "aura-orion-en", label: "Aura Orion" },
+            { value: "aura-arcas-en", label: "Aura Arcas" },
+            { value: "aura-perseus-en", label: "Aura Perseus" },
+            { value: "aura-angus-en", label: "Aura Angus" },
+            { value: "aura-orpheus-en", label: "Aura Orpheus" },
+            { value: "aura-helios-en", label: "Aura Helios" },
+            { value: "aura-zeus-en", label: "Aura Zeus" }
+          ];
+        default:
+          return [];
+      }
+    };
+
+    const filteredVoices = getFilteredVoicesForProvider(value);
+    const filteredModels = getFilteredModelsForProvider(value);
+    
+    // Check if current voice is valid for new provider
+    const isCurrentVoiceValid = filteredVoices.some(voice => voice.value === data.voice);
+    const isCurrentModelValid = filteredModels.some(model => model.value === data.model);
+    
+    const updates: Partial<VoiceData> = { provider: value };
+    
+    // Reset voice if not valid for new provider
+    if (!isCurrentVoiceValid && filteredVoices.length > 0) {
+      updates.voice = filteredVoices[0].value;
+    }
+    
+    // Reset model if not valid for new provider
+    if (!isCurrentModelValid && filteredModels.length > 0) {
+      updates.model = filteredModels[0].value;
+    }
+    
+    onChange(updates);
+  };
 
   return (
     <div className="space-y-8 p-8">
@@ -41,7 +221,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="space-y-3">
               <Label className="text-[16px] font-semibold tracking-[0.2px]">Provider</Label>
-              <Select value={data.provider} onValueChange={(value) => onChange({ provider: value })}>
+              <Select value={data.provider} onValueChange={handleProviderChange}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -49,6 +229,9 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
                   <SelectItem value="ElevenLabs">ElevenLabs</SelectItem>
                   <SelectItem value="OpenAI">OpenAI</SelectItem>
                   <SelectItem value="Azure">Azure</SelectItem>
+                  <SelectItem value="Rime">Rime</SelectItem>
+                  <SelectItem value="Hume">Hume</SelectItem>
+                  <SelectItem value="Deepgram">Deepgram</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -60,13 +243,11 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Rachel">Rachel</SelectItem>
-                  <SelectItem value="Domi">Domi</SelectItem>
-                  <SelectItem value="Bella">Bella</SelectItem>
-                  <SelectItem value="Antoni">Antoni</SelectItem>
-                  <SelectItem value="Elli">Elli</SelectItem>
-                  <SelectItem value="Josh">Josh</SelectItem>
-                  <SelectItem value="Arnold">Arnold</SelectItem>
+                  {getFilteredVoices().map((voice) => (
+                    <SelectItem key={voice.value} value={voice.value}>
+                      {voice.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -78,9 +259,11 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="eleven_turbo_v2">Eleven Turbo v2</SelectItem>
-                  <SelectItem value="eleven_multilingual_v2">Eleven Multilingual v2</SelectItem>
-                  <SelectItem value="eleven_monolingual_v1">Eleven Monolingual v1</SelectItem>
+                  {getFilteredModels().map((model) => (
+                    <SelectItem key={model.value} value={model.value}>
+                      {model.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -320,16 +503,102 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
             </>
           )}
 
+          {/* Rime Provider Settings */}
+          {data.provider === "Rime" && (
+            <>
+              <div className="pt-2 border-t border-border">
+                <div className="space-y-8">
+                  <div className="flex items-center justify-between">
+                    <div className="w-[60%]">
+                      <Label className="text-[16px] font-semibold tracking-[0.2px] text-gray-700 dark:text-gray-200">Speed Alpha</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Controls speech rate (0.1-2.0)</p>
+                    </div>
+                    <div className="w-[300px] flex items-center gap-3">
+                      <WizardSlider
+                        value={data.speedAlpha || 0.9}
+                        onChange={(value) => onChange({ speedAlpha: value })}
+                        min={0.1}
+                        max={2.0}
+                        step={0.1}
+                      />
+                      <span className="text-primary font-mono w-12 text-right">{(data.speedAlpha || 0.9).toFixed(1)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-[16px] font-semibold tracking-[0.2px]">Reduce Latency</Label>
+                      <p className="text-sm text-muted-foreground">Optimize for lower latency at some cost to quality.</p>
+                    </div>
+                    <Switch 
+                      checked={data.reduceLatency || true}
+                      onCheckedChange={(checked) => onChange({ reduceLatency: checked })}
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Hume Provider Settings */}
+          {data.provider === "Hume" && (
+            <>
+              <div className="pt-2 border-t border-border">
+                <div className="space-y-8">
+                  <div className="space-y-3">
+                    <Label className="text-[16px] font-semibold tracking-[0.2px]">Voice Description</Label>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Describe the voice characteristics for Hume AI</p>
+                    <Textarea
+                      placeholder="The voice exudes calm, serene, and peaceful qualities, like a gentle stream flowing through a quiet forest."
+                      value={data.voiceDescription || "The voice exudes calm, serene, and peaceful qualities, like a gentle stream flowing through a quiet forest."}
+                      onChange={(e) => onChange({ voiceDescription: e.target.value })}
+                      rows={3}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="w-[60%]">
+                      <Label className="text-[16px] font-semibold tracking-[0.2px] text-gray-700 dark:text-gray-200">Speed</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Speech rate control</p>
+                    </div>
+                    <div className="w-[300px] flex items-center gap-3">
+                      <WizardSlider
+                        value={data.speed || 1.0}
+                        onChange={(value) => onChange({ speed: value })}
+                        min={0.5}
+                        max={2.0}
+                        step={0.1}
+                      />
+                      <span className="text-primary font-mono w-12 text-right">{(data.speed || 1.0).toFixed(1)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-[16px] font-semibold tracking-[0.2px]">Instant Mode</Label>
+                      <p className="text-sm text-muted-foreground">Enable instant mode for faster response times.</p>
+                    </div>
+                    <Switch 
+                      checked={data.instantMode || true}
+                      onCheckedChange={(checked) => onChange({ instantMode: checked })}
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Info Box for Non-ElevenLabs */}
-          {data.provider !== "ElevenLabs" && (
+          {data.provider !== "ElevenLabs" && data.provider !== "Rime" && data.provider !== "Hume" && (
             <div className="py-3 bg-muted rounded-md px-4 flex gap-3">
               <Info className="h-[18px] w-[18px] text-muted-foreground mt-0.5 flex-shrink-0" />
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">
-                  Enhanced voice customization features are available with ElevenLabs provider.
+                  Enhanced voice customization features are available with ElevenLabs, Rime, and Hume providers.
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Switch to ElevenLabs to access advanced voice stability, clarity, speed, and style controls for superior voice quality and customization.
+                  Switch to ElevenLabs for advanced voice stability and clarity controls, Rime for speed optimization, or Hume for emotional AI voice synthesis.
                 </p>
               </div>
             </div>

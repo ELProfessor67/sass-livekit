@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from livekit.agents import Agent, RunContext, function_tool
+from livekit.agents import Agent, RunContext, function_tool, metrics, MetricsCollectedEvent
 from livekit.agents.llm import ChatContext, ChatMessage
 
 from services.call_outcome_service import CallOutcomeService
@@ -167,6 +167,11 @@ class UnifiedAgent(Agent):
         self._phone_plus_regex = re.compile(r'\++')
         self._html_tag_regex = re.compile(r"<[^>]+>")
         
+        # Latency monitoring variables
+        self.end_of_utterance_delay = 0
+        self.llm_latency = 0
+        self.tts_latency = 0
+        
         logging.info("UNIFIED_AGENT_INITIALIZED | rag_enabled=%s | calendar_enabled=%s", 
                     bool(self.rag_service), bool(self.calendar))
 
@@ -178,6 +183,31 @@ class UnifiedAgent(Agent):
         self._webhook_data.clear()
         self._booking_inflight = False
         logging.info("STATE_RESET | All conversation state cleared")
+
+    def _on_metrics_collected(self, event: MetricsCollectedEvent):
+        """Handle metrics collection events for latency monitoring."""
+        try:
+            if event.type != "metrics_collected":
+                return
+
+            # Update latency variables based on metric type
+            if event.metrics.type == "eou_metrics":
+                self.end_of_utterance_delay = event.metrics.end_of_utterance_delay
+                logging.info(f"LATENCY_EOU | end_of_utterance_delay={self.end_of_utterance_delay}s")
+
+            elif event.metrics.type == "llm_metrics":
+                self.llm_latency = event.metrics.ttft
+                logging.info(f"LATENCY_LLM | ttft={self.llm_latency}s")
+
+            elif event.metrics.type == "tts_metrics":
+                self.tts_latency = event.metrics.ttfb
+                # Calculate and log total latency when TTS completes
+                total_latency = self.end_of_utterance_delay + self.llm_latency + self.tts_latency
+                logging.info(f"LATENCY_TTS | ttfb={self.tts_latency}s")
+                logging.info(f"LATENCY_TOTAL | transcription_delay={self.end_of_utterance_delay}s | llm={self.llm_latency}s | tts={self.tts_latency}s | total={total_latency}s")
+
+        except Exception as e:
+            logging.error(f"METRICS_COLLECTION_ERROR | error={str(e)}")
 
     def _tz(self) -> ZoneInfo:
         """Get timezone from calendar or default to UTC."""
@@ -334,15 +364,31 @@ class UnifiedAgent(Agent):
                 self.rag_service.search_knowledge_base(self.knowledge_base_id, query)
             )
             
-            results = await asyncio.wait_for(rag_task, timeout=5.0)  # Reduced from 8 to 5 seconds
+            results = await asyncio.wait_for(rag_task, timeout=8.0)  # Increased timeout for better results
             
             if results and results.snippets:
-                # Format the results
+                # Format the results with better structure and more content
                 formatted_results = []
-                for snippet in results.snippets[:3]:  # Limit to top 3 results
-                    formatted_results.append(snippet.get('content', ''))
-                snippet = self._sanitize_and_cap(' '.join(formatted_results), cap=600)
-                return snippet or "No specific info found."
+                for i, snippet in enumerate(results.snippets[:5], 1):  # Increased to top 5 results
+                    content = snippet.get('content', '').strip()
+                    if content:
+                        # Add source information if available
+                        ref = snippet.get('reference', {})
+                        file_info = ref.get('file', {}) if isinstance(ref, dict) else {}
+                        source = file_info.get('name', '') if file_info else ''
+                        
+                        if source:
+                            formatted_results.append(f"{content} (Source: {source})")
+                        else:
+                            formatted_results.append(content)
+                
+                if formatted_results:
+                    # Join with proper spacing and return more content
+                    full_response = '\n\n'.join(formatted_results)
+                    # Increase character limit for more detailed responses
+                    return self._sanitize_and_cap(full_response, cap=2000) or "No specific info found."
+                else:
+                    return "No specific info found."
 
             else:
                 return "I couldn't find specific information about that in our knowledge base."
@@ -366,18 +412,19 @@ class UnifiedAgent(Agent):
                 f"details on {topic}",
                 f"explanation of {topic}",
             ]
-            # Add timeout and reduce context length for voice flows
+            # Use longer timeout and more context for detailed information
             context = await asyncio.wait_for(
                 self.rag_service.search_multiple_queries(
                     knowledge_base_id=self.knowledge_base_id,
                     queries=queries,
-                    max_context_length=3000,  # Reduced from 8000 for voice latency
+                    max_context_length=6000,  # Increased for more detailed responses
                 ),
-                timeout=2.0  # 2 second timeout
+                timeout=10.0  # Increased timeout for comprehensive results
             )
             if not context:
                 return f"I couldn't find detailed information about {topic} in our knowledge base."
-            return self._sanitize_and_cap(context, cap=600) or f"No detailed info on {topic}."
+            # Allow more content for detailed information
+            return self._sanitize_and_cap(context, cap=3000) or f"No detailed info on {topic}."
         except asyncio.TimeoutError:
             logging.warning(f"RAG_DETAILED_INFO_TIMEOUT | topic={topic}")
             return f"I found some information about {topic}, but let me give you a quick summary."

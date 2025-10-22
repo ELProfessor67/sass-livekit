@@ -50,6 +50,12 @@ export interface VoiceData {
   optimizeStreaming: number;
   pronunciationDictionary: boolean;
   chunk: number;
+  // Rime-specific settings
+  speedAlpha?: number;
+  reduceLatency?: boolean;
+  // Hume-specific settings
+  voiceDescription?: string;
+  instantMode?: boolean;
 }
 
 export interface StructuredDataField {

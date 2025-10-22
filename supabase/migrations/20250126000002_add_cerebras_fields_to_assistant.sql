@@ -2,12 +2,12 @@
 -- These fields will store Cerebras API configuration for assistants
 
 ALTER TABLE public.assistant 
-ADD COLUMN cerebras_model TEXT DEFAULT 'llama3.1-8b',
+ADD COLUMN cerebras_model TEXT DEFAULT 'gpt-oss-120b',
 ADD COLUMN cerebras_temperature DECIMAL(3,2) DEFAULT 0.1,
 ADD COLUMN cerebras_max_tokens INTEGER DEFAULT 250;
 
 -- Add comments for documentation
-COMMENT ON COLUMN public.assistant.cerebras_model IS 'Cerebras model to use (e.g., llama3.1-8b, llama-3.3-70b, gpt-oss-120b)';
+COMMENT ON COLUMN public.assistant.cerebras_model IS 'Cerebras model to use (e.g., gpt-oss-120b)';
 COMMENT ON COLUMN public.assistant.cerebras_temperature IS 'Temperature setting for Cerebras model (0.0 to 1.0)';
 COMMENT ON COLUMN public.assistant.cerebras_max_tokens IS 'Maximum tokens for Cerebras model response';
 

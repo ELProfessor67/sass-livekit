@@ -6,6 +6,8 @@ livekit-plugins-openai>=0.8.0
 livekit-plugins-silero>=0.8.0
 livekit-plugins-elevenlabs>=1.2.11
 livekit-plugins-deepgram>=0.8.0
+livekit-agents[rime]~=1.2
+livekit-agents[hume]~=1.2
 
 # OpenAI integration
 openai>=1.0.0

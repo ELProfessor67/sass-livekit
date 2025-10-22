@@ -112,7 +112,9 @@ class DatabaseClient:
         transcription: list,
         participant_identity: Optional[str] = None,
         recording_sid: Optional[str] = None,
-        call_sid: Optional[str] = None
+        call_sid: Optional[str] = None,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None
     ) -> bool:
         """Save call history to database."""
         if not self.is_available():
@@ -127,8 +129,15 @@ class DatabaseClient:
                 "call_duration": call_duration,
                 "call_status": call_status,
                 "transcription": transcription,
-                "participant_identity": participant_identity
+                "participant_identity": participant_identity,
+                "call_sid": call_sid
             }
+            
+            # Add start_time and end_time if provided
+            if start_time:
+                call_data["start_time"] = start_time
+            if end_time:
+                call_data["end_time"] = end_time
             
             result = self._client.table("call_history").insert(call_data).execute()
             

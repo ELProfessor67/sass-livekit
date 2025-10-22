@@ -47,7 +47,9 @@ class SupabaseClient:
         transcription: List[Dict[str, Any]],
         participant_identity: Optional[str] = None,
         recording_sid: Optional[str] = None,
-        call_sid: Optional[str] = None
+        call_sid: Optional[str] = None,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None
     ) -> bool:
         """Save call history to database."""
         if not self.is_available():
@@ -69,7 +71,9 @@ class SupabaseClient:
                 transcription=transcription,
                 participant_identity=participant_identity,
                 recording_sid=recording_sid,
-                call_sid=call_sid
+                call_sid=call_sid,
+                start_time=start_time,
+                end_time=end_time
             )
     
     async def save_n8n_spreadsheet_id(self, assistant_id: str, spreadsheet_id: str) -> bool:

@@ -25,20 +25,19 @@ Environment variables used by the app
 
 # Cerebras Configuration (Optional - Alternative LLM provider)
 - CEREBRAS_API_KEY: Cerebras API key for LLM processing
-- CEREBRAS_LLM_MODEL: Cerebras model to use (default: llama3.1-8b)
+- CEREBRAS_LLM_MODEL: Cerebras model to use (default: gpt-oss-120b)
 - CEREBRAS_TEMPERATURE: Temperature setting for Cerebras model (default: 0.1)
 - CEREBRAS_MAX_TOKENS: Maximum tokens for Cerebras model response (default: 250)
 
 # Available Cerebras Models:
-# - llama3.1-8b (8B parameters, fast inference)
 # - llama-3.3-70b (70B parameters, high quality)
+# - gpt-oss-120b (120B parameters, OpenAI OSS model)
 # - llama-4-scout-17b-16e-instruct (17B parameters, instruction-tuned)
 # - llama-4-maverick-17b-128e-instruct (17B parameters, preview)
 # - qwen-3-32b (32B parameters, multilingual)
 # - qwen-3-235b-a22b-instruct-2507 (235B parameters, preview)
 # - qwen-3-235b-a22b-thinking-2507 (235B parameters, reasoning, preview)
 # - qwen-3-coder-480b (480B parameters, code generation, preview)
-# - gpt-oss-120b (120B parameters, OpenAI-compatible)
 
 # AWS S3 Configuration (Optional - will fallback to local storage)
 - AWS_ACCESS_KEY_ID: AWS access key ID
@@ -53,6 +52,14 @@ Environment variables used by the app
 - LIVEKIT_URL: LiveKit server URL (e.g., ws://localhost:7880)
 - LIVEKIT_API_KEY: LiveKit API key
 - LIVEKIT_API_SECRET: LiveKit API secret
+
+# Hume TTS Configuration (Optional - Text-to-Speech provider)
+- HUME_API_KEY: Hume API key for TTS processing
+- HUME_VOICE_NAME: Hume voice name (default: "Colton Rivers")
+- HUME_VOICE_PROVIDER: Hume voice provider (default: "hume")
+- HUME_DESCRIPTION: Voice description for acting instructions (default: "The voice exudes calm, serene, and peaceful qualities, like a gentle stream flowing through a quiet forest.")
+- HUME_SPEED: Speaking rate adjustment (default: 1.0, range: 0.25-3.0)
+- HUME_INSTANT_MODE: Enable ultra-low latency streaming (default: true)
 
 # Frontend Configuration
 - VITE_BACKEND_URL: Backend URL for frontend (default http://localhost:4000)
