@@ -1275,7 +1275,6 @@ class CallHandler:
         if provider == "Deepgram" and DEEPGRAM_AVAILABLE:
             # Use assistant's Deepgram settings from database
             deepgram_model = config.get("voice_model_setting", "aura-asteria-en")  # From DB
-            deepgram_voice = config.get("voice_name_setting", "aura-asteria-en")  # From DB
             
             # Get API key from environment (centralized)
             deepgram_api_key = os.getenv("DEEPGRAM_API_KEY")
@@ -1283,10 +1282,9 @@ class CallHandler:
             if deepgram_api_key:
                 tts = lk_deepgram.TTS(
                     model=deepgram_model,
-                    voice=deepgram_voice,
                     api_key=deepgram_api_key,
                 )
-                logger.info(f"DEEPGRAM_TTS_CONFIGURED | model={deepgram_model} | voice={deepgram_voice}")
+                logger.info(f"DEEPGRAM_TTS_CONFIGURED | model={deepgram_model}")
                 return tts
             else:
                 logger.warning("DEEPGRAM_API_KEY_NOT_SET | falling back to OpenAI TTS")
