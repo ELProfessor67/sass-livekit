@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 const signUpSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -74,21 +75,7 @@ export const FullScreenSignup = () => {
   const onSubmit = async (data: SignUpFormData) => {
     setIsLoading(true);
     try {
-      // Client-side check to prevent duplicate phone numbers
-      const { data: existsRpc } = await supabase.rpc('phone_exists', {
-        _phone: data.phone,
-        _country: data.countryCode,
-      });
-
-      if (existsRpc === true) {
-        toast({
-          title: "Phone already in use",
-          description: "An account with this phone number already exists.",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-        return;
-      }
+      // Phone uniqueness will be enforced by database constraints
 
       const result = await signUp(
         data.name,
@@ -107,61 +94,6 @@ export const FullScreenSignup = () => {
         description: "Please check your email to verify your account.",
       });
       navigate("/login");
-      return;
-
-      if (!user) {
-        toast({
-          title: "Check your email",
-          description: "We've sent you a confirmation link to verify your account.",
-        });
-        navigate("/login");
-        return;
-      }
-
-      if (session) {
-        // Upsert full profile row only when we have a valid session (RLS)
-        try {
-          await supabase.from("users").upsert({
-            id: user.id,
-            name: data.name,
-            contact: {
-              email: data.email,
-              phone: data.phone,
-              countryCode: data.countryCode,
-            },
-            is_active: true,
-          });
-        } catch (e: any) {
-          // If unique phone constraint is hit, show friendly message
-          const message: string = e?.message || "";
-          if (message.includes("users_unique_phone_country_idx") || message.includes("duplicate key value") || e?.code === "23505") {
-            toast({
-              title: "Phone already in use",
-              description: "An account with this phone number already exists.",
-              variant: "destructive",
-            });
-            setIsLoading(false);
-            return;
-          }
-          // otherwise ignore
-        }
-
-        const onboardingCompleted = localStorage.getItem("onboarding-completed");
-        if (onboardingCompleted === "true") {
-          navigate("/");
-          toast({ title: "Welcome! 🎉", description: "Account created successfully." });
-        } else {
-          navigate("/onboarding");
-          toast({ title: "Account created! 🎉", description: "Let's set up your experience." });
-        }
-      } else {
-        // Email confirmation required
-        toast({
-          title: "Confirm your email",
-          description: "Please verify your email to continue.",
-        });
-        navigate("/login");
-      }
     } catch (error: any) {
       toast({
         title: "Sign up failed",

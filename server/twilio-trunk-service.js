@@ -33,7 +33,7 @@ export async function createMainTrunkForUser({ accountSid, authToken, userId, la
         'Authorization': `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
         'Content-Type': 'application/x-www-form-urlencoded'
       },
-      body: `FriendlyName=SIP-Credentials-${userId.slice(0, 8)}`
+      body: `FriendlyName=SIP-Credentials-${userId.slice(0, 8)}-${Date.now()}-${Math.floor(Math.random() * 10000)}`
     });
 
     if (!credentialListResponse.ok) {

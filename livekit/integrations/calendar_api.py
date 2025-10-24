@@ -122,7 +122,8 @@ class CalComCalendar(Calendar):
         event_type_slug: Optional[str] = None,
         org_slug: Optional[str] = None,
     ) -> None:
-        self.tz = ZoneInfo(timezone)
+        # Validate and normalize timezone
+        self.tz = self._validate_timezone(timezone)
         self._api_key = api_key
         self._event_type_id = event_type_id
         self._username = username
@@ -137,6 +138,40 @@ class CalComCalendar(Calendar):
             self._http = aiohttp.ClientSession()
 
         self._log = logging.getLogger("cal.com")
+
+    def _validate_timezone(self, timezone: str) -> ZoneInfo:
+        """Validate and normalize timezone string to IANA format."""
+        # Common timezone abbreviations mapping
+        timezone_mapping = {
+            "CST": "America/Chicago",
+            "CDT": "America/Chicago", 
+            "EST": "America/New_York",
+            "EDT": "America/New_York",
+            "PST": "America/Los_Angeles",
+            "PDT": "America/Los_Angeles",
+            "MST": "America/Denver",
+            "MDT": "America/Denver",
+            "GMT": "Europe/London",
+            "BST": "Europe/London",
+            "UTC": "UTC"
+        }
+        
+        # Normalize timezone string
+        normalized_tz = timezone.strip().upper()
+        
+        # Check if it's a common abbreviation and map it
+        if normalized_tz in timezone_mapping:
+            mapped_tz = timezone_mapping[normalized_tz]
+            self._log.info(f"Cal.com: Mapped timezone '{timezone}' to '{mapped_tz}'")
+            timezone = mapped_tz
+        
+        try:
+            return ZoneInfo(timezone)
+        except Exception as e:
+            self._log.error(f"Cal.com: Invalid timezone '{timezone}': {str(e)}")
+            # Fallback to UTC if timezone is invalid
+            self._log.warning("Cal.com: Falling back to UTC timezone")
+            return ZoneInfo("UTC")
 
     # -------- headers
 

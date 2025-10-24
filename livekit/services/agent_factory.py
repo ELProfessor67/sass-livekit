@@ -48,7 +48,12 @@ class AgentFactory:
 
         # Add date context to prevent past date tool calls
         tz_name = (config.get("cal_timezone") or "Asia/Karachi")
-        now_local = datetime.datetime.now(ZoneInfo(tz_name))
+        try:
+            now_local = datetime.datetime.now(ZoneInfo(tz_name))
+        except Exception as e:
+            logger.warning(f"Invalid timezone '{tz_name}': {str(e)}, falling back to UTC")
+            tz_name = "UTC"
+            now_local = datetime.datetime.now(ZoneInfo(tz_name))
         instructions += (
             f"\n\nCONTEXT:\n"
             f"- Current local time: {now_local.isoformat()}\n"
