@@ -86,7 +86,9 @@ class ConfigResolver:
                 logger.info(f"ASSISTANT_FOUND_BY_ID | assistant_id={assistant_id}")
                 logger.info(f"ASSISTANT_CONFIG_DEBUG | knowledge_base_id={assistant_data.get('knowledge_base_id')} | use_rag={assistant_data.get('use_rag')}")
                 logger.info(f"ASSISTANT_CALENDAR_DEBUG | cal_api_key present: {bool(assistant_data.get('cal_api_key'))} | cal_event_type_id present: {bool(assistant_data.get('cal_event_type_id'))}")
-                logger.info(f"ASSISTANT_CALENDAR_DEBUG | cal_api_key: {assistant_data.get('cal_api_key', 'NOT_FOUND')[:10]}... | cal_event_type_id: {assistant_data.get('cal_event_type_id', 'NOT_FOUND')}")
+                cal_api_key = assistant_data.get('cal_api_key') or 'NOT_FOUND'
+                cal_event_type_id = assistant_data.get('cal_event_type_id') or 'NOT_FOUND'
+                logger.info(f"ASSISTANT_CALENDAR_DEBUG | cal_api_key: {cal_api_key[:10] if cal_api_key != 'NOT_FOUND' else 'NOT_FOUND'}... | cal_event_type_id: {cal_event_type_id}")
                 return assistant_data
             
             logger.warning(f"No assistant found for ID: {assistant_id}")

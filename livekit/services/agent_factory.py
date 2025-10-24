@@ -46,21 +46,24 @@ class AgentFactory:
         
         instructions = config.get("prompt", "You are a helpful assistant.")
 
-        # Add date context to prevent past date tool calls
-        tz_name = (config.get("cal_timezone") or "Asia/Karachi")
-        try:
-            now_local = datetime.datetime.now(ZoneInfo(tz_name))
-        except Exception as e:
-            logger.warning(f"Invalid timezone '{tz_name}': {str(e)}, falling back to UTC")
-            tz_name = "UTC"
-            now_local = datetime.datetime.now(ZoneInfo(tz_name))
-        instructions += (
-            f"\n\nCONTEXT:\n"
-            f"- Current local time: {now_local.isoformat()}\n"
-            f"- Timezone: {tz_name}\n"
-            f"- When the user says a date like '7th October', always interpret it as the next FUTURE occurrence in {tz_name}. "
-            f"Never call tools with past dates; if a parsed date is in the past year, bump it to the next year."
-        )
+        # Add date context only if calendar is configured
+        cal_api_key = config.get('cal_api_key')
+        cal_event_type_id = config.get('cal_event_type_id')
+        if cal_api_key and cal_event_type_id:
+            tz_name = (config.get("cal_timezone") or "Asia/Karachi")
+            try:
+                now_local = datetime.datetime.now(ZoneInfo(tz_name))
+            except Exception as e:
+                logger.warning(f"Invalid timezone '{tz_name}': {str(e)}, falling back to UTC")
+                tz_name = "UTC"
+                now_local = datetime.datetime.now(ZoneInfo(tz_name))
+            instructions += (
+                f"\n\nCONTEXT:\n"
+                f"- Current local time: {now_local.isoformat()}\n"
+                f"- Timezone: {tz_name}\n"
+                f"- When the user says a date like '7th October', always interpret it as the next FUTURE occurrence in {tz_name}. "
+                f"Never call tools with past dates; if a parsed date is in the past year, bump it to the next year."
+            )
 
         # Add call management settings to instructions
         call_management_config = build_call_management_instructions(config)
@@ -95,6 +98,11 @@ class AgentFactory:
         if knowledge_base_id:
             instructions += "\n\nKNOWLEDGE BASE ACCESS:\nYou have access to a knowledge base with information about the company. You can use the following tools when needed:\n- query_knowledge_base: Search for specific information\n- get_detailed_information: Get comprehensive details about a topic\n\nIMPORTANT: Only use the knowledge base tools when explicitly instructed to do so in your system prompt or when the user specifically requests information that requires knowledge base lookup. Do not automatically search the knowledge base unless instructed.\n\nWhen you do use the knowledge base, provide complete, well-formatted responses with proper context and source information when available."
             logger.info("RAG_TOOLS | Knowledge base tools added to instructions (conditional usage)")
+
+        # Add booking instructions only if calendar is available
+        if calendar:
+            instructions += "\n\nBOOKING CAPABILITIES:\nYou can help users book appointments. You have access to the following booking tools:\n- list_slots_on_day: Show available appointment slots for a specific day\n- book_appointment: Book an appointment for the user\n\nWhen users ask about booking or scheduling, use these tools to help them find and book available slots."
+            logger.info("BOOKING_TOOLS | Calendar booking tools added to instructions")
 
         # Create unified agent with both RAG and booking capabilities
         # Use pre-warmed components if available
@@ -134,8 +142,10 @@ class AgentFactory:
     async def _initialize_calendar(self, config: Dict[str, Any]) -> Optional[CalComCalendar]:
         """Initialize calendar if credentials are available."""
         # Debug logging for calendar configuration
-        logger.info(f"CALENDAR_DEBUG | cal_api_key present: {bool(config.get('cal_api_key'))} | cal_event_type_id present: {bool(config.get('cal_event_type_id'))}")
-        logger.info(f"CALENDAR_DEBUG | cal_api_key value: {config.get('cal_api_key', 'NOT_FOUND')[:10]}... | cal_event_type_id value: {config.get('cal_event_type_id', 'NOT_FOUND')}")
+        cal_api_key = config.get('cal_api_key')
+        cal_event_type_id = config.get('cal_event_type_id')
+        logger.info(f"CALENDAR_DEBUG | cal_api_key present: {bool(cal_api_key)} | cal_event_type_id present: {bool(cal_event_type_id)}")
+        logger.info(f"CALENDAR_DEBUG | cal_api_key value: {cal_api_key[:10] if cal_api_key else 'NOT_FOUND'}... | cal_event_type_id value: {cal_event_type_id or 'NOT_FOUND'}")
         logger.info(f"CALENDAR_DEBUG | cal_timezone: {config.get('cal_timezone', 'NOT_FOUND')}")
         
         if config.get("cal_api_key") and config.get("cal_event_type_id"):
