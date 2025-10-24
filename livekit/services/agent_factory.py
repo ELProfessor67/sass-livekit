@@ -130,6 +130,9 @@ class AgentFactory:
         
         # Set analysis fields if configured
         analysis_fields = config.get("structured_data_fields", [])
+        # Handle case where structured_data_fields is None
+        if analysis_fields is None:
+            analysis_fields = []
         logger.info(f"ANALYSIS_FIELDS_DEBUG | raw_config={config.get('structured_data_fields')} | processed_fields={analysis_fields}")
         if analysis_fields:
             agent.set_analysis_fields(analysis_fields)

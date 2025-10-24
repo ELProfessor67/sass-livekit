@@ -14,6 +14,9 @@ async def build_analysis_instructions(config: Dict[str, Any], classify_data_fiel
     
     # Add structured data collection instructions
     structured_data = config.get("structured_data_fields", [])
+    # Handle case where structured_data_fields is None
+    if structured_data is None:
+        structured_data = []
     logger.info(f"ANALYSIS_INSTRUCTIONS_DEBUG | structured_data_count={len(structured_data)} | data={structured_data}")
     if structured_data:
         # Use LLM to classify fields
