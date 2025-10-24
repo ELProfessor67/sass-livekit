@@ -122,6 +122,9 @@ class CalComCalendar(Calendar):
         event_type_slug: Optional[str] = None,
         org_slug: Optional[str] = None,
     ) -> None:
+        # Initialize logger first so it's available for timezone validation
+        self._log = logging.getLogger("cal.com")
+        
         # Validate and normalize timezone
         self.tz = self._validate_timezone(timezone)
         self._api_key = api_key
@@ -136,8 +139,6 @@ class CalComCalendar(Calendar):
         except RuntimeError:
             import aiohttp
             self._http = aiohttp.ClientSession()
-
-        self._log = logging.getLogger("cal.com")
 
     def _validate_timezone(self, timezone: str) -> ZoneInfo:
         """Validate and normalize timezone string to IANA format."""
