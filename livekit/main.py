@@ -38,7 +38,7 @@ from livekit.agents import (
 )
 
 # Plugin imports
-from livekit.plugins import openai, silero, deepgram
+from livekit.plugins import openai, silero
 from livekit.agents.tts import FallbackAdapter
 
 # Additional provider imports
@@ -160,56 +160,13 @@ class CallHandler:
             self._prewarmed_rag = RAGService()  # RAGService initializes itself in constructor
             # logger.info("PREWARM_RAG | RAG service initialized")
             
-            # Pre-warm common LLM configurations with default settings
-            common_configs = [
-                {
-                    "llm_provider_setting": "OpenAI", 
-                    "llm_model_setting": "GPT-4o Mini",
-                    "temperature_setting": 0.1,
-                    "max_token_setting": 200
-                },
-                {
-                    "llm_provider_setting": "Groq", 
-                    "groq_model": "llama3-8b-8192",
-                    "groq_temperature": 0.10,
-                    "groq_max_tokens": 250
-                },
-            ]
+            # LLM will be created dynamically based on assistant configuration
+            # No hardcoded LLM prewarming - each assistant uses its own LLM settings
+            logger.info("PREWARM_LLM | LLM will be created dynamically per assistant config")
             
-            for config in common_configs:
-                provider = config.get("llm_provider_setting", "OpenAI")
-                if provider == "OpenAI":
-                    model = config.get("llm_model_setting", "GPT-4o Mini")
-                    temperature = config.get("temperature_setting", 0.1)
-                    max_tokens = config.get("max_token_setting", 200)
-                    config_key = f"{provider}_{model}"
-                elif provider == "Groq":
-                    model = config.get("groq_model", "llama3-8b-8192")
-                    temperature = config.get("groq_temperature", 0.10)
-                    max_tokens = config.get("groq_max_tokens", 250)
-                    config_key = f"{provider}_{model}"
-                else:
-                    continue
-                    
-                try:
-                    llm = self._create_llm(provider, model, temperature, max_tokens, config)
-                    self._prewarmed_llms[config_key] = llm
-                    logger.info("PREWARM_LLM | %s pre-warmed", config_key)
-                except Exception as e:
-                    logger.warning("PREWARM_LLM_FAILED | %s: %s", config_key, str(e))
-            
-            # Pre-warm TTS with default settings
-            try:
-                tts_config = {
-                    "voice_provider_setting": "OpenAI",
-                    "voice_model_setting": "tts-1",
-                    "voice_name_setting": "nova"
-                }
-                tts = self._create_tts("OpenAI", "tts-1", "nova", tts_config)
-                self._prewarmed_tts["openai_nova"] = tts
-                logger.info("PREWARM_TTS | OpenAI TTS pre-warmed")
-            except Exception as e:
-                logger.warning("PREWARM_TTS_FAILED | %s", str(e))
+            # Pre-warm TTS with default settings (removed hardcoded OpenAI prewarming)
+            # TTS will be created dynamically based on assistant configuration
+            logger.info("PREWARM_TTS | TTS will be created dynamically per assistant config")
             
             # logger.info("PREWARM_COMPLETE | all components warmed up")
             
@@ -1076,7 +1033,7 @@ class CallHandler:
         deepgram_language = language_mapping.get(language_setting, "en")
         
         # Use Deepgram streaming STT for better first-token latency
-        stt = deepgram.STT(
+        stt = lk_deepgram.STT(
             model="nova-3",
             language=deepgram_language
         )
@@ -1141,9 +1098,9 @@ class CallHandler:
 
         elif provider == "Cerebras" and CEREBRAS_AVAILABLE:
             # Use assistant's Cerebras settings from database
-            cerebras_model = config.get("cerebras_model", "gpt-oss-120b")  # From DB
-            cerebras_temperature = config.get("cerebras_temperature", 1.00)  # From DB
-            cerebras_max_tokens = config.get("cerebras_max_tokens", 250)     # From DB
+            cerebras_model = config.get("llm_model_setting", "gpt-oss-120b")  # From DB
+            cerebras_temperature = config.get("temperature_setting", 0.3)  # From DB
+            cerebras_max_tokens = config.get("max_token_setting", 250)     # From DB
             
             # Get API key from environment (centralized)
             cerebras_api_key = os.getenv("CEREBRAS_API_KEY")
@@ -1191,13 +1148,11 @@ class CallHandler:
         """Create TTS using assistant config + environment API keys.
         
         Supported providers:
+        - ElevenLabs: Uses ELEVENLABS_API_KEY from environment, supports eleven_turbo_v2 model
         - Rime: Uses RIME_API_KEY from environment, supports mistv2 model with rainforest speaker
         - Hume: Uses HUME_API_KEY from environment, supports VoiceByName with description
         - Deepgram: Uses DEEPGRAM_API_KEY from environment, supports Aura voices
         - OpenAI: Default fallback TTS provider
-        
-        Old providers (commented out):
-        - ElevenLabs: Previously supported but commented out
         """
         
         if provider == "Rime" and RIME_AVAILABLE:
@@ -1251,25 +1206,25 @@ class CallHandler:
             else:
                 logger.warning("HUME_API_KEY_NOT_SET | falling back to Deepgram TTS")
         
-        # OLD TTS IMPLEMENTATIONS - COMMENTED OUT
-        # if provider == "ElevenLabs" and ELEVENLABS_AVAILABLE:
-        #     # Use assistant's ElevenLabs settings from database
-        #     elevenlabs_model = config.get("voice_model_setting", "eleven_turbo_v2")  # From DB
-        #     elevenlabs_voice = config.get("voice_name_setting", "Rachel")             # From DB
-        #     
-        #     # Get API key from environment (centralized)
-        #     elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-        #     
-        #     if elevenlabs_api_key:
-        #         tts = lk_elevenlabs.TTS(
-        #             model=elevenlabs_model,
-        #             voice_id=elevenlabs_voice,
-        #             api_key=elevenlabs_api_key,  # From environment
-        #         )
-        #         logger.info(f"ELEVENLABS_TTS_CONFIGURED | model={elevenlabs_model} | voice={elevenlabs_voice}")
-        #         return tts
-        #     else:
-        #         logger.warning("ELEVENLABS_API_KEY_NOT_SET | falling back to OpenAI TTS")
+        # ElevenLabs TTS implementation
+        if provider == "ElevenLabs" and ELEVENLABS_AVAILABLE:
+            # Use assistant's ElevenLabs settings from database
+            elevenlabs_model = config.get("voice_model_setting", "eleven_turbo_v2")  # From DB
+            elevenlabs_voice = config.get("voice_name_setting", "Rachel")             # From DB
+            
+            # Get API key from environment (centralized)
+            elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
+            
+            if elevenlabs_api_key:
+                tts = lk_elevenlabs.TTS(
+                    model=elevenlabs_model,
+                    voice_id=elevenlabs_voice,
+                    api_key=elevenlabs_api_key,  # From environment
+                )
+                logger.info(f"ELEVENLABS_TTS_CONFIGURED | model={elevenlabs_model} | voice={elevenlabs_voice}")
+                return tts
+            else:
+                logger.warning("ELEVENLABS_API_KEY_NOT_SET | falling back to OpenAI TTS")
         
         # Deepgram TTS implementation
         if provider == "Deepgram" and DEEPGRAM_AVAILABLE:
@@ -1313,8 +1268,10 @@ class CallHandler:
         # Get API key from environment (centralized)
         openai_api_key = os.getenv("OPENAI_API_KEY")
         
-        tts = deepgram.TTS(
-            model="aura-asteria-en",
+        tts = openai.TTS(
+            model="tts-1",
+            voice=mapped_voice,
+            api_key=openai_api_key,
         )
         logger.info(f"OPENAI_TTS_CONFIGURED | voice={mapped_voice}")
         return tts

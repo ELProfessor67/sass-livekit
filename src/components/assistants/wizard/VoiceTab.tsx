@@ -66,9 +66,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
     switch (data.provider) {
       case "ElevenLabs":
         return [
-          { value: "eleven_turbo_v2", label: "Eleven Turbo v2" },
-          { value: "eleven_multilingual_v2", label: "Eleven Multilingual v2" },
-          { value: "eleven_monolingual_v1", label: "Eleven Monolingual v1" }
+          { value: "eleven_turbo_v2", label: "Eleven Turbo v2" }
         ];
       case "Rime":
         return [
