@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Phone, Users, TrendingUp, Settings } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Phone, Users, TrendingUp, Settings, Play } from "lucide-react";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -67,6 +69,12 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
   const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([]);
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
+  const navigate = useNavigate();
+
+  const handleStartCall = () => {
+    navigate(`/voiceagent?assistantId=${assistant.id}`);
+    onClose(); // Close the dialog
+  };
 
   useEffect(() => {
     if (assistant && isOpen) {
@@ -119,6 +127,17 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
           title={assistant.name}
           description={assistant.description}
         />
+        
+        {/* Start Call Button */}
+        <div className="flex justify-end pb-4 border-b border-border">
+          <Button 
+            onClick={handleStartCall}
+            className="gap-2"
+          >
+            <Play className="h-4 w-4" />
+            Start Call
+          </Button>
+        </div>
 
         <div className="space-y-6">
           {/* Status Header */}

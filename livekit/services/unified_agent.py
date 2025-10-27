@@ -110,6 +110,52 @@ class UnifiedAgent(Agent):
 
         return None
 
+    def _find_slot_by_time_string(self, time_str: str) -> Optional[object]:
+        """Find a slot by parsing a time string like '8am', '3:30pm', etc."""
+        import re
+        
+        # Parse time string like "8am", "8:30am", "3pm", "10:00am", "12:00pm"
+        # Also handle variations like "8 am", "3 PM", "8:30 AM"
+        time_str = time_str.strip().lower().replace(" ", "")
+        
+        # Match patterns: 8am, 8:30am, 3:00pm, 10:15am
+        match = re.match(r"(\d{1,2})(?::(\d{2}))?(am|pm)", time_str)
+        if not match:
+            return None
+        
+        hour = int(match.group(1))
+        minute = int(match.group(2) or "0")
+        period = match.group(3)
+        
+        # Convert to 24-hour format
+        if period == "am":
+            if hour == 12:
+                hour_24 = 0
+            else:
+                hour_24 = hour
+        else:  # pm
+            if hour == 12:
+                hour_24 = 12
+            else:
+                hour_24 = hour + 12
+        
+        # Create target time
+        target_time = datetime.time(hour_24, minute)
+        
+        # Find matching slot in _slots_map
+        tz = self._tz()
+        for key, slot in self._slots_map.items():
+            # Get the local time of the slot
+            slot_local_time = slot.start_time.astimezone(tz).time()
+            
+            # Check if times match (within same hour/minute)
+            if slot_local_time.hour == target_time.hour and slot_local_time.minute == target_time.minute:
+                logging.info("SLOT_FOUND_BY_TIME | time_str=%s | matched_time=%s", 
+                           time_str, slot_local_time.strftime('%I:%M %p'))
+                return slot
+        
+        logging.info("SLOT_NOT_FOUND_BY_TIME | time_str=%s | total_slots=%d", time_str, len(self._slots_map))
+        return None
 
     def __init__(
         self, 
@@ -435,8 +481,8 @@ class UnifiedAgent(Agent):
     # ========== BOOKING TOOLS ==========
     
     @function_tool(name="list_slots_on_day")
-    async def list_slots_on_day(self, ctx: RunContext, day: str, max_options: int = 5) -> str:
-        """List available appointment slots for a specific day."""
+    async def list_slots_on_day(self, ctx: RunContext, day: str, max_options: int = 10) -> str:
+        """List available appointment slots for a specific day. Shows up to 10 slots by default, or use max_options to show more."""
         msg = self._require_calendar()
         if msg:
             return msg
@@ -471,22 +517,34 @@ class UnifiedAgent(Agent):
                     else:
                         return "I couldn't retrieve available slots at the moment."
                 
-                slots = result.slots[:max_options]
-                if not slots:
+                all_slots = result.slots
+                if not all_slots:
                     return f"No available slots for {day}."
                 
                 # Clear previous slots and use stable keys
+                # IMPORTANT: Store ALL slots in _slots_map for availability checking
                 self._slots_map.clear()
-                lines = []
-                for i, slot in enumerate(slots, 1):
+                for slot in all_slots:
                     key = slot.start_time.isoformat()  # Stable key based on ISO time
                     self._slots_map[key] = slot
+                
+                # Only show first max_options to user for brevity, but let them know if there are more
+                display_slots = all_slots[:max_options]
+                lines = []
+                for i, slot in enumerate(display_slots, 1):
                     local_time = slot.start_time.astimezone(self._tz())
                     formatted_time = local_time.strftime('%I:%M %p')
                     lines.append(f"{i}. {formatted_time}")
                 
-                logging.info("SLOTS_LISTED | count=%d | day=%s", len(slots), day)
-                return f"Available slots for {day}:\n" + "\n".join(lines)
+                # Build response with total count information
+                response_parts = [f"Available slots for {day}:\n" + "\n".join(lines)]
+                
+                # Inform user if there are more slots available
+                if len(all_slots) > max_options:
+                    response_parts.append(f"\nI'm showing you {len(display_slots)} of {len(all_slots)} total available slots. You can choose any time slot from the list above, or ask me to show more options.")
+                
+                logging.info("SLOTS_LISTED | total=%d | displayed=%d | day=%s", len(all_slots), len(display_slots), day)
+                return "".join(response_parts)
                 
             except asyncio.TimeoutError:
                 logging.warning(f"list_slots_on_day TIMEOUT | day={day}")
@@ -509,6 +567,10 @@ class UnifiedAgent(Agent):
                 keys = list(self._slots_map.keys())
                 if 0 <= idx < len(keys):
                     slot = self._slots_map[keys[idx]]
+            else:
+                # Try parsing as time string (e.g., "8am", "3:30pm", "10:00am")
+                # Match against all available slots
+                slot = self._find_slot_by_time_string(option_id)
         
         if not slot:
             return f"Option {option_id} isn't available. Say 'list slots' to refresh."
@@ -613,7 +675,7 @@ class UnifiedAgent(Agent):
 
     @function_tool(name="confirm_details")
     async def confirm_details(self, ctx: RunContext) -> str:
-        """Confirm the appointment details and book it."""
+        """Confirm the appointment details and book it. Only call this when ALL required information is collected."""
         # Prevent infinite loops by checking if already confirmed
         if self._booking_data.confirmed:
             if self._booking_data.booked:
@@ -645,7 +707,7 @@ class UnifiedAgent(Agent):
 
     @function_tool(name="finalize_booking")
     async def finalize_booking(self, ctx: RunContext) -> str:
-        """Finalize and complete the booking process."""
+        """Finalize and complete the booking process. Only call this when ALL required information is collected (time slot, name, email, phone)."""
         # Check if booking is already completed
         if self._booking_data.booked:
             return "Your appointment has already been successfully booked! Is there anything else I can help you with?"

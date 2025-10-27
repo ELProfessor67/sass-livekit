@@ -34,27 +34,49 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
           { value: "Arnold", label: "Arnold" }
         ];
       case "Rime":
+        // Show only Arcana voices when Arcana model is selected
+        if (data.model === "arcana") {
+          return [
+            { value: "luna", label: "Luna" },
+            { value: "celeste", label: "Celeste" },
+            { value: "orion", label: "Orion" },
+            { value: "ursa", label: "Ursa" },
+            { value: "astra", label: "Astra" },
+            { value: "esther", label: "Esther" },
+            { value: "estelle", label: "Estelle" },
+            { value: "andromeda", label: "Andromeda" }
+          ];
+        }
+        // Show other Rime voices for other models
         return [
-          { value: "rainforest", label: "Rainforest" }
+          { value: "ana", label: "Ana" },
+          { value: "amber", label: "Amber" },
+          { value: "amalia", label: "Amalia" },
+          { value: "alpine", label: "Alpine" },
+          { value: "alona", label: "Alona" },
+          { value: "ally", label: "Ally" }
         ];
       case "Hume":
         return [
-          { value: "Colton Rivers", label: "Colton Rivers" }
+          { value: "Colton Rivers", label: "Colton Rivers" },
+          { value: "Sarah Chen", label: "Sarah Chen" },
+          { value: "David Mitchell", label: "David Mitchell" },
+          { value: "Emma Williams", label: "Emma Williams" },
+          { value: "James Anderson", label: "James Anderson" },
+          { value: "Olivia Garcia", label: "Olivia Garcia" },
+          { value: "Michael Brown", label: "Michael Brown" },
+          { value: "Sophia Martinez", label: "Sophia Martinez" }
         ];
       case "Deepgram":
+        // Show only the selected model as a voice option
+        // In Deepgram, model and voice are the same
+        if (data.model) {
+          return [
+            { value: data.model, label: getFilteredModels().find(m => m.value === data.model)?.label || data.model }
+          ];
+        }
         return [
-          { value: "aura-asteria-en", label: "Aura Asteria" },
-          { value: "aura-luna-en", label: "Aura Luna" },
-          { value: "aura-stella-en", label: "Aura Stella" },
-          { value: "aura-athena-en", label: "Aura Athena" },
-          { value: "aura-hera-en", label: "Aura Hera" },
-          { value: "aura-orion-en", label: "Aura Orion" },
-          { value: "aura-arcas-en", label: "Aura Arcas" },
-          { value: "aura-perseus-en", label: "Aura Perseus" },
-          { value: "aura-angus-en", label: "Aura Angus" },
-          { value: "aura-orpheus-en", label: "Aura Orpheus" },
-          { value: "aura-helios-en", label: "Aura Helios" },
-          { value: "aura-zeus-en", label: "Aura Zeus" }
+          { value: "aura-asteria-en", label: "Aura Asteria" }
         ];
       default:
         return [];
@@ -66,18 +88,27 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
     switch (data.provider) {
       case "ElevenLabs":
         return [
-          { value: "eleven_turbo_v2", label: "Eleven Turbo v2" }
+          { value: "eleven_turbo_v2", label: "Eleven Turbo v2" },
+          { value: "eleven_multilingual_v2", label: "Eleven Multilingual v2" }
         ];
       case "Rime":
         return [
-          { value: "mistv2", label: "Mist v2" }
+          { value: "mistv2", label: "Mist v2" },
+          { value: "arcana", label: "Arcana" }
         ];
       case "Hume":
         return [
-          { value: "hume_default", label: "Hume Default" }
+          { value: "hume_default", label: "Hume Default" },
+          { value: "octave-2", label: "Octave 2" }
         ];
       case "Deepgram":
         return [
+          { value: "aura-2-thalia-en", label: "Aura 2 - Thalia" },
+          { value: "aura-2-andromeda-en", label: "Aura 2 - Andromeda" },
+          { value: "aura-2-helena-en", label: "Aura 2 - Helena" },
+          { value: "aura-2-apollo-en", label: "Aura 2 - Apollo" },
+          { value: "aura-2-arcas-en", label: "Aura 2 - Arcas" },
+          { value: "aura-2-aries-en", label: "Aura 2 - Aries" },
           { value: "aura-asteria-en", label: "Aura Asteria" },
           { value: "aura-luna-en", label: "Aura Luna" },
           { value: "aura-stella-en", label: "Aura Stella" },
@@ -112,15 +143,43 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
             { value: "Arnold", label: "Arnold" }
           ];
         case "Rime":
+          // For provider changes, show all Rime voices
+          // They will be filtered by getFilteredVoices() based on selected model
           return [
-            { value: "rainforest", label: "Rainforest" }
+            { value: "ana", label: "Ana" },
+            { value: "amber", label: "Amber" },
+            { value: "amalia", label: "Amalia" },
+            { value: "alpine", label: "Alpine" },
+            { value: "alona", label: "Alona" },
+            { value: "ally", label: "Ally" },
+            { value: "luna", label: "Luna" },
+            { value: "celeste", label: "Celeste" },
+            { value: "orion", label: "Orion" },
+            { value: "ursa", label: "Ursa" },
+            { value: "astra", label: "Astra" },
+            { value: "esther", label: "Esther" },
+            { value: "estelle", label: "Estelle" },
+            { value: "andromeda", label: "Andromeda" }
           ];
         case "Hume":
           return [
-            { value: "Colton Rivers", label: "Colton Rivers" }
+            { value: "Colton Rivers", label: "Colton Rivers" },
+            { value: "Sarah Chen", label: "Sarah Chen" },
+            { value: "David Mitchell", label: "David Mitchell" },
+            { value: "Emma Williams", label: "Emma Williams" },
+            { value: "James Anderson", label: "James Anderson" },
+            { value: "Olivia Garcia", label: "Olivia Garcia" },
+            { value: "Michael Brown", label: "Michael Brown" },
+            { value: "Sophia Martinez", label: "Sophia Martinez" }
           ];
         case "Deepgram":
           return [
+            { value: "aura-2-thalia-en", label: "Aura 2 - Thalia" },
+            { value: "aura-2-andromeda-en", label: "Aura 2 - Andromeda" },
+            { value: "aura-2-helena-en", label: "Aura 2 - Helena" },
+            { value: "aura-2-apollo-en", label: "Aura 2 - Apollo" },
+            { value: "aura-2-arcas-en", label: "Aura 2 - Arcas" },
+            { value: "aura-2-aries-en", label: "Aura 2 - Aries" },
             { value: "aura-asteria-en", label: "Aura Asteria" },
             { value: "aura-luna-en", label: "Aura Luna" },
             { value: "aura-stella-en", label: "Aura Stella" },
@@ -144,19 +203,26 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
         case "ElevenLabs":
           return [
             { value: "eleven_turbo_v2", label: "Eleven Turbo v2" },
-            { value: "eleven_multilingual_v2", label: "Eleven Multilingual v2" },
-            { value: "eleven_monolingual_v1", label: "Eleven Monolingual v1" }
+            { value: "eleven_multilingual_v2", label: "Eleven Multilingual v2" }
           ];
         case "Rime":
           return [
-            { value: "mistv2", label: "Mist v2" }
+            { value: "mistv2", label: "Mist v2" },
+            { value: "arcana", label: "Arcana" }
           ];
         case "Hume":
           return [
-            { value: "hume_default", label: "Hume Default" }
+            { value: "hume_default", label: "Hume Default" },
+            { value: "octave-2", label: "Octave 2" }
           ];
         case "Deepgram":
           return [
+            { value: "aura-2-thalia-en", label: "Aura 2 - Thalia" },
+            { value: "aura-2-andromeda-en", label: "Aura 2 - Andromeda" },
+            { value: "aura-2-helena-en", label: "Aura 2 - Helena" },
+            { value: "aura-2-apollo-en", label: "Aura 2 - Apollo" },
+            { value: "aura-2-arcas-en", label: "Aura 2 - Arcas" },
+            { value: "aura-2-aries-en", label: "Aura 2 - Aries" },
             { value: "aura-asteria-en", label: "Aura Asteria" },
             { value: "aura-luna-en", label: "Aura Luna" },
             { value: "aura-stella-en", label: "Aura Stella" },
@@ -184,17 +250,69 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
     
     const updates: Partial<VoiceData> = { provider: value };
     
-    // Reset voice if not valid for new provider
-    if (!isCurrentVoiceValid && filteredVoices.length > 0) {
-      updates.voice = filteredVoices[0].value;
-    }
-    
     // Reset model if not valid for new provider
     if (!isCurrentModelValid && filteredModels.length > 0) {
       updates.model = filteredModels[0].value;
     }
     
+    // Reset voice if not valid for new provider
+    // For Deepgram, voice should match the model
+    if (value === "Deepgram" && filteredModels.length > 0) {
+      updates.voice = updates.model || filteredModels[0].value;
+    } else if (!isCurrentVoiceValid && filteredVoices.length > 0) {
+      updates.voice = filteredVoices[0].value;
+    }
+    
     onChange(updates);
+  };
+
+  // Handle model change and reset voice if needed
+  const handleModelChange = (value: string) => {
+    // For Deepgram, model and voice are the same
+    if (data.provider === "Deepgram") {
+      onChange({ model: value, voice: value });
+      return;
+    }
+    
+    // For Rime, check if current voice is valid for the new model
+    if (data.provider === "Rime") {
+      // Determine available voices for the new model
+      let availableVoices;
+      if (value === "arcana") {
+        availableVoices = [
+          { value: "luna", label: "Luna" },
+          { value: "celeste", label: "Celeste" },
+          { value: "orion", label: "Orion" },
+          { value: "ursa", label: "Ursa" },
+          { value: "astra", label: "Astra" },
+          { value: "esther", label: "Esther" },
+          { value: "estelle", label: "Estelle" },
+          { value: "andromeda", label: "Andromeda" }
+        ];
+      } else {
+        availableVoices = [
+          { value: "ana", label: "Ana" },
+          { value: "amber", label: "Amber" },
+          { value: "amalia", label: "Amalia" },
+          { value: "alpine", label: "Alpine" },
+          { value: "alona", label: "Alona" },
+          { value: "ally", label: "Ally" }
+        ];
+      }
+      
+      const isCurrentVoiceValid = availableVoices.some(voice => voice.value === data.voice);
+      
+      const updates: Partial<VoiceData> = { model: value };
+      
+      // Reset voice if not valid for new model
+      if (!isCurrentVoiceValid && availableVoices.length > 0) {
+        updates.voice = availableVoices[0].value;
+      }
+      
+      onChange(updates);
+    } else {
+      onChange({ model: value });
+    }
   };
 
   return (
@@ -252,7 +370,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
 
             <div className="space-y-3">
               <Label className="text-[16px] font-semibold tracking-[0.2px]">Model</Label>
-              <Select value={data.model || "eleven_turbo_v2"} onValueChange={(value) => onChange({ model: value })}>
+              <Select value={data.model || "eleven_turbo_v2"} onValueChange={handleModelChange}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

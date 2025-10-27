@@ -15,6 +15,8 @@ class RestAPIConfig:
     def __init__(self):
         self.use_rest_api = os.getenv("USE_REST_API", "false").lower() == "true"
         self.rest_api_models = [
+            "gpt-4.1",
+            "gpt-4.1-mini",
             "gpt-4o-mini",
             "gpt-4o", 
             "gpt-4",

@@ -71,7 +71,7 @@ const CreateAssistant = () => {
     id: isEditing ? "asst_abcd1234efgh5678" : "asst_" + Math.random().toString(36).substr(2, 16),
     model: {
       provider: "OpenAI",
-      model: "GPT-4o Mini",
+      model: "GPT-4.1 Mini",
       knowledgeBase: "None",
       calendar: "None",
       conversationStart: "assistant-first",
@@ -248,7 +248,7 @@ const CreateAssistant = () => {
             id: data.id,
             model: {
               provider: data.llm_provider_setting || "OpenAI",
-              model: data.llm_model_setting || "GPT-4o Mini",
+              model: data.llm_model_setting || "GPT-4.1 Mini",
               knowledgeBase: data.knowledge_base_id || "None",
               calendar: data.calendar || "None",
               conversationStart: "assistant-first",

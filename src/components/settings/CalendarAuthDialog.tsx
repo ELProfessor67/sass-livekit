@@ -68,7 +68,6 @@ export function CalendarAuthDialog({ children, onSuccess }: CalendarAuthDialogPr
   const validate = (): string | null => {
     if (!form.label.trim()) return "Label is required";
     if (!form.apiKey.trim()) return "API key is required";
-    if (!form.timezone.trim()) return "Timezone is required";
     return null;
   };
 
@@ -86,8 +85,10 @@ export function CalendarAuthDialog({ children, onSuccess }: CalendarAuthDialogPr
     setLoading(true);
     try {
       // Save credentials to database (no event type ID needed)
+      // Timezone is hardcoded to UTC
       const payload: CalendarCredentialsInput = { 
-        ...form, 
+        ...form,
+        timezone: "UTC", // Hardcoded to UTC
         eventTypeId: "", // Will be generated during assistant creation
         eventTypeSlug: "" // Will be provided during assistant creation
       };
@@ -174,17 +175,6 @@ export function CalendarAuthDialog({ children, onSuccess }: CalendarAuthDialogPr
 
               {/* Cal.com extras - REMOVED */}
               {/* Event type slug will be handled during assistant creation */}
-
-              {/* Timezone */}
-              <div className="space-y-2">
-                <Label htmlFor="timezone">Timezone</Label>
-                <Input
-                  id="timezone"
-                  placeholder="e.g., America/Los_Angeles"
-                  value={form.timezone}
-                  onChange={(e) => setField("timezone", e.target.value)}
-                />
-              </div>
             </form>
         </div>
 

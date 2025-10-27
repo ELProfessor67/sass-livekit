@@ -32,7 +32,7 @@ class LiveKitConfig:
 class OpenAIConfig:
     """OpenAI API configuration."""
     api_key: str
-    llm_model: str = "gpt-4o-mini"
+    llm_model: str = "gpt-4.1-mini"
     stt_model: str = "whisper-1"
     tts_model: str = "tts-1"
     tts_voice: str = "alloy"
@@ -43,7 +43,7 @@ class OpenAIConfig:
     def from_env(cls) -> "OpenAIConfig":
         return cls(
             api_key=os.getenv("OPENAI_API_KEY", ""),
-            llm_model=os.getenv("OPENAI_LLM_MODEL", "gpt-4o-mini"),
+            llm_model=os.getenv("OPENAI_LLM_MODEL", "gpt-4.1-mini"),
             stt_model=os.getenv("OPENAI_STT_MODEL", "whisper-1"),
             tts_model=os.getenv("OPENAI_TTS_MODEL", "tts-1"),
             tts_voice=os.getenv("OPENAI_TTS_VOICE", "alloy"),
@@ -314,7 +314,7 @@ def validate_model_names(config: Dict[str, Any]) -> Dict[str, Any]:
     """Validate and fix model names to prevent API errors."""
     # Valid OpenAI models
     valid_openai_llm_models = {
-        "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo",
+        "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo",
         "gpt-4o-2024-08-06", "gpt-4-turbo-2024-04-09", "gpt-3.5-turbo-0125"
     }
     
@@ -339,17 +339,26 @@ def validate_model_names(config: Dict[str, Any]) -> Dict[str, Any]:
     }
     
     valid_rime_models = {
-        "mistv2", "mist", "lagoon", "rainforest"
+        "mistv2", "mist", "lagoon", "rainforest", "arcana"
+    }
+    
+    valid_rime_speakers = {
+        "ana", "amber", "amalia", "alpine", "alona", "ally",
+        "luna", "celeste", "orion", "ursa", "astra", "esther", "estelle", "andromeda"
     }
     
     # Fix LLM model with comprehensive mapping (like old implementation)
     llm_provider = config.get("llm_provider_setting", "OpenAI")
-    llm_model = config.get("llm_model_setting", "gpt-4o-mini")
+    llm_model = config.get("llm_model_setting", "gpt-4.1-mini")
     original_model = llm_model
     
     # Map model names to API format based on provider (from old implementation)
     if llm_provider == "OpenAI":
-        if llm_model == "GPT-4o Mini":
+        if llm_model == "GPT-4.1 Mini":
+            llm_model = "gpt-4.1-mini"
+        elif llm_model == "GPT-4.1":
+            llm_model = "gpt-4.1"
+        elif llm_model == "GPT-4o Mini":
             llm_model = "gpt-4o-mini"
         elif llm_model == "GPT-4o":
             llm_model = "gpt-4o"
@@ -388,8 +397,8 @@ def validate_model_names(config: Dict[str, Any]) -> Dict[str, Any]:
     
     # Final validation after mapping
     if llm_provider == "OpenAI" and llm_model not in valid_openai_llm_models:
-        logging.warning(f"INVALID_OPENAI_LLM_MODEL | model={llm_model} | using fallback=gpt-4o-mini")
-        config["llm_model_setting"] = "gpt-4o-mini"
+        logging.warning(f"INVALID_OPENAI_LLM_MODEL | model={llm_model} | using fallback=gpt-4.1-mini")
+        config["llm_model_setting"] = "gpt-4.1-mini"
     elif llm_provider == "Groq" and llm_model not in valid_groq_models:
         logging.warning(f"INVALID_GROQ_MODEL | model={llm_model} | using fallback=llama-3.1-8b-instant")
         config["llm_model_setting"] = "llama-3.1-8b-instant"
@@ -423,6 +432,13 @@ def validate_model_names(config: Dict[str, Any]) -> Dict[str, Any]:
     elif voice_provider == "Rime" and voice_model not in valid_rime_models:
         logging.warning(f"INVALID_RIME_MODEL | model={voice_model} | using fallback=mistv2")
         config["voice_model_setting"] = "mistv2"
+    
+    # Fix Rime TTS speaker if invalid
+    if voice_provider == "Rime":
+        voice_name = config.get("voice_name_setting", "rainforest")
+        if voice_name not in valid_rime_speakers:
+            logging.warning(f"INVALID_RIME_SPEAKER | speaker={voice_name} | using fallback=rainforest")
+            config["voice_name_setting"] = "rainforest"
     
     # Fix STT model
     stt_model = config.get("stt_model", "whisper-1")

@@ -284,16 +284,6 @@ export class CalendarCredentialsService {
         id: 'calcom',
         name: 'Cal.com',
         description: 'Open-source scheduling infrastructure'
-      },
-      {
-        id: 'google',
-        name: 'Google Calendar',
-        description: 'Google Calendar integration'
-      },
-      {
-        id: 'outlook',
-        name: 'Microsoft Outlook',
-        description: 'Outlook Calendar integration'
       }
     ];
   }

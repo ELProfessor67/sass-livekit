@@ -22,6 +22,34 @@ class ConfigResolver:
     async def resolve_assistant_config(self, ctx: JobContext, call_type: str) -> Optional[Dict[str, Any]]:
         """Resolve assistant configuration for the call."""
         try:
+            # For web calls, check room metadata first
+            if call_type == "web":
+                assistant_id = None
+                
+                # Try to get assistant_id from room metadata
+                if ctx.room.metadata:
+                    try:
+                        room_metadata = json.loads(ctx.room.metadata)
+                        assistant_id = room_metadata.get("assistantId") or room_metadata.get("assistant_id")
+                        logger.info(f"WEB_ASSISTANT_FROM_ROOM | assistant_id={assistant_id}")
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+                
+                # If not found in room metadata, try job metadata
+                if not assistant_id and ctx.job.metadata:
+                    try:
+                        job_metadata = json.loads(ctx.job.metadata)
+                        assistant_id = job_metadata.get("assistantId") or job_metadata.get("assistant_id")
+                        logger.info(f"WEB_ASSISTANT_FROM_JOB | assistant_id={assistant_id}")
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+                
+                if assistant_id:
+                    return await self._get_assistant_by_id(assistant_id)
+                else:
+                    logger.error("WEB_NO_ASSISTANT_ID | could not find assistantId in metadata")
+                    return None
+            
             metadata = ctx.job.metadata
             if not metadata:
                 logger.warning("No job metadata available")

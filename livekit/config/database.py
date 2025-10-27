@@ -78,6 +78,7 @@ class DatabaseClient:
             result = self._client.table("assistant").select(
                 "id, name, prompt, first_message, calendar, cal_api_key, cal_event_type_id, cal_event_type_slug, cal_timezone, "
                 "llm_provider_setting, llm_model_setting, temperature_setting, max_token_setting, "
+                "voice_provider_setting, voice_model_setting, voice_name_setting, "
                 "knowledge_base_id, n8n_webhook_url, n8n_auto_create_sheet, n8n_drive_folder_id, "
                 "n8n_spreadsheet_name_template, n8n_sheet_tab_template, n8n_spreadsheet_id, "
                 "n8n_sheet_tab, n8n_save_name, n8n_save_email, n8n_save_phone, n8n_save_summary, "

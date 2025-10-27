@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { AccessToken } from 'livekit-server-sdk';
+import { AccessToken, RoomServiceClient, AgentDispatchClient } from 'livekit-server-sdk';
 import { twilioAdminRouter } from './twilio-admin.js';
 import { twilioUserRouter } from './twilio-user.js';
 import { twilioSmsRouter } from './twilio-sms.js';
@@ -159,17 +159,177 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
+/**
+ * Dispatch an agent to a LiveKit room
+ * POST /api/v1/livekit/dispatch
+ */
+app.post('/api/v1/livekit/dispatch', async (req, res) => {
+  try {
+    const apiKey = process.env.LIVEKIT_API_KEY;
+    const apiSecret = process.env.LIVEKIT_API_SECRET;
+    const livekitUrl = process.env.LIVEKIT_URL || process.env.LIVEKIT_HOST;
+    
+    const { roomName, agentName = 'ai', metadata = {} } = req.body;
+    
+    if (!roomName) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'roomName is required' 
+      });
+    }
+
+    console.log(`Dispatching agent '${agentName}' to room '${roomName}'`);
+
+    // Create or update room with agent dispatch metadata
+    const roomService = new RoomServiceClient(livekitUrl, apiKey, apiSecret);
+    
+    try {
+      // Update room metadata to include agent dispatch information
+      await roomService.updateRoomMetadata(roomName, JSON.stringify({
+        agentName,
+        ...metadata,
+        source: 'web',
+        dispatched: true,
+      }));
+
+      console.log(`Agent '${agentName}' dispatched to room '${roomName}'`);
+      
+      res.json({
+        success: true,
+        message: `Agent ${agentName} dispatched to room ${roomName}`,
+        roomName,
+        agentName,
+      });
+    } catch (error) {
+      // If room doesn't exist, create it
+      await roomService.createRoom({
+        name: roomName,
+        metadata: JSON.stringify({
+          agentName,
+          ...metadata,
+          source: 'web',
+          dispatched: true,
+        }),
+      });
+
+      console.log(`Created new room '${roomName}' and dispatched agent '${agentName}'`);
+      
+      res.json({
+        success: true,
+        message: `Room created and agent ${agentName} dispatched`,
+        roomName,
+        agentName,
+      });
+    }
+
+  } catch (err) {
+    console.error('Error dispatching agent:', err);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to dispatch agent', 
+      error: err.message 
+    });
+  }
+});
+
 app.post('/api/v1/livekit/create-token', async (req, res) => {
   try {
     const apiKey = process.env.LIVEKIT_API_KEY;
     const apiSecret = process.env.LIVEKIT_API_SECRET;
-    const room = `room-${Math.random().toString(36).slice(2, 8)}`;
-    const identity = `identity-${Math.random().toString(36).slice(2, 8)}`;
-    const metadata = req.body?.metadata ?? {};
+    const livekitUrl = process.env.LIVEKIT_URL || process.env.LIVEKIT_HOST;
+    
+    const { roomName, identity: requestedIdentity, metadata = {}, dispatch, roomConfig } = req.body;
+    
+    // Use provided room name or generate one
+    const room = roomName || `room-${Math.random().toString(36).slice(2, 8)}`;
+    const identity = requestedIdentity || `web-${Math.random().toString(36).slice(2, 8)}`;
 
-    console.log("LIVEKIT_API_KEY", apiKey)
-    console.log("apiSecret", apiSecret)
+    console.log('Creating LiveKit token:', { room, identity, hasDispatch: !!dispatch });
 
+    // If dispatch is requested, create room with agent configuration
+    if (dispatch || roomConfig) {
+      const roomService = new RoomServiceClient(livekitUrl, apiKey, apiSecret);
+      
+      try {
+        // Prepare room metadata with assistant configuration
+        const assistantId = metadata.assistantId || dispatch?.metadata?.assistantId;
+        const roomMetadata = {
+          ...metadata,
+          assistantId,
+          source: 'web',
+          callType: 'web',
+          agentName: dispatch?.agentName || 'ai',
+        };
+
+        // Create room with agent dispatch metadata
+        await roomService.createRoom({
+          name: room,
+          metadata: JSON.stringify(roomMetadata),
+        });
+
+        console.log(`✅ Room '${room}' created with agent dispatch metadata`);
+        
+        // Wait a moment for room to be fully created before dispatching
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Dispatch agent using AgentDispatchClient (same as voiceagents)
+        try {
+          // Convert WebSocket URL to HTTP/HTTPS for API calls
+          let httpUrl = livekitUrl;
+          if (livekitUrl.startsWith('wss://')) {
+            httpUrl = livekitUrl.replace('wss://', 'https://');
+          } else if (livekitUrl.startsWith('ws://')) {
+            httpUrl = livekitUrl.replace('ws://', 'http://');
+          }
+          
+          console.log(`🤖 Dispatching agent to room '${room}' via ${httpUrl}`);
+          
+          // Create AgentDispatchClient (same pattern as voiceagents)
+          const agentDispatchClient = new AgentDispatchClient(
+            httpUrl,
+            apiKey,
+            apiSecret
+          );
+          
+          const agentName = dispatch?.agentName || 'ai';
+          const agentMetadata = {
+            agentId: assistantId,
+            callType: 'web',
+            roomName: room,
+            source: 'web',
+            ...(dispatch?.metadata || {}),
+          };
+          
+          console.log(`📤 Dispatching agent with params:`, {
+            room,
+            agentName,
+            metadata: agentMetadata
+          });
+          
+          const dispatchResult = await agentDispatchClient.createDispatch(
+            room,
+            agentName,
+            {
+              metadata: JSON.stringify(agentMetadata),
+            }
+          );
+          
+          console.log('✅ Agent dispatched successfully:', JSON.stringify(dispatchResult, null, 2));
+          
+        } catch (dispatchError) {
+          console.error('❌ Failed to dispatch agent:', dispatchError.message);
+          console.error('❌ Dispatch error details:', dispatchError);
+          console.error('❌ Full error:', JSON.stringify(dispatchError, Object.getOwnPropertyNames(dispatchError), 2));
+          // Continue anyway - user can still connect
+        }
+        
+      } catch (roomError) {
+        // Room might already exist, continue
+        console.warn(`Room creation note: ${roomError.message}`);
+      }
+    }
+
+    // Create access token
     const grant = {
       room,
       roomJoin: true,
@@ -191,8 +351,8 @@ app.post('/api/v1/livekit/create-token', async (req, res) => {
       result: { identity, accessToken: jwt },
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Failed to create token' });
+    console.error('Error creating LiveKit token:', err);
+    res.status(500).json({ success: false, message: 'Failed to create token', error: err.message });
   }
 });
 

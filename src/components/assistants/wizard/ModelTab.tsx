@@ -255,7 +255,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
               <Select value={data.provider} onValueChange={(value) => {
                 // Reset model when provider changes
                 const defaultModels = {
-                  "OpenAI": "GPT-4o Mini",
+                  "OpenAI": "GPT-4.1 Mini",
                   "Anthropic": "Claude 3.5 Sonnet",
                   "Google": "Gemini 1.5 Pro",
                   "Groq": "llama-3.1-8b-instant",
@@ -291,6 +291,8 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                 <SelectContent className="max-h-60">
                   {data.provider === "OpenAI" && (
                     <>
+                      <SelectItem value="GPT-4.1 Mini">GPT-4.1 Mini</SelectItem>
+                      <SelectItem value="GPT-4.1">GPT-4.1</SelectItem>
                       <SelectItem value="GPT-4o Mini">GPT-4o Mini</SelectItem>
                       <SelectItem value="GPT-4o">GPT-4o</SelectItem>
                     </>
@@ -311,12 +313,15 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                       <SelectItem value="llama-3.1-8b-instant">Llama 3.1 8B Instant</SelectItem>
                       <SelectItem value="llama-3.3-70b-versatile">Llama 3.3 70B Versatile</SelectItem>
                       <SelectItem value="meta-llama/llama-4-maverick-17b-128e-instruct">Llama 4 Maverick 17B</SelectItem>
+                      <SelectItem value="openai/gpt-oss-120b">GPT OSS 120B</SelectItem>
+                      <SelectItem value="openai/gpt-oss-20b">GPT OSS 20B</SelectItem>
                     </>
                   )}
                   {data.provider === "Cerebras" && (
                     <>
                       <SelectItem value="llama-3.3-70b">Llama 3.3 70B</SelectItem>
                       <SelectItem value="gpt-oss-120b">GPT OSS 120B</SelectItem>
+                      <SelectItem value="llama-3.1-70b">Llama 3.1 70B</SelectItem>
                     </>
                   )}
                 </SelectContent>

@@ -101,10 +101,6 @@ export function CalendarIntegrationCard({
                     <span className="text-muted-foreground">API Key:</span>
                     <p className="font-mono text-xs">{maskApiKey(integration.api_key)}</p>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Timezone:</span>
-                    <p className="text-xs">{integration.timezone}</p>
-                  </div>
                   {integration.event_type_slug && (
                     <div className="col-span-2">
                       <span className="text-muted-foreground">Event Type:</span>

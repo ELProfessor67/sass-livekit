@@ -84,8 +84,8 @@ class AgentFactory:
             logger.info(f"FIRST_MESSAGE_SET | first_message={first_message}")
 
         # Log final instructions for debugging
-        logger.info(f"FINAL_INSTRUCTIONS_LENGTH | length={len(instructions)}")
-        logger.info(f"FINAL_INSTRUCTIONS_PREVIEW | preview={instructions}...")
+        # logger.info(f"FINAL_INSTRUCTIONS_LENGTH | length={len(instructions)}")
+        # logger.info(f"FINAL_INSTRUCTIONS_PREVIEW | preview={instructions}...")
 
         # Create unified agent that combines RAG and booking capabilities
         knowledge_base_id = config.get("knowledge_base_id")
@@ -101,7 +101,7 @@ class AgentFactory:
 
         # Add booking instructions only if calendar is available
         if calendar:
-            instructions += "\n\nBOOKING CAPABILITIES:\nYou can help users book appointments. You have access to the following booking tools:\n- list_slots_on_day: Show available appointment slots for a specific day\n- book_appointment: Book an appointment for the user\n\nWhen users ask about booking or scheduling, use these tools to help them find and book available slots."
+            instructions += "\n\nBOOKING CAPABILITIES:\nYou can help users book appointments. You have access to the following booking tools:\n- list_slots_on_day: Show available appointment slots for a specific day (shows 10 slots by default - use max_options=20 to show more)\n- choose_slot: Select a time slot for the appointment (can use time like '7:00pm' or slot number from list)\n- set_name: Set the customer's name\n- set_email: Set the customer's email\n- set_phone: Set the customer's phone number\n- finalize_booking: Complete the booking when ALL information is collected (time slot, name, email, phone)\n\nIMPORTANT: Do NOT call finalize_booking or confirm_details until you have: 1) selected time slot, 2) customer name, 3) email, and 4) phone number. Only call ONE of these functions, not both."
             logger.info("BOOKING_TOOLS | Calendar booking tools added to instructions")
 
         # Create unified agent with both RAG and booking capabilities

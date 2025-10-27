@@ -16,7 +16,8 @@ interface CalSetupDialogProps {
 export const CalSetupDialog: React.FC<CalSetupDialogProps> = ({ open, onOpenChange, onConfigured, defaultTimezone = "UTC", trigger }) => {
   const [apiKey, setApiKey] = useState("");
   const [slug, setSlug] = useState("");
-  const [timezone, setTimezone] = useState(defaultTimezone);
+  // Timezone is hardcoded to UTC
+  const timezone = "UTC";
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,10 +59,6 @@ export const CalSetupDialog: React.FC<CalSetupDialogProps> = ({ open, onOpenChan
           <div className="space-y-2">
             <Label>Event Type Slug</Label>
             <Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="team/demo-call" />
-          </div>
-          <div className="space-y-2">
-            <Label>Timezone</Label>
-            <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="UTC or America/Los_Angeles" />
           </div>
           {error && <div className="text-sm text-destructive">{error}</div>}
         </div>

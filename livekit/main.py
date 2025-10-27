@@ -358,18 +358,37 @@ class CallHandler:
         """Determine the type of call based on room name and metadata."""
         room_name = ctx.room.name.lower()
         
-        if room_name.startswith("outbound"):
-            return "outbound"
-        elif room_name.startswith("inbound") or room_name.startswith("assistant"):
-            # Check if metadata contains assistant information
+        # Check room metadata for call type
+        if ctx.room.metadata:
             try:
-                if ctx.job.metadata:
-                    metadata = json.loads(ctx.job.metadata)
-                    if metadata.get("assistantId") or metadata.get("assistant_id"):
-                        return "inbound_with_assistant"
+                room_metadata = json.loads(ctx.room.metadata)
+                if room_metadata.get("source") == "web":
+                    return "web"
+                if room_metadata.get("callType") == "web":
+                    return "web"
+                if room_metadata.get("source") == "outbound":
+                    return "outbound"
             except (json.JSONDecodeError, KeyError):
                 pass
+        
+        # Check job metadata
+        if ctx.job.metadata:
+            try:
+                job_metadata = json.loads(ctx.job.metadata)
+                if job_metadata.get("source") == "web":
+                    return "web"
+                if job_metadata.get("assistantId") or job_metadata.get("assistant_id"):
+                    return "inbound_with_assistant"
+            except (json.JSONDecodeError, KeyError):
+                pass
+        
+        # Fall back to room name patterns
+        if room_name.startswith("outbound"):
+            return "outbound"
+        elif room_name.startswith("inbound"):
             return "inbound"
+        elif room_name.startswith("assistant") or room_name.startswith("web"):
+            return "web"
         else:
             return "inbound"
 
@@ -1088,7 +1107,7 @@ class CallHandler:
                     model=mapped_model,
                     api_key=groq_api_key,  # From environment
                     temperature=groq_temperature,  # From assistant DB
-                    parallel_tool_calls=True,
+                    parallel_tool_calls=False,  # Disabled to prevent parallel function call errors
                     tool_choice="auto",
                 )
                 logger.info(f"GROQ_LLM_CONFIGURED | model={mapped_model} | temp={groq_temperature} | tokens={groq_max_tokens}")
@@ -1111,7 +1130,7 @@ class CallHandler:
                     api_key=cerebras_api_key,  # From environment
                     base_url="https://api.cerebras.ai/v1",
                     temperature=cerebras_temperature,  # From assistant DB
-                    parallel_tool_calls=True,
+                    parallel_tool_calls=False,  # Disabled to prevent parallel function call errors
                     tool_choice="auto",
                 )
                 logger.info(f"CEREBRAS_LLM_CONFIGURED | model={cerebras_model} | temp={cerebras_temperature} | tokens={cerebras_max_tokens}")
@@ -1127,7 +1146,11 @@ class CallHandler:
         # Map OpenAI model names
         model_mapping = {
             "GPT-4o": "gpt-4o",
-            "GPT-4o Mini": "gpt-4o-mini"
+            "GPT-4o Mini": "gpt-4o-mini",
+            "GPT-4.1": "gpt-4.1",
+            "GPT-4.1 Mini": "gpt-4.1-mini",
+            "gpt-4.1": "gpt-4.1",
+            "gpt-4.1-mini": "gpt-4.1-mini"
         }
         mapped_model = model_mapping.get(openai_model, "gpt-4o-mini")
         
@@ -1138,7 +1161,7 @@ class CallHandler:
             model=mapped_model,
             api_key=openai_api_key,  # From environment
             temperature=float(openai_temperature),  # From assistant DB
-            parallel_tool_calls=True,
+            parallel_tool_calls=False,  # Disabled to prevent parallel function call errors
             tool_choice="auto",
         )
         logger.info(f"OPENAI_LLM_CONFIGURED | model={mapped_model} | temp={openai_temperature} | tokens={openai_max_tokens}")
@@ -1299,13 +1322,15 @@ def prewarm(proc: agents.JobProcess):
 
 async def entrypoint(ctx: JobContext):
     """Main entry point for LiveKit agent."""
-    # logger.info(f"ENTRYPOINT_START | room={ctx.room.name}")
+    logger.info(f"🎯 AGENT_ENTRYPOINT_CALLED | room={ctx.room.name}")
+    logger.info(f"📋 Job metadata: {ctx.job.metadata}")
+    logger.info(f"📋 Room metadata: {ctx.room.metadata}")
     
     # Create call handler and process the call
     handler = CallHandler()
     await handler.handle_call(ctx)
     
-    # logger.info(f"ENTRYPOINT_COMPLETE | room={ctx.room.name}")
+    logger.info(f"✅ AGENT_ENTRYPOINT_COMPLETE | room={ctx.room.name}")
 
 
 if __name__ == "__main__":

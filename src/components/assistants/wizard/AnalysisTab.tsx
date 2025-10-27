@@ -116,7 +116,7 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ data, onChange }) => {
     if (fields.length === 0) return "";
     
     const fieldDescriptions = fields.map(field => 
-      `- ${field.name}: ${field.description} (type: ${field.type})`
+      `- ${field.name}: ${field.description}`
     ).join('\n');
     
     return `Extract the following structured data from the conversation:\n\n${fieldDescriptions}\n\nFor each field, provide the most relevant information mentioned during the call. If a field is not mentioned or not applicable, use null. Return the data in a structured format.`;
