@@ -39,6 +39,7 @@ from livekit.agents import (
 
 # Plugin imports
 from livekit.plugins import openai, silero
+from livekit.plugins.turn_detector.multilingual import MultilingualModel, EnglishModel
 from livekit.agents.tts import FallbackAdapter
 
 # Additional provider imports
@@ -1070,11 +1071,16 @@ class CallHandler:
         voice_on_number_seconds = config.get("voice_on_number_seconds", 0.5)               # From DB
         voice_backoff_seconds = config.get("voice_backoff_seconds", 1)                      # From DB
 
+        # Configure turn detection - use multilingual model for better detection
+        # This uses LiveKit's turn detection model which provides context-aware turn detection
+        turn_detector = MultilingualModel()
+
         return AgentSession(
             vad=vad,
             stt=stt,
             llm=llm,
             tts=tts,
+            turn_detection=turn_detector,  # Add turn detection model for context-aware turn detection
             allow_interruptions=True,
             preemptive_generation=True,  # Enable preemptive generation for reduced latency
             min_endpointing_delay=voice_on_punctuation_seconds,   # From assistant DB
