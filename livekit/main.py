@@ -39,7 +39,6 @@ from livekit.agents import (
 
 # Plugin imports
 from livekit.plugins import openai, silero
-from livekit.plugins.turn_detector.multilingual import MultilingualModel, EnglishModel
 from livekit.agents.tts import FallbackAdapter
 
 # Additional provider imports
@@ -105,6 +104,10 @@ logger = logging.getLogger(__name__)
 
 # Enable DEBUG logging for livekit.agents to see detailed transcript information
 logging.getLogger("livekit.agents").setLevel(logging.DEBUG)
+
+# Enable DEBUG logging for Hume plugin to capture detailed error responses
+if HUME_AVAILABLE:
+    logging.getLogger("livekit.plugins.hume").setLevel(logging.DEBUG)
 
 # ---- Shared OpenAI client & HTTP transport (used by all OpenAI calls) ----
 _HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=60.0, write=30.0, pool=30.0)  # Increased read timeout
@@ -1071,16 +1074,11 @@ class CallHandler:
         voice_on_number_seconds = config.get("voice_on_number_seconds", 0.5)               # From DB
         voice_backoff_seconds = config.get("voice_backoff_seconds", 1)                      # From DB
 
-        # Configure turn detection - use multilingual model for better detection
-        # This uses LiveKit's turn detection model which provides context-aware turn detection
-        turn_detector = MultilingualModel()
-
         return AgentSession(
             vad=vad,
             stt=stt,
             llm=llm,
             tts=tts,
-            turn_detection=turn_detector,  # Add turn detection model for context-aware turn detection
             allow_interruptions=True,
             preemptive_generation=True,  # Enable preemptive generation for reduced latency
             min_endpointing_delay=voice_on_punctuation_seconds,   # From assistant DB
@@ -1195,20 +1193,34 @@ class CallHandler:
             rime_api_key = os.getenv("RIME_API_KEY")
             
             if rime_api_key:
-                tts = lk_rime.TTS(
-                    model=rime_model,
-                    speaker=rime_speaker,
-                    speed_alpha=rime_speed_alpha,
-                    reduce_latency=rime_reduce_latency,
-                    api_key=rime_api_key,  # From environment
-                )
-                logger.info(f"RIME_TTS_CONFIGURED | model={rime_model} | speaker={rime_speaker} | speed={rime_speed_alpha}")
+                # Use arcana model when specified
+                if rime_model == "arcana":
+                    tts = lk_rime.TTS(
+                        model="arcana",
+                        speaker=rime_speaker,
+                        speed_alpha=rime_speed_alpha,
+                        reduce_latency=rime_reduce_latency,
+                        api_key=rime_api_key,  # From environment
+                    )
+                    logger.info(f"RIME_TTS_CONFIGURED | model=arcana | speaker={rime_speaker} | speed={rime_speed_alpha}")
+                else:
+                    # Use mist-v2 with hyphen for compatibility
+                    model_name = "mist-v2" if rime_model == "mistv2" else rime_model
+                    tts = lk_rime.TTS(
+                        model=model_name,
+                        speaker=rime_speaker,
+                        speed_alpha=rime_speed_alpha,
+                        reduce_latency=rime_reduce_latency,
+                        api_key=rime_api_key,  # From environment
+                    )
+                    logger.info(f"RIME_TTS_CONFIGURED | model={model_name} | speaker={rime_speaker} | speed={rime_speed_alpha}")
                 return tts
             else:
                 logger.warning("RIME_API_KEY_NOT_SET | falling back to Deepgram TTS")
         
         if provider == "Hume" and HUME_AVAILABLE:
             # Use assistant's Hume settings from database
+            hume_model = config.get("voice_model_setting", "hume_default")  # From DB
             hume_voice_name = config.get("voice_name_setting", "Colton Rivers")  # From DB
             hume_description = config.get("voice_description", "The voice exudes calm, serene, and peaceful qualities, like a gentle stream flowing through a quiet forest.")  # From DB
             hume_speed = config.get("speed", 1.0)  # From DB
@@ -1216,24 +1228,63 @@ class CallHandler:
             
             # Get API key from environment (centralized)
             hume_api_key = os.getenv("HUME_API_KEY")
+            openai_api_key = os.getenv("OPENAI_API_KEY")
             
             if hume_api_key:
-                # Create Hume voice using VoiceByName
-                hume_voice = lk_hume.VoiceByName(
-                    name=hume_voice_name, 
-                    provider=lk_hume.VoiceProvider.hume
-                )
-                
-                tts = lk_hume.TTS(
-                    voice=hume_voice,
-                    description=hume_description,
-                    speed=hume_speed,
-                    instant_mode=hume_instant_mode,
-                )
-                logger.info(f"HUME_TTS_CONFIGURED | voice={hume_voice_name} | speed={hume_speed} | instant_mode={hume_instant_mode}")
-                return tts
+                try:
+                    # DISABLE Octave-2 for now - use default Hume voices only
+                    # This prevents 400 errors and reduces latency
+                    
+                    # Always use VoiceByName with default Hume voices
+                    hume_voice = lk_hume.VoiceByName(
+                        name=hume_voice_name, 
+                        provider=lk_hume.VoiceProvider.hume
+                    )
+                    
+                    hume_tts = lk_hume.TTS(
+                        voice=hume_voice,
+                        description=hume_description,
+                        speed=hume_speed,
+                        instant_mode=hume_instant_mode,
+                        model_version="1",  # Default model version
+                        api_key=hume_api_key,
+                    )
+                    logger.info(f"HUME_TTS_CONFIGURED_DEFAULT | voice={hume_voice_name} | speed={hume_speed} | instant_mode={hume_instant_mode} | model_version=1")
+                    
+                    # Safety check: ensure hume_tts was created
+                    if hume_tts is None:
+                        raise ValueError("Hume TTS creation failed - hume_tts is None")
+                    
+                    # Wrap Hume TTS with fallback to OpenAI if OpenAI is available
+                    if openai_api_key:
+                        # Create OpenAI fallback with mapped voice
+                        voice_mapping = {
+                            "rachel": "nova", "domi": "shimmer", "bella": "nova", "antoni": "echo",
+                            "elli": "nova", "josh": "echo", "arnold": "fable", "alloy": "alloy",
+                            "nova": "nova", "shimmer": "shimmer", "echo": "echo", "fable": "fable", "onyx": "onyx"
+                        }
+                        mapped_voice = voice_mapping.get(hume_voice_name.lower(), "alloy")
+                        
+                        openai_tts = openai.TTS(
+                            model="tts-1",
+                            voice=mapped_voice,
+                            api_key=openai_api_key,
+                        )
+                        
+                        # Wrap with FallbackAdapter: primary Hume, fallback OpenAI
+                        tts = FallbackAdapter([hume_tts, openai_tts])
+                        logger.info(f"HUME_TTS_WITH_FALLBACK | primary=Hume | fallback=OpenAI | voice={mapped_voice}")
+                    else:
+                        # No fallback available, use Hume only
+                        tts = hume_tts
+                        logger.info(f"HUME_TTS_NO_FALLBACK | using Hume TTS only")
+                    
+                    return tts
+                except Exception as e:
+                    logger.error(f"HUME_TTS_CONFIG_FAILED | error={str(e)} | falling back to OpenAI")
+                    # Fall through to OpenAI TTS below
             else:
-                logger.warning("HUME_API_KEY_NOT_SET | falling back to Deepgram TTS")
+                logger.warning("HUME_API_KEY_NOT_SET | falling back to OpenAI TTS")
         
         # ElevenLabs TTS implementation
         if provider == "ElevenLabs" and ELEVENLABS_AVAILABLE:
