@@ -40,10 +40,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
             { value: "luna", label: "Luna - female, chill but excitable, gen-z optimist" },
             { value: "orion", label: "Orion - male, older, african american, happy" },
             { value: "ursa", label: "Ursa - male, 20 years old, encyclopedic knowledge of 2000s emo" },
-            { value: "astra", label: "Astra - female, young, wide-eyed" },
-            { value: "esther", label: "Esther - female, older, chinese american, loving" },
-            { value: "estelle", label: "Estelle - female, middle-aged, african-american, sounds so sweet" },
-            { value: "andromeda", label: "Andromeda - female, young, breathy, yoga vibes" }
+            { value: "astra", label: "Astra - female, young, wide-eyed" }
           ];
         }
         // Show other Rime voices for other models
@@ -61,7 +58,12 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
           { value: "Colton Rivers", label: "Colton Rivers" },
           { value: "Sarah Chen", label: "Sarah Chen" },
           { value: "David Mitchell", label: "David Mitchell" },
-          { value: "Emma Williams", label: "Emma Williams" }
+          { value: "Emma Williams", label: "Emma Williams" },
+          { value: "Charming Cowgirl", label: "Charming Cowgirl" },
+          { value: "Soft Male Conversationalist", label: "Soft Male Conversationalist" },
+          { value: "Scottish Guy", label: "Scottish Guy" },
+          { value: "Conversational English Guy", label: "Conversational English Guy" },
+          { value: "English Casual Conversationalist", label: "English Casual Conversationalist" }
         ];
       case "Deepgram":
         // Show only the selected model as a voice option
@@ -150,10 +152,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
             { value: "luna", label: "Luna - female, chill but excitable, gen-z optimist" },
             { value: "orion", label: "Orion - male, older, african american, happy" },
             { value: "ursa", label: "Ursa - male, 20 years old, encyclopedic knowledge of 2000s emo" },
-            { value: "astra", label: "Astra - female, young, wide-eyed" },
-            { value: "esther", label: "Esther - female, older, chinese american, loving" },
-            { value: "estelle", label: "Estelle - female, middle-aged, african-american, sounds so sweet" },
-            { value: "andromeda", label: "Andromeda - female, young, breathy, yoga vibes" }
+            { value: "astra", label: "Astra - female, young, wide-eyed" }
           ];
         case "Hume":
           return [
@@ -161,11 +160,11 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
             { value: "Sarah Chen", label: "Sarah Chen" },
             { value: "David Mitchell", label: "David Mitchell" },
             { value: "Emma Williams", label: "Emma Williams" },
-            { value: "3f636d17-44c7-4872-93d1-0c8f51c916a3", label: "Charming Cowgirl" },
-            { value: "b152864b-6720-496a-9d18-eaadb31516ee", label: "Soft Male Conversationalist" },
-            { value: "a48360cb-14f3-460c-93f2-b38deb45400b", label: "Scottish Male" },
-            { value: "d1248151-8613-41c1-b524-4ce242b02090", label: "Conversational English Guy" },
-            { value: "5add9038-28df-40a6-900c-2f736d008ab3", label: "English Casual Conversationalist" }
+            { value: "Charming Cowgirl", label: "Charming Cowgirl" },
+            { value: "Soft Male Conversationalist", label: "Soft Male Conversationalist" },
+            { value: "Scottish Guy", label: "Scottish Guy" },
+            { value: "Conversational English Guy", label: "Conversational English Guy" },
+            { value: "English Casual Conversationalist", label: "English Casual Conversationalist" }
           ];
         case "Deepgram":
           return [
@@ -207,8 +206,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
           ];
         case "Hume":
           return [
-            { value: "hume_default", label: "Hume Default" },
-            { value: "octave-2", label: "Octave 2" }
+            { value: "hume_default", label: "Hume Default" }
           ];
         case "Deepgram":
           return [
@@ -278,10 +276,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
           { value: "luna", label: "Luna - female, chill but excitable, gen-z optimist" },
           { value: "orion", label: "Orion - male, older, african american, happy" },
           { value: "ursa", label: "Ursa - male, 20 years old, encyclopedic knowledge of 2000s emo" },
-          { value: "astra", label: "Astra - female, young, wide-eyed" },
-          { value: "esther", label: "Esther - female, older, chinese american, loving" },
-          { value: "estelle", label: "Estelle - female, middle-aged, african-american, sounds so sweet" },
-          { value: "andromeda", label: "Andromeda - female, young, breathy, yoga vibes" }
+          { value: "astra", label: "Astra - female, young, wide-eyed" }
         ];
       } else {
         availableVoices = [
@@ -311,7 +306,12 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
         { value: "Colton Rivers", label: "Colton Rivers" },
         { value: "Sarah Chen", label: "Sarah Chen" },
         { value: "David Mitchell", label: "David Mitchell" },
-        { value: "Emma Williams", label: "Emma Williams" }
+        { value: "Emma Williams", label: "Emma Williams" },
+        { value: "Charming Cowgirl", label: "Charming Cowgirl" },
+        { value: "Soft Male Conversationalist", label: "Soft Male Conversationalist" },
+        { value: "Scottish Guy", label: "Scottish Guy" },
+        { value: "Conversational English Guy", label: "Conversational English Guy" },
+        { value: "English Casual Conversationalist", label: "English Casual Conversationalist" }
       ];
       
       const isCurrentVoiceValid = defaultVoices.some(voice => voice.value === data.voice);

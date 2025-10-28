@@ -1261,7 +1261,11 @@ class CallHandler:
                         voice_mapping = {
                             "rachel": "nova", "domi": "shimmer", "bella": "nova", "antoni": "echo",
                             "elli": "nova", "josh": "echo", "arnold": "fable", "alloy": "alloy",
-                            "nova": "nova", "shimmer": "shimmer", "echo": "echo", "fable": "fable", "onyx": "onyx"
+                            "nova": "nova", "shimmer": "shimmer", "echo": "echo", "fable": "fable", "onyx": "onyx",
+                            "colton rivers": "echo", "sarah chen": "nova", "david mitchell": "echo", "emma williams": "shimmer",
+                            "charming cowgirl": "shimmer", "soft male conversationalist": "echo",
+                            "scottish guy": "onyx", "conversational english guy": "echo",
+                            "english casual conversationalist": "echo"
                         }
                         mapped_voice = voice_mapping.get(hume_voice_name.lower(), "alloy")
                         
