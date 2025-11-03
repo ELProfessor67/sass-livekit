@@ -40,7 +40,17 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
             { value: "luna", label: "Luna - female, chill but excitable, gen-z optimist" },
             { value: "orion", label: "Orion - male, older, african american, happy" },
             { value: "ursa", label: "Ursa - male, 20 years old, encyclopedic knowledge of 2000s emo" },
-            { value: "astra", label: "Astra - female, young, wide-eyed" }
+            { value: "astra", label: "Astra - female, young, wide-eyed" },
+            { value: "walnut", label: "Walnut" },
+            { value: "miyamoto_akari", label: "Miyamoto Akari" },
+            { value: "patel_amit", label: "Patel Amit" },
+            { value: "celeste", label: "Celeste" },
+            { value: "kima", label: "Kima" },
+            { value: "marlu", label: "Marlu" },
+            { value: "morel_marianne", label: "Morel Marianne" },
+            { value: "solstice", label: "Solstice" },
+            { value: "livet_aurelie", label: "Livet Aurelie" },
+            { value: "destin", label: "Destin" }
           ];
         }
         // Show other Rime voices for other models
@@ -50,7 +60,17 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
           { value: "amalia", label: "Amalia" },
           { value: "alpine", label: "Alpine" },
           { value: "alona", label: "Alona" },
-          { value: "ally", label: "Ally" }
+          { value: "ally", label: "Ally" },
+          { value: "walnut", label: "Walnut" },
+          { value: "miyamoto_akari", label: "Miyamoto Akari" },
+          { value: "patel_amit", label: "Patel Amit" },
+          { value: "celeste", label: "Celeste" },
+          { value: "kima", label: "Kima" },
+          { value: "marlu", label: "Marlu" },
+          { value: "morel_marianne", label: "Morel Marianne" },
+          { value: "solstice", label: "Solstice" },
+          { value: "livet_aurelie", label: "Livet Aurelie" },
+          { value: "destin", label: "Destin" }
         ];
       case "Hume":
         // Default Hume voices only (Octave-2 disabled)
@@ -75,6 +95,18 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
         }
         return [
           { value: "aura-asteria-en", label: "Aura Asteria" }
+        ];
+      case "Cartesia":
+        // Cartesia Sonic 3 voices with names
+        return [
+          { value: "f9836c6e-a0bd-460e-9d3c-f7299fa60f94", label: "Caroline" },
+          { value: "41468051-3a85-4b68-92ad-64add250d369", label: "Cory" },
+          { value: "a167e0f3-df7e-4d52-a9c3-f949145efdab", label: "Blake" },
+          { value: "6c64b57a-bc65-48e4-bff4-12dbe85606cd", label: "Eloise" },
+          { value: "95d51f79-c397-46f9-b49a-23763d3eaa2d", label: "Arushi" },
+          { value: "9cebb910-d4b7-4a4a-85a4-12c79137724c", label: "Aarti" },
+          { value: "a01c369f-6d2d-4185-bc20-b32c225eab70", label: "Fiona" },
+          { value: "726d5ae5-055f-4c3d-8355-d9677de68937", label: "Troy" }
         ];
       default:
         return [];
@@ -119,6 +151,10 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
           { value: "aura-helios-en", label: "Aura Helios" },
           { value: "aura-zeus-en", label: "Aura Zeus" }
         ];
+      case "Cartesia":
+        return [
+          { value: "sonic-3", label: "Sonic 3" }
+        ];
       default:
         return [];
     }
@@ -152,7 +188,17 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
             { value: "luna", label: "Luna - female, chill but excitable, gen-z optimist" },
             { value: "orion", label: "Orion - male, older, african american, happy" },
             { value: "ursa", label: "Ursa - male, 20 years old, encyclopedic knowledge of 2000s emo" },
-            { value: "astra", label: "Astra - female, young, wide-eyed" }
+            { value: "astra", label: "Astra - female, young, wide-eyed" },
+            { value: "walnut", label: "Walnut" },
+            { value: "miyamoto_akari", label: "Miyamoto Akari" },
+            { value: "patel_amit", label: "Patel Amit" },
+            { value: "celeste", label: "Celeste" },
+            { value: "kima", label: "Kima" },
+            { value: "marlu", label: "Marlu" },
+            { value: "morel_marianne", label: "Morel Marianne" },
+            { value: "solstice", label: "Solstice" },
+            { value: "livet_aurelie", label: "Livet Aurelie" },
+            { value: "destin", label: "Destin" }
           ];
         case "Hume":
           return [
@@ -186,6 +232,17 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
             { value: "aura-orpheus-en", label: "Aura Orpheus" },
             { value: "aura-helios-en", label: "Aura Helios" },
             { value: "aura-zeus-en", label: "Aura Zeus" }
+          ];
+        case "Cartesia":
+          return [
+            { value: "f9836c6e-a0bd-460e-9d3c-f7299fa60f94", label: "Caroline" },
+            { value: "41468051-3a85-4b68-92ad-64add250d369", label: "Cory" },
+            { value: "a167e0f3-df7e-4d52-a9c3-f949145efdab", label: "Blake" },
+            { value: "6c64b57a-bc65-48e4-bff4-12dbe85606cd", label: "Eloise" },
+            { value: "95d51f79-c397-46f9-b49a-23763d3eaa2d", label: "Arushi" },
+            { value: "9cebb910-d4b7-4a4a-85a4-12c79137724c", label: "Aarti" },
+            { value: "a01c369f-6d2d-4185-bc20-b32c225eab70", label: "Fiona" },
+            { value: "726d5ae5-055f-4c3d-8355-d9677de68937", label: "Troy" }
           ];
         default:
           return [];
@@ -229,6 +286,10 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
             { value: "aura-helios-en", label: "Aura Helios" },
             { value: "aura-zeus-en", label: "Aura Zeus" }
           ];
+        case "Cartesia":
+          return [
+            { value: "sonic-3", label: "Sonic 3" }
+          ];
         default:
           return [];
       }
@@ -252,6 +313,9 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
     // For Deepgram, voice should match the model
     if (value === "Deepgram" && filteredModels.length > 0) {
       updates.voice = updates.model || filteredModels[0].value;
+    } else if (value === "Cartesia" && filteredVoices.length > 0) {
+      // For Cartesia, use first Sonic 3 voice
+      updates.voice = "f9836c6e-a0bd-460e-9d3c-f7299fa60f94";
     } else if (!isCurrentVoiceValid && filteredVoices.length > 0) {
       updates.voice = filteredVoices[0].value;
     }
@@ -259,11 +323,17 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
     onChange(updates);
   };
 
-  // Handle model change and reset voice if needed
+    // Handle model change and reset voice if needed
   const handleModelChange = (value: string) => {
     // For Deepgram, model and voice are the same
     if (data.provider === "Deepgram") {
       onChange({ model: value, voice: value });
+      return;
+    }
+    
+    // For Cartesia, use first voice when model changes
+    if (data.provider === "Cartesia") {
+      onChange({ model: value, voice: "f9836c6e-a0bd-460e-9d3c-f7299fa60f94" });
       return;
     }
     
@@ -276,7 +346,17 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
           { value: "luna", label: "Luna - female, chill but excitable, gen-z optimist" },
           { value: "orion", label: "Orion - male, older, african american, happy" },
           { value: "ursa", label: "Ursa - male, 20 years old, encyclopedic knowledge of 2000s emo" },
-          { value: "astra", label: "Astra - female, young, wide-eyed" }
+          { value: "astra", label: "Astra - female, young, wide-eyed" },
+          { value: "walnut", label: "Walnut" },
+          { value: "miyamoto_akari", label: "Miyamoto Akari" },
+          { value: "patel_amit", label: "Patel Amit" },
+          { value: "celeste", label: "Celeste" },
+          { value: "kima", label: "Kima" },
+          { value: "marlu", label: "Marlu" },
+          { value: "morel_marianne", label: "Morel Marianne" },
+          { value: "solstice", label: "Solstice" },
+          { value: "livet_aurelie", label: "Livet Aurelie" },
+          { value: "destin", label: "Destin" }
         ];
       } else {
         availableVoices = [
@@ -285,7 +365,17 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
           { value: "amalia", label: "Amalia" },
           { value: "alpine", label: "Alpine" },
           { value: "alona", label: "Alona" },
-          { value: "ally", label: "Ally" }
+          { value: "ally", label: "Ally" },
+          { value: "walnut", label: "Walnut" },
+          { value: "miyamoto_akari", label: "Miyamoto Akari" },
+          { value: "patel_amit", label: "Patel Amit" },
+          { value: "celeste", label: "Celeste" },
+          { value: "kima", label: "Kima" },
+          { value: "marlu", label: "Marlu" },
+          { value: "morel_marianne", label: "Morel Marianne" },
+          { value: "solstice", label: "Solstice" },
+          { value: "livet_aurelie", label: "Livet Aurelie" },
+          { value: "destin", label: "Destin" }
         ];
       }
       
@@ -362,6 +452,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
                   <SelectItem value="Rime">Rime</SelectItem>
                   <SelectItem value="Hume">Hume</SelectItem>
                   <SelectItem value="Deepgram">Deepgram</SelectItem>
+                  <SelectItem value="Cartesia">Cartesia</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -719,16 +810,78 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
             </>
           )}
 
+          {/* Cartesia Provider Settings */}
+          {data.provider === "Cartesia" && (
+            <>
+              <div className="pt-2 border-t border-border">
+                <div className="space-y-8">
+                  <div className="flex items-center justify-between">
+                    <div className="w-[60%]">
+                      <Label className="text-[16px] font-semibold tracking-[0.2px] text-gray-700 dark:text-gray-200">Speed</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Speech rate control (1.0 is default)</p>
+                    </div>
+                    <div className="w-[300px] flex items-center gap-3">
+                      <WizardSlider
+                        value={data.speed || 1.0}
+                        onChange={(value) => onChange({ speed: value })}
+                        min={0.5}
+                        max={2.0}
+                        step={0.1}
+                      />
+                      <span className="text-primary font-mono w-12 text-right">{(data.speed || 1.0).toFixed(1)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="w-[60%]">
+                      <Label className="text-[16px] font-semibold tracking-[0.2px] text-gray-700 dark:text-gray-200">Volume</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Volume control (1.0 is default)</p>
+                    </div>
+                    <div className="w-[300px] flex items-center gap-3">
+                      <WizardSlider
+                        value={data.volume || 1.0}
+                        onChange={(value) => onChange({ volume: value })}
+                        min={0.0}
+                        max={2.0}
+                        step={0.1}
+                      />
+                      <span className="text-primary font-mono w-12 text-right">{(data.volume || 1.0).toFixed(1)}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label className="text-[16px] font-semibold tracking-[0.2px]">Custom Voice ID (Optional)</Label>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Enter a custom Cartesia Sonic 3 voice ID (UUID format) to override the selected voice</p>
+                    <Input
+                      placeholder="Enter custom voice ID (e.g., f9836c6e-a0bd-460e-9d3c-f7299fa60f94)"
+                      value={data.customVoiceId || ""}
+                      onChange={(e) => {
+                        const customId = e.target.value.trim();
+                        if (customId) {
+                          // Update both customVoiceId and voice when custom ID is entered
+                          onChange({ customVoiceId: customId, voice: customId });
+                        } else {
+                          onChange({ customVoiceId: "" });
+                        }
+                      }}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Info Box for Non-ElevenLabs */}
-          {data.provider !== "ElevenLabs" && data.provider !== "Rime" && data.provider !== "Hume" && (
+          {data.provider !== "ElevenLabs" && data.provider !== "Rime" && data.provider !== "Hume" && data.provider !== "Cartesia" && (
             <div className="py-3 bg-muted rounded-md px-4 flex gap-3">
               <Info className="h-[18px] w-[18px] text-muted-foreground mt-0.5 flex-shrink-0" />
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">
-                  Enhanced voice customization features are available with ElevenLabs, Rime, and Hume providers.
+                  Enhanced voice customization features are available with ElevenLabs, Rime, Hume, and Cartesia providers.
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Switch to ElevenLabs for advanced voice stability and clarity controls, Rime for speed optimization, or Hume for emotional AI voice synthesis.
+                  Switch to ElevenLabs for advanced voice stability and clarity controls, Rime for speed optimization, Hume for emotional AI voice synthesis, or Cartesia for Sonic 3 TTS.
                 </p>
               </div>
             </div>

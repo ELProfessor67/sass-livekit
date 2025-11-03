@@ -78,6 +78,16 @@ except ImportError:
     DEEPGRAM_AVAILABLE = False
 
 try:
+    from livekit.plugins import cartesia as lk_cartesia
+    CARTESIA_AVAILABLE = True
+except ImportError:
+    lk_cartesia = None
+    CARTESIA_AVAILABLE = False
+except Exception:
+    lk_cartesia = None
+    CARTESIA_AVAILABLE = False
+
+try:
     import openai as cerebras_client
     CEREBRAS_AVAILABLE = True
 except ImportError:
@@ -101,6 +111,12 @@ from utils.data_extractors import extract_phone_from_room, extract_name_from_sum
 # Configure logging with security hardening
 configure_safe_logging(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Log Cartesia availability status after logger is initialized
+if CARTESIA_AVAILABLE:
+    logger.info("CARTESIA_PACKAGE_LOADED | Cartesia plugin successfully imported")
+else:
+    logger.warning("CARTESIA_IMPORT_FAILED | Cartesia plugin not available - install with: pip install livekit-plugins-cartesia")
 
 # Enable DEBUG logging for livekit.agents to see detailed transcript information
 logging.getLogger("livekit.agents").setLevel(logging.DEBUG)
@@ -1032,13 +1048,16 @@ class CallHandler:
         voice_model = config.get("voice_model_setting", "gpt-4o-mini-tts")
         voice_name = config.get("voice_name_setting", "alloy")
 
+        # Debug logging for TTS provider selection
+        logger.info(f"TTS_PROVIDER_SELECTED | provider={voice_provider} | model={voice_model} | voice={voice_name}")
+
         # Create LLM based on provider
         llm = self._create_llm(llm_provider, llm_model, temperature, max_tokens, config)
 
         # Create TTS based on provider
         tts = self._create_tts(voice_provider, voice_model, voice_name, config)
 
-        # Create STT - prefer Deepgram streaming for better latency
+        # Create STT - prefer Deepgram streaming for better latency, fallback to OpenAI Whisper
         language_setting = config.get("language_setting", "en")
         
         # Map combined language codes to Deepgram-supported codes
@@ -1055,11 +1074,36 @@ class CallHandler:
         }
         deepgram_language = language_mapping.get(language_setting, "en")
         
-        # Use Deepgram streaming STT for better first-token latency
-        stt = lk_deepgram.STT(
-            model="nova-3",
-            language=deepgram_language
-        )
+        # Try Deepgram STT first if available and API key is set
+        stt = None
+        deepgram_api_key = os.getenv("DEEPGRAM_API_KEY")
+        
+        if DEEPGRAM_AVAILABLE and deepgram_api_key:
+            try:
+                stt = lk_deepgram.STT(
+                    model="nova-3",
+                    language=deepgram_language
+                )
+                logger.info(f"DEEPGRAM_STT_CONFIGURED | model=nova-3 | language={deepgram_language}")
+            except Exception as e:
+                logger.warning(f"DEEPGRAM_STT_FAILED | error={str(e)} | falling back to OpenAI Whisper")
+                stt = None
+        
+        # Fallback to OpenAI Whisper STT if Deepgram is not available or failed
+        if stt is None:
+            # Map language codes for OpenAI Whisper
+            whisper_language_mapping = {
+                "en": "en", "es": "es", "pt": "pt", "fr": "fr", 
+                "de": "de", "nl": "nl", "no": "no", "ar": "ar",
+                "en-es": "en"  # Default to English for combined
+            }
+            whisper_language = whisper_language_mapping.get(language_setting, "en")
+            
+            stt = openai.STT(
+                model="whisper-1",
+                language=whisper_language
+            )
+            logger.info(f"OPENAI_STT_CONFIGURED | model=whisper-1 | language={whisper_language} | reason={'DEEPGRAM_NOT_AVAILABLE' if not DEEPGRAM_AVAILABLE else 'DEEPGRAM_FAILED' if deepgram_api_key else 'DEEPGRAM_API_KEY_NOT_SET'}")
 
         # Get call management settings from assistant config
         max_call_duration_minutes = config.get("max_call_duration", 30)  # From DB (in seconds, convert to minutes)
@@ -1179,8 +1223,11 @@ class CallHandler:
         - Rime: Uses RIME_API_KEY from environment, supports mistv2 model with rainforest speaker
         - Hume: Uses HUME_API_KEY from environment, supports VoiceByName with description
         - Deepgram: Uses DEEPGRAM_API_KEY from environment, supports Aura voices
+        - Cartesia: Uses CARTESIA_API_KEY from environment, supports sonic-3 model
         - OpenAI: Default fallback TTS provider
         """
+        # Debug logging for TTS provider check
+        logger.info(f"TTS_PROVIDER_CHECK | provider={provider} | CARTESIA_AVAILABLE={CARTESIA_AVAILABLE}")
         
         if provider == "Rime" and RIME_AVAILABLE:
             # Use assistant's Rime settings from database
@@ -1327,6 +1374,48 @@ class CallHandler:
                 return tts
             else:
                 logger.warning("DEEPGRAM_API_KEY_NOT_SET | falling back to OpenAI TTS")
+        
+        # Cartesia TTS implementation
+        if provider == "Cartesia" and CARTESIA_AVAILABLE:
+            logger.info("CARTESIA_PROVIDER_MATCHED | checking API key and config")
+            # Use assistant's Cartesia settings from database
+            cartesia_model = config.get("voice_model_setting", "sonic-3")  # From DB
+            # Default to first Sonic 3 voice if not set
+            cartesia_voice = config.get("voice_name_setting", "f9836c6e-a0bd-460e-9d3c-f7299fa60f94")  # From DB (default Sonic 3 voice)
+            cartesia_language = config.get("language_setting", "en")  # From DB
+            cartesia_speed = config.get("speed", 1.0)  # From DB
+            cartesia_volume = config.get("volume", 1.0)  # From DB (if available)
+            cartesia_emotion = config.get("emotion")  # From DB (optional)
+            
+            # Get API key from environment (centralized)
+            cartesia_api_key = os.getenv("CARTESIA_API_KEY")
+            logger.info(f"CARTESIA_CONFIG | model={cartesia_model} | voice={cartesia_voice} | api_key_set={bool(cartesia_api_key)}")
+            
+            if cartesia_api_key:
+                # Build TTS parameters
+                tts_params = {
+                    "model": cartesia_model,
+                    "voice": cartesia_voice,
+                    "language": cartesia_language,
+                    "speed": float(cartesia_speed),
+                    "volume": float(cartesia_volume),
+                }
+                
+                # Add optional emotion parameter if provided
+                if cartesia_emotion:
+                    tts_params["emotion"] = cartesia_emotion
+                
+                tts = lk_cartesia.TTS(
+                    **tts_params
+                )
+                logger.info(f"CARTESIA_TTS_CONFIGURED | model={cartesia_model} | voice={cartesia_voice} | speed={cartesia_speed} | language={cartesia_language}")
+                return tts
+            else:
+                logger.warning("CARTESIA_API_KEY_NOT_SET | falling back to OpenAI TTS")
+        elif provider == "Cartesia" and not CARTESIA_AVAILABLE:
+            logger.warning(f"CARTESIA_NOT_AVAILABLE | provider={provider} | CARTESIA_AVAILABLE={CARTESIA_AVAILABLE} | falling back to OpenAI TTS")
+        elif provider != "Cartesia":
+            logger.debug(f"PROVIDER_NOT_CARTESIA | provider={provider} | skipping Cartesia check")
         
         # Default to OpenAI TTS with assistant's settings
         openai_voice = config.get("voice_name_setting", "Rachel")  # From DB

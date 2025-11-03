@@ -8,6 +8,8 @@ livekit-plugins-elevenlabs>=1.2.11
 livekit-plugins-deepgram>=0.8.0
 livekit-agents[rime]~=1.2
 livekit-agents[hume]~=1.2
+livekit-agents[cartesia]~=1.2
+livekit-plugins-cartesia>=1.2.17
 livekit-plugins-hume>=0.4.1
 
 # OpenAI integration

@@ -310,9 +310,14 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
       })
     );
 
-    // Filter out failed calls and group by phone number
+    // Filter out failed calls and ensure only calls from user's assistants are included
+    // This is a defensive check - database query already filters, but this ensures correctness
     processedCalls
       .filter(Boolean)
+      .filter(({ callData }) => {
+        // Only include calls that have an assistant_id matching one of the user's assistants
+        return callData.assistant_id && assistantIds.includes(callData.assistant_id);
+      })
       .forEach(({ callData, phoneNumber, participantName }) => {
         if (!conversationsMap.has(phoneNumber)) {
           // Create new conversation
@@ -739,16 +744,16 @@ export const fetchContactList = async (limit: number = 50): Promise<ContactSumma
 };
 
 /**
- * Fetch conversation details for a specific contact (last 7 days by default)
+ * Fetch conversation details for a specific contact (loads all history by default)
  */
 export const fetchConversationDetails = async (
   phoneNumber: string, 
-  days: number = 7
+  days: number | null = null // null means load all history
 ): Promise<ConversationDetailsResponse> => {
   try {
     const userId = await getCurrentUserIdAsync();
     const assistantIds = await getUserAssistantIds();
-    console.log(`📞 Fetching conversation details for ${phoneNumber} (last ${days} days) for user ID: ${userId} with assistants:`, assistantIds);
+    console.log(`📞 Fetching conversation details for ${phoneNumber} ${days !== null ? `(last ${days} days)` : '(all history)'} for user ID: ${userId} with assistants:`, assistantIds);
     
     if (assistantIds.length === 0) {
       console.log('No assistants found for user, returning empty conversation details');
@@ -759,20 +764,27 @@ export const fetchConversationDetails = async (
       };
     }
     
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - days);
-    const cutoffISO = cutoffDate.toISOString();
+    // Build query - if days is null, load all history; otherwise filter by date
+    let callQuery = supabase
+      .from('call_history')
+      .select('*')
+      .eq('phone_number', phoneNumber)
+      .in('assistant_id', assistantIds);
+    
+    // Only apply date filter if days is specified
+    if (days !== null) {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - days);
+      const cutoffISO = cutoffDate.toISOString();
+      callQuery = callQuery.gte('start_time', cutoffISO);
+    }
+    
+    callQuery = callQuery.order('start_time', { ascending: false });
 
     // Try to fetch recent calls
     let recentCalls: any[] = [];
     try {
-      const { data: callData, error: callError } = await supabase
-        .from('call_history')
-        .select('*')
-        .eq('phone_number', phoneNumber)
-        .in('assistant_id', assistantIds)
-        .gte('start_time', cutoffISO)
-        .order('start_time', { ascending: false });
+      const { data: callData, error: callError } = await callQuery;
 
       if (callError) {
         console.warn('⚠️ call_history table not available for conversation details:', callError.message);
@@ -800,13 +812,23 @@ export const fetchConversationDetails = async (
     // Try to fetch recent SMS messages
     let recentSMS: any[] = [];
     try {
-      const { data: smsData, error: smsError } = await supabase
+      let smsQuery = supabase
         .from('sms_messages')
         .select('*')
         .or(`from_number.eq.${phoneNumber},to_number.eq.${phoneNumber}`)
-        .eq('user_id', userId)
-        .gte('date_created', cutoffISO)
-        .order('date_created', { ascending: false });
+        .eq('user_id', userId);
+      
+      // Only apply date filter if days is specified
+      if (days !== null) {
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - days);
+        const cutoffISO = cutoffDate.toISOString();
+        smsQuery = smsQuery.gte('date_created', cutoffISO);
+      }
+      
+      smsQuery = smsQuery.order('date_created', { ascending: false });
+      
+      const { data: smsData, error: smsError } = await smsQuery;
 
       if (smsError) {
         console.warn('⚠️ sms_messages table not available for conversation details:', smsError.message);
@@ -819,22 +841,31 @@ export const fetchConversationDetails = async (
       recentSMS = [];
     }
 
-    // Check if there's older history
-    const { data: olderCalls, error: olderCallError } = await supabase
-      .from('call_history')
-      .select('id')
-      .eq('phone_number', phoneNumber)
-      .lt('start_time', cutoffISO)
-      .limit(1);
+    // Check if there's older history (only relevant if days is specified)
+    let hasMoreHistory = false;
+    if (days !== null) {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - days);
+      const cutoffISO = cutoffDate.toISOString();
+      
+      const { data: olderCalls, error: olderCallError } = await supabase
+        .from('call_history')
+        .select('id')
+        .eq('phone_number', phoneNumber)
+        .in('assistant_id', assistantIds)
+        .lt('start_time', cutoffISO)
+        .limit(1);
 
-    const { data: olderSMS, error: olderSMSError } = await supabase
-      .from('sms_messages')
-      .select('id')
-      .or(`from_number.eq.${phoneNumber},to_number.eq.${phoneNumber}`)
-      .lt('date_created', cutoffISO)
-      .limit(1);
+      const { data: olderSMS, error: olderSMSError } = await supabase
+        .from('sms_messages')
+        .select('id')
+        .or(`from_number.eq.${phoneNumber},to_number.eq.${phoneNumber}`)
+        .eq('user_id', userId)
+        .lt('date_created', cutoffISO)
+        .limit(1);
 
-    const hasMoreHistory = (olderCalls && olderCalls.length > 0) || (olderSMS && olderSMS.length > 0);
+      hasMoreHistory = (olderCalls && olderCalls.length > 0) || (olderSMS && olderSMS.length > 0);
+    }
 
     // Process calls with recording fetches
     const processedCalls = await Promise.all(
@@ -958,7 +989,10 @@ export const fetchConversationDetails = async (
     }));
 
     // Create conversation object
-    const validCalls = processedCalls.filter(Boolean);
+    // Filter to ensure only calls from user's assistants are included (defensive check)
+    const validCalls = processedCalls
+      .filter(Boolean)
+      .filter((call) => call.assistant_id && assistantIds.includes(call.assistant_id));
     // Use the most recent call's participant name (which should have the real contact name)
     const participantName = validCalls[0]?.name || 'Unknown';
     const nameParts = participantName.split(' ');
@@ -1244,7 +1278,10 @@ export const loadConversationHistory = async (
       priceUnit: sms.price_unit
     }));
 
-    const validCalls = processedCalls.filter(Boolean);
+    // Filter to ensure only calls from user's assistants are included (defensive check)
+    const validCalls = processedCalls
+      .filter(Boolean)
+      .filter((call) => call.assistant_id && assistantIds.includes(call.assistant_id));
     const hasMoreHistory = validCalls.length === limit || processedSMS.length === limit;
 
     console.log(`📜 Loaded ${validCalls.length} older calls and ${processedSMS.length} older SMS messages`);
@@ -1393,7 +1430,10 @@ export const fetchNewMessagesSince = async (
             }
           })
         );
-        newCalls = newCalls.filter(Boolean);
+        // Filter to ensure only calls from user's assistants are included (defensive check)
+        newCalls = newCalls
+          .filter(Boolean)
+          .filter((call) => call.assistant_id && assistantIds.includes(call.assistant_id));
       }
     } catch (error) {
       console.warn('⚠️ Error fetching new calls:', error);

@@ -208,7 +208,9 @@ export default function Conversations() {
       setIsLoadingConversation(true);
       console.log(`📞 Loading conversation details for ${phoneNumber}...`);
       
-      const response = await progressiveFunctions.getConversationDetails(phoneNumber);
+      // Always load ALL call history, not filtered by date range
+      // Passing null explicitly to ensure all calls are loaded
+      const response = await progressiveFunctions.getConversationDetails(phoneNumber, null);
       const conversation = response.conversation;
       
       console.log(`📞 Loaded conversation with ${conversation.calls.length} calls and ${conversation.smsMessages.length} SMS messages`);

@@ -883,16 +883,22 @@ class UnifiedAgent(Agent):
         if not field_name or not field_value:
             return "I need both the field name and value to collect this information."
 
-        # Store the analysis data
-        self._analysis_data[field_name.strip()] = field_value.strip()
+        # Format and store the analysis data
+        # Format email addresses before storing in analysis data
+        formatted_email = None
+        if field_name == "Email Address" and field_value:
+            formatted_email = self._format_email(field_value.strip())
+            self._analysis_data[field_name.strip()] = formatted_email
+        else:
+            self._analysis_data[field_name.strip()] = field_value.strip()
         
         # Also populate booking data if it's a booking-related field
         if field_name == "Customer Name" and field_value:
             self._booking_data.name = field_value.strip()
             logging.info("BOOKING_NAME_SET | name=%s", field_value)
         elif field_name == "Email Address" and field_value:
-            formatted_email = self._format_email(field_value.strip())
-            if self._email_ok(formatted_email):
+            # Use the already formatted email from above
+            if formatted_email and self._email_ok(formatted_email):
                 self._booking_data.email = formatted_email
                 logging.info("BOOKING_EMAIL_SET | original=%s | formatted=%s", field_value, formatted_email)
         elif field_name == "Phone Number" and field_value:

@@ -344,7 +344,9 @@ def validate_model_names(config: Dict[str, Any]) -> Dict[str, Any]:
     
     valid_rime_speakers = {
         "ana", "amber", "amalia", "alpine", "alona", "ally",
-        "luna", "celeste", "orion", "ursa", "astra", "esther", "estelle", "andromeda"
+        "luna", "celeste", "orion", "ursa", "astra", "esther", "estelle", "andromeda",
+        "walnut", "miyamoto_akari", "patel_amit", "kima", "marlu", "morel_marianne",
+        "solstice", "livet_aurelie", "destin"
     }
     
     # Fix LLM model with comprehensive mapping (like old implementation)
