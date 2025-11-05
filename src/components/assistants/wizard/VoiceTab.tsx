@@ -43,7 +43,6 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
             { value: "astra", label: "Astra - female, young, wide-eyed" },
             { value: "walnut", label: "Walnut" },
             { value: "miyamoto_akari", label: "Miyamoto Akari" },
-            { value: "patel_amit", label: "Patel Amit" },
             { value: "celeste", label: "Celeste" },
             { value: "kima", label: "Kima" },
             { value: "marlu", label: "Marlu" },
@@ -106,7 +105,11 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
           { value: "95d51f79-c397-46f9-b49a-23763d3eaa2d", label: "Arushi" },
           { value: "9cebb910-d4b7-4a4a-85a4-12c79137724c", label: "Aarti" },
           { value: "a01c369f-6d2d-4185-bc20-b32c225eab70", label: "Fiona" },
-          { value: "726d5ae5-055f-4c3d-8355-d9677de68937", label: "Troy" }
+          { value: "726d5ae5-055f-4c3d-8355-d9677de68937", label: "Troy" },
+          { value: "ce74c4da-4aee-435d-bc6d-81d1a9367e12", label: "Maroc" },
+          { value: "22f1a356-56c2-4428-bc91-2ab2e6d0c215", label: "Isabelle" },
+          { value: "9287676d-f0cc-423f-ac03-3b3c7242f091", label: "Allen" },
+          { value: "ee8b13e7-98af-4b15-89d1-8d402be10c94", label: "Carson" }
         ];
       default:
         return [];
