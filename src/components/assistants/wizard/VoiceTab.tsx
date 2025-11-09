@@ -38,18 +38,11 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
         if (data.model === "arcana") {
           return [
             { value: "luna", label: "Luna - female, chill but excitable, gen-z optimist" },
-            { value: "orion", label: "Orion - male, older, african american, happy" },
             { value: "ursa", label: "Ursa - male, 20 years old, encyclopedic knowledge of 2000s emo" },
             { value: "astra", label: "Astra - female, young, wide-eyed" },
             { value: "walnut", label: "Walnut" },
             { value: "miyamoto_akari", label: "Miyamoto Akari" },
-            { value: "celeste", label: "Celeste" },
-            { value: "kima", label: "Kima" },
-            { value: "marlu", label: "Marlu" },
-            { value: "morel_marianne", label: "Morel Marianne" },
-            { value: "solstice", label: "Solstice" },
-            { value: "livet_aurelie", label: "Livet Aurelie" },
-            { value: "destin", label: "Destin" }
+            { value: "marlu", label: "Marlu" }
           ];
         }
         // Show other Rime voices for other models
@@ -98,9 +91,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
       case "Cartesia":
         // Cartesia Sonic 3 voices with names
         return [
-          { value: "f9836c6e-a0bd-460e-9d3c-f7299fa60f94", label: "Caroline" },
           { value: "41468051-3a85-4b68-92ad-64add250d369", label: "Cory" },
-          { value: "a167e0f3-df7e-4d52-a9c3-f949145efdab", label: "Blake" },
           { value: "6c64b57a-bc65-48e4-bff4-12dbe85606cd", label: "Eloise" },
           { value: "95d51f79-c397-46f9-b49a-23763d3eaa2d", label: "Arushi" },
           { value: "9cebb910-d4b7-4a4a-85a4-12c79137724c", label: "Aarti" },
@@ -108,8 +99,11 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
           { value: "726d5ae5-055f-4c3d-8355-d9677de68937", label: "Troy" },
           { value: "ce74c4da-4aee-435d-bc6d-81d1a9367e12", label: "Maroc" },
           { value: "22f1a356-56c2-4428-bc91-2ab2e6d0c215", label: "Isabelle" },
-          { value: "9287676d-f0cc-423f-ac03-3b3c7242f091", label: "Allen" },
-          { value: "ee8b13e7-98af-4b15-89d1-8d402be10c94", label: "Carson" }
+          { value: "ee8b13e7-98af-4b15-89d1-8d402be10c94", label: "Carson" },
+          { value: "5cad89c9-d88a-4832-89fb-55f2f16d13d3", label: "Brandon - Emotive" },
+          { value: "e07c00bc-4134-4eae-9ea4-1a55fb45746b", label: "Brooke - Emotive" },
+          { value: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b", label: "Tessa - Emotive" },
+          { value: "ec1e269e-9ca0-402f-8a18-58e0e022355a", label: "Ariana - Emotive" }
         ];
       default:
         return [];
@@ -238,14 +232,19 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
           ];
         case "Cartesia":
           return [
-            { value: "f9836c6e-a0bd-460e-9d3c-f7299fa60f94", label: "Caroline" },
             { value: "41468051-3a85-4b68-92ad-64add250d369", label: "Cory" },
-            { value: "a167e0f3-df7e-4d52-a9c3-f949145efdab", label: "Blake" },
             { value: "6c64b57a-bc65-48e4-bff4-12dbe85606cd", label: "Eloise" },
             { value: "95d51f79-c397-46f9-b49a-23763d3eaa2d", label: "Arushi" },
             { value: "9cebb910-d4b7-4a4a-85a4-12c79137724c", label: "Aarti" },
             { value: "a01c369f-6d2d-4185-bc20-b32c225eab70", label: "Fiona" },
-            { value: "726d5ae5-055f-4c3d-8355-d9677de68937", label: "Troy" }
+            { value: "726d5ae5-055f-4c3d-8355-d9677de68937", label: "Troy" },
+            { value: "ce74c4da-4aee-435d-bc6d-81d1a9367e12", label: "Maroc" },
+            { value: "22f1a356-56c2-4428-bc91-2ab2e6d0c215", label: "Isabelle" },
+            { value: "ee8b13e7-98af-4b15-89d1-8d402be10c94", label: "Carson" },
+            { value: "5cad89c9-d88a-4832-89fb-55f2f16d13d3", label: "Brandon - Emotive" },
+            { value: "e07c00bc-4134-4eae-9ea4-1a55fb45746b", label: "Brooke - Emotive" },
+            { value: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b", label: "Tessa - Emotive" },
+            { value: "ec1e269e-9ca0-402f-8a18-58e0e022355a", label: "Ariana - Emotive" }
           ];
         default:
           return [];
@@ -318,7 +317,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
       updates.voice = updates.model || filteredModels[0].value;
     } else if (value === "Cartesia" && filteredVoices.length > 0) {
       // For Cartesia, use first Sonic 3 voice
-      updates.voice = "f9836c6e-a0bd-460e-9d3c-f7299fa60f94";
+      updates.voice = "41468051-3a85-4b68-92ad-64add250d369";
     } else if (!isCurrentVoiceValid && filteredVoices.length > 0) {
       updates.voice = filteredVoices[0].value;
     }
@@ -336,7 +335,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
     
     // For Cartesia, use first voice when model changes
     if (data.provider === "Cartesia") {
-      onChange({ model: value, voice: "f9836c6e-a0bd-460e-9d3c-f7299fa60f94" });
+      onChange({ model: value, voice: "41468051-3a85-4b68-92ad-64add250d369" });
       return;
     }
     
@@ -347,19 +346,11 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
       if (value === "arcana") {
         availableVoices = [
           { value: "luna", label: "Luna - female, chill but excitable, gen-z optimist" },
-          { value: "orion", label: "Orion - male, older, african american, happy" },
           { value: "ursa", label: "Ursa - male, 20 years old, encyclopedic knowledge of 2000s emo" },
           { value: "astra", label: "Astra - female, young, wide-eyed" },
           { value: "walnut", label: "Walnut" },
           { value: "miyamoto_akari", label: "Miyamoto Akari" },
-          { value: "patel_amit", label: "Patel Amit" },
-          { value: "celeste", label: "Celeste" },
-          { value: "kima", label: "Kima" },
-          { value: "marlu", label: "Marlu" },
-          { value: "morel_marianne", label: "Morel Marianne" },
-          { value: "solstice", label: "Solstice" },
-          { value: "livet_aurelie", label: "Livet Aurelie" },
-          { value: "destin", label: "Destin" }
+          { value: "marlu", label: "Marlu" }
         ];
       } else {
         availableVoices = [
