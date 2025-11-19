@@ -32,6 +32,9 @@ async function extractTenantFromUrl(url) {
       parsedUrl = new URL(url);
     } catch (e) {
       // If URL parsing fails, return main tenant
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[extractTenantFromUrl] URL parsing failed:', url, e.message);
+      }
       return 'main';
     }
     
@@ -46,14 +49,30 @@ async function extractTenantFromUrl(url) {
     const minParts = isDevelopment ? 1 : 2;
     const mainDomain = process.env.MAIN_DOMAIN || 'localhost';
 
+    // Debug logging
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[extractTenantFromUrl] Parsing hostname:', {
+        hostname,
+        parts,
+        partsLength: parts.length,
+        minParts,
+        isDevelopment
+      });
+    }
+
     // Check if it's a subdomain (e.g., mycompany.maindomain.com or gomezlouis.localhost)
     // For localhost subdomains like gomezlouis.localhost, parts will be ['gomezlouis', 'localhost']
     // For regular subdomains like mycompany.example.com, parts will be ['mycompany', 'example', 'com']
+    // For multi-level subdomains like gomezlouis.frontend.ultratalkai.com, parts will be ['gomezlouis', 'frontend', 'ultratalkai', 'com']
     const isLocalhostSubdomain = parts.length === 2 && parts[1] === 'localhost';
     const isRegularSubdomain = parts.length > minParts;
     
     if (isLocalhostSubdomain || isRegularSubdomain) {
       const subdomain = parts[0];
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[extractTenantFromUrl] Detected subdomain:', subdomain, 'from hostname:', hostname);
+      }
       
       if (!supabase) {
         console.warn('Supabase not initialized, returning main tenant');
@@ -72,7 +91,14 @@ async function extractTenantFromUrl(url) {
       }
 
       if (!tenantOwner) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[extractTenantFromUrl] No tenant found for slug:', subdomain);
+        }
         return null;
+      }
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[extractTenantFromUrl] Found tenant:', tenantOwner.slug_name || tenantOwner.tenant);
       }
 
       return tenantOwner.slug_name || tenantOwner.tenant || 'main';
@@ -117,7 +143,15 @@ async function extractTenantFromUrl(url) {
 }
 
 export const tenantMiddleware = async (req, res, next) => {
-  const origin = req.headers.origin || req.headers.referer || '';
+  // Try multiple sources for the hostname in order of preference:
+  // 1. origin header (most reliable for CORS requests)
+  // 2. referer header (fallback for same-origin requests)
+  // 3. x-forwarded-host header (set by reverse proxies)
+  // 4. host header (last resort, but may be API server's hostname)
+  const origin = req.headers.origin || '';
+  const referer = req.headers.referer || '';
+  const forwardedHost = req.headers['x-forwarded-host'] || '';
+  const host = req.headers.host || '';
   const uri = req.url;
 
   // Skip tenant validation for ignored routes
@@ -133,8 +167,46 @@ export const tenantMiddleware = async (req, res, next) => {
                                   uri.startsWith('/api/v1/minutes') ||
                                   uri.startsWith('/api/v1/support-access');
   
-  // Extract tenant from origin/referer
-  const tenant = await extractTenantFromUrl(origin);
+  // Extract tenant from multiple sources, in order of preference
+  let urlToCheck = origin || referer;
+  
+  // If origin/referer not available, try x-forwarded-host (set by reverse proxies)
+  if (!urlToCheck && forwardedHost) {
+    const forwardedProto = req.headers['x-forwarded-proto'] || '';
+    const protocol = forwardedProto === 'https' || req.secure ? 'https' : 'http';
+    urlToCheck = `${protocol}://${forwardedHost}`;
+  }
+  
+  // Last resort: use host header (but this might be API server's hostname, not frontend's)
+  if (!urlToCheck && host) {
+    // Only use host header if it looks like a frontend subdomain (has more than 2 parts)
+    // This helps avoid using API server's hostname
+    const hostParts = host.split(':')[0].split('.'); // Remove port if present
+    if (hostParts.length > 2) {
+      const forwardedProto = req.headers['x-forwarded-proto'] || '';
+      const protocol = forwardedProto === 'https' || req.secure ? 'https' : 'http';
+      urlToCheck = `${protocol}://${host}`;
+    }
+  }
+  
+  // Debug logging (can be removed in production if not needed)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[TenantMiddleware] Extracting tenant from:', {
+      origin: req.headers.origin,
+      referer: req.headers.referer,
+      'x-forwarded-host': req.headers['x-forwarded-host'],
+      host: req.headers.host,
+      urlToCheck,
+      uri
+    });
+  }
+  
+  const tenant = await extractTenantFromUrl(urlToCheck);
+  
+  // Debug logging
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[TenantMiddleware] Extracted tenant:', tenant);
+  }
 
   // If tenant can't be determined and it's not an ignored route or authenticated API route, block it
   if (!tenant && !isIgnoredRoute(uri) && !isAuthenticatedApiRoute) {
