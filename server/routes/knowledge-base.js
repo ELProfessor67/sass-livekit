@@ -1,4 +1,6 @@
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
 import DocumentUploadService from '../services/document-upload-service.js';
 import KnowledgeBaseDatabaseService from '../services/knowledge-base-database-service.js';
 import DocumentProcessor from '../workers/document-processor.js';
@@ -13,6 +15,39 @@ const uploadService = new DocumentUploadService(databaseService);
 const documentProcessor = new DocumentProcessor();
 const pineconeHelper = new PineconeAssistantHelper();
 const contextService = new PineconeContextService();
+const uploadsDir = uploadService?.uploadsDir || path.join(process.cwd(), 'uploads');
+
+const ensureUploadsDirExists = () => {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+};
+
+const createTextFileForDocument = async (document, contentText) => {
+  ensureUploadsDirExists();
+
+  const fileExtension = '.txt';
+  const storedFileName = `${document.doc_id}${fileExtension}`;
+  const originalFileName = document.original_filename?.endsWith(fileExtension)
+    ? document.original_filename
+    : `${document.content_name || 'text-content'}${fileExtension}`;
+
+  const filePath = path.join(uploadsDir, storedFileName);
+  await fs.promises.writeFile(filePath, contentText, 'utf8');
+
+  const fileSize = Buffer.byteLength(contentText, 'utf8');
+
+  const updatedDocument = await databaseService.updateDocumentFileInfo(document.doc_id, {
+    filename: storedFileName,
+    original_filename: originalFileName,
+    file_path: filePath,
+    file_size: fileSize,
+    status: 'uploaded',
+    pinecone_status: 'uploaded'
+  });
+
+  return updatedDocument;
+};
 
 // Middleware to extract user ID from JWT or session
 const extractUserId = (req, res, next) => {
@@ -476,10 +511,26 @@ router.post('/knowledge-bases/:kbId/content/text', extractUserId, async (req, re
       updated_at: new Date().toISOString()
     };
 
-    const document = await databaseService.createDocument(documentData);
+    let document = await databaseService.createDocument(documentData);
     
     // Associate with knowledge base
     await databaseService.associateDocumentWithKnowledgeBase(document.doc_id, kbId);
+    
+    // Persist text content as file for ingestion
+    try {
+      document = await createTextFileForDocument(document, contentText);
+    } catch (fileError) {
+      console.error('Failed to prepare text file for document:', fileError);
+      return res.status(500).json({ error: 'Failed to prepare text content for processing' });
+    }
+
+    // Trigger document processing to upload to Pinecone
+    try {
+      await documentProcessor.processDocument(document.doc_id);
+    } catch (processError) {
+      console.error('Text document processing error:', processError);
+      // Continue without failing the response
+    }
     
     res.json({ 
       success: true, 

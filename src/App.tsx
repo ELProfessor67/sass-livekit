@@ -8,6 +8,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "rea
 import { ThemeProvider } from "./components/ThemeProvider";
 import { BusinessUseCaseProvider } from "./components/BusinessUseCaseProvider";
 import { AuthProvider, useAuth } from "./contexts/SupportAccessAuthContext";
+import { WebsiteSettingsProvider } from "./contexts/WebsiteSettingsContext";
 import { supabase } from "./integrations/supabase/client";
 import Index from "./pages/Index";
 import LandingPage from "./pages/LandingPage";
@@ -29,6 +30,7 @@ import Login from "./pages/Login";
 import Onboarding from "./pages/Onboarding";
 import VoiceAgent from "./pages/VoiceAgent";
 import AdminPanel from "./pages/AdminPanel";
+import AuthCallback from "./pages/AuthCallback";
 
 // Create a client with better error handling and retry limits
 const queryClient = new QueryClient({
@@ -114,6 +116,14 @@ function RequireOnboarding() {
   }
 
   const localCompleted = localStorage.getItem("onboarding-completed") === "true";
+  const signupData = localStorage.getItem("signup-data");
+  
+  // If user has signup data but hasn't completed onboarding, redirect to onboarding
+  if (signupData && !localCompleted && location.pathname !== "/onboarding") {
+    return <Navigate to="/onboarding" replace />;
+  }
+
+  // For authenticated users, check onboarding status
   const shouldRedirectToOnboarding = user && !localCompleted && !onboardingStatus;
 
   if (shouldRedirectToOnboarding && location.pathname !== "/onboarding") {
@@ -125,6 +135,11 @@ function RequireOnboarding() {
     return <Navigate to="/dashboard" replace />;
   }
 
+  // Require authentication for protected routes (onboarding route is separate, not protected)
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
   return <Outlet />;
 }
 
@@ -133,6 +148,7 @@ function AnimatedRoutes() {
     <Routes>
       <Route path="/signup" element={<ProtectedAuthPage><SignUp /></ProtectedAuthPage>} />
       <Route path="/login" element={<ProtectedAuthPage><Login /></ProtectedAuthPage>} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route element={<RequireOnboarding />}>
         <Route path="/dashboard" element={<Index />} />
@@ -169,15 +185,17 @@ const App = () => (
       }}
     >
       <AuthProvider>
-        <BusinessUseCaseProvider>
-          <QueryClientProvider client={queryClient}>
-            <TooltipProvider>
-              <Toaster />
-              <Sonner />
-              <AnimatedRoutes />
-            </TooltipProvider>
-          </QueryClientProvider>
-        </BusinessUseCaseProvider>
+        <WebsiteSettingsProvider>
+          <BusinessUseCaseProvider>
+            <QueryClientProvider client={queryClient}>
+              <TooltipProvider>
+                <Toaster />
+                <Sonner />
+                <AnimatedRoutes />
+              </TooltipProvider>
+            </QueryClientProvider>
+          </BusinessUseCaseProvider>
+        </WebsiteSettingsProvider>
       </AuthProvider>
     </BrowserRouter>
   </ThemeProvider>

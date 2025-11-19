@@ -31,10 +31,10 @@ from livekit.agents import (
     cli,
     metrics,
     MetricsCollectedEvent,
+    UserStateChangedEvent,
     RoomInputOptions,
     RoomOutputOptions,
     AutoSubscribe,
-    UserStateChangedEvent,
 )
 
 # Plugin imports
@@ -99,6 +99,7 @@ from services.agent_factory import AgentFactory
 from services.config_resolver import ConfigResolver
 from integrations.supabase_client import SupabaseClient
 from integrations.calendar_api import CalComCalendar, CalendarResult, CalendarError
+from config.database import get_database_client
 from utils.logging_hardening import configure_safe_logging
 from utils.latency_logger import (
     measure_latency_context, 
@@ -163,6 +164,9 @@ class CallHandler:
         self.llm_latency = 0
         self.tts_latency = 0
         
+        # Track idle message counts per session
+        self._idle_message_counts = {}
+        
         # Start pre-warming in background
         asyncio.create_task(self._prewarm_components())
 
@@ -219,6 +223,156 @@ class CallHandler:
         except Exception as e:
             logger.error(f"METRICS_COLLECTION_ERROR | error={str(e)}")
 
+    async def _on_user_state_changed(self, event: UserStateChangedEvent, session: AgentSession, config: Dict[str, Any], ctx: JobContext) -> None:
+        """Handle user state changes to send idle messages when user goes away."""
+        try:
+            session_id = id(session)
+            
+            # Reset idle message count when user returns from away state
+            if event.old_state == "away" and event.new_state != "away":
+                if session_id in self._idle_message_counts:
+                    self._idle_message_counts[session_id] = 0
+                    logger.info(f"IDLE_MESSAGE_RESET | user returned from away state")
+                return
+            
+            # Only handle transitions to 'away' state
+            if event.new_state != "away":
+                return
+            
+            # Initialize count for this session if not exists
+            if session_id not in self._idle_message_counts:
+                self._idle_message_counts[session_id] = 0
+            
+            # Get idle message configuration
+            idle_messages = config.get("idle_messages", [])
+            max_idle_messages = config.get("max_idle_messages", 3)
+            
+            # Check if we have idle messages configured
+            if not idle_messages or not isinstance(idle_messages, list) or len(idle_messages) == 0:
+                logger.debug("IDLE_MESSAGE_SKIP | no idle messages configured")
+                return
+            
+            # Check if we've exceeded the maximum
+            current_count = self._idle_message_counts[session_id]
+            if current_count >= max_idle_messages:
+                logger.info(f"IDLE_MESSAGE_MAX_REACHED | count={current_count} | max={max_idle_messages} | ending call")
+                # End the call after max idle messages
+                try:
+                    # Disconnect the room using the context
+                    await ctx.room.disconnect()
+                    logger.info("IDLE_MESSAGE_DISCONNECT_SUCCESS | room disconnected")
+                except Exception as disconnect_error:
+                    logger.error(f"IDLE_MESSAGE_DISCONNECT_ERROR | error={str(disconnect_error)}")
+                    # Fallback: try to close the session
+                    try:
+                        await session.aclose()
+                    except Exception as close_error:
+                        logger.error(f"IDLE_MESSAGE_CLOSE_ERROR | error={str(close_error)}")
+                return
+            
+            # Select an idle message (cycle through available messages)
+            message_index = current_count % len(idle_messages)
+            idle_message = idle_messages[message_index]
+            
+            # Increment the count
+            self._idle_message_counts[session_id] = current_count + 1
+            
+            logger.info(f"IDLE_MESSAGE_SENDING | count={current_count + 1}/{max_idle_messages} | message='{idle_message[:60]}{'...' if len(idle_message) > 60 else ''}'")
+            
+            # Send the idle message
+            try:
+                await session.say(idle_message)
+                logger.info(f"IDLE_MESSAGE_SENT | count={current_count + 1}/{max_idle_messages}")
+            except AttributeError:
+                # Fallback if say() not available
+                await session.generate_reply(
+                    instructions=f"Say exactly this: '{idle_message}'"
+                )
+                logger.info(f"IDLE_MESSAGE_SENT_FALLBACK | count={current_count + 1}/{max_idle_messages}")
+            except Exception as say_error:
+                logger.error(f"IDLE_MESSAGE_SEND_ERROR | error={str(say_error)}")
+                
+        except Exception as e:
+            logger.error(f"IDLE_MESSAGE_HANDLER_ERROR | error={str(e)}")
+
+    def _start_max_call_duration_timer(self, ctx: JobContext, config: Dict[str, Any], session: AgentSession) -> None:
+        """Automatically hang up the call once the configured max duration elapses."""
+        max_call_duration_minutes = config.get("max_call_duration")
+        try:
+            max_call_duration_minutes = float(max_call_duration_minutes)
+        except (TypeError, ValueError):
+            max_call_duration_minutes = 0
+
+        if not max_call_duration_minutes or max_call_duration_minutes <= 0:
+            return
+
+        duration_seconds = int(max_call_duration_minutes * 60)
+        if duration_seconds <= 0:
+            return
+
+        logger.info(f"MAX_DURATION_TIMER_START | duration_seconds={duration_seconds}")
+
+        async def enforce_max_duration():
+            try:
+                await asyncio.sleep(duration_seconds)
+                logger.info("MAX_DURATION_REACHED | saying end call message before hanging up")
+                
+                # Say end call message if configured
+                end_call_message = config.get("end_call_message")
+                if end_call_message:
+                    try:
+                        logger.info(f"MAX_DURATION_END_MESSAGE | message='{end_call_message[:60]}{'...' if len(end_call_message) > 60 else ''}'")
+                        try:
+                            await session.say(end_call_message)
+                        except AttributeError:
+                            # Fallback if say() not available
+                            await session.generate_reply(instructions=f"Say exactly this: '{end_call_message}'")
+                        
+                        # Wait for message to be spoken (estimate: ~3 seconds for short messages, up to 10 seconds for longer ones)
+                        message_duration = min(len(end_call_message) * 0.1, 10)  # Rough estimate: 0.1s per character, max 10s
+                        await asyncio.sleep(max(message_duration, 3))  # At least 3 seconds
+                        logger.info("MAX_DURATION_END_MESSAGE_SPOKEN | waiting complete")
+                    except Exception as message_error:
+                        logger.error(f"MAX_DURATION_END_MESSAGE_ERROR | error={str(message_error)}")
+                        # Continue to hangup even if message failed
+                
+                logger.info("MAX_DURATION_HANGUP | hanging up call by deleting room")
+                try:
+                    # Use delete_room API to properly hang up the call for all participants
+                    # This is the recommended way per LiveKit telephony docs
+                    await ctx.api.room.delete_room(
+                        api.DeleteRoomRequest(
+                            room=ctx.room.name,
+                        )
+                    )
+                    logger.info("MAX_DURATION_HANGUP_SUCCESS | room deleted successfully")
+                except Exception as delete_error:
+                    logger.error(f"MAX_DURATION_HANGUP_FAILED | error={str(delete_error)}")
+                    # Fallback to disconnect if delete_room fails
+                    try:
+                        await ctx.room.disconnect()
+                        logger.info("MAX_DURATION_HANGUP_FALLBACK | used room.disconnect()")
+                    except Exception as disconnect_error:
+                        logger.error(f"MAX_DURATION_HANGUP_FALLBACK_FAILED | error={str(disconnect_error)}")
+            except asyncio.CancelledError:
+                logger.info("MAX_DURATION_TIMER_CANCELLED")
+                raise
+            except Exception as e:
+                logger.error(f"MAX_DURATION_TIMER_ERROR | error={str(e)}")
+
+        timer_task = asyncio.create_task(enforce_max_duration())
+
+        async def cancel_timer():
+            if timer_task.done():
+                return
+            timer_task.cancel()
+            try:
+                await timer_task
+            except asyncio.CancelledError:
+                pass
+
+        ctx.add_shutdown_callback(cancel_timer)
+
     async def handle_call(self, ctx: JobContext) -> None:
         """Handle incoming call with proper LiveKit patterns."""
         call_id = ctx.room.name  # Use room name as call ID
@@ -247,6 +401,25 @@ class CallHandler:
                 profiler.finish(success=False, error="No assistant config found")
                 return
 
+            # Check minutes availability before starting call
+            user_id = assistant_config.get("user_id")
+            if user_id:
+                db_client = get_database_client()
+                if db_client:
+                    minutes_check = await db_client.check_minutes_available(user_id)
+                    if not minutes_check.get("available", True) and not minutes_check.get("unlimited", False):
+                        remaining = minutes_check.get("remaining_minutes", 0)
+                        logger.warning(f"MINUTES_INSUFFICIENT | user={user_id} | remaining={remaining} | call_rejected")
+                        # Disconnect the call if no minutes available
+                        await ctx.room.disconnect()
+                        profiler.finish(success=False, error=f"Insufficient minutes: {remaining} remaining")
+                        return
+                    elif minutes_check.get("unlimited"):
+                        logger.info(f"MINUTES_CHECK | user={user_id} | unlimited_plan")
+                    else:
+                        remaining = minutes_check.get("remaining_minutes", 0)
+                        logger.info(f"MINUTES_CHECK | user={user_id} | remaining={remaining}")
+
             # Handle outbound calls
             if call_type == "outbound":
                 async with measure_latency_context("outbound_call_handling", call_id):
@@ -271,6 +444,12 @@ class CallHandler:
 
             # Register metrics collection event handler for latency monitoring
             session.on("metrics_collected", self._on_metrics_collected)
+            
+            # Register user state changed event handler for idle messages
+            # Note: .on() requires a synchronous callback, so we use asyncio.create_task
+            def handle_user_state_changed(event: UserStateChangedEvent):
+                asyncio.create_task(self._on_user_state_changed(event, session, assistant_config, ctx))
+            session.on("user_state_changed", handle_user_state_changed)
 
             # Start the session IMMEDIATELY to begin listening for speech
             async with measure_latency_context("session_start", call_id):
@@ -315,9 +494,17 @@ class CallHandler:
                 profiler.finish(success=False, error="Participant timeout")
                 return
 
+            # Enforce maximum call duration if configured
+            self._start_max_call_duration_timer(ctx, assistant_config, session)
+
             # Register shutdown callback to ensure proper cleanup and analysis
             start_time = datetime.datetime.now()
+            session_id = id(session)
             async def save_call_on_shutdown():
+                # Clean up idle message count for this session
+                if session_id in self._idle_message_counts:
+                    del self._idle_message_counts[session_id]
+                
                 end_time = datetime.datetime.now()
                 call_duration = int((end_time - start_time).total_seconds())
                 
@@ -679,6 +866,23 @@ class CallHandler:
                 if transcription:
                     sample_transcript = transcription[0] if len(transcription) > 0 else {}
                     # logger.info(f"TRANSCRIPTION_SAMPLE | first_entry={sample_transcript}")
+                
+                # Deduct minutes from user account after call completes
+                user_id = assistant_config.get("user_id")
+                if user_id and call_duration > 0:
+                    db_client = get_database_client()
+                    if db_client:
+                        # Convert seconds to minutes (round up)
+                        minutes_used = call_duration / 60.0
+                        deduction_result = await db_client.deduct_minutes(user_id, minutes_used)
+                        if deduction_result.get("success"):
+                            remaining = deduction_result.get("remaining_minutes", 0)
+                            exceeded = deduction_result.get("exceeded_limit", False)
+                            logger.info(f"MINUTES_DEDUCTED | user={user_id} | minutes={minutes_used:.2f} | remaining={remaining} | exceeded={exceeded}")
+                            if exceeded:
+                                logger.warning(f"MINUTES_LIMIT_EXCEEDED | user={user_id} | used={deduction_result.get('minutes_used')} | limit={deduction_result.get('minutes_limit')}")
+                        else:
+                            logger.error(f"MINUTES_DEDUCTION_FAILED | user={user_id} | error={deduction_result.get('error')}")
             else:
                 # logger.error(f"CALL_HISTORY_SAVE_FAILED | call_id={call_id}")
                 pass
@@ -1090,6 +1294,7 @@ class CallHandler:
                 stt = None
         
         # Fallback to OpenAI Whisper STT if Deepgram is not available or failed
+        whisper_language = None
         if stt is None:
             # Map language codes for OpenAI Whisper
             whisper_language_mapping = {
@@ -1103,7 +1308,13 @@ class CallHandler:
                 model="whisper-1",
                 language=whisper_language
             )
-            logger.info(f"OPENAI_STT_CONFIGURED | model=whisper-1 | language={whisper_language} | reason={'DEEPGRAM_NOT_AVAILABLE' if not DEEPGRAM_AVAILABLE else 'DEEPGRAM_FAILED' if deepgram_api_key else 'DEEPGRAM_API_KEY_NOT_SET'}")
+            logger.info(
+                "OPENAI_STT_CONFIGURED | model=whisper-1 | language=%s | reason=%s",
+                whisper_language,
+                'DEEPGRAM_NOT_AVAILABLE' if not DEEPGRAM_AVAILABLE else 'DEEPGRAM_FAILED' if deepgram_api_key else 'DEEPGRAM_API_KEY_NOT_SET'
+            )
+        else:
+            logger.info("OPENAI_STT_SKIPPED | reason=DEEPGRAM_CONFIGURED")
 
         # Get call management settings from assistant config
         max_call_duration_minutes = config.get("max_call_duration", 30)  # From DB (in seconds, convert to minutes)
@@ -1118,6 +1329,11 @@ class CallHandler:
         voice_on_number_seconds = config.get("voice_on_number_seconds", 0.5)               # From DB
         voice_backoff_seconds = config.get("voice_backoff_seconds", 1)                      # From DB
 
+        # Get interruption threshold settings from assistant config
+        min_interruption_words = config.get("num_words_to_interrupt_assistant", 3)  # From DB, default to 3 words
+        min_interruption_duration = 0.5  # Require at least 0.5 seconds of speech
+        false_interruption_timeout = 2.0  # Wait 2 seconds before signaling false interruption
+
         return AgentSession(
             vad=vad,
             stt=stt,
@@ -1127,7 +1343,10 @@ class CallHandler:
             preemptive_generation=True,  # Enable preemptive generation for reduced latency
             min_endpointing_delay=voice_on_punctuation_seconds,   # From assistant DB
             max_endpointing_delay=voice_on_no_punctuation_seconds, # From assistant DB
-            user_away_timeout=silence_timeout_seconds + 30,       # From assistant DB + buffer
+            user_away_timeout=silence_timeout_seconds,       # Align user-away timer with idle message timeout
+            min_interruption_words=min_interruption_words,    # Require N words before interrupting
+            min_interruption_duration=min_interruption_duration,  # Require minimum speech duration
+            false_interruption_timeout=false_interruption_timeout,  # Timeout for false interruptions
         )
 
     # Keep the original LLM and TTS creation methods for pre-warming

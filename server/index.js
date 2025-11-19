@@ -19,6 +19,11 @@ import { campaignEngine } from './campaign-execution-engine.js';
 import { connect } from '@ngrok/ngrok';
 import knowledgeBaseRouter from './routes/knowledge-base.js';
 import supportAccessRouter from './routes/supportAccess.js';
+import minutesRouter from './routes/minutes.js';
+import adminRouter from './routes/admin.js';
+import whitelabelRouter from './routes/whitelabel.js';
+import userRouter from './routes/user.js';
+import { tenantMiddleware } from './middleware/tenantMiddleware.js';
 import './workers/supportAccessCleanup.js';
 
 
@@ -29,6 +34,10 @@ const app = express();
 app.use(cors());
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
+
+// Apply tenant middleware to all routes
+app.use(tenantMiddleware);
+
 app.use('/api/v1/twilio', twilioAdminRouter);
 app.use('/api/v1/twilio/user', twilioUserRouter);
 app.use('/api/v1/twilio/sms', twilioSmsRouter);
@@ -43,8 +52,16 @@ app.use('/api/v1/csv', csvManagementRouter);
 app.use('/api/v1/livekit', livekitRoomRouter);
 app.use('/api/v1/knowledge-base', knowledgeBaseRouter);
 app.use('/api/v1/support-access', supportAccessRouter);
+app.use('/api/v1/minutes', minutesRouter);
+app.use('/api/v1/admin', adminRouter);
+app.use('/api/v1/whitelabel', whitelabelRouter);
+app.use('/api/v1/user', userRouter);
 console.log('Knowledge base routes registered at /api/v1/knowledge-base');
 console.log('Support access routes registered at /api/v1/support-access');
+console.log('Minutes routes registered at /api/v1/minutes');
+console.log('Admin routes registered at /api/v1/admin');
+console.log('White label routes registered at /api/v1/whitelabel');
+console.log('User routes registered at /api/v1/user');
 
 // Recording routes (matching voiceagents pattern exactly)
 

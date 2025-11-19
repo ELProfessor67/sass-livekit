@@ -14,15 +14,11 @@ import {
   useStripe,
   useElements
 } from "@stripe/react-stripe-js";
+import { getPlanConfigs, PlanConfig } from "@/lib/plan-config";
+import { extractTenantFromHostname } from "@/lib/tenant-utils";
 
 // Initialize Stripe
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
-
-const plans = {
-  starter: { name: "Starter", price: 19, features: ["Up to 500 calls/month", "Basic analytics", "Email support", "2 team members", "Standard integrations"] },
-  professional: { name: "Professional", price: 49, features: ["Up to 2,500 calls/month", "Advanced analytics & reporting", "Priority support", "10 team members", "All integrations", "Custom branding"] },
-  enterprise: { name: "Enterprise", price: 99, features: ["Unlimited calls", "Real-time analytics", "24/7 phone support", "Unlimited team members", "Enterprise integrations", "Advanced security", "Dedicated account manager"] }
-};
 
 const cardElementOptions = {
   style: {
@@ -52,8 +48,32 @@ function PaymentForm() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<PlanConfig | null>(null);
+  const [loadingPlan, setLoadingPlan] = useState(true);
 
-  const selectedPlan = plans[data.plan as keyof typeof plans];
+  // Fetch the correct plan config based on tenant
+  React.useEffect(() => {
+    const fetchPlan = async () => {
+      try {
+        setLoadingPlan(true);
+        const tenant = extractTenantFromHostname();
+        const tenantSlug = tenant === 'main' ? null : tenant;
+        const planConfigs = await getPlanConfigs(tenantSlug);
+        const plan = planConfigs[data.plan?.toLowerCase() || 'starter'] || planConfigs.starter;
+        setSelectedPlan(plan);
+        console.log(`[PaymentStep] Loaded plan: ${plan.name} ($${plan.price}) for tenant: ${tenantSlug || 'main'}`);
+      } catch (error) {
+        console.error('Error fetching plan config:', error);
+        // Fallback to default plan
+        const { getPlanConfig } = await import("@/lib/plan-config");
+        setSelectedPlan(getPlanConfig(data.plan));
+      } finally {
+        setLoadingPlan(false);
+      }
+    };
+
+    fetchPlan();
+  }, [data.plan]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -109,6 +129,21 @@ function PaymentForm() {
       setIsProcessing(false);
     }
   };
+
+  if (loadingPlan || !selectedPlan) {
+    return (
+      <div className="space-y-[var(--space-2xl)]">
+        <div className="text-center">
+          <h2 className="text-[var(--text-2xl)] font-[var(--font-semibold)] text-theme-primary mb-[var(--space-sm)]">
+            Complete Your Subscription
+          </h2>
+          <p className="text-[var(--text-base)] text-theme-secondary">
+            Loading plan details...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (paymentSuccess) {
     return (

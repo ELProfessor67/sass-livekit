@@ -594,8 +594,12 @@ class UnifiedAgent(Agent):
 
 
     @function_tool(name="auto_book_appointment")
-    async def auto_book_appointment(self, ctx: RunContext) -> str:
-        """Automatically book the appointment when all information is available."""
+    async def auto_book_appointment(self, ctx: RunContext, confirm: bool = True) -> str:
+        """Automatically book the appointment when all information is available.
+
+        Args:
+            confirm: Optional flag allowing the LLM to explicitly signal confirmation.
+        """
         # Check if we have all required information
         if not (self._booking_data.selected_slot and self._booking_data.name and 
                 self._booking_data.email and self._booking_data.phone):
@@ -616,8 +620,12 @@ class UnifiedAgent(Agent):
         return await self._do_schedule()
 
     @function_tool(name="collect_missing_info")
-    async def collect_missing_info(self, ctx: RunContext) -> str:
-        """Collect any missing information needed for booking."""
+    async def collect_missing_info(self, ctx: RunContext, dummy: Optional[str] = None) -> str:
+        """Collect any missing information needed for booking.
+        
+        Args:
+            dummy: Optional parameter (not used, required for schema compatibility).
+        """
         missing_fields = []
         if not self._booking_data.name:
             missing_fields.append("name")
@@ -674,8 +682,12 @@ class UnifiedAgent(Agent):
         return f"Notes set: {notes}"
 
     @function_tool(name="confirm_details")
-    async def confirm_details(self, ctx: RunContext) -> str:
-        """Confirm the appointment details and book it. Only call this when ALL required information is collected."""
+    async def confirm_details(self, ctx: RunContext, dummy: Optional[str] = None) -> str:
+        """Confirm the appointment details and book it. Only call this when ALL required information is collected.
+        
+        Args:
+            dummy: Optional parameter (not used, required for schema compatibility).
+        """
         # Prevent infinite loops by checking if already confirmed
         if self._booking_data.confirmed:
             if self._booking_data.booked:
@@ -695,19 +707,31 @@ class UnifiedAgent(Agent):
         return await self._do_schedule()
 
     @function_tool(name="confirm_details_yes")
-    async def confirm_details_yes(self, ctx: RunContext) -> str:
-        """Confirm the appointment details (yes response)."""
+    async def confirm_details_yes(self, ctx: RunContext, dummy: Optional[str] = None) -> str:
+        """Confirm the appointment details (yes response).
+        
+        Args:
+            dummy: Optional parameter (not used, required for schema compatibility).
+        """
         return await self.confirm_details(ctx)
 
     @function_tool(name="confirm_details_no")
-    async def confirm_details_no(self, ctx: RunContext) -> str:
-        """User wants to change appointment details."""
+    async def confirm_details_no(self, ctx: RunContext, dummy: Optional[str] = None) -> str:
+        """User wants to change appointment details.
+        
+        Args:
+            dummy: Optional parameter (not used, required for schema compatibility).
+        """
         self._booking_data.confirmed = False
         return "No problem. What would you like to change—name, email, phone, or time?"
 
     @function_tool(name="finalize_booking")
-    async def finalize_booking(self, ctx: RunContext) -> str:
-        """Finalize and complete the booking process. Only call this when ALL required information is collected (time slot, name, email, phone)."""
+    async def finalize_booking(self, ctx: RunContext, dummy: Optional[str] = None) -> str:
+        """Finalize and complete the booking process. Only call this when ALL required information is collected (time slot, name, email, phone).
+        
+        Args:
+            dummy: Optional parameter (not used, required for schema compatibility).
+        """
         # Check if booking is already completed
         if self._booking_data.booked:
             return "Your appointment has already been successfully booked! Is there anything else I can help you with?"
@@ -833,8 +857,12 @@ class UnifiedAgent(Agent):
                 self._booking_inflight = False
 
     @function_tool(name="verify_booking")
-    async def verify_booking(self, ctx: RunContext) -> str:
-        """Verify if a booking was successful after a timeout or error."""
+    async def verify_booking(self, ctx: RunContext, dummy: Optional[str] = None) -> str:
+        """Verify if a booking was successful after a timeout or error.
+        
+        Args:
+            dummy: Optional parameter (not used, required for schema compatibility).
+        """
         if not self._booking_data.selected_slot:
             return "I don't have a booking to verify. Let's start over with a new appointment."
         
@@ -936,7 +964,11 @@ class UnifiedAgent(Agent):
                     len(fields), [f.get('name', 'unnamed') for f in fields])
 
     @function_tool(name="start_new_booking")
-    async def start_new_booking(self, ctx: RunContext) -> str:
-        """Start a new booking process, clearing previous state."""
+    async def start_new_booking(self, ctx: RunContext, dummy: Optional[str] = None) -> str:
+        """Start a new booking process, clearing previous state.
+        
+        Args:
+            dummy: Optional parameter (not used, required for schema compatibility).
+        """
         self._reset_state()
         return "Great! Let's start fresh. What day would you like to book an appointment?"

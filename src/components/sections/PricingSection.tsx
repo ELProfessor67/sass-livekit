@@ -1,63 +1,42 @@
 import { GlassCard } from "@/components/sections/glass-card"
 import { Badge } from "@/components/ui/badge"
 import { Check, Star, Zap, Crown, Calculator } from "lucide-react"
+import { PLAN_CONFIGS } from "@/lib/plan-config"
 
 export const PricingSection = () => {
+  // Map plan configs to pricing section format
+  // Note: This section uses different pricing/ROI values for marketing purposes
+  // If you want to use the same prices as plan-config.ts, replace the price values below
   const plans = [
     {
-      name: "Starter",
-      price: "$299",
+      name: PLAN_CONFIGS.starter.name,
+      price: `$${PLAN_CONFIGS.starter.price}`,
       period: "/month",
       description: "Perfect for small businesses getting started with AI voice agents",
       variant: "default" as const,
-      features: [
-        "Up to 500 calls/month",
-        "Basic AI voice agent",
-        "Standard integrations",
-        "Email support",
-        "Analytics dashboard",
-        "Custom greetings"
-      ],
+      features: PLAN_CONFIGS.starter.features,
       roi: "$2,500",
       roiLabel: "Monthly ROI",
       popular: false
     },
     {
-      name: "Professional",
-      price: "$799",
+      name: PLAN_CONFIGS.professional.name,
+      price: `$${PLAN_CONFIGS.professional.price}`,
       period: "/month",
       description: "Advanced features for growing teams that need more power",
       variant: "premium" as const,
-      features: [
-        "Up to 2,500 calls/month",
-        "Advanced AI with NLP",
-        "All integrations included",
-        "Priority support",
-        "Advanced analytics",
-        "A/B testing",
-        "Custom voice training",
-        "Multi-language support"
-      ],
+      features: PLAN_CONFIGS.professional.features,
       roi: "$8,500",
       roiLabel: "Monthly ROI",
       popular: true
     },
     {
-      name: "Enterprise",
+      name: PLAN_CONFIGS.enterprise.name,
       price: "Custom",
       period: "",
       description: "Tailored solutions for large organizations with custom needs",
       variant: "enterprise" as const,
-      features: [
-        "Unlimited calls",
-        "Custom AI development",
-        "White-label solution",
-        "Dedicated account manager",
-        "Advanced security",
-        "Custom reporting",
-        "SLA guarantees",
-        "24/7 phone support"
-      ],
+      features: PLAN_CONFIGS.enterprise.features,
       roi: "$50,000+",
       roiLabel: "Monthly ROI",
       popular: false

@@ -313,8 +313,6 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                       <SelectItem value="llama-3.1-8b-instant">Llama 3.1 8B Instant</SelectItem>
                       <SelectItem value="llama-3.3-70b-versatile">Llama 3.3 70B Versatile</SelectItem>
                       <SelectItem value="meta-llama/llama-4-maverick-17b-128e-instruct">Llama 4 Maverick 17B</SelectItem>
-                      <SelectItem value="openai/gpt-oss-120b">GPT OSS 120B</SelectItem>
-                      <SelectItem value="openai/gpt-oss-20b">GPT OSS 20B</SelectItem>
                     </>
                   )}
                   {data.provider === "Cerebras" && (

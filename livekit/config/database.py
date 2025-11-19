@@ -89,7 +89,7 @@ class DatabaseClient:
                 "analysis_summary_prompt, analysis_evaluation_prompt, analysis_structured_data_prompt, "
                 "analysis_structured_data_properties, analysis_summary_timeout, analysis_evaluation_timeout, "
                 "analysis_structured_data_timeout, end_call_message, idle_messages, max_idle_messages, "
-                "silence_timeout, max_call_duration"
+                "silence_timeout, max_call_duration, num_words_to_interrupt_assistant, user_id"
             ).eq("id", assistant_id).single().execute()
             
             if result.data:
@@ -152,6 +152,111 @@ class DatabaseClient:
         except Exception as e:
             logging.error(f"Error saving call history: {e}")
             return False
+    
+    async def deduct_minutes(self, user_id: str, minutes: float) -> Dict[str, Any]:
+        """
+        Deduct minutes from user's account after a call.
+        Returns dict with success status and remaining minutes info.
+        """
+        if not self.is_available():
+            logging.warning("Database client not available for minutes deduction")
+            return {"success": False, "error": "Database not available"}
+        
+        try:
+            # Convert minutes to integer (round up to be fair)
+            minutes_to_deduct = int(minutes) + (1 if minutes % 1 > 0 else 0)
+            
+            # Get current minutes
+            result = self._client.table("users").select(
+                "minutes_limit, minutes_used"
+            ).eq("id", user_id).single().execute()
+            
+            if not result.data:
+                logging.warning(f"User not found for minutes deduction: {user_id}")
+                return {"success": False, "error": "User not found"}
+            
+            current_limit = result.data.get("minutes_limit", 0) or 0
+            current_used = result.data.get("minutes_used", 0) or 0
+            new_used = current_used + minutes_to_deduct
+            remaining = max(0, current_limit - new_used)
+            
+            # Update minutes_used
+            update_result = self._client.table("users").update({
+                "minutes_used": new_used
+            }).eq("id", user_id).execute()
+            
+            if update_result.data:
+                logging.info(f"Minutes deducted: user={user_id}, deducted={minutes_to_deduct}, used={new_used}/{current_limit}, remaining={remaining}")
+                
+                # Check if user exceeded limit
+                exceeded = new_used > current_limit
+                if exceeded:
+                    # Optionally deactivate user (uncomment if needed)
+                    # self._client.table("users").update({"is_active": False}).eq("id", user_id).execute()
+                    logging.warning(f"User {user_id} exceeded minutes limit: {new_used}/{current_limit}")
+                
+                return {
+                    "success": True,
+                    "minutes_deducted": minutes_to_deduct,
+                    "minutes_used": new_used,
+                    "minutes_limit": current_limit,
+                    "remaining_minutes": remaining,
+                    "exceeded_limit": exceeded
+                }
+            else:
+                logging.error(f"Failed to update minutes for user: {user_id}")
+                return {"success": False, "error": "Failed to update minutes"}
+                
+        except Exception as e:
+            logging.error(f"Error deducting minutes: {e}")
+            return {"success": False, "error": str(e)}
+    
+    async def check_minutes_available(self, user_id: str) -> Dict[str, Any]:
+        """
+        Check if user has minutes available before starting a call.
+        Returns dict with availability status and remaining minutes.
+        """
+        if not self.is_available():
+            logging.warning("Database client not available for minutes check")
+            return {"available": True, "error": "Database not available - allowing call"}
+        
+        try:
+            result = self._client.table("users").select(
+                "minutes_limit, minutes_used, is_active"
+            ).eq("id", user_id).single().execute()
+            
+            if not result.data:
+                logging.warning(f"User not found for minutes check: {user_id}")
+                return {"available": True, "error": "User not found - allowing call"}
+            
+            minutes_limit = result.data.get("minutes_limit", 0) or 0
+            minutes_used = result.data.get("minutes_used", 0) or 0
+            remaining = max(0, minutes_limit - minutes_used)
+            is_active = result.data.get("is_active", True)
+            
+            # If user has no limit set (0), allow calls (unlimited plan)
+            if minutes_limit == 0:
+                return {
+                    "available": True,
+                    "remaining_minutes": 0,
+                    "unlimited": True
+                }
+            
+            available = remaining > 0 and is_active
+            
+            return {
+                "available": available,
+                "remaining_minutes": remaining,
+                "minutes_limit": minutes_limit,
+                "minutes_used": minutes_used,
+                "is_active": is_active,
+                "unlimited": False
+            }
+                
+        except Exception as e:
+            logging.error(f"Error checking minutes: {e}")
+            # On error, allow call to proceed (fail open)
+            return {"available": True, "error": str(e)}
 
 
 # Global database client instance

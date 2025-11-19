@@ -12,6 +12,7 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { extractTenantFromHostname } from "@/lib/tenant-utils";
 
 const signUpSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -21,7 +22,18 @@ const signUpSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
   acceptTerms: z.boolean().refine((val) => val === true, {
     message: "You must accept the Terms of Service & Privacy Policy"
-  })
+  }),
+  whitelabel: z.boolean().optional(),
+  slug: z.string().optional()
+}).refine((data) => {
+  // If white label is selected, slug is required
+  if (data.whitelabel && !data.slug) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Slug is required for white label accounts",
+  path: ["slug"]
 });
 
 type SignUpFormData = z.infer<typeof signUpSchema>;
@@ -56,6 +68,82 @@ export const FullScreenSignup = () => {
   const [showPassword, setShowPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [selectedCountry, setSelectedCountry] = React.useState<{ code: string; country: string; flag: string } | null>(countryCodes[0]);
+  const [whitelabel, setWhiteLabel] = React.useState(false);
+  const [slug, setSlug] = React.useState("");
+  const [slugLoading, setSlugLoading] = React.useState(false);
+  const [slugError, setSlugError] = React.useState("");
+  const [slugMessage, setSlugMessage] = React.useState("");
+  const [isSlugUnique, setIsSlugUnique] = React.useState(false);
+  const [showWhiteLabelOption, setShowWhiteLabelOption] = React.useState(false);
+  const timeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  // Check if we're on the main domain (hide white label option on whitelabel subdomains)
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const tenant = extractTenantFromHostname();
+      // Only show white label option on main domain (tenant === 'main')
+      // Hide it on whitelabel subdomains (e.g., gomezlouis.localhost)
+      setShowWhiteLabelOption(tenant === 'main');
+      
+      // If we're on a whitelabel subdomain, ensure whitelabel is set to false
+      if (tenant !== 'main') {
+        setWhiteLabel(false);
+      }
+    }
+  }, []);
+
+  // Check slug availability with debounce
+  React.useEffect(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    if (!slug || !whitelabel) {
+      setSlugError("");
+      setSlugMessage("");
+      setIsSlugUnique(false);
+      return;
+    }
+
+    setSlugLoading(true);
+    timeoutRef.current = setTimeout(async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+        const response = await fetch(`${apiUrl}/api/v1/whitelabel/check-slug-available`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ slug: slug.toLowerCase() }),
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+          setSlugError("");
+          setSlugMessage(data.message || `${slug} is available`);
+          setIsSlugUnique(true);
+        } else {
+          setSlugError(data.message || `${slug} is already taken`);
+          setSlugMessage("");
+          setIsSlugUnique(false);
+        }
+      } catch (error) {
+        console.error('Error checking slug:', error);
+        setSlugError("Error checking slug availability");
+        setSlugMessage("");
+        setIsSlugUnique(false);
+      } finally {
+        setSlugLoading(false);
+      }
+    }, 1000);
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [slug, whitelabel]);
 
   const {
     register,
@@ -75,25 +163,51 @@ export const FullScreenSignup = () => {
   const onSubmit = async (data: SignUpFormData) => {
     setIsLoading(true);
     try {
-      // Phone uniqueness will be enforced by database constraints
-
-      const result = await signUp(
-        data.name,
-        data.email,
-        data.password,
-        { phone: data.phone, countryCode: data.countryCode }
-      );
-
-      if (!result.success) {
-        throw new Error(result.message);
+      // Clear any existing onboarding state when starting fresh signup
+      localStorage.removeItem("onboarding-state");
+      localStorage.removeItem("onboarding-completed");
+      
+      // Validate white label slug if white label is selected
+      if (whitelabel && !slug) {
+        toast({
+          title: "Slug required",
+          description: "Please enter a slug for your white label account.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
       }
 
-      // For now, just show success message and redirect
+      if (whitelabel && !isSlugUnique) {
+        toast({
+          title: "Slug not available",
+          description: "Please choose a different slug.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Store signup data in localStorage instead of creating auth user
+      // User will be created after onboarding is complete
+      const signupData = {
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        phone: data.phone,
+        countryCode: data.countryCode,
+        slug: whitelabel ? slug.toLowerCase() : undefined,
+        whitelabel: whitelabel
+      };
+
+      localStorage.setItem("signup-data", JSON.stringify(signupData));
+
+      // Redirect to onboarding
       toast({
-        title: "Account created successfully!",
-        description: "Please check your email to verify your account.",
+        title: "Great! Let's set up your profile",
+        description: "We'll create your account after you complete onboarding.",
       });
-      navigate("/login");
+      navigate("/onboarding");
     } catch (error: any) {
       toast({
         title: "Sign up failed",
@@ -174,6 +288,36 @@ export const FullScreenSignup = () => {
                 Welcome to AI Call Center — Let's get started
               </p>
             </div>
+
+            {/* White Label Toggle - Only show on main domain */}
+            {showWhiteLabelOption && (
+              <div className="mb-4 p-4 bg-muted/50 rounded-lg border border-border">
+                <Label className="text-sm font-medium mb-3 block">Account Type</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={!whitelabel ? "default" : "outline"}
+                    className="flex-1"
+                    onClick={() => setWhiteLabel(false)}
+                  >
+                    Customer
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={whitelabel ? "default" : "outline"}
+                    className="flex-1"
+                    onClick={() => setWhiteLabel(true)}
+                  >
+                    White Label
+                  </Button>
+                </div>
+                {whitelabel && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Create your own branded subdomain
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Form */}
             <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)} noValidate>
@@ -290,6 +434,44 @@ export const FullScreenSignup = () => {
                   <p className="text-destructive text-xs mt-1">{errors.password.message}</p>
                 )}
               </div>
+
+              {/* White Label Slug Input */}
+              {whitelabel && (
+                <div>
+                  <Label htmlFor="slug" className="block text-sm mb-2">
+                    Subdomain Slug
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="text"
+                      id="slug"
+                      placeholder="mycompany"
+                      className="flex-1 lowercase"
+                      value={slug}
+                      onChange={(e) => {
+                        const value = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+                        setSlug(value);
+                        setValue("slug", value);
+                      }}
+                    />
+                    <span className="text-sm text-muted-foreground whitespace-nowrap">
+                      .{import.meta.env.VITE_MAIN_DOMAIN || window.location.hostname}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    {slugLoading && <Loader2 className="h-3 w-3 animate-spin text-primary" />}
+                    {slugError && (
+                      <p className="text-destructive text-xs">{slugError}</p>
+                    )}
+                    {slugMessage && !slugError && (
+                      <p className="text-green-500 text-xs">{slugMessage}</p>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    This will be your subdomain: {slug || 'mycompany'}.{import.meta.env.VITE_MAIN_DOMAIN || window.location.hostname}
+                  </p>
+                </div>
+              )}
 
               {/* Terms and Conditions */}
               <div className="flex items-start space-x-3">

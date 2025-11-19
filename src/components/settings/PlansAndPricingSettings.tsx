@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { getPlanConfig, getMinutesLimitForPlan, PLAN_CONFIGS } from "@/lib/plan-config";
 import { 
   Check, 
   Zap, 
@@ -18,78 +21,232 @@ import {
   Shield
 } from "lucide-react";
 
-const plans = [
-  {
-    name: "Starter",
-    price: "$19",
-    period: "per month",
-    description: "Perfect for small teams getting started",
-    current: false,
-    popular: false,
-    features: [
-      "Up to 500 calls/month",
-      "Basic analytics",
-      "Email support",
-      "2 team members",
-      "Standard integrations"
-    ],
-    icon: Zap,
-    color: "from-blue-500 to-blue-600"
-  },
-  {
-    name: "Professional",
-    price: "$49",
-    period: "per month", 
-    description: "Advanced features for growing businesses",
-    current: true,
-    popular: true,
-    features: [
-      "Up to 2,500 calls/month",
-      "Advanced analytics & reporting",
-      "Priority support",
-      "10 team members",
-      "All integrations",
-      "Custom branding"
-    ],
-    icon: Crown,
-    color: "from-purple-500 to-purple-600"
-  },
-  {
-    name: "Enterprise",
-    price: "$99",
-    period: "per month",
-    description: "Complete solution for large organizations",
-    current: false,
-    popular: false,
-    features: [
-      "Unlimited calls",
-      "Real-time analytics",
-      "24/7 phone support",
-      "Unlimited team members",
-      "Enterprise integrations",
-      "Advanced security",
-      "Dedicated account manager"
-    ],
-    icon: Rocket,
-    color: "from-orange-500 to-orange-600"
-  }
-];
+// Plans will be generated from PLAN_CONFIGS
+const planIcons = {
+  starter: Zap,
+  professional: Crown,
+  enterprise: Rocket,
+  free: Zap
+};
 
-const usageStats = {
-  calls: { used: 1250, limit: 2500, label: "API Calls" },
-  storage: { used: 2.4, limit: 10, label: "Storage (GB)" },
-  users: { used: 4, limit: 10, label: "Team Members" }
+const planColors = {
+  starter: "from-blue-500 to-blue-600",
+  professional: "from-purple-500 to-purple-600",
+  enterprise: "from-orange-500 to-orange-600",
+  free: "from-gray-500 to-gray-600"
 };
 
 export function PlansAndPricingSettings() {
   const { toast } = useToast();
-  const [selectedPlan, setSelectedPlan] = useState("professional");
+  const { user, updateProfile } = useAuth();
+  const [selectedPlan, setSelectedPlan] = useState<string>(user?.plan || "free");
+  const [isUpgrading, setIsUpgrading] = useState(false);
+  const [usageStats, setUsageStats] = useState<{
+    calls: { used: number; limit: number; label: string };
+    storage: { used: number; limit: number; label: string };
+    users: { used: number; limit: number; label: string };
+  } | null>(null);
+  const [loadingUsage, setLoadingUsage] = useState(true);
 
-  const handleUpgrade = (planName: string) => {
-    toast({
-      title: "Plan upgrade initiated",
-      description: `Upgrading to ${planName} plan. You'll be redirected to payment.`
-    });
+  useEffect(() => {
+    if (user?.plan) {
+      setSelectedPlan(user.plan);
+    }
+  }, [user?.plan]);
+
+  useEffect(() => {
+    const fetchUsageStats = async () => {
+      if (!user?.id) {
+        setLoadingUsage(false);
+        return;
+      }
+
+      try {
+        setLoadingUsage(true);
+
+        // Get current plan config
+        const planConfig = getPlanConfig(user.plan);
+
+        // Fetch assistants for the user
+        const { data: assistantsData } = await supabase
+          .from('assistant')
+          .select('id')
+          .eq('user_id', user.id);
+
+        const assistantIds = assistantsData?.map(a => a.id) || [];
+
+        // Fetch user data for limits
+        const { data: userData } = await supabase
+          .from('users')
+          .select('minutes_limit, plan')
+          .eq('id', user.id)
+          .single();
+
+        // 1. API Calls (count from call_history for current month)
+        const apiCallsResult = assistantIds.length > 0
+          ? await supabase
+              .from('call_history')
+              .select('*', { count: 'exact', head: true })
+              .in('assistant_id', assistantIds)
+              .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
+          : { count: 0, error: null };
+
+        // 2. Storage - Calculate from knowledge base documents if available
+        // Note: If you have a storage tracking system, replace this calculation
+        let storageUsed = 0;
+        try {
+          // Try to fetch from knowledge_documents if table exists
+          const { data: documentsData } = await supabase
+            .from('knowledge_documents')
+            .select('file_size, file_path')
+            .eq('user_id', user.id);
+          
+          if (documentsData) {
+            // Sum file sizes (assuming file_size is in bytes, convert to GB)
+            const totalBytes = documentsData.reduce((sum: number, doc: any) => {
+              const size = doc.file_size || 0;
+              return sum + (typeof size === 'number' ? size : 0);
+            }, 0);
+            storageUsed = totalBytes / (1024 * 1024 * 1024); // Convert bytes to GB
+          }
+        } catch (error) {
+          // Knowledge documents table doesn't exist or error - use 0
+          console.log('Storage calculation not available:', error);
+        }
+        const storageLimit = 10; // Default, could be from plan config
+
+        // 3. Team Members - Count from workspace_members table
+        let teamMembersUsed = 1; // At least the current user
+        try {
+          // First, find the workspace(s) the user belongs to
+          const { data: userWorkspaceMembers } = await supabase
+            .from('workspace_members')
+            .select('workspace_id')
+            .eq('user_id', user.id)
+            .eq('status', 'active');
+          
+          if (userWorkspaceMembers && userWorkspaceMembers.length > 0) {
+            // Get all unique workspace IDs
+            const workspaceIds = [...new Set(userWorkspaceMembers.map(m => m.workspace_id))];
+            
+            // Count all active members in those workspaces
+            const { count: membersCount } = await supabase
+              .from('workspace_members')
+              .select('*', { count: 'exact', head: true })
+              .in('workspace_id', workspaceIds)
+              .eq('status', 'active');
+            
+            teamMembersUsed = membersCount || 1;
+          }
+        } catch (error) {
+          // Workspace members table doesn't exist or error - fallback to assistants count
+          console.log('Workspace members not available, using assistants count:', error);
+          teamMembersUsed = assistantIds.length || 1;
+        }
+        
+        // Get limits from plan config
+        const apiCallsLimit = planConfig.features?.find((f: string) => f.includes('calls')) 
+          ? parseInt(planConfig.features.find((f: string) => f.includes('calls'))?.match(/\d+/)?.[0] || '2500') 
+          : 2500;
+        
+        const teamMembersLimit = planConfig.features?.find((f: string) => f.includes('team')) 
+          ? parseInt(planConfig.features.find((f: string) => f.includes('team'))?.match(/\d+/)?.[0] || '10')
+          : 10;
+
+        setUsageStats({
+          calls: { 
+            used: apiCallsResult.count || 0, 
+            limit: apiCallsLimit, 
+            label: "API Calls" 
+          },
+          storage: { 
+            used: storageUsed, 
+            limit: storageLimit, 
+            label: "Storage (GB)" 
+          },
+          users: { 
+            used: teamMembersUsed, 
+            limit: teamMembersLimit, 
+            label: "Team Members" 
+          }
+        });
+      } catch (error) {
+        console.error('Error fetching usage stats:', error);
+        // Set defaults on error
+        setUsageStats({
+          calls: { used: 0, limit: 2500, label: "API Calls" },
+          storage: { used: 0, limit: 10, label: "Storage (GB)" },
+          users: { used: 0, limit: 10, label: "Team Members" }
+        });
+      } finally {
+        setLoadingUsage(false);
+      }
+    };
+
+    fetchUsageStats();
+  }, [user?.id, user?.plan]);
+
+  const handleUpgrade = async (planKey: string) => {
+    if (!user?.id) {
+      toast({
+        title: "Error",
+        description: "Please log in to upgrade your plan.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (planKey === selectedPlan) {
+      toast({
+        title: "Already on this plan",
+        description: "You are already subscribed to this plan."
+      });
+      return;
+    }
+
+    setIsUpgrading(true);
+    try {
+      // Get minutes limit for the new plan
+      const minutesLimit = getMinutesLimitForPlan(planKey);
+      const planConfig = getPlanConfig(planKey);
+
+      // Update user plan and minutes limit
+      const { error } = await supabase
+        .from("users")
+        .update({
+          plan: planKey,
+          minutes_limit: minutesLimit,
+          // Reset minutes_used to 0 when upgrading (or keep current if downgrading)
+          // You might want to adjust this logic based on your business rules
+          minutes_used: 0, // Reset on upgrade
+        })
+        .eq("id", user.id);
+
+      if (error) {
+        throw error;
+      }
+
+      // Update local auth state
+      await updateProfile({
+        plan: planKey,
+      });
+
+      setSelectedPlan(planKey);
+
+      toast({
+        title: "Plan upgraded successfully! 🎉",
+        description: `Your ${planConfig.name} plan is now active with ${minutesLimit === 0 ? 'unlimited' : minutesLimit} minutes per month.`
+      });
+    } catch (error: any) {
+      console.error("Error upgrading plan:", error);
+      toast({
+        title: "Upgrade failed",
+        description: error?.message || "Failed to upgrade plan. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsUpgrading(false);
+    }
   };
 
   const handleBillingPortal = () => {
@@ -122,48 +279,62 @@ export function PlansAndPricingSettings() {
           </div>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {Object.entries(usageStats).map(([key, stat]) => {
-            const percentage = (stat.used / stat.limit) * 100;
-            const isNearLimit = percentage > 80;
-            
-            return (
-              <div key={key} className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-foreground">{stat.label}</span>
-                  <span className="text-sm text-muted-foreground">
-                    {stat.used.toLocaleString()} / {stat.limit.toLocaleString()}
-                  </span>
+          {loadingUsage ? (
+            <div className="col-span-3 text-center py-4 text-muted-foreground">
+              Loading usage data...
+            </div>
+          ) : usageStats ? (
+            Object.entries(usageStats).map(([key, stat]) => {
+              const percentage = (stat.used / stat.limit) * 100;
+              const isNearLimit = percentage > 80;
+              
+              return (
+                <div key={key} className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-foreground">{stat.label}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {typeof stat.used === 'number' && stat.used % 1 !== 0 
+                        ? stat.used.toFixed(1) 
+                        : stat.used.toLocaleString()} / {stat.limit.toLocaleString()}
+                    </span>
+                  </div>
+                  <Progress 
+                    value={percentage} 
+                    className={`h-2 ${isNearLimit ? 'bg-orange-200' : 'bg-secondary'}`}
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>{percentage.toFixed(1)}% used</span>
+                    {isNearLimit && <span className="text-orange-500">Approaching limit</span>}
+                  </div>
                 </div>
-                <Progress 
-                  value={percentage} 
-                  className={`h-2 ${isNearLimit ? 'bg-orange-200' : 'bg-secondary'}`}
-                />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>{percentage.toFixed(1)}% used</span>
-                  {isNearLimit && <span className="text-orange-500">Approaching limit</span>}
-                </div>
-              </div>
-            );
-          })}
+              );
+            })
+          ) : (
+            <div className="col-span-3 text-center py-4 text-muted-foreground">
+              Unable to load usage data
+            </div>
+          )}
         </CardContent>
       </Card>
 
       {/* Plan Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {plans.map((plan) => {
-          const IconComponent = plan.icon;
-          const isCurrent = plan.current;
+        {Object.values(PLAN_CONFIGS).filter(plan => plan.key !== 'free').map((planConfig) => {
+          const IconComponent = planIcons[planConfig.key as keyof typeof planIcons] || Zap;
+          const color = planColors[planConfig.key as keyof typeof planColors] || "from-gray-500 to-gray-600";
+          const isCurrent = selectedPlan === planConfig.key;
+          const isPopular = planConfig.key === 'professional';
           
           return (
             <Card 
-              key={plan.name}
+              key={planConfig.key}
               className={`relative backdrop-blur-xl border rounded-2xl transition-all hover:shadow-lg ${
-                plan.popular 
+                isPopular 
                   ? 'bg-primary/5 border-primary/30 shadow-md' 
                   : 'bg-card/50 border-border/50'
               } ${isCurrent ? 'ring-2 ring-primary/30' : ''}`}
             >
-              {plan.popular && (
+              {isPopular && (
                 <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
                   <Badge className="bg-primary text-primary-foreground">Most Popular</Badge>
                 </div>
@@ -178,21 +349,23 @@ export function PlansAndPricingSettings() {
               )}
 
               <CardHeader className="text-center pb-4">
-                <div className={`mx-auto h-12 w-12 rounded-xl bg-gradient-to-r ${plan.color} flex items-center justify-center mb-4`}>
+                <div className={`mx-auto h-12 w-12 rounded-xl bg-gradient-to-r ${color} flex items-center justify-center mb-4`}>
                   <IconComponent className="h-6 w-6 text-white" />
                 </div>
-                <h3 className="text-2xl font-light text-foreground">{plan.name}</h3>
+                <h3 className="text-2xl font-light text-foreground">{planConfig.name}</h3>
                 <div className="flex items-baseline justify-center gap-1">
-                  <span className="text-4xl font-extralight text-foreground">{plan.price}</span>
-                  <span className="text-muted-foreground">{plan.period}</span>
+                  <span className="text-4xl font-extralight text-foreground">${planConfig.price}</span>
+                  <span className="text-muted-foreground">/month</span>
                 </div>
-                <p className="text-sm text-muted-foreground mt-2">{plan.description}</p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  {planConfig.minutesLimit === 0 ? 'Unlimited' : `${planConfig.minutesLimit.toLocaleString()}`} minutes/month
+                </p>
               </CardHeader>
 
               <CardContent className="pt-0">
                 <ul className="space-y-3 mb-6">
-                  {plan.features.map((feature) => (
-                    <li key={feature} className="flex items-center gap-3 text-sm">
+                  {planConfig.features.map((feature, index) => (
+                    <li key={index} className="flex items-center gap-3 text-sm">
                       <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
                       <span className="text-foreground">{feature}</span>
                     </li>
@@ -201,11 +374,11 @@ export function PlansAndPricingSettings() {
 
                 <Button 
                   className="w-full"
-                  variant={isCurrent ? "secondary" : plan.popular ? "default" : "outline"}
-                  onClick={() => !isCurrent && handleUpgrade(plan.name)}
-                  disabled={isCurrent}
+                  variant={isCurrent ? "secondary" : isPopular ? "default" : "outline"}
+                  onClick={() => !isCurrent && handleUpgrade(planConfig.key)}
+                  disabled={isCurrent || isUpgrading}
                 >
-                  {isCurrent ? "Current Plan" : `Upgrade to ${plan.name}`}
+                  {isUpgrading ? "Processing..." : isCurrent ? "Current Plan" : `Upgrade to ${planConfig.name}`}
                 </Button>
               </CardContent>
             </Card>

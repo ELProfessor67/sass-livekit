@@ -3,6 +3,7 @@ import express from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { campaignEngine } from './campaign-execution-engine.js';
 import { createLiveKitRoomTwiml } from './utils/livekit-room-helper.js';
+import { applyTenantFilterFromRequest } from './utils/applyTenantFilterToQuery.js';
 
 export const campaignManagementRouter = express.Router();
 
@@ -78,12 +79,14 @@ campaignManagementRouter.post('/:id/pause', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Get campaign details first
-    const { data: campaign, error: fetchError } = await supabase
+    // Get campaign details first with tenant filter
+    let query = supabase
       .from('campaigns')
       .select('execution_status')
-      .eq('id', id)
-      .single();
+      .eq('id', id);
+    
+    query = applyTenantFilterFromRequest(req, query);
+    const { data: campaign, error: fetchError } = await query.single();
 
     if (fetchError || !campaign) {
       return res.status(404).json({
@@ -136,12 +139,14 @@ campaignManagementRouter.post('/:id/resume', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Get campaign details first
-    const { data: campaign, error: fetchError } = await supabase
+    // Get campaign details first with tenant filter
+    let query = supabase
       .from('campaigns')
       .select('execution_status')
-      .eq('id', id)
-      .single();
+      .eq('id', id);
+    
+    query = applyTenantFilterFromRequest(req, query);
+    const { data: campaign, error: fetchError } = await query.single();
 
     if (fetchError || !campaign) {
       return res.status(404).json({
@@ -209,8 +214,8 @@ campaignManagementRouter.post('/:id/stop', async (req, res) => {
       throw error;
     }
 
-    // Cancel pending calls in queue
-    await supabase
+    // Cancel pending calls in queue with tenant filter
+    let queueQuery = supabase
       .from('call_queue')
       .update({
         status: 'cancelled',
@@ -218,6 +223,9 @@ campaignManagementRouter.post('/:id/stop', async (req, res) => {
       })
       .eq('campaign_id', id)
       .eq('status', 'queued');
+    
+    queueQuery = applyTenantFilterFromRequest(req, queueQuery);
+    await queueQuery;
 
     res.json({
       success: true,
@@ -255,11 +263,14 @@ campaignManagementRouter.get('/:id/status', async (req, res) => {
       });
     }
 
-    // Get call statistics
-    const { data: callStats, error: statsError } = await supabase
+    // Get call statistics with tenant filter
+    let statsQuery = supabase
       .from('campaign_calls')
       .select('status, outcome')
       .eq('campaign_id', id);
+    
+    statsQuery = applyTenantFilterFromRequest(req, statsQuery);
+    const { data: callStats, error: statsError } = await statsQuery;
 
     if (statsError) {
       console.error('Error fetching call stats:', statsError);
@@ -281,11 +292,14 @@ campaignManagementRouter.get('/:id/status', async (req, res) => {
       doNotCall: callStats?.filter(c => c.outcome === 'do_not_call').length || 0
     };
 
-    // Get queue status
-    const { data: queueStats, error: queueError } = await supabase
+    // Get queue status with tenant filter
+    let queueQuery = supabase
       .from('call_queue')
       .select('status')
       .eq('campaign_id', id);
+    
+    queueQuery = applyTenantFilterFromRequest(req, queueQuery);
+    const { data: queueStats, error: queueError } = await queueQuery;
 
     if (queueError) {
       console.error('Error fetching queue stats:', queueError);
@@ -354,6 +368,9 @@ campaignManagementRouter.get('/:id/calls', async (req, res) => {
       .order(sortBy, { ascending: sortOrder === 'asc' })
       .range(offset, offset + parseInt(limit) - 1);
 
+    // Add tenant filter
+    query = applyTenantFilterFromRequest(req, query);
+
     if (status) {
       query = query.eq('status', status);
     }
@@ -368,11 +385,14 @@ campaignManagementRouter.get('/:id/calls', async (req, res) => {
       throw error;
     }
 
-    // Get total count for pagination
+    // Get total count for pagination with tenant filter
     let countQuery = supabase
       .from('campaign_calls')
       .select('id', { count: 'exact' })
       .eq('campaign_id', id);
+
+    // Add tenant filter
+    countQuery = applyTenantFilterFromRequest(req, countQuery);
 
     if (status) {
       countQuery = countQuery.eq('status', status);
@@ -413,14 +433,17 @@ campaignManagementRouter.post('/:id/reset-daily', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Reset daily counters
-    const { error } = await supabase
+    // Reset daily counters with tenant filter
+    let updateQuery = supabase
       .from('campaigns')
       .update({
         current_daily_calls: 0,
         updated_at: new Date().toISOString()
       })
       .eq('id', id);
+    
+    updateQuery = applyTenantFilterFromRequest(req, updateQuery);
+    const { error } = await updateQuery;
 
     if (error) {
       throw error;
@@ -448,12 +471,14 @@ campaignManagementRouter.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Get campaign details first to check if it exists
-    const { data: campaign, error: fetchError } = await supabase
+    // Get campaign details first to check if it exists (with tenant filter)
+    let query = supabase
       .from('campaigns')
       .select('id, execution_status')
-      .eq('id', id)
-      .single();
+      .eq('id', id);
+    
+    query = applyTenantFilterFromRequest(req, query);
+    const { data: campaign, error: fetchError } = await query.single();
 
     if (fetchError || !campaign) {
       return res.status(404).json({
@@ -470,11 +495,14 @@ campaignManagementRouter.delete('/:id', async (req, res) => {
       });
     }
 
-    // Delete the campaign (this will cascade delete related records due to foreign key constraints)
-    const { error: deleteError } = await supabase
+    // Delete the campaign with tenant filter (this will cascade delete related records due to foreign key constraints)
+    let deleteQuery = supabase
       .from('campaigns')
       .delete()
       .eq('id', id);
+    
+    deleteQuery = applyTenantFilterFromRequest(req, deleteQuery);
+    const { error: deleteError } = await deleteQuery;
 
     if (deleteError) {
       throw deleteError;

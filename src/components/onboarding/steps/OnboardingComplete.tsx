@@ -7,6 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle, Sparkles } from "lucide-react";
+import { getMinutesLimitForPlan } from "@/lib/plan-config";
+import { extractTenantFromHostname } from "@/lib/tenant-utils";
 
 export function OnboardingComplete() {
   const { data, complete } = useOnboarding();
@@ -16,37 +18,311 @@ export function OnboardingComplete() {
 
   const handleComplete = async () => {
     try {
-      if (user?.id) {
-        const trialEndsAt = new Date();
-        trialEndsAt.setDate(trialEndsAt.getDate() + 7);
-        await supabase.from("users").upsert({
-          id: user.id,
-          company: data.companyName,
-          industry: data.industry,
-          team_size: data.teamSize,
-          role: data.role,
-          use_case: data.useCase,
-          theme: data.theme,
-          notifications: data.notifications,
-          goals: data.goals,
-          plan: data.plan,
-          trial_ends_at: trialEndsAt.toISOString(),
-          onboarding_completed: true,
+      // Get signup data from localStorage
+      const signupDataStr = localStorage.getItem("signup-data");
+      
+      if (!signupDataStr) {
+        // If no signup data, check if user is already authenticated (existing flow)
+        if (!user?.id) {
+          toast({
+            title: "Missing signup information",
+            description: "Please start from the signup page.",
+            variant: "destructive",
+          });
+          navigate("/signup");
+          return;
+        }
+      }
+
+      let userId = user?.id;
+      let isNewUser = false;
+      let signupData = null;
+
+      // Parse signup data if it exists (before we clear it)
+      if (signupDataStr) {
+        signupData = JSON.parse(signupDataStr);
+      }
+
+      // If we have signup data, create auth user first
+      if (signupData) {
+        // Get the site URL from environment variable or use current origin
+        const siteUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
+        const redirectTo = `${siteUrl}/auth/callback`;
+
+        // Extract tenant from hostname if not whitelabel signup
+        let tenant = 'main';
+        if (!signupData.whitelabel || !signupData.slug) {
+          tenant = extractTenantFromHostname();
+          
+          // If tenant is not 'main', verify it exists
+          if (tenant !== 'main') {
+            try {
+              const { data: tenantOwner } = await supabase
+                .from('users')
+                .select('slug_name')
+                .eq('slug_name', tenant)
+                .maybeSingle();
+              
+              // If no tenant owner found, default to main
+              if (!tenantOwner) {
+                tenant = 'main';
+              }
+            } catch (error) {
+              console.warn('Error verifying tenant, defaulting to main:', error);
+              tenant = 'main';
+            }
+          }
+        } else {
+          // For whitelabel signup, tenant = slug
+          tenant = signupData.slug;
+        }
+
+        // Create auth user with email auto-confirmed
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: signupData.email,
+          password: signupData.password,
+          options: {
+            emailRedirectTo: redirectTo,
+            email_confirm: true, // Auto-confirm email, skip verification
+            data: {
+              name: signupData.name,
+              contactPhone: signupData.phone,
+              countryCode: signupData.countryCode,
+              slug: signupData.slug,
+              whitelabel: signupData.whitelabel,
+              tenant: tenant // Include tenant in metadata so trigger can use it
+            }
+          },
         });
+
+        if (authError) {
+          throw new Error(authError.message);
+        }
+
+        if (!authData.user) {
+          throw new Error("Failed to create user account");
+        }
+
+        userId = authData.user.id;
+        isNewUser = true;
+
+        // If white label signup, complete signup via backend to ensure slug is assigned
+        if (signupData.whitelabel && signupData.slug && userId) {
+          try {
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+            const completeSignupResponse = await fetch(`${apiUrl}/api/v1/user/complete-signup`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                user_id: userId,
+                slug: signupData.slug,
+                whitelabel: true
+              })
+            });
+
+            const completeSignupData = await completeSignupResponse.json();
+            if (!completeSignupData.success) {
+              console.error('Error completing white label signup:', completeSignupData.message);
+              // Don't fail the signup, but log the error
+            }
+          } catch (completeError) {
+            console.error('Error calling complete-signup:', completeError);
+            // Don't fail the signup
+          }
+        }
+
+        // Clear signup data from localStorage after we've used it
+        localStorage.removeItem("signup-data");
+      }
+
+      if (!userId) {
+        throw new Error("User ID is required");
+      }
+
+      // Calculate trial end date
+      const trialEndsAt = new Date();
+      trialEndsAt.setDate(trialEndsAt.getDate() + 7);
+      
+      // Get minutes limit based on selected plan
+      const minutesLimit = getMinutesLimitForPlan(data.plan);
+
+      // Determine tenant first (before creating userProfileData)
+      let finalTenant = 'main';
+      if (signupData?.whitelabel && signupData?.slug) {
+        finalTenant = signupData.slug;
+      } else {
+        const tenant = extractTenantFromHostname();
+        if (tenant !== 'main') {
+          try {
+            const { data: tenantOwner } = await supabase
+              .from('users')
+              .select('slug_name')
+              .eq('slug_name', tenant)
+              .maybeSingle();
+            
+            if (tenantOwner) {
+              finalTenant = tenant;
+            }
+          } catch (error) {
+            console.warn('Error verifying tenant, defaulting to main:', error);
+          }
+        }
+      }
+
+      // Validate minutes availability for white label tenants before creating account
+      if (finalTenant !== 'main') {
+        // Get tenant admin's minutes
+        const { data: adminData } = await supabase
+          .from('users')
+          .select('minutes_limit')
+          .eq('slug_name', finalTenant)
+          .eq('role', 'admin')
+          .single();
+        
+        if (adminData) {
+          const adminMinutesLimit = adminData.minutes_limit || 0;
+          
+          // If admin has limited minutes, validate availability
+          if (adminMinutesLimit > 0) {
+            // Prevent unlimited plans for limited admin
+            if (minutesLimit === 0) {
+              throw new Error("Unlimited plans are not available. Please select a plan with limited minutes.");
+            }
+            
+            // Calculate total minutes already allocated to customers
+            const { data: existingCustomers } = await supabase
+              .from('users')
+              .select('minutes_limit')
+              .eq('tenant', finalTenant)
+              .neq('role', 'admin'); // Exclude admin
+            
+            const allocatedMinutes = (existingCustomers || []).reduce((sum, customer) => {
+              const customerMinutes = customer.minutes_limit || 0;
+              // Only count limited plans (exclude unlimited/0)
+              return customerMinutes > 0 ? sum + customerMinutes : sum;
+            }, 0);
+            
+            const availableMinutes = adminMinutesLimit - allocatedMinutes;
+            
+            // Check if there are enough minutes available
+            if (minutesLimit > availableMinutes) {
+              throw new Error(
+                `Cannot create account with ${minutesLimit.toLocaleString()} minutes. ` +
+                `Only ${availableMinutes.toLocaleString()} minutes are available. ` +
+                `Please contact your administrator to request more minutes or select a different plan.`
+              );
+            }
+          }
+        }
+      }
+
+      // Check if user is a white label admin (has slug_name)
+      // We need to preserve their admin role and slug_name
+      let userRole = data.role || "user";
+      let existingSlugName = null;
+      
+      // Check if user already exists (set by complete-signup endpoint)
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('slug_name, role')
+        .eq('id', userId)
+        .maybeSingle();
+      
+      if (signupData?.whitelabel && signupData?.slug) {
+        // White label user should be admin
+        userRole = "admin";
+        existingSlugName = signupData.slug.toLowerCase();
+      } else if (existingUser?.slug_name) {
+        // If user has slug_name, they should be admin
+        userRole = 'admin';
+        existingSlugName = existingUser.slug_name;
+      }
+
+      // Create/update users table with all data (signup + onboarding)
+      const userProfileData: any = {
+        id: userId,
+        name: signupData?.name || user?.fullName || "",
+        company: data.companyName,
+        industry: data.industry,
+        team_size: data.teamSize,
+        role: userRole,
+        use_case: data.useCase,
+        theme: data.theme,
+        notifications: data.notifications,
+        goals: data.goals,
+        plan: data.plan,
+        minutes_limit: minutesLimit,
+        minutes_used: 0,
+        onboarding_completed: true,
+        contact: {
+          email: signupData?.email || user?.email || "",
+          phone: signupData?.phone || null,
+          countryCode: signupData?.countryCode || null,
+        },
+        is_active: true,
+      };
+
+      // Add trial_ends_at field
+      userProfileData.trial_ends_at = trialEndsAt.toISOString();
+
+      // Add white label fields if applicable
+      if (existingSlugName) {
+        // Preserve existing slug_name and set tenant to slug
+        userProfileData.slug_name = existingSlugName;
+        userProfileData.tenant = existingSlugName;
+      } else if (signupData?.whitelabel && signupData?.slug) {
+        userProfileData.slug_name = signupData.slug.toLowerCase();
+        userProfileData.tenant = finalTenant;
+      } else {
+        // Use the tenant we already determined
+        userProfileData.tenant = finalTenant;
+      }
+
+      // Try to upsert with trial_ends_at, if it fails (column doesn't exist), retry without it
+      let { error: profileError } = await supabase
+        .from("users")
+        .upsert(userProfileData);
+
+      // If error is about trial_ends_at column not existing, retry without it
+      if (profileError && profileError.message?.includes("trial_ends_at")) {
+        console.warn("trial_ends_at column does not exist, retrying without it");
+        const { trial_ends_at, ...userProfileDataWithoutTrial } = userProfileData;
+        const { error: retryError } = await supabase
+          .from("users")
+          .upsert(userProfileDataWithoutTrial);
+        
+        if (retryError) {
+          throw new Error(retryError.message);
+        }
+      } else if (profileError) {
+        throw new Error(profileError.message);
       }
 
       // Mark onboarding as complete locally
       complete();
 
+      // Clear onboarding state
+      localStorage.removeItem("onboarding-state");
+
       toast({
         title: "Welcome aboard! 🎉",
-        description: "Your account has been set up successfully. Let's get started!",
+        description: isNewUser 
+          ? "Your account has been created successfully! Redirecting to login..."
+          : "Your account has been set up successfully. Let's get started!",
       });
 
-      navigate("/");
+      // Redirect to login for new users, dashboard for existing users
+      if (isNewUser) {
+        setTimeout(() => navigate("/login"), 1000);
+      } else {
+        navigate("/dashboard");
+      }
     } catch (error: any) {
+      console.error("Error completing onboarding:", error);
       toast({
-        title: "Could not save onboarding",
+        title: "Could not complete setup",
         description: error?.message || "Please try again.",
         variant: "destructive",
       });
@@ -88,7 +364,14 @@ export function OnboardingComplete() {
         </h1>
         
         <p className="text-[var(--text-lg)] text-theme-secondary max-w-2xl mx-auto leading-relaxed">
-          Welcome to your personalized dashboard, {user?.fullName?.split(' ')[0]}. 
+          Welcome to your personalized dashboard{(() => {
+            const signupDataStr = localStorage.getItem("signup-data");
+            if (signupDataStr) {
+              const signupData = JSON.parse(signupDataStr);
+              return `, ${signupData.name?.split(' ')[0] || 'there'}`;
+            }
+            return user?.fullName ? `, ${user.fullName.split(' ')[0]}` : '';
+          })()}. 
           We've customized everything based on your preferences and business needs.
         </p>
       </motion.div>

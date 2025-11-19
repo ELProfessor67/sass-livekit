@@ -50,6 +50,10 @@ export default function Login() {
       
       if (result.success) {
         console.log('Sign in successful, navigating...');
+        
+        // Clear any stale signup data (user is logging in, so they already have an account)
+        localStorage.removeItem("signup-data");
+        
         toast({
           title: "Welcome back!",
           description: "You've been signed in successfully.",

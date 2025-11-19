@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { PLAN_CONFIGS, getMinutesLimitForPlan, getPlanConfig, getPlanConfigs, invalidatePlanConfigsCache, type PlanConfig } from "@/lib/plan-config";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MoreHorizontal, Search, Edit, Trash2, Eye, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/SupportAccessAuthContext';
@@ -34,6 +36,11 @@ interface User {
   company: string | null;
   industry: string | null;
   plan?: string | null;
+  minutes_limit?: number | null;
+  minutes_used?: number | null;
+  is_whitelabel?: boolean;
+  slug_name?: string | null;
+  tenant?: string | null;
 }
 
 interface UserStats {
@@ -51,6 +58,7 @@ const AdminPanel = () => {
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [planSearchTerm, setPlanSearchTerm] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isEditUserOpen, setIsEditUserOpen] = useState(false);
   const [isViewUserOpen, setIsViewUserOpen] = useState(false);
@@ -59,6 +67,125 @@ const AdminPanel = () => {
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [loadingStats, setLoadingStats] = useState(false);
   const [allUserStats, setAllUserStats] = useState<Record<string, UserStats>>({});
+  const [planDialogOpen, setPlanDialogOpen] = useState(false);
+  const [planDialogUser, setPlanDialogUser] = useState<User | null>(null);
+  const [planDialogPlan, setPlanDialogPlan] = useState<string>("free");
+  const [planDialogMinutesLimit, setPlanDialogMinutesLimit] = useState<number>(getMinutesLimitForPlan("free"));
+  const [planDialogMinutesUsed, setPlanDialogMinutesUsed] = useState<number>(0);
+  const [planDialogLoading, setPlanDialogLoading] = useState(false);
+  
+  // Plan configuration management state
+  const [planConfigs, setPlanConfigs] = useState<Record<string, PlanConfig>>({});
+  const [loadingPlanConfigs, setLoadingPlanConfigs] = useState(false);
+  const [editingPlanKey, setEditingPlanKey] = useState<string | null>(null);
+  const [editPlanData, setEditPlanData] = useState<Partial<PlanConfig>>({});
+  const [isEditPlanOpen, setIsEditPlanOpen] = useState(false);
+  const [adminMinutesLimit, setAdminMinutesLimit] = useState<number | null>(null);
+  
+  // Get effective minutes limit (from DB or calculate from plan)
+  const getEffectiveMinutesLimit = (user: User): number => {
+    // If minutes_limit exists in DB, use it
+    if (user.minutes_limit !== null && user.minutes_limit !== undefined) {
+      return user.minutes_limit;
+    }
+    // Otherwise, calculate from plan
+    return getMinutesLimitForPlan(user.plan);
+  };
+
+  const formatMinutes = (value?: number | null, plan?: string | null) => {
+    // If value is null, try to get from plan
+    if (value === null || value === undefined) {
+      if (plan) {
+        const planMinutes = getMinutesLimitForPlan(plan);
+        if (planMinutes === 0) return 'Unlimited';
+        return `${planMinutes.toLocaleString()} min`;
+      }
+      return '—';
+    }
+    if (value === 0) return 'Unlimited';
+    return `${value.toLocaleString()} min`;
+  };
+
+  const getRemainingMinutes = (user: User) => {
+    const limit = getEffectiveMinutesLimit(user);
+    if (limit === 0) return 'Unlimited';
+    const used = user.minutes_used || 0;
+    const remaining = Math.max(limit - used, 0);
+    return `${remaining.toLocaleString()} min`;
+  };
+
+  const getUsageStatus = (user: User) => {
+    const limit = getEffectiveMinutesLimit(user);
+    if (limit === 0) return 'Unlimited';
+    const used = user.minutes_used || 0;
+    const percentage = (used / limit) * 100;
+    if (used >= limit) return 'Exceeded';
+    if (percentage >= 90) return 'Critical';
+    if (percentage >= 75) return 'Warning';
+    return 'OK';
+  };
+  const formatPlanName = (plan?: string | null) => {
+    if (!plan) return 'Free';
+    return plan.charAt(0).toUpperCase() + plan.slice(1);
+  };
+
+  const getStatusBadgeClasses = (status: string) => {
+    switch (status) {
+      case 'Exceeded':
+        return 'bg-destructive/15 text-destructive border-destructive/20';
+      case 'Critical':
+        return 'bg-orange-500/15 text-orange-500 border-orange-500/20';
+      case 'Warning':
+        return 'bg-yellow-500/15 text-yellow-600 border-yellow-500/20';
+      case 'Unlimited':
+        return 'bg-emerald-500/15 text-emerald-500 border-emerald-500/20';
+      case 'OK':
+        return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20';
+      default:
+        return 'bg-slate-500/10 text-slate-500 border-slate-500/20';
+    }
+  };
+  const openPlanDialog = (user: User) => {
+    setPlanDialogUser(user);
+    const userPlan = user.plan || "free";
+    setPlanDialogPlan(userPlan);
+    setPlanDialogMinutesLimit(user.minutes_limit ?? getMinutesLimitForPlan(userPlan));
+    setPlanDialogMinutesUsed(user.minutes_used ?? 0);
+    setPlanDialogOpen(true);
+  };
+
+  const handlePlanDialogPlanChange = (planKey: string) => {
+    setPlanDialogPlan(planKey);
+    const defaultMinutes = getMinutesLimitForPlan(planKey);
+    setPlanDialogMinutesLimit(defaultMinutes);
+  };
+
+  const handlePlanSave = async () => {
+    if (!planDialogUser) return;
+    setPlanDialogLoading(true);
+    try {
+      const { error } = await supabase
+        .from("users")
+        .update({
+          plan: planDialogPlan,
+          minutes_limit: planDialogMinutesLimit,
+          minutes_used: planDialogMinutesUsed,
+        })
+        .eq("id", planDialogUser.id);
+
+      if (error) throw error;
+
+      toast.success(`Updated plan for ${planDialogUser.name || planDialogUser.contact?.email || 'user'}`);
+      setPlanDialogOpen(false);
+      setPlanDialogUser(null);
+      await fetchUsers();
+    } catch (error: any) {
+      console.error("Error updating plan:", error);
+      toast.error(error?.message || "Failed to update plan");
+    } finally {
+      setPlanDialogLoading(false);
+    }
+  };
   
   // Support Access state
   const [activeSupportSession, setActiveSupportSession] = useState<any>(null);
@@ -81,7 +208,214 @@ const AdminPanel = () => {
       return;
     }
     fetchUsers();
+    fetchPlanConfigs();
   }, [isAdmin]);
+
+  // Fetch plan configurations from database
+  const fetchPlanConfigs = async () => {
+    try {
+      setLoadingPlanConfigs(true);
+      // Get current user's tenant to fetch appropriate plans
+      let tenant: string | null = null;
+      if (user) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('slug_name')
+          .eq('id', user.id)
+          .single();
+        tenant = userData?.slug_name || null;
+      }
+      const configs = await getPlanConfigs(tenant);
+      setPlanConfigs(configs);
+    } catch (error: any) {
+      console.error('Error fetching plan configs:', error);
+      toast.error('Failed to load plan configurations');
+    } finally {
+      setLoadingPlanConfigs(false);
+    }
+  };
+
+  // Open edit plan dialog
+  const openEditPlanDialog = async (planKey: string) => {
+    const plan = planConfigs[planKey] || PLAN_CONFIGS[planKey];
+    if (plan) {
+      setEditingPlanKey(planKey);
+      setEditPlanData({
+        key: plan.key,
+        name: plan.name,
+        price: plan.price,
+        minutesLimit: plan.minutesLimit,
+        features: [...plan.features]
+      });
+      
+      // Get admin's minutes limit for validation
+      if (user) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('slug_name, minutes_limit')
+          .eq('id', user.id)
+          .single();
+        
+        if (userData?.slug_name) {
+          // White label admin - get their minutes limit
+          setAdminMinutesLimit(userData.minutes_limit || 0);
+        } else {
+          // Main tenant admin - no limit
+          setAdminMinutesLimit(null);
+        }
+      } else {
+        setAdminMinutesLimit(null);
+      }
+      
+      setIsEditPlanOpen(true);
+    }
+  };
+
+  // Save plan configuration
+  const handleSavePlan = async () => {
+    if (!editingPlanKey) return;
+
+    try {
+      setLoadingPlanConfigs(true);
+      
+      // Get current user's tenant (slug_name for whitelabel admins, null for main tenant admin)
+      let tenant: string | null = null;
+      let adminMinutes: number = 0;
+      if (user) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('slug_name, tenant, minutes_limit')
+          .eq('id', user.id)
+          .single();
+        
+        // If user has slug_name, they're a whitelabel admin - use their slug as tenant
+        // Otherwise, they're main tenant admin - use null
+        tenant = userData?.slug_name || null;
+        adminMinutes = userData?.minutes_limit || 0;
+      }
+      
+      // Validate minutes limit for white label admins
+      if (tenant) {
+        // If admin has unlimited minutes (0), allow any plan configuration
+        if (adminMinutes === 0) {
+          // Admin with unlimited can create any plan config, including unlimited
+          // No validation needed
+        } else if (adminMinutes > 0) {
+          // Get all plan configs for this tenant (excluding the one being edited)
+          const { data: existingPlans } = await supabase
+            .from('plan_configs')
+            .select('plan_key, minutes_limit')
+            .eq('tenant', tenant)
+            .neq('plan_key', editingPlanKey); // Exclude the plan being edited
+          
+          // Calculate current total minutes across all plans
+          const currentTotal = (existingPlans || []).reduce((sum, plan) => {
+            const planMinutes = plan.minutes_limit || 0;
+            // Only count limited plans (exclude unlimited/0)
+            return planMinutes > 0 ? sum + planMinutes : sum;
+          }, 0);
+          
+          // Get the new minutes for the plan being edited
+          // Check explicitly for 0 (unlimited), not just falsy values
+          const newPlanMinutes = editPlanData.minutesLimit !== undefined && editPlanData.minutesLimit !== null 
+            ? editPlanData.minutesLimit 
+            : 0;
+          
+          // Prevent setting plan to unlimited (0) unless admin also has unlimited
+          if (newPlanMinutes === 0 && adminMinutes > 0) {
+            toast.error(`Cannot set plan to unlimited minutes. You have a limited plan (${adminMinutes.toLocaleString()} minutes). Only admins with unlimited plans can create unlimited plan configurations.`);
+            setLoadingPlanConfigs(false);
+            return;
+          }
+          
+          // Calculate new total
+          const newTotal = currentTotal + newPlanMinutes;
+          
+          // Validate: new total cannot exceed admin's minutes
+          if (newTotal > adminMinutes) {
+            const available = adminMinutes - currentTotal;
+            toast.error(
+              `Cannot set plan minutes to ${newPlanMinutes}. ` +
+              `Available: ${available} minutes ` +
+              `(You have ${adminMinutes} total, ${currentTotal} already allocated across other plans). ` +
+              `The sum of all plan configuration minutes cannot exceed your plan minutes.`
+            );
+            setLoadingPlanConfigs(false);
+            return;
+          }
+        }
+      }
+      
+      // Check if plan exists for this tenant
+      let existingPlanQuery = supabase
+        .from('plan_configs')
+        .select('id, tenant, minutes_limit')
+        .eq('plan_key', editingPlanKey);
+      
+      if (tenant) {
+        // For whitelabel admin, check for their tenant-specific plan
+        existingPlanQuery = existingPlanQuery.eq('tenant', tenant);
+      } else {
+        // For main tenant admin, check for main tenant plan (tenant IS NULL)
+        existingPlanQuery = existingPlanQuery.is('tenant', null);
+      }
+      
+      const { data: existingPlan } = await existingPlanQuery.maybeSingle();
+      
+      const updateData: any = {
+        name: editPlanData.name,
+        price: editPlanData.price,
+        minutes_limit: editPlanData.minutesLimit,
+        features: editPlanData.features || [],
+        tenant: tenant // Set tenant for whitelabel admins
+      };
+      
+      if (existingPlan) {
+        // Update existing plan
+        let updateQuery = supabase
+          .from('plan_configs')
+          .update(updateData)
+          .eq('plan_key', editingPlanKey);
+        
+        if (tenant) {
+          // For whitelabel admin, update their tenant-specific plan
+          updateQuery = updateQuery.eq('tenant', tenant);
+        } else {
+          // For main tenant admin, update main tenant plan (tenant IS NULL)
+          updateQuery = updateQuery.is('tenant', null);
+        }
+        
+        const { error } = await updateQuery;
+        if (error) throw error;
+      } else {
+        // Create new tenant-specific plan (for whitelabel admins)
+        // Main tenant plans should already exist, but create if missing
+        const { error } = await supabase
+          .from('plan_configs')
+          .insert({
+            plan_key: editingPlanKey,
+            ...updateData
+          });
+        
+        if (error) throw error;
+      }
+
+      // Invalidate cache and refetch
+      invalidatePlanConfigsCache();
+      await fetchPlanConfigs();
+      
+      toast.success(tenant 
+        ? 'Your tenant plan updated successfully!' 
+        : 'Plan updated successfully!');
+      setIsEditPlanOpen(false);
+      setEditingPlanKey(null);
+    } catch (error: any) {
+      console.error('Error saving plan:', error);
+      toast.error(error?.message || 'Failed to save plan configuration');
+    } finally {
+      setLoadingPlanConfigs(false);
+    }
+  };
 
   useEffect(() => {
     const filtered = users.filter(user => 
@@ -91,6 +425,16 @@ const AdminPanel = () => {
     );
     setFilteredUsers(filtered);
   }, [users, searchTerm]);
+
+  const filteredPlanUsers = useMemo(() => {
+    if (!planSearchTerm) return users;
+    const term = planSearchTerm.toLowerCase();
+    return users.filter(user => 
+      user.name?.toLowerCase().includes(term) ||
+      user.contact?.email?.toLowerCase().includes(term) ||
+      user.plan?.toLowerCase().includes(term)
+    );
+  }, [users, planSearchTerm]);
 
   // Debug userStats changes
   useEffect(() => {
@@ -116,19 +460,47 @@ const AdminPanel = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('created_on', { ascending: false });
-
-      if (error) throw error;
-      setUsers(data || []);
       
-      // Fetch stats for all users
-      await fetchAllUserStats(data || []);
-    } catch (error) {
+      // Alternative implementation: Single API call to backend
+      // Backend fetches from auth.users first, then enriches with users table data
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No session found. Please log in again.');
+      }
+
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      
+      const response = await fetch(`${backendUrl}/api/v1/admin/users`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to fetch users' }));
+        throw new Error(errorData.error || 'Failed to fetch users');
+      }
+
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        // Data is already complete with emails merged from auth.users
+        // Backend has already:
+        // 1. Fetched from auth.users (has emails)
+        // 2. Fetched from users table (has profile data)
+        // 3. Merged them together
+        setUsers(result.data);
+        
+        // Fetch stats for all users
+        await fetchAllUserStats(result.data);
+      } else {
+        throw new Error(result.error || 'Failed to fetch users');
+      }
+    } catch (error: any) {
       console.error('Error fetching users:', error);
-      toast.error('Failed to fetch users');
+      toast.error(error?.message || 'Failed to fetch users');
     } finally {
       setLoading(false);
     }
@@ -575,13 +947,31 @@ const AdminPanel = () => {
         deletedCounts.workspaceSettings = workspaceSettings.length;
       }
 
-      // Finally, delete the user
-      const { error: profileError } = await supabase
-        .from('users')
-        .delete()
-        .eq('id', userId);
+      // Finally, delete the user from both auth.users and public.users via backend API
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No session found. Please log in again.');
+      }
 
-      if (profileError) throw profileError;
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      
+      const deleteResponse = await fetch(`${backendUrl}/api/v1/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+
+      if (!deleteResponse.ok) {
+        const errorData = await deleteResponse.json().catch(() => ({ error: 'Failed to delete user' }));
+        throw new Error(errorData.error || 'Failed to delete user');
+      }
+
+      const deleteResult = await deleteResponse.json();
+      if (!deleteResult.success) {
+        throw new Error(deleteResult.error || 'Failed to delete user');
+      }
 
       // Create success message with details
       const deletedItems = Object.entries(deletedCounts)
@@ -734,126 +1124,287 @@ const AdminPanel = () => {
               </div>
             )}
 
-            <ThemeCard>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Users Management</CardTitle>
-                    <CardDescription>
-                      View and manage all system users
-                    </CardDescription>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="relative">
-                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="Search users..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-8 w-64"
-                      />
+            <Tabs defaultValue="users" className="w-full">
+              <TabsList className="mb-6 flex w-full flex-col gap-2 sm:flex-row">
+                <TabsTrigger value="users" className="flex-1">Users</TabsTrigger>
+                <TabsTrigger value="plans" className="flex-1">Plans & Minutes</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="users" className="mt-0">
+                <ThemeCard>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Users Management</CardTitle>
+                        <CardDescription>
+                          View and manage all system users
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="relative">
+                          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Search users..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="pl-8 w-64"
+                          />
+                        </div>
+                      </div>
                     </div>
+                  </CardHeader>
+                  <CardContent>
+                {loading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-            {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Company</TableHead>
-                    <TableHead>Plan</TableHead>
-                    <TableHead>Assistants</TableHead>
-                    <TableHead>Calls</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredUsers.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell className="font-medium">{user.name || 'N/A'}</TableCell>
-                      <TableCell>{user.contact?.email || 'N/A'}</TableCell>
-                      <TableCell>
-                      <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
-                        {user.role || 'user'}
-                      </Badge>
-                      </TableCell>
-                      <TableCell>{user.company || 'N/A'}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {allUserStats[user.id]?.plan || user.plan || 'Free'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <span className="font-medium text-blue-400">
-                          {allUserStats[user.id]?.totalAssistants || 0}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <span className="font-medium text-green-400">
-                          {allUserStats[user.id]?.totalCalls || 0}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={user.is_active ? 'default' : 'destructive'}>
-                          {user.is_active ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-8 w-8 p-0">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openViewDialog(user)}>
-                              <Eye className="mr-2 h-4 w-4" />
-                              View
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openEditDialog(user)}>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Edit
-                            </DropdownMenuItem>
-                            <SupportAccessDialog
-                              userId={user.id}
-                              userName={user.name || 'Unknown User'}
-                              userEmail={user.contact?.email || 'No email'}
-                              onSupportAccess={handleSupportAccess}
-                            >
-                              <DropdownMenuItem 
-                                disabled={user.role === 'admin'}
-                                onSelect={(e) => e.preventDefault()}
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>White Label</TableHead>
+                        <TableHead>Plan</TableHead>
+                        <TableHead>Assistants</TableHead>
+                        <TableHead>Calls</TableHead>
+                        <TableHead>Total Minutes</TableHead>
+                        <TableHead>Used Minutes</TableHead>
+                        <TableHead>Remaining Minutes</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredUsers.map((user) => (
+                        <TableRow key={user.id}>
+                          <TableCell className="font-medium">{user.name || 'N/A'}</TableCell>
+                          <TableCell>{user.contact?.email || 'N/A'}</TableCell>
+                          <TableCell>
+                          <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
+                            {user.role || 'user'}
+                          </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={user.is_whitelabel ? 'default' : 'outline'}>
+                              {user.is_whitelabel ? 'Yes' : 'No'}
+                            </Badge>
+                            {user.is_whitelabel && user.slug_name && (
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                ({user.slug_name})
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {allUserStats[user.id]?.plan || user.plan || 'Free'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="font-medium text-blue-400">
+                              {allUserStats[user.id]?.totalAssistants || 0}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="font-medium text-green-400">
+                              {allUserStats[user.id]?.totalCalls || 0}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="font-medium text-blue-400">
+                              {formatMinutes(user.minutes_limit, user.plan)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="font-medium text-orange-400">
+                              {user.minutes_used?.toLocaleString() || 0} min
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="font-medium text-emerald-400">
+                              {getRemainingMinutes(user)}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={user.is_active ? 'default' : 'destructive'}>
+                              {user.is_active ? 'Active' : 'Inactive'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" className="h-8 w-8 p-0">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => openViewDialog(user)}>
+                                  <Eye className="mr-2 h-4 w-4" />
+                                  View
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => openEditDialog(user)}>
+                                  <Edit className="mr-2 h-4 w-4" />
+                                  Edit
+                                </DropdownMenuItem>
+                                <SupportAccessDialog
+                                  userId={user.id}
+                                  userName={user.name || 'Unknown User'}
+                                  userEmail={user.contact?.email || 'No email'}
+                                  onSupportAccess={handleSupportAccess}
+                                >
+                                  <DropdownMenuItem 
+                                    disabled={user.role === 'admin'}
+                                    onSelect={(e) => e.preventDefault()}
+                                  >
+                                    <Shield className="mr-2 h-4 w-4" />
+                                    Support Access
+                                  </DropdownMenuItem>
+                                </SupportAccessDialog>
+                                <DropdownMenuItem 
+                                  onClick={() => openDeleteDialog(user)}
+                                  className="text-red-600"
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </ThemeCard>
+              </TabsContent>
+
+              <TabsContent value="plans" className="mt-0 space-y-6">
+                {/* Plan Configuration Management */}
+                <ThemeCard>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Plan Configuration</CardTitle>
+                        <CardDescription>Manage plan prices, minutes, and features</CardDescription>
+                      </div>
+                      <Button onClick={fetchPlanConfigs} variant="outline" size="sm">
+                        Refresh
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {loadingPlanConfigs ? (
+                      <div className="text-center py-8">Loading plan configurations...</div>
+                    ) : (
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                        {Object.values(planConfigs).map((plan) => (
+                          <Card key={plan.key} className="border-border/40 bg-card/50 backdrop-blur-sm">
+                            <CardHeader>
+                              <CardTitle className="text-lg">{plan.name}</CardTitle>
+                              <CardDescription>Plan Key: {plan.key}</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                              <div>
+                                <Label className="text-sm text-muted-foreground">Price</Label>
+                                <p className="text-xl font-semibold">${plan.price}/month</p>
+                              </div>
+                              <div>
+                                <Label className="text-sm text-muted-foreground">Minutes Limit</Label>
+                                <p className="text-lg">
+                                  {plan.minutesLimit === 0 ? 'Unlimited' : `${plan.minutesLimit.toLocaleString()} min`}
+                                </p>
+                              </div>
+                              <div>
+                                <Label className="text-sm text-muted-foreground">Features</Label>
+                                <p className="text-sm text-muted-foreground">{plan.features.length} features</p>
+                              </div>
+                              <Button 
+                                onClick={() => openEditPlanDialog(plan.key)} 
+                                variant="outline" 
+                                className="w-full"
                               >
-                                <Shield className="mr-2 h-4 w-4" />
-                                Support Access
-                              </DropdownMenuItem>
-                            </SupportAccessDialog>
-                            <DropdownMenuItem 
-                              onClick={() => openDeleteDialog(user)}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </ThemeCard>
+                                <Edit className="mr-2 h-4 w-4" />
+                                Edit Plan
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </ThemeCard>
+
+                {/* User Plans & Minutes */}
+                <ThemeCard>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>User Plans & Minutes</CardTitle>
+                        <CardDescription>Track user subscriptions and usage</CardDescription>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="relative">
+                          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Search by name, email, or plan..."
+                            value={planSearchTerm}
+                            onChange={(e) => setPlanSearchTerm(e.target.value)}
+                            className="pl-8 w-72"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>User</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Plan</TableHead>
+                          <TableHead>Minutes Limit</TableHead>
+                          <TableHead>Used</TableHead>
+                          <TableHead>Remaining</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredPlanUsers.map((user) => {
+                          const status = getUsageStatus(user);
+                          return (
+                            <TableRow key={`plan-${user.id}`}>
+                              <TableCell className="font-medium">{user.name || 'N/A'}</TableCell>
+                              <TableCell className="text-muted-foreground">{user.contact?.email || 'N/A'}</TableCell>
+                              <TableCell>
+                                <Badge variant="outline">
+                                  {formatPlanName(user.plan)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>{formatMinutes(user.minutes_limit, user.plan)}</TableCell>
+                              <TableCell>{user.minutes_used?.toLocaleString() || 0} min</TableCell>
+                              <TableCell>{getRemainingMinutes(user)}</TableCell>
+                              <TableCell>
+                                <Badge className={getStatusBadgeClasses(status)}>
+                                  {status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button variant="ghost" size="sm" onClick={() => openPlanDialog(user)}>
+                                  Change Plan
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </ThemeCard>
+              </TabsContent>
+            </Tabs>
 
         {/* Edit User Dialog */}
         <Dialog open={isEditUserOpen} onOpenChange={setIsEditUserOpen}>
@@ -1103,6 +1654,197 @@ const AdminPanel = () => {
               </Button>
               <Button variant="destructive" onClick={handleDeleteUser}>
                 Delete User
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Plan & Minutes Dialog */}
+        <Dialog
+          open={planDialogOpen}
+          onOpenChange={(open) => {
+            setPlanDialogOpen(open);
+            if (!open) {
+              setPlanDialogUser(null);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-[480px]">
+            <DialogHeader>
+              <DialogTitle>Assign Plan & Minutes</DialogTitle>
+              <DialogDescription>
+                Update the subscription plan and minutes allocation for this user.
+              </DialogDescription>
+            </DialogHeader>
+            {planDialogUser && (
+              <div className="space-y-4">
+                <div className="grid gap-2 rounded-lg border border-border/40 bg-muted/10 p-4">
+                  <div className="text-sm text-muted-foreground">User</div>
+                  <div className="text-lg font-medium text-foreground">{planDialogUser.name || planDialogUser.contact?.email || 'N/A'}</div>
+                  <div className="text-xs text-muted-foreground">{planDialogUser.contact?.email || 'No email on file'}</div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Plan</Label>
+                  <Select
+                    value={planDialogPlan}
+                    onValueChange={handlePlanDialogPlanChange}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select plan" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.values(planConfigs).length > 0 ? (
+                        Object.values(planConfigs).map((plan) => (
+                          <SelectItem key={plan.key} value={plan.key}>
+                            {plan.name} ({plan.minutesLimit === 0 ? 'Unlimited' : `${plan.minutesLimit.toLocaleString()} min`})
+                          </SelectItem>
+                        ))
+                      ) : (
+                        Object.values(PLAN_CONFIGS).map((plan) => (
+                          <SelectItem key={plan.key} value={plan.key}>
+                            {plan.name} ({plan.minutesLimit === 0 ? 'Unlimited' : `${plan.minutesLimit.toLocaleString()} min`})
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Minutes Limit</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={planDialogMinutesLimit ?? ''}
+                      onChange={(e) => setPlanDialogMinutesLimit(Math.max(0, Number(e.target.value)))}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Set to 0 for unlimited minutes.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Minutes Used</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={planDialogMinutesUsed ?? 0}
+                      onChange={(e) => setPlanDialogMinutesUsed(Math.max(0, Number(e.target.value)))}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Set starting usage (defaults to 0 when changing plans).
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button variant="outline" onClick={() => setPlanDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handlePlanSave} disabled={planDialogLoading}>
+                {planDialogLoading ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Plan Configuration Dialog */}
+        <Dialog open={isEditPlanOpen} onOpenChange={setIsEditPlanOpen}>
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Plan Configuration</DialogTitle>
+              <DialogDescription>
+                {user?.slug_name 
+                  ? `Update plan price, minutes limit, and features for your whitelabel tenant. Changes will apply to all new subscriptions on your tenant.`
+                  : `Update plan price, minutes limit, and features. Changes will apply to all new subscriptions.`}
+              </DialogDescription>
+            </DialogHeader>
+            {editingPlanKey && (
+              <div className="space-y-4">
+                <div className="grid gap-2 rounded-lg border border-border/40 bg-muted/10 p-4">
+                  <div className="text-sm text-muted-foreground">Plan Key</div>
+                  <div className="text-lg font-medium text-foreground">{editingPlanKey}</div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-plan-name">Plan Name</Label>
+                  <Input
+                    id="edit-plan-name"
+                    value={editPlanData.name || ''}
+                    onChange={(e) => setEditPlanData({...editPlanData, name: e.target.value})}
+                    placeholder="e.g., Starter, Professional"
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-plan-price">Price (USD/month)</Label>
+                    <Input
+                      id="edit-plan-price"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={editPlanData.price ?? ''}
+                      onChange={(e) => setEditPlanData({...editPlanData, price: Number(e.target.value)})}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-plan-minutes">Minutes Limit</Label>
+                    <Input
+                      id="edit-plan-minutes"
+                      type="number"
+                      min={adminMinutesLimit !== null && adminMinutesLimit > 0 ? 1 : 0}
+                      value={editPlanData.minutesLimit ?? ''}
+                      onChange={(e) => {
+                        const value = Number(e.target.value);
+                        // Prevent setting to 0 (unlimited) if admin has limited minutes
+                        if (adminMinutesLimit !== null && adminMinutesLimit > 0 && value === 0) {
+                          toast.error(`Cannot set to unlimited. You have a limited plan (${adminMinutesLimit} minutes).`);
+                          return;
+                        }
+                        setEditPlanData({...editPlanData, minutesLimit: value});
+                      }}
+                      placeholder={adminMinutesLimit !== null && adminMinutesLimit > 0 ? "Enter minutes (min: 1)" : "0 for unlimited"}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {adminMinutesLimit !== null && adminMinutesLimit > 0 
+                        ? `You have ${adminMinutesLimit.toLocaleString()} total minutes. The sum of all plan minutes cannot exceed this.`
+                        : "Set to 0 for unlimited minutes"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-plan-features">Features</Label>
+                  <Textarea
+                    id="edit-plan-features"
+                    value={(editPlanData.features || []).join('\n')}
+                    onChange={(e) => {
+                      const features = e.target.value.split('\n').filter(f => f.trim());
+                      setEditPlanData({...editPlanData, features});
+                    }}
+                    placeholder="Enter one feature per line"
+                    rows={6}
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter one feature per line. Each line will be a separate feature.
+                  </p>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => {
+                setIsEditPlanOpen(false);
+                setAdminMinutesLimit(null);
+              }}>
+                Cancel
+              </Button>
+              <Button onClick={handleSavePlan} disabled={loadingPlanConfigs}>
+                {loadingPlanConfigs ? 'Saving...' : 'Save Plan'}
               </Button>
             </DialogFooter>
           </DialogContent>

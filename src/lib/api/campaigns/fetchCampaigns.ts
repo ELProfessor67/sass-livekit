@@ -48,7 +48,17 @@ export const fetchCampaigns = async (): Promise<CampaignsResponse> => {
     const userId = await getCurrentUserIdAsync();
     console.log('Fetching campaigns for user ID:', userId);
     
-    const { data: campaigns, error } = await supabase
+    // Get user's tenant for proper data isolation
+    const { data: userData } = await supabase
+      .from('users')
+      .select('tenant')
+      .eq('id', userId)
+      .single();
+
+    const tenant = userData?.tenant || 'main';
+
+    // Build query with tenant filter
+    let query = supabase
       .from('campaigns')
       .select(`
         *,
@@ -56,8 +66,16 @@ export const fetchCampaigns = async (): Promise<CampaignsResponse> => {
         contact_list:contact_lists(name),
         csv_file:csv_files(name)
       `)
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+      .eq('user_id', userId);
+
+    // Add tenant filter
+    if (tenant === 'main') {
+      query = query.or('tenant.eq.main,tenant.is.null');
+    } else {
+      query = query.eq('tenant', tenant);
+    }
+
+    const { data: campaigns, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching campaigns:', error);

@@ -188,6 +188,7 @@ class CampaignExecutionEngine {
               phone_number: contact.phone_number,
               contact_name: contact.name,
               status: 'pending',
+              tenant: campaign.tenant || 'main',  // CRITICAL: Set tenant for data isolation
               scheduled_at: new Date().toISOString()
             })
             .select()
@@ -241,6 +242,7 @@ class CampaignExecutionEngine {
               phone_number: contact.phone_number,
               scheduled_for: new Date().toISOString(),
               status: 'queued',
+              tenant: campaign.tenant || 'main',  // CRITICAL: Set tenant for data isolation
               priority: 0
             });
 
@@ -429,6 +431,9 @@ class CampaignExecutionEngine {
    * Create failed call record
    */
   async createFailedCallRecord(campaign, contact, errorMessage) {
+    // Get tenant from campaign to ensure data isolation
+    const tenant = campaign.tenant || 'main';
+    
     await supabase
       .from('campaign_calls')
       .insert({
@@ -439,7 +444,8 @@ class CampaignExecutionEngine {
         status: 'failed',
         started_at: new Date().toISOString(),
         completed_at: new Date().toISOString(),
-        notes: errorMessage
+        notes: errorMessage,
+        tenant: tenant  // CRITICAL: Set tenant for data isolation
       });
   }
 
@@ -498,325 +504,7 @@ class CampaignExecutionEngine {
   }
 
 
-  /**
-   * Execute a single call using LiveKit SIP participant
-   */
-  // async executeCall(campaign, queueItem) {
-  //   try {
-  //     const campaignCall = queueItem.campaign_calls;
-
-  //     // Update queue item status
-  //     await supabase
-  //       .from('call_queue')
-  //       .update({ status: 'processing' })
-  //       .eq('id', queueItem.id);
-
-  //     // Update campaign call status
-  //     await supabase
-  //       .from('campaign_calls')
-  //       .update({ 
-  //         status: 'calling',
-  //         started_at: new Date().toISOString()
-  //       })
-  //       .eq('id', campaignCall.id);
-
-  //     // Room name will be generated in the SIP participant creation (using working pattern)
-
-  //     // Get outbound trunk for the assistant
-  //     let outboundTrunkId = null;
-  //     let fromNumber = null;
-
-  //     if (campaign.assistant_id) {
-  //       const { data: assistantPhone, error: phoneError } = await supabase
-  //         .from('phone_number')
-  //         .select('outbound_trunk_id, number')
-  //         .eq('inbound_assistant_id', campaign.assistant_id)
-  //         .eq('status', 'active')
-  //         .single();
-
-  //       if (!phoneError && assistantPhone) {
-  //         outboundTrunkId = assistantPhone.outbound_trunk_id;
-  //         fromNumber = assistantPhone.number;
-  //         console.log(`Using outbound trunk ${outboundTrunkId} and phone number ${fromNumber} for assistant ${campaign.assistant_id}`);
-  //       } else {
-  //         console.log(`No outbound trunk found for assistant ${campaign.assistant_id}:`, phoneError);
-  //       }
-  //     }
-
-  //     if (!outboundTrunkId) {
-  //       throw new Error('No outbound trunk configured for this assistant. Please assign a phone number to the assistant first.');
-  //     }
-
-  //     // Create LiveKit room URL with campaign metadata
-  //     const baseUrl = process.env.NGROK_URL || process.env.BACKEND_URL;
-
-  //     // Prepare campaign metadata for LiveKit
-  //     const campaignMetadata = {
-  //       assistantId: campaign.assistant_id,
-  //       campaignId: campaign.id,
-  //       campaignPrompt: campaign.campaign_prompt || '',
-  //       contactInfo: {
-  //         name: campaignCall.contact_name || 'Unknown',
-  //         email: campaignCall.email || '',
-  //         phone: campaignCall.phone_number
-  //       },
-  //       source: 'outbound',
-  //       callType: 'campaign'
-  //     };
-
-  //     // Generate unique call ID and room name first
-  //     const callId = `campaign-${campaign.id}-${campaignCall.id}-${Date.now()}`;
-
-  //     // Ensure phone number is in E.164 format for room name
-  //     const toNumber = campaignCall.phone_number.startsWith('+') 
-  //       ? campaignCall.phone_number 
-  //       : `+${campaignCall.phone_number}`;
-
-  //     const roomName = `call-${toNumber}-${Date.now()}`;
-
-  //     // Store campaign metadata for webhook access
-  //     const metadataUrl = `${baseUrl}/api/v1/campaigns/metadata/${roomName}`;
-  //     await fetch(metadataUrl, {
-  //       method: 'POST',
-  //       headers: {
-  //         'Content-Type': 'application/json'
-  //       },
-  //       body: JSON.stringify(campaignMetadata)
-  //     });
-
-  //     // Create SIP participant using the exact pattern from your working project
-  //     console.log(`Creating SIP participant using working pattern:`, {
-  //       outboundTrunkId,
-  //       phoneNumber: toNumber,
-  //       roomName
-  //     });
-
-  //     // Import LiveKit SDK for direct API call
-  //     const { SipClient, RoomServiceClient } = await import('livekit-server-sdk');
-  //     const sipClient = new SipClient(
-  //       process.env.LIVEKIT_HOST,
-  //       process.env.LIVEKIT_API_KEY,
-  //       process.env.LIVEKIT_API_SECRET,
-  //     );
-
-  //     // Create room service client to ensure room exists
-  //     const roomClient = new RoomServiceClient(
-  //       process.env.LIVEKIT_HOST,
-  //       process.env.LIVEKIT_API_KEY,
-  //       process.env.LIVEKIT_API_SECRET,
-  //     );
-
-  //     // Create metadata exactly like your working project
-  //     const metadata = {
-  //       agentId: campaign.assistant_id,
-  //       callType: "telephone",
-  //       callId: callId,
-  //       dir: "outbound",
-  //       customer_name: campaignCall.contact_name || 'Unknown',
-  //       context: campaign.campaign_prompt || '',
-  //       phone_number: fromNumber,
-  //       isWebCall: false,
-  //       to_phone_number: toNumber,
-  //       isGoogleSheet: false,
-  //       campaignId: campaign.id,
-  //       source: 'campaign'
-  //     };
-
-  //     // Use the exact same sipParticipantOptions structure
-  //     const sipParticipantOptions = {
-  //       participantIdentity: `identity-${Date.now()}`,
-  //       participantName: JSON.stringify(metadata),
-  //       krispEnabled: true
-  //     };
-
-  //     console.log("🔍 SIP Participant Creation Details:", {
-  //       outboundTrunkId,
-  //       toNumber: campaignCall.phone_number,
-  //       roomName,
-  //       sipParticipantOptions,
-  //       metadata
-  //     });
-
-  //     // Ensure room exists before creating SIP participant
-  //     try {
-  //       console.log("🏠 Ensuring room exists:", roomName);
-  //       await roomClient.createRoom({
-  //         name: roomName,
-  //         metadata: JSON.stringify({
-  //           campaignId: campaign.id,
-  //           assistantId: campaign.assistant_id,
-  //           phoneNumber: toNumber,
-  //           contactName: campaignCall.contact_name || 'Unknown',
-  //           campaignPrompt: campaign.campaign_prompt || '',
-  //           contactInfo: {
-  //             name: campaignCall.contact_name || 'Unknown',
-  //             email: campaignCall.email || '',
-  //             phone: campaignCall.phone_number
-  //           },
-  //           createdAt: new Date().toISOString()
-  //         })
-  //       });
-  //       console.log("✅ Room created/verified:", roomName);
-  //     } catch (roomError) {
-  //       console.log("⚠️ Room creation warning (may already exist):", roomError.message);
-  //     }
-
-  //     try {
-  //       const participant = await sipClient.createSipParticipant(
-  //         outboundTrunkId,
-  //         toNumber,
-  //         roomName,
-  //         sipParticipantOptions
-  //       );
-
-  //       console.log("✅ SIP Participant Created Successfully:", participant);
-
-  //       // Additional debugging for SIP call status
-  //       console.log("🔍 SIP Call Details:", {
-  //         sipCallId: participant.sipCallId,
-  //         participantId: participant.participantId,
-  //         roomName: participant.roomName,
-  //         participantIdentity: participant.participantIdentity
-  //       });
-
-  //       // Dispatch agent to the room using LiveKit Agent Dispatch API
-  //       console.log("🤖 Dispatching agent to room:", roomName);
-  //       try {
-  //         // Create a proper LiveKit access token for agent dispatch
-  //         const { AccessToken } = await import('livekit-server-sdk');
-  //         const at = new AccessToken(
-  //           process.env.LIVEKIT_API_KEY,
-  //           process.env.LIVEKIT_API_SECRET,
-  //           {
-  //             identity: `agent-dispatcher-${Date.now()}`,
-  //             metadata: JSON.stringify({
-  //               agentId: campaign.assistant_id,
-  //               callType: 'campaign',
-  //               campaignId: campaign.id,
-  //               phoneNumber: toNumber,
-  //               contactName: campaignCall.contact_name || 'Unknown'
-  //             })
-  //           }
-  //         );
-
-  //         const grant = {
-  //           room: roomName,
-  //           roomJoin: true,
-  //           canPublish: true,
-  //           canSubscribe: true,
-  //         };
-  //         at.addGrant(grant);
-  //         const jwt = await at.toJwt();
-
-  //         // Use the correct LiveKit Agent Dispatch API endpoint
-  //         const dispatchUrl = `${process.env.LIVEKIT_HOST.replace('wss://', 'https://').replace('ws://', 'http://')}/twirp/livekit.AgentService/CreateAgentDispatch`;
-  //         const dispatchBody = JSON.stringify({
-  //           agent_name: process.env.LK_AGENT_NAME || "ai",
-  //           room: roomName,
-  //           metadata: JSON.stringify({
-  //             agentId: campaign.assistant_id,
-  //             callType: 'campaign',
-  //             campaignId: campaign.id,
-  //             phoneNumber: toNumber,
-  //             contactName: campaignCall.contact_name || 'Unknown'
-  //           })
-  //         });
-
-  //         console.log("🔍 Dispatch request details:", {
-  //           url: dispatchUrl,
-  //           agent_name: process.env.LK_AGENT_NAME || "ai",
-  //           room: roomName,
-  //           jwt_length: jwt.length
-  //         });
-
-  //         const dispatchResponse = await fetch(dispatchUrl, {
-  //           method: 'POST',
-  //           headers: {
-  //             'Content-Type': 'application/json',
-  //             'Authorization': `Bearer ${jwt}`
-  //           },
-  //           body: dispatchBody
-  //         });
-
-  //         console.log("🔍 Dispatch response status:", dispatchResponse.status);
-
-  //         if (dispatchResponse.ok) {
-  //           // Try to get response as text first to avoid body consumption issues
-  //           const responseText = await dispatchResponse.text();
-  //           console.log("✅ Agent dispatched successfully:", responseText);
-  //         } else {
-  //           const errorText = await dispatchResponse.text();
-  //           console.log("⚠️ Agent dispatch failed:", dispatchResponse.status, errorText);
-  //         }
-  //       } catch (dispatchError) {
-  //         console.log("⚠️ Agent dispatch error:", dispatchError.message);
-  //       }
-  //     } catch (sipError) {
-  //       console.error("❌ SIP Participant Creation Failed:", sipError);
-  //       throw new Error(`Failed to create SIP participant: ${sipError.message}`);
-  //     }
-
-  //     // Update campaign call with participant info and room name
-  //     await supabase
-  //       .from('campaign_calls')
-  //       .update({
-  //         call_sid: callId, // Store call ID as call_sid for compatibility
-  //         room_name: roomName
-  //       })
-  //       .eq('id', campaignCall.id);
-
-  //     // Update campaign metrics
-  //     await supabase
-  //       .from('campaigns')
-  //       .update({
-  //         dials: campaign.dials + 1,
-  //         current_daily_calls: campaign.current_daily_calls + 1,
-  //         total_calls_made: campaign.total_calls_made + 1,
-  //         last_execution_at: new Date().toISOString()
-  //       })
-  //       .eq('id', campaign.id);
-
-  //     // Mark queue item as completed
-  //     await supabase
-  //       .from('call_queue')
-  //       .update({ 
-  //         status: 'completed',
-  //         updated_at: new Date().toISOString()
-  //       })
-  //       .eq('id', queueItem.id);
-
-  //     console.log(`LiveKit SIP call initiated for campaign ${campaign.name}: ${campaignCall.phone_number}`);
-
-  //   } catch (error) {
-  //     console.error(`Error executing call for campaign ${campaign.id}:`, error);
-
-  //     // Mark call as failed
-  //     await supabase
-  //       .from('campaign_calls')
-  //       .update({ 
-  //         status: 'failed',
-  //         completed_at: new Date().toISOString(),
-  //         notes: error.message
-  //       })
-  //       .eq('id', queueItem.campaign_calls.id);
-
-  //     // Mark queue item as failed
-  //     await supabase
-  //       .from('call_queue')
-  //       .update({ 
-  //         status: 'failed',
-  //         updated_at: new Date().toISOString()
-  //       })
-  //       .eq('id', queueItem.id);
-
-  //     throw error;
-  //   }
-  // }
-
-
-  // at top of file, add this helper once
-
-  // ... inside class CampaignExecutionEngine
+ 
 
   async executeCall(campaign, queueItem) {
     try {

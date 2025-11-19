@@ -64,6 +64,7 @@ Environment variables used by the app
 # Frontend Configuration
 - VITE_BACKEND_URL: Backend URL for frontend (default http://localhost:4000)
 - VITE_LIVEKIT_URL: LiveKit URL for frontend
+- VITE_SITE_URL: Site URL for email confirmation redirects (defaults to window.location.origin)
 
 # Stripe Configuration (for payment processing)
 - VITE_STRIPE_PUBLISHABLE_KEY: Stripe publishable key (starts with pk_test_)

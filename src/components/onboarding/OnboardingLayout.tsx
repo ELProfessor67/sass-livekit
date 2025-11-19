@@ -32,22 +32,27 @@ export function OnboardingLayout() {
   const isProfileLoading = isLoading;
   const navigate = useNavigate();
 
-  // Redirect if not authenticated
+  // Check if user has signup data (new flow) or is authenticated (existing flow)
   React.useEffect(() => {
     if (isLoading || isProfileLoading) return;
-    if (!isAuthenticated) {
-      navigate("/login");
+    
+    // Check for signup data in localStorage (new flow - onboarding before auth)
+    const signupData = localStorage.getItem("signup-data");
+    
+    // If no signup data and not authenticated, redirect to signup
+    if (!signupData && !isAuthenticated) {
+      navigate("/signup");
+      return;
     }
-  }, [isAuthenticated, isLoading, isProfileLoading, navigate]);
 
-  // Redirect if already completed
-  React.useEffect(() => {
-    if (isProfileLoading) return;
-    const dbCompleted = Boolean(profile?.onboarding_completed);
-    if (dbCompleted || isCompleted) {
-      navigate("/");
+    // If authenticated and already completed onboarding, redirect to dashboard
+    if (isAuthenticated) {
+      const dbCompleted = Boolean(profile?.onboarding_completed);
+      if (dbCompleted || isCompleted) {
+        navigate("/dashboard");
+      }
     }
-  }, [isCompleted, profile?.onboarding_completed, isProfileLoading, navigate]);
+  }, [isAuthenticated, isLoading, isProfileLoading, navigate, isCompleted, profile?.onboarding_completed]);
 
   const CurrentStepComponent = steps[currentStep]?.component;
   const progress = getProgress();

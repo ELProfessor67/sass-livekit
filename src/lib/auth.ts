@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { extractTenantFromHostname } from "@/lib/tenant-utils";
 
 // Enhanced user interface with all available data
 export interface AuthUser {
@@ -180,9 +181,34 @@ export class AuthService {
   // Ensure user profile exists in database
   private async ensureUserProfile(authUser: any) {
     try {
+      // Extract tenant from hostname if not already set in metadata
+      let tenant = (authUser.user_metadata as any)?.tenant;
+      if (!tenant) {
+        tenant = extractTenantFromHostname();
+        // If tenant is not 'main', verify it exists by checking if there's a user with that slug_name
+        if (tenant !== 'main') {
+          try {
+            const { data: tenantOwner } = await supabase
+              .from('users')
+              .select('slug_name')
+              .eq('slug_name', tenant)
+              .maybeSingle();
+            
+            // If no tenant owner found, default to main
+            if (!tenantOwner) {
+              tenant = 'main';
+            }
+          } catch (error) {
+            console.warn('Error verifying tenant, defaulting to main:', error);
+            tenant = 'main';
+          }
+        }
+      }
+
       await supabase.from("users").upsert({
         id: authUser.id,
         name: (authUser.user_metadata as any)?.name ?? null,
+        tenant: tenant,
         contact: {
           email: authUser.email ?? null,
           phone: (authUser.user_metadata as any)?.contactPhone ?? (authUser.user_metadata as any)?.phone ?? null,
@@ -292,14 +318,45 @@ export class AuthService {
         }
       }
 
+      // Get the site URL from environment variable or use current origin
+      const siteUrl = typeof window !== 'undefined' 
+        ? (import.meta.env.VITE_SITE_URL || window.location.origin)
+        : (import.meta.env.VITE_SITE_URL || 'http://localhost:5173');
+      const redirectTo = `${siteUrl}/auth/callback`;
+
+      // Extract tenant from hostname
+      let tenant = extractTenantFromHostname();
+      
+      // If tenant is not 'main', verify it exists
+      if (tenant !== 'main') {
+        try {
+          const { data: tenantOwner } = await supabase
+            .from('users')
+            .select('slug_name')
+            .eq('slug_name', tenant)
+            .maybeSingle();
+          
+          // If no tenant owner found, default to main
+          if (!tenantOwner) {
+            tenant = 'main';
+          }
+        } catch (error) {
+          console.warn('Error verifying tenant, defaulting to main:', error);
+          tenant = 'main';
+        }
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: { 
+          emailRedirectTo: redirectTo,
+          email_confirm: true, // Auto-confirm email, skip verification
           data: { 
             name, 
             contactPhone: metadata?.phone, 
-            countryCode: metadata?.countryCode 
+            countryCode: metadata?.countryCode,
+            tenant: tenant // Include tenant in metadata so trigger can use it
           } 
         },
       });
@@ -309,9 +366,32 @@ export class AuthService {
       // If we already have a session, upsert minimal profile row into public.users
       if (data.user && data.session) {
         try {
+          // Extract tenant from hostname
+          let tenant = extractTenantFromHostname();
+          
+          // If tenant is not 'main', verify it exists
+          if (tenant !== 'main') {
+            try {
+              const { data: tenantOwner } = await supabase
+                .from('users')
+                .select('slug_name')
+                .eq('slug_name', tenant)
+                .maybeSingle();
+              
+              // If no tenant owner found, default to main
+              if (!tenantOwner) {
+                tenant = 'main';
+              }
+            } catch (error) {
+              console.warn('Error verifying tenant, defaulting to main:', error);
+              tenant = 'main';
+            }
+          }
+
           await supabase.from("users").upsert({
             id: data.user.id,
             name,
+            tenant: tenant,
             contact: {
               email,
               countryCode: metadata?.countryCode ?? null,

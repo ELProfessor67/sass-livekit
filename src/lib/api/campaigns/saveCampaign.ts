@@ -25,6 +25,15 @@ export interface SaveCampaignResponse {
  */
 export const saveCampaign = async (data: SaveCampaignRequest): Promise<SaveCampaignResponse> => {
   try {
+    // Get user's tenant to ensure proper data isolation
+    const { data: userData } = await supabase
+      .from('users')
+      .select('tenant')
+      .eq('id', data.userId)
+      .single();
+
+    const tenant = userData?.tenant || 'main';
+
     const { data: campaign, error } = await supabase
       .from('campaigns')
       .insert([{
@@ -40,7 +49,8 @@ export const saveCampaign = async (data: SaveCampaignRequest): Promise<SaveCampa
         end_hour: data.endHour,
         campaign_prompt: data.campaignPrompt,
         status: 'draft',
-        execution_status: 'idle'
+        execution_status: 'idle',
+        tenant: tenant  // CRITICAL: Set tenant for data isolation
       }])
       .select()
       .single();

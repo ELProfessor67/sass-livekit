@@ -28,11 +28,29 @@ export const fetchAssistants = async (): Promise<AssistantsResponse> => {
     const userId = await getCurrentUserIdAsync();
     console.log('Fetching assistants for user ID:', userId);
     
-    const { data: assistants, error } = await supabase
+    // Get user's tenant
+    const { data: userData } = await supabase
+      .from('users')
+      .select('tenant')
+      .eq('id', userId)
+      .single();
+
+    const tenant = userData?.tenant || 'main';
+
+    // Build query with tenant filter
+    let query = supabase
       .from('assistant')
       .select('id, name, prompt, first_message, first_sms, sms_prompt, whatsapp_credentials_id, created_at, updated_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+      .eq('user_id', userId);
+
+    // Add tenant filter
+    if (tenant === 'main') {
+      query = query.or('tenant.eq.main,tenant.is.null');
+    } else {
+      query = query.eq('tenant', tenant);
+    }
+
+    const { data: assistants, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching assistants:', error);

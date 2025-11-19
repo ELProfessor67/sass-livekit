@@ -773,6 +773,10 @@ export type Database = {
           twilio_auth_token: string | null
           twilio_last_used_at: string | null
           updated_at: string | null
+          plan: string | null
+          trial_ends_at: string | null
+          minutes_limit: number | null
+          minutes_used: number | null
         }
         Insert: {
           access_token?: string | null
@@ -807,6 +811,10 @@ export type Database = {
           twilio_auth_token?: string | null
           twilio_last_used_at?: string | null
           updated_at?: string | null
+          plan?: string | null
+          trial_ends_at?: string | null
+          minutes_limit?: number | null
+          minutes_used?: number | null
         }
         Update: {
           access_token?: string | null
@@ -841,6 +849,10 @@ export type Database = {
           twilio_auth_token?: string | null
           twilio_last_used_at?: string | null
           updated_at?: string | null
+          plan?: string | null
+          trial_ends_at?: string | null
+          minutes_limit?: number | null
+          minutes_used?: number | null
         }
         Relationships: [
           {

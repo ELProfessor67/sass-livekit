@@ -198,6 +198,23 @@ class KnowledgeBaseDatabaseService {
     return data;
   }
 
+  async updateDocumentFileInfo(docId, fileInfo) {
+    const updatePayload = {
+      ...fileInfo,
+      updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await this.supabase
+      .from('knowledge_documents')
+      .update(updatePayload)
+      .eq('doc_id', docId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
   // updateDocumentStatus method removed - we now use updateDocumentPineconeInfo for status tracking
 
   async updateDocumentPineconeInfo(docId, pineconeInfo) {
