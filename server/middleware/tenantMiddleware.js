@@ -207,6 +207,18 @@ export const tenantMiddleware = async (req, res, next) => {
   if (process.env.NODE_ENV === 'development') {
     console.log('[TenantMiddleware] Extracted tenant:', tenant);
   }
+  
+  // Production logging for tenant extraction failures (helps debug whitelabel issues)
+  if (!tenant && !isIgnoredRoute(uri) && !isAuthenticatedApiRoute) {
+    console.warn('[TenantMiddleware] Failed to extract tenant:', {
+      origin: req.headers.origin || 'missing',
+      referer: req.headers.referer || 'missing',
+      'x-forwarded-host': req.headers['x-forwarded-host'] || 'missing',
+      host: req.headers.host || 'missing',
+      urlToCheck: urlToCheck || 'none',
+      uri
+    });
+  }
 
   // If tenant can't be determined and it's not an ignored route or authenticated API route, block it
   if (!tenant && !isIgnoredRoute(uri) && !isAuthenticatedApiRoute) {
