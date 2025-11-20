@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { FileText, Globe, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,10 +17,7 @@ interface AddContentDialogProps {
   onAddContent: (content: {
     name: string;
     description: string;
-    type: "document" | "website" | "text";
-    url?: string;
-    content?: string;
-    files?: File[];
+    files: File[];
   }) => void;
 }
 
@@ -31,18 +28,13 @@ export function AddContentDialog({
 }: AddContentDialogProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [type, setType] = useState<"document" | "website" | "text">("document");
-  const [url, setUrl] = useState("");
-  const [content, setContent] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    if (type === "website" && !url.trim()) return;
-    if (type === "text" && !content.trim()) return;
-    if (type === "document" && files.length === 0) return;
+    if (files.length === 0) return;
 
     setLoading(true);
     
@@ -50,17 +42,12 @@ export function AddContentDialog({
       await onAddContent({
         name: name.trim(),
         description: description.trim(),
-        type,
-        url: type === "website" ? url.trim() : undefined,
-        content: type === "text" ? content.trim() : undefined,
-        files: type === "document" ? files : undefined,
+        files,
       });
 
       // Reset form
       setName("");
       setDescription("");
-      setUrl("");
-      setContent("");
       setFiles([]);
       onOpenChange(false);
     } catch (error) {
@@ -73,24 +60,8 @@ export function AddContentDialog({
   const handleCancel = () => {
     setName("");
     setDescription("");
-    setUrl("");
-    setContent("");
     setFiles([]);
     onOpenChange(false);
-  };
-
-  const handleTypeChange = (newType: "document" | "website" | "text") => {
-    setType(newType);
-    // Clear type-specific data when switching
-    if (newType !== "document") {
-      setFiles([]);
-    }
-    if (newType !== "website") {
-      setUrl("");
-    }
-    if (newType !== "text") {
-      setContent("");
-    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -101,9 +72,7 @@ export function AddContentDialog({
 
   const isFormValid = () => {
     if (!name.trim()) return false;
-    if (type === "website" && !url.trim()) return false;
-    if (type === "text" && !content.trim()) return false;
-    if (type === "document" && files.length === 0) return false;
+    if (files.length === 0) return false;
     return true;
   };
 
@@ -113,7 +82,7 @@ export function AddContentDialog({
         <form onSubmit={handleSubmit}>
           <ThemedDialogHeader
             title="Add Content"
-            description="Add content to your knowledge base from files, websites, or text sources."
+            description="Upload files to add new knowledge sources for your assistants."
           />
           
           <div className="space-y-[var(--space-lg)] mt-[var(--space-lg)]">
@@ -125,7 +94,7 @@ export function AddContentDialog({
                 id="content-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., Company Website"
+                placeholder="e.g., Product FAQ"
                 className="glass-input"
                 required
               />
@@ -146,95 +115,20 @@ export function AddContentDialog({
             </div>
 
             <div className="space-y-[var(--space-sm)]">
-              <Label className="text-[var(--text-sm)] font-[var(--font-medium)] text-foreground">Content Type</Label>
-              <div className="grid grid-cols-3 gap-[var(--space-sm)]">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={type === "document" ? "default" : "outline"}
-                  onClick={() => handleTypeChange("document")}
-                  className="flex flex-col h-auto p-3"
-                >
-                  <Upload className="h-4 w-4 mb-1" />
-                  <span className="text-xs">File</span>
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={type === "website" ? "default" : "outline"}
-                  onClick={() => handleTypeChange("website")}
-                  className="flex flex-col h-auto p-3"
-                >
-                  <Globe className="h-4 w-4 mb-1" />
-                  <span className="text-xs">Website</span>
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={type === "text" ? "default" : "outline"}
-                  onClick={() => handleTypeChange("text")}
-                  className="flex flex-col h-auto p-3"
-                >
-                  <FileText className="h-4 w-4 mb-1" />
-                  <span className="text-xs">Text</span>
-                </Button>
-              </div>
+              <Label className="text-[var(--text-sm)] font-[var(--font-medium)] text-foreground">
+                Upload Files
+              </Label>
+              <input
+                type="file"
+                multiple
+                accept=".pdf,.doc,.docx,.txt,.csv,.json"
+                onChange={handleFileChange}
+                className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/80"
+              />
+              <p className="text-xs text-muted-foreground">
+                Upload documents, PDFs, text files, or other content files to add to your knowledge base.
+              </p>
             </div>
-
-            {type === "document" && (
-              <div className="space-y-[var(--space-sm)]">
-                <Label className="text-[var(--text-sm)] font-[var(--font-medium)] text-foreground">
-                  Upload Files
-                </Label>
-                <input
-                  type="file"
-                  multiple
-                  accept=".pdf,.doc,.docx,.txt,.csv,.json"
-                  onChange={handleFileChange}
-                  className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/80"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Upload documents, PDFs, text files, or other content files to add to your knowledge base.
-                </p>
-              </div>
-            )}
-            
-            {type === "website" && (
-              <div className="space-y-[var(--space-sm)]">
-                <Label htmlFor="content-url" className="text-[var(--text-sm)] font-[var(--font-medium)] text-foreground">
-                  Website URL <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="content-url"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder="https://example.com"
-                  type="url"
-                  className="glass-input"
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  The website content will be scraped and added to your knowledge base.
-                </p>
-              </div>
-            )}
-
-            {type === "text" && (
-              <div className="space-y-[var(--space-sm)]">
-                <Label htmlFor="content-text" className="text-[var(--text-sm)] font-[var(--font-medium)] text-foreground">
-                  Text Content <span className="text-destructive">*</span>
-                </Label>
-                <Textarea
-                  id="content-text"
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="Enter your text content here..."
-                  rows={4}
-                  className="glass-input resize-none"
-                  required
-                />
-              </div>
-            )}
           </div>
           
           <DialogFooter className="flex gap-[var(--space-md)] mt-[var(--space-xl)]">

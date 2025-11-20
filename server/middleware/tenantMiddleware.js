@@ -4,8 +4,16 @@ const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // Initialize Supabase client with service role key for admin operations
+// Add custom headers to help bypass Cloudflare bot detection
 const supabase = supabaseUrl && supabaseServiceKey 
-  ? createClient(supabaseUrl, supabaseServiceKey)
+  ? createClient(supabaseUrl, supabaseServiceKey, {
+      global: {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; Server/1.0)',
+          'X-Client-Info': 'supabase-js-server',
+        },
+      },
+    })
   : null;
 
 // Routes that should be ignored (don't require tenant validation)
@@ -79,14 +87,43 @@ async function extractTenantFromUrl(url) {
         return 'main';
       }
 
-      const { data: tenantOwner, error } = await supabase
-        .from('users')
-        .select('slug_name, tenant')
-        .eq('slug_name', subdomain)
-        .maybeSingle();
+      // Retry logic for Cloudflare-protected Supabase queries
+      let tenantOwner = null;
+      let error = null;
+      const maxRetries = 3;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const result = await supabase
+          .from('users')
+          .select('slug_name, tenant')
+          .eq('slug_name', subdomain)
+          .maybeSingle();
+        
+        error = result.error;
+        tenantOwner = result.data;
+        
+        // If successful or not a network/Cloudflare error, break
+        if (!error || (error.code !== 'PGRST116' && error.code !== 'PGRST301' && !error.message?.includes('fetch'))) {
+          break;
+        }
+        
+        // If it's a network error (possibly Cloudflare), retry with exponential backoff
+        if (attempt < maxRetries) {
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Max 5 seconds
+          console.warn(`[extractTenantFromUrl] Supabase query failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms:`, error.message);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
 
       if (error) {
-        console.error('Error fetching tenant by slug:', error);
+        console.error('Error fetching tenant by slug after retries:', {
+          error: error.message,
+          code: error.code,
+          subdomain,
+          attempts: maxRetries
+        });
+        // Don't return null immediately - Cloudflare might be blocking, but we should still try to proceed
+        // Return null so the middleware can handle it appropriately
         return null;
       }
 
