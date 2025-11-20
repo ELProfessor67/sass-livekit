@@ -16,6 +16,11 @@ const supabase = supabaseUrl && supabaseServiceKey
     })
   : null;
 
+// Hardcoded hosts that should always map to the main tenant
+const hardcodedMainHosts = [
+  'frontend.ultratalkai.com'
+];
+
 // Routes that should be ignored (don't require tenant validation)
 const ignoreRoutes = [
   '/api/health',
@@ -50,6 +55,10 @@ async function extractTenantFromUrl(url) {
     if (!hostname) return 'main';
     
     hostname = hostname.replace('www.', '');
+
+    if (hardcodedMainHosts.includes(hostname)) {
+      return 'main';
+    }
     const parts = hostname.split('.');
 
     // In development, we might have localhost:port, so check parts length
