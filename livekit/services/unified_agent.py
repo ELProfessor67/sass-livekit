@@ -404,6 +404,8 @@ class UnifiedAgent(Agent):
         if not self.rag_service or not self.knowledge_base_id:
             return "Knowledge base is not available."
         
+        notice = "Please wait let me check our knowledgebase.\n\n"
+
         try:
             # Use parallel processing with timeout for faster response
             rag_task = asyncio.create_task(
@@ -432,23 +434,25 @@ class UnifiedAgent(Agent):
                     # Join with proper spacing and return more content
                     full_response = '\n\n'.join(formatted_results)
                     # Increase character limit for more detailed responses
-                    return self._sanitize_and_cap(full_response, cap=2000) or "No specific info found."
+                    return notice + (self._sanitize_and_cap(full_response, cap=2000) or "No specific info found.")
                 else:
-                    return "No specific info found."
+                    return notice + "No specific info found."
 
             else:
-                return "I couldn't find specific information about that in our knowledge base."
+                return notice + "I couldn't find specific information about that in our knowledge base."
         except asyncio.TimeoutError:
-            return "The knowledge base search is taking longer than expected. Please try again."
+            return notice + "The knowledge base search is taking longer than expected. Please try again."
         except Exception as e:
             logging.error(f"RAG_SEARCH_ERROR | query={query} | error={str(e)}")
-            return "I encountered an issue searching our knowledge base."
+            return notice + "I encountered an issue searching our knowledge base."
 
     @function_tool(name="get_detailed_information")
     async def get_detailed_information(self, ctx: RunContext, topic: str) -> str:
         """Get detailed information about a specific topic from the knowledge base."""
         if not self.rag_service or not self.knowledge_base_id:
             return "Knowledge base is not available."
+
+        notice = "Please wait let me check our knowledgebase.\n\n"
 
         try:
             queries = [
@@ -468,15 +472,15 @@ class UnifiedAgent(Agent):
                 timeout=10.0  # Increased timeout for comprehensive results
             )
             if not context:
-                return f"I couldn't find detailed information about {topic} in our knowledge base."
+                return notice + f"I couldn't find detailed information about {topic} in our knowledge base."
             # Allow more content for detailed information
-            return self._sanitize_and_cap(context, cap=3000) or f"No detailed info on {topic}."
+            return notice + (self._sanitize_and_cap(context, cap=3000) or f"No detailed info on {topic}.")
         except asyncio.TimeoutError:
             logging.warning(f"RAG_DETAILED_INFO_TIMEOUT | topic={topic}")
-            return f"I found some information about {topic}, but let me give you a quick summary."
+            return notice + f"I found some information about {topic}, but let me give you a quick summary."
         except Exception as e:
             logging.error(f"RAG_DETAILED_INFO_ERROR | topic={topic} | error={str(e)}")
-            return "I encountered an issue retrieving detailed information."
+            return notice + "I encountered an issue retrieving detailed information."
 
     # ========== BOOKING TOOLS ==========
     

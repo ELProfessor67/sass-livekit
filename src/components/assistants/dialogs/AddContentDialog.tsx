@@ -18,6 +18,7 @@ interface AddContentDialogProps {
     name: string;
     description: string;
     files: File[];
+    type?: "document" | "website" | "text";
   }) => void;
 }
 
@@ -43,6 +44,7 @@ export function AddContentDialog({
         name: name.trim(),
         description: description.trim(),
         files,
+        type: "document",
       });
 
       // Reset form

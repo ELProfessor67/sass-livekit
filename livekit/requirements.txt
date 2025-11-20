@@ -21,6 +21,9 @@ elevenlabs>=0.2.0
 # Database
 supabase>=2.0.0
 
+# Knowledge base / vector search
+pinecone>=5.0.0
+
 # HTTP client
 aiohttp>=3.8.0
 httpx>=0.28.0
