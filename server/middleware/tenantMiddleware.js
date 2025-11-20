@@ -151,28 +151,8 @@ async function extractTenantFromUrl(url) {
       return 'main';
     }
 
-    // Check if it's a custom domain
-    if (!supabase) {
-      console.warn('Supabase not initialized, returning main tenant');
-      return 'main';
-    }
-
-    const { data: tenantOwner, error } = await supabase
-      .from('users')
-      .select('slug_name, tenant')
-      .eq('custom_domain', hostname)
-      .maybeSingle();
-
-    if (error) {
-      console.error('Error fetching tenant by custom domain:', error);
-      return null;
-    }
-
-    if (!tenantOwner) {
-      return null;
-    }
-
-    return tenantOwner.slug_name || tenantOwner.tenant || 'main';
+    // No subdomain detected and not main → invalid tenant
+    return null;
   } catch (error) {
     console.error('Error extracting tenant from URL:', error);
     return null;
