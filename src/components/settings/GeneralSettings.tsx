@@ -88,7 +88,7 @@ export function GeneralSettings() {
       try {
         // Get auth session to include token
         const { data: { session } } = await supabase.auth.getSession();
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+        const apiUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
         
         const headers: HeadersInit = {
           'Content-Type': 'application/json',
@@ -155,7 +155,7 @@ export function GeneralSettings() {
         .getPublicUrl(fileName);
 
       // Save logo URL to whitelabel settings via API
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      const apiUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
       const response = await fetch(`${apiUrl}/api/v1/whitelabel/website-settings`, {
         method: 'POST',
         headers: {
@@ -190,7 +190,7 @@ export function GeneralSettings() {
         throw new Error("Not authenticated");
       }
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      const apiUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
       
       const updateData: { logo?: string } = {};
       if (logoUrl) {

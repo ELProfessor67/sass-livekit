@@ -135,7 +135,7 @@ export default function AuthCallback() {
           // Handle token-based confirmation (our custom token system)
           try {
             // Verify using our custom endpoint
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+            const apiUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
             const response = await fetch(`${apiUrl}/api/v1/user/verify-email?token=${token}`, {
               method: 'GET',
               redirect: 'follow'

@@ -109,7 +109,7 @@ export function OnboardingComplete() {
         // If white label signup, complete signup via backend to ensure slug is assigned
         if (signupData.whitelabel && signupData.slug && userId) {
           try {
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+            const apiUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
             const completeSignupResponse = await fetch(`${apiUrl}/api/v1/user/complete-signup`, {
               method: 'POST',
               headers: {

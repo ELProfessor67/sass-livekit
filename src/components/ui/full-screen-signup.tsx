@@ -108,7 +108,7 @@ export const FullScreenSignup = () => {
     setSlugLoading(true);
     timeoutRef.current = setTimeout(async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+        const apiUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
         const response = await fetch(`${apiUrl}/api/v1/whitelabel/check-slug-available`, {
           method: 'POST',
           headers: {
