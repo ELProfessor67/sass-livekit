@@ -22,6 +22,7 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
     allowedHosts: [
       "frontend.ultratalkai.com",
+      ".frontend.ultratalkai.com",
       "localhost",
       "127.0.0.1"
     ]
