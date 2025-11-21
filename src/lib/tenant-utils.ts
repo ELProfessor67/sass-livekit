@@ -20,6 +20,9 @@ export function extractTenantFromHostname(): string {
   const cleanHostname = hostname.replace(/^www\./, '');
   const parts = cleanHostname.split('.');
 
+  // Technical subdomains that should be treated as main domain
+  const technicalSubdomains = ['frontend', 'www', 'api', 'admin', 'app'];
+  
   // Check if it's a subdomain
   // For localhost: gomezlouis.localhost -> ['gomezlouis', 'localhost']
   // For regular domain: mycompany.example.com -> ['mycompany', 'example', 'com']
@@ -28,6 +31,10 @@ export function extractTenantFromHostname(): string {
 
   if (isLocalhostSubdomain || isRegularSubdomain) {
     const subdomain = parts[0];
+    // If it's a technical subdomain, treat it as main domain
+    if (technicalSubdomains.includes(subdomain.toLowerCase())) {
+      return 'main';
+    }
     // Return the subdomain as potential tenant
     // The backend will verify if it's a valid tenant
     return subdomain;
