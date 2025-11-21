@@ -8,7 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Plus, X, ChevronDown, Shield, Mic, Video, Music, Phone, MessageSquare, ArrowRightLeft, Check } from "lucide-react";
 import { AdvancedData } from "./types";
@@ -232,6 +231,25 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
           <ChevronDown className="h-5 w-5 text-muted-foreground" />
         </CardHeader>
         <CardContent className="space-y-[var(--space-xl)]">
+          {/* Enable Transfer */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-[var(--space-md)]">
+              <ArrowRightLeft className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <Label className="text-sm font-medium">Enable Call Transfer</Label>
+                <p className="text-xs text-muted-foreground">
+                  Allow the assistant to transfer calls to another number when conditions are met
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={data.transferEnabled}
+              onCheckedChange={(checked) => onChange({ transferEnabled: checked })}
+            />
+          </div>
+
+          {data.transferEnabled && (
+            <>
           {/* Transfer Phone Number */}
           <div className="space-y-[var(--space-md)]">
             <Label className="text-sm font-medium">Phone Number</Label>
@@ -320,31 +338,20 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
             />
           </div>
 
-          {/* Transfer Type */}
+          {/* Transfer Type - Cold Transfer Only */}
           <div className="space-y-[var(--space-md)]">
-            <Label className="text-sm font-medium">Transfer Type</Label>
-            <p className="text-xs text-muted-foreground mb-[var(--space-md)]">
-              Choose between warm (announced) or cold (blind) transfer
-            </p>
-            <RadioGroup
-              value={data.transferType || "warm"}
-              onValueChange={(value: "warm" | "cold") => onChange({ transferType: value })}
-              className="flex gap-6"
-            >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="warm" id="warm" />
-                <Label htmlFor="warm" className="text-sm font-normal cursor-pointer">
-                  Warm Transfer
-                </Label>
+            <div className="flex items-center space-x-2 p-3 bg-muted rounded-md">
+              <ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <Label className="text-sm font-medium">Transfer Type: Cold Transfer</Label>
+                <p className="text-xs text-muted-foreground">
+                  Calls will be transferred directly without announcement (blind transfer)
+                </p>
               </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="cold" id="cold" />
-                <Label htmlFor="cold" className="text-sm font-normal cursor-pointer">
-                  Cold Transfer
-                </Label>
-              </div>
-            </RadioGroup>
+            </div>
           </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -418,39 +425,6 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
                 />
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Background Sound */}
-      <Card variant="default">
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <div>
-            <h3 className="text-lg font-medium">Background Sound</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Add ambient background sounds to enhance the call experience
-            </p>
-          </div>
-          <ChevronDown className="h-5 w-5 text-muted-foreground" />
-        </CardHeader>
-        <CardContent className="space-y-[var(--space-xl)]">
-          <div className="space-y-[var(--space-md)]">
-            <Label className="text-sm font-medium">Background Sound</Label>
-            <Select 
-              value={data.backgroundSound} 
-              onValueChange={(value) => onChange({ backgroundSound: value })}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="off">Off</SelectItem>
-                <SelectItem value="office">Office</SelectItem>
-                <SelectItem value="cafe">Cafe</SelectItem>
-                <SelectItem value="nature">Nature</SelectItem>
-                <SelectItem value="white-noise">White Noise</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </CardContent>
       </Card>

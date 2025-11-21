@@ -98,7 +98,6 @@ export interface AdvancedData {
   transferCountryCode: string;
   transferSentence: string;
   transferCondition: string;
-  transferType: "warm" | "cold";
 }
 
 export interface SMSData {

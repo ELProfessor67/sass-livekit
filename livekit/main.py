@@ -37,6 +37,15 @@ from livekit.agents import (
     AutoSubscribe,
 )
 
+try:
+    from livekit.agents import BackgroundAudioPlayer, AudioConfig, BuiltinAudioClip
+    BACKGROUND_AUDIO_SUPPORTED = True
+except ImportError:
+    BackgroundAudioPlayer = None  # type: ignore
+    AudioConfig = None  # type: ignore
+    BuiltinAudioClip = None  # type: ignore
+    BACKGROUND_AUDIO_SUPPORTED = False
+
 # Plugin imports
 from livekit.plugins import openai, silero
 from livekit.agents.tts import FallbackAdapter
@@ -125,6 +134,55 @@ logging.getLogger("livekit.agents").setLevel(logging.DEBUG)
 # Enable DEBUG logging for Hume plugin to capture detailed error responses
 if HUME_AVAILABLE:
     logging.getLogger("livekit.plugins.hume").setLevel(logging.DEBUG)
+
+
+def _build_background_ambient_config(setting: Optional[str]):
+    """Return an AudioConfig or list of configs for the requested ambient preset."""
+    if not BACKGROUND_AUDIO_SUPPORTED or AudioConfig is None or BuiltinAudioClip is None:
+        return None
+
+    if not setting:
+        return None
+
+    key = str(setting).strip().lower()
+    if key in {"", "none", "off"}:
+        return None
+
+    if key == "office":
+        return AudioConfig(BuiltinAudioClip.OFFICE_AMBIENCE, volume=0.45)
+
+    if key == "lounge":
+        return [
+            AudioConfig(BuiltinAudioClip.OFFICE_AMBIENCE, volume=0.32, probability=0.7),
+            AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING, volume=0.18, probability=0.3),
+        ]
+
+    if key == "restaurant":
+        return [
+            AudioConfig(BuiltinAudioClip.OFFICE_AMBIENCE, volume=0.55, probability=0.6),
+            AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING2, volume=0.25, probability=0.4),
+        ]
+
+    # Map frontend options to available clips
+    # Note: LiveKit only has OFFICE_AMBIENCE, KEYBOARD_TYPING, KEYBOARD_TYPING2
+    # Using OFFICE_AMBIENCE as base for cafe/nature/white-noise with different volumes
+    if key == "cafe":
+        # Cafe ambiance - use office ambience with slightly higher volume
+        return AudioConfig(BuiltinAudioClip.OFFICE_AMBIENCE, volume=0.50)
+    
+    if key == "nature":
+        # Nature sounds - use office ambience with lower volume for subtle effect
+        return AudioConfig(BuiltinAudioClip.OFFICE_AMBIENCE, volume=0.35)
+    
+    if key == "white-noise" or key == "white_noise":
+        # White noise - use keyboard typing sounds for consistent background
+        return [
+            AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING, volume=0.20, probability=0.5),
+            AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING2, volume=0.20, probability=0.5),
+        ]
+
+    logger.debug("BACKGROUND_AUDIO_PRESET_UNKNOWN | setting=%s", key)
+    return None
 
 # ---- Shared OpenAI client & HTTP transport (used by all OpenAI calls) ----
 _HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=60.0, write=30.0, pool=30.0)  # Increased read timeout
@@ -373,6 +431,77 @@ class CallHandler:
 
         ctx.add_shutdown_callback(cancel_timer)
 
+    async def _maybe_start_background_audio(self, ctx: JobContext, session: AgentSession, config: Dict[str, Any]):
+        """Start background audio if the assistant has an ambient preset configured."""
+        background_setting = config.get("background_sound_setting")
+        
+        if not BACKGROUND_AUDIO_SUPPORTED or BackgroundAudioPlayer is None:
+            logger.debug(
+                "BACKGROUND_AUDIO_SKIPPED | room=%s | reason=NOT_SUPPORTED | setting=%s",
+                ctx.room.name,
+                background_setting
+            )
+            return None
+
+        if not background_setting:
+            logger.debug(
+                "BACKGROUND_AUDIO_SKIPPED | room=%s | reason=NO_SETTING",
+                ctx.room.name
+            )
+            return None
+
+        ambient_config = _build_background_ambient_config(background_setting)
+        if not ambient_config:
+            # Check if this is a valid "off" setting or an invalid/unknown setting
+            key = str(background_setting).strip().lower() if background_setting else ""
+            if key in {"", "none", "off"}:
+                # Valid "off" setting - log as debug, not warning
+                logger.debug(
+                    "BACKGROUND_AUDIO_SKIPPED | room=%s | reason=OFF_SETTING | setting=%s",
+                    ctx.room.name,
+                    background_setting
+                )
+            else:
+                # Invalid/unknown setting - log as warning
+                logger.warning(
+                    "BACKGROUND_AUDIO_SKIPPED | room=%s | reason=INVALID_SETTING | setting=%s",
+                    ctx.room.name,
+                    background_setting
+                )
+            return None
+
+        player = BackgroundAudioPlayer(ambient_sound=ambient_config)
+        try:
+            await player.start(room=ctx.room, agent_session=session)
+            logger.info(
+                "BACKGROUND_AUDIO_STARTED | room=%s | preset=%s",
+                ctx.room.name,
+                background_setting,
+            )
+        except Exception as e:
+            logger.error(
+                "BACKGROUND_AUDIO_START_FAILED | room=%s | preset=%s | error=%s",
+                ctx.room.name,
+                background_setting,
+                str(e),
+                exc_info=True
+            )
+            try:
+                await player.aclose()
+            except Exception:
+                pass
+            return None
+
+        async def stop_player():
+            try:
+                await player.aclose()
+                logger.info("BACKGROUND_AUDIO_STOPPED | room=%s", ctx.room.name)
+            except Exception as close_error:
+                logger.error("BACKGROUND_AUDIO_STOP_FAILED | error=%s", str(close_error))
+
+        ctx.add_shutdown_callback(stop_player)
+        return player
+
     async def handle_call(self, ctx: JobContext) -> None:
         """Handle incoming call with proper LiveKit patterns."""
         call_id = ctx.room.name  # Use room name as call ID
@@ -453,6 +582,10 @@ class CallHandler:
 
             # Start the session IMMEDIATELY to begin listening for speech
             async with measure_latency_context("session_start", call_id):
+                # Store room name in agent for transfer operations
+                if hasattr(agent, 'set_room_name'):
+                    agent.set_room_name(ctx.room.name)
+                
                 await session.start(
                     agent=agent,
                     room=ctx.room,
@@ -461,6 +594,9 @@ class CallHandler:
                 )
             # logger.info(f"SESSION_STARTED | room={ctx.room.name} | listening for speech")
             profiler.checkpoint("session_started")
+
+            # Start ambient audio if configured
+            await self._maybe_start_background_audio(ctx, session, assistant_config)
 
             # Trigger first message if configured
             first_message = assistant_config.get("first_message", "")

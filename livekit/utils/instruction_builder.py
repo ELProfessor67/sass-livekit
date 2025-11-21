@@ -92,6 +92,28 @@ def build_call_management_instructions(config: Dict[str, Any]) -> str:
     instructions.append(f"CALL_DURATION_LIMIT: This call will automatically end after {max_call_duration} minutes to prevent excessive charges")
     instructions.append(f"CALL_MONITORING: Be aware that the system will automatically terminate this call after {max_call_duration} minutes")
     
+    # Call transfer (cold transfer only)
+    transfer_enabled = config.get("transfer_enabled", False)
+    if transfer_enabled:
+        transfer_condition = config.get("transfer_condition", "")
+        transfer_sentence = config.get("transfer_sentence", "")
+        transfer_phone = config.get("transfer_phone_number", "")
+        transfer_country_code = config.get("transfer_country_code", "+1")
+        
+        if transfer_condition and transfer_phone:
+            full_phone = f"{transfer_country_code}{transfer_phone}" if not transfer_phone.startswith("+") else transfer_phone
+            instructions.append(f"\nCALL_TRANSFER_CONFIGURATION:")
+            instructions.append(f"- Transfer is ENABLED for this assistant")
+            instructions.append(f"- Transfer condition: {transfer_condition}")
+            instructions.append(f"- Transfer phone number: {full_phone}")
+            if transfer_sentence:
+                instructions.append(f"- Before transferring, say: '{transfer_sentence}'")
+            instructions.append(f"\nTRANSFER_INSTRUCTIONS:")
+            instructions.append(f"- Monitor the conversation for: {transfer_condition}")
+            instructions.append(f"- When this condition is met, you should indicate that a transfer is needed")
+            instructions.append(f"- This is a COLD TRANSFER (direct transfer without announcement to the receiving party)")
+            instructions.append(f"- Use the transfer_required() function when the transfer condition is detected")
+    
     return "\n".join(instructions) if instructions else ""
 
 

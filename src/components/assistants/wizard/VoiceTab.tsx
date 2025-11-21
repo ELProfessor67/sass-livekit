@@ -18,7 +18,6 @@ interface VoiceTabProps {
 export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
   const [advancedTimingOpen, setAdvancedTimingOpen] = useState(false);
   const [advancedInterruptionOpen, setAdvancedInterruptionOpen] = useState(false);
-  const [advancedTimeoutOpen, setAdvancedTimeoutOpen] = useState(false);
 
   // Filter voices based on selected provider
   const getFilteredVoices = () => {
@@ -592,8 +591,9 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
                 <SelectContent>
                   <SelectItem value="off">Off</SelectItem>
                   <SelectItem value="office">Office</SelectItem>
-                  <SelectItem value="lounge">Lounge</SelectItem>
-                  <SelectItem value="restaurant">Restaurant</SelectItem>
+                  <SelectItem value="cafe">Cafe</SelectItem>
+                  <SelectItem value="nature">Nature</SelectItem>
+                  <SelectItem value="white-noise">White Noise</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1053,66 +1053,6 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
         </CardContent>
       </Card>
 
-      {/* Card 5 - Call Timeout Settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-[20px] font-medium tracking-[0.2px]">Call Timeout Settings</CardTitle>
-          <CardDescription>Configure when the assistant should end a call based on silence or duration.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-8">
-          <div className="flex items-center justify-between">
-            <div className="w-[60%]">
-              <Label className="text-[16px] font-semibold tracking-[0.2px] text-gray-700 dark:text-gray-200">Silence Timeout</Label>
-            </div>
-            <div className="w-[300px] flex items-center gap-3">
-              <div className="flex-1 relative">
-                <WizardSlider
-                  value={data.silenceTimeout || 30}
-                  onChange={(value) => onChange({ silenceTimeout: value })}
-                  min={10}
-                  max={3600}
-                  step={1}
-                />
-                <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                  <span>10s</span>
-                  <span>3600s</span>
-                </div>
-              </div>
-              <span className="text-primary font-mono w-16 text-right">{data.silenceTimeout || 30}s</span>
-            </div>
-          </div>
-
-          <Collapsible open={advancedTimeoutOpen} onOpenChange={setAdvancedTimeoutOpen}>
-            <CollapsibleTrigger className="flex w-full justify-between items-center border-t pt-4">
-              <span className="text-sm font-medium">Advanced Settings</span>
-              <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${advancedTimeoutOpen ? 'rotate-180' : ''}`} />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="pt-4">
-              <div className="flex items-center justify-between">
-                <div className="w-[60%]">
-                  <Label className="text-[16px] font-semibold tracking-[0.2px] text-gray-700 dark:text-gray-200">Maximum Duration</Label>
-                </div>
-                <div className="w-[300px] flex items-center gap-3">
-                  <div className="flex-1 relative">
-                    <WizardSlider
-                      value={data.maxDuration || 1800}
-                      onChange={(value) => onChange({ maxDuration: value })}
-                      min={10}
-                      max={43200}
-                      step={10}
-                    />
-                    <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                      <span>10s</span>
-                      <span>43200s</span>
-                    </div>
-                  </div>
-                  <span className="text-primary font-mono w-16 text-right">{data.maxDuration || 1800}s</span>
-                </div>
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-        </CardContent>
-      </Card>
     </div>
   );
 };

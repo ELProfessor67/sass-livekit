@@ -89,7 +89,8 @@ class DatabaseClient:
                 "analysis_summary_prompt, analysis_evaluation_prompt, analysis_structured_data_prompt, "
                 "analysis_structured_data_properties, analysis_summary_timeout, analysis_evaluation_timeout, "
                 "analysis_structured_data_timeout, end_call_message, idle_messages, max_idle_messages, "
-                "silence_timeout, max_call_duration, num_words_to_interrupt_assistant, user_id"
+                "silence_timeout, max_call_duration, num_words_to_interrupt_assistant, user_id, "
+                "transfer_enabled, transfer_phone_number, transfer_country_code, transfer_sentence, transfer_condition"
             ).eq("id", assistant_id).single().execute()
             
             if result.data:

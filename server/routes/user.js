@@ -2,6 +2,13 @@ import express from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { authenticateToken } from '../utils/auth.js';
 import crypto from 'crypto';
+import { spawn } from 'child_process';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
@@ -91,6 +98,65 @@ router.post('/complete-signup', async (req, res) => {
           success: false,
           message: 'Failed to assign slug'
         });
+      }
+
+      // Setup Nginx reverse proxy for the whitelabel domain
+      try {
+        // Construct full domain from slug
+        const mainDomain = process.env.MAIN_DOMAIN || process.env.VITE_MAIN_DOMAIN || 'frontend.ultratalkai.com';
+        const fullDomain = `${lowerSlug}.${mainDomain}`;
+        const frontendPort = process.env.FRONTEND_PORT || '8080';
+        
+        // Path to script
+        const scriptPath = path.join(__dirname, '..', 'scripts', 'setup_reverse_proxy.sh');
+        
+        // Check if script exists
+        if (!fs.existsSync(scriptPath)) {
+          console.error('Nginx setup script not found:', scriptPath);
+          // Don't fail signup, just log error
+        } else {
+          console.log(`🚀 Setting up Nginx reverse proxy for ${fullDomain} on port ${frontendPort}`);
+          
+          // Execute script asynchronously (don't block signup response)
+          const script = spawn('sudo', [
+            'bash',
+            scriptPath,
+            fullDomain,
+            frontendPort
+          ]);
+          
+          let output = '';
+          
+          script.stdout.on('data', (data) => {
+            output += data.toString();
+            console.log('Nginx setup output:', data.toString());
+          });
+          
+          script.stderr.on('data', (data) => {
+            output += data.toString();
+            console.error('Nginx setup error:', data.toString());
+          });
+          
+          script.on('close', (code) => {
+            if (code === 0) {
+              console.log(`✅ Nginx reverse proxy setup completed for ${fullDomain}`);
+            } else {
+              console.error(`❌ Nginx setup failed for ${fullDomain} with code ${code}`);
+              console.error('Script output:', output);
+            }
+          });
+          
+          // Handle script errors
+          script.on('error', (error) => {
+            console.error('Error executing Nginx setup script:', error);
+          });
+          
+          // Don't wait for script to complete - return success immediately
+          // Script runs in background
+        }
+      } catch (error) {
+        console.error('Error setting up Nginx reverse proxy:', error);
+        // Don't fail signup if Nginx setup fails
       }
     }
 

@@ -139,6 +139,19 @@ class AgentFactory:
             logger.info(f"ANALYSIS_FIELDS_SET | count={len(analysis_fields)} | fields={[f.get('name', 'unnamed') for f in analysis_fields]}")
         else:
             logger.warning("NO_ANALYSIS_FIELDS_CONFIGURED | assistant has no structured_data_fields")
+        
+        # Set transfer configuration if enabled
+        transfer_enabled = config.get("transfer_enabled", False)
+        if transfer_enabled:
+            transfer_config = {
+                "transfer_enabled": transfer_enabled,
+                "transfer_phone_number": config.get("transfer_phone_number"),
+                "transfer_country_code": config.get("transfer_country_code", "+1"),
+                "transfer_sentence": config.get("transfer_sentence"),
+                "transfer_condition": config.get("transfer_condition")
+            }
+            agent.set_transfer_config(transfer_config)
+            logger.info(f"TRANSFER_CONFIG_SET | enabled={transfer_enabled} | phone={transfer_config.get('transfer_phone_number')}")
 
         return agent
 

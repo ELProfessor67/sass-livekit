@@ -188,7 +188,6 @@ const CreateAssistant = () => {
       transferCountryCode: "+1",
       transferSentence: "",
       transferCondition: "",
-      transferType: "warm" as const,
       firstSms: "",
       smsPrompt: "",
       whatsappNumber: "",
@@ -370,7 +369,6 @@ const CreateAssistant = () => {
               transferCountryCode: data.transfer_country_code || "+1",
               transferSentence: data.transfer_sentence || "",
               transferCondition: data.transfer_condition || "",
-              transferType: (data.transfer_type as "warm" | "cold") || "warm",
               whatsappNumber: (data as any).whatsapp_number || "",
               whatsappKey: (data as any).whatsapp_key || ""
             },
@@ -475,6 +473,15 @@ const CreateAssistant = () => {
       video_recording: formData.advanced.videoRecordingEnabled,
       end_call_phrases: formData.advanced.endCallPhrases?.length ? formData.advanced.endCallPhrases : null,
       wait_seconds: formData.voice.waitSeconds,
+      voicemail_detection_enabled: formData.advanced.voicemailDetectionEnabled || false,
+      voicemail_message: formData.advanced.voicemailMessage || null,
+
+      // Call Transfer (Cold Transfer Only)
+      transfer_enabled: formData.advanced.transferEnabled || false,
+      transfer_phone_number: formData.advanced.transferPhoneNumber || null,
+      transfer_country_code: formData.advanced.transferCountryCode || "+1",
+      transfer_sentence: formData.advanced.transferSentence || null,
+      transfer_condition: formData.advanced.transferCondition || null,
 
       // Call Management Settings (from Model tab)
       end_call_message: formData.model.endCallMessage || null,
