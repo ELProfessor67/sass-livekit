@@ -68,30 +68,147 @@ export default function Billing() {
 
         // Determine which tenant's plans to fetch
         // For whitelabel customers, use their tenant (which points to their admin's tenant)
-        // For whitelabel admins, use their slug_name as tenant
+        // For whitelabel admins, they might have plans from main tenant (assigned by super admin)
+        //   OR from their own tenant (if they created custom plans)
         // For main tenant users, use null (main tenant)
         let planTenant: string | null = null;
+        let isWhitelabelAdmin = false;
+        
         if (userData?.tenant && userData.tenant !== 'main') {
-          // User belongs to a whitelabel tenant - use that tenant for plans
-          planTenant = userData.tenant;
+          // User belongs to a whitelabel tenant
+          if (userData?.slug_name) {
+            // User is a whitelabel admin - check their own tenant first, but also check main tenant
+            planTenant = userData.slug_name;
+            isWhitelabelAdmin = true;
+          } else {
+            // User is a whitelabel customer - use their tenant (which points to their admin's tenant)
+            planTenant = userData.tenant;
+          }
         } else if (userData?.slug_name) {
           // User is a whitelabel admin - use their slug as tenant
           planTenant = userData.slug_name;
+          isWhitelabelAdmin = true;
         }
         // Otherwise planTenant stays null (main tenant)
 
+        console.log('[Billing] User data:', {
+          userId: user.id,
+          userPlan: userData?.plan,
+          userTenant: userData?.tenant,
+          userSlugName: userData?.slug_name,
+          planTenant: planTenant
+        });
+
         // Fetch plan configs for the user's tenant (not hostname tenant)
-        const configs = await getPlanConfigs(planTenant);
+        let configs = await getPlanConfigs(planTenant);
+        console.log('[Billing] Fetched plan configs for tenant:', planTenant, 'Available plans:', Object.keys(configs));
+        
+        // If no plans found for the tenant and user has a plan, try direct database query
+        if (Object.keys(configs).length === 0 && userData?.plan && planTenant) {
+          console.log('[Billing] No plans found via getPlanConfigs, trying direct database query for tenant:', planTenant);
+          const { data: directPlans, error: directError } = await supabase
+            .from('plan_configs')
+            .select('*')
+            .eq('tenant', planTenant)
+            .eq('is_active', true);
+          
+          if (!directError && directPlans && directPlans.length > 0) {
+            console.log('[Billing] Found plans via direct query:', directPlans.map(p => ({ key: p.plan_key, name: p.name })));
+            const directConfigs: Record<string, any> = {};
+            directPlans.forEach((plan: any) => {
+              directConfigs[plan.plan_key] = {
+                key: plan.plan_key,
+                name: plan.name,
+                price: Number(plan.price),
+                features: Array.isArray(plan.features) ? plan.features : [],
+                whitelabelEnabled: plan.whitelabel_enabled ?? false
+              };
+            });
+            configs = directConfigs;
+          } else {
+            console.warn('[Billing] Direct query also returned no plans. Error:', directError);
+          }
+        }
+        
         setPlanConfigs(configs);
 
         // Use REAL plan from database (not from auth context)
         const userPlan = (userData?.plan?.toLowerCase() || user?.plan?.toLowerCase() || 'free');
-        const planConfig = configs[userPlan] || configs.free || {
-          key: 'free',
-          name: 'Free',
-          price: 0,
-          features: []
-        };
+        
+        // Try to find the plan config - check exact match first, then try case-insensitive
+        let planConfig = configs[userPlan];
+        
+        // If not found, try case-insensitive lookup
+        if (!planConfig && userData?.plan) {
+          const planKey = Object.keys(configs).find(
+            key => key.toLowerCase() === userData.plan.toLowerCase()
+          );
+          if (planKey) {
+            planConfig = configs[planKey];
+          }
+        }
+        
+        // If still not found and user has a plan, try fetching from main tenant as fallback
+        // This is especially important for whitelabel admins who may have been assigned plans by super admin
+        // We need to explicitly query main tenant (tenant IS NULL) to bypass hostname-based tenant detection
+        if (!planConfig && userData?.plan && planTenant && planTenant !== 'main') {
+          console.log(`[Billing] Plan "${userPlan}" not found in tenant "${planTenant}", trying main tenant as fallback`);
+          
+          // Directly query main tenant plans (tenant IS NULL) to bypass hostname tenant detection
+          const { data: mainPlans, error: mainError } = await supabase
+            .from('plan_configs')
+            .select('*')
+            .is('tenant', null)
+            .eq('is_active', true);
+          
+          if (!mainError && mainPlans && mainPlans.length > 0) {
+            const mainConfigs: Record<string, any> = {};
+            mainPlans.forEach((plan: any) => {
+              mainConfigs[plan.plan_key] = {
+                key: plan.plan_key,
+                name: plan.name,
+                price: Number(plan.price),
+                features: Array.isArray(plan.features) ? plan.features : [],
+                whitelabelEnabled: plan.whitelabel_enabled ?? false
+              };
+            });
+            
+            console.log('[Billing] Main tenant plans available:', Object.keys(mainConfigs));
+            const mainPlanKey = Object.keys(mainConfigs).find(
+              key => key.toLowerCase() === userData.plan.toLowerCase()
+            );
+            if (mainPlanKey) {
+              planConfig = mainConfigs[mainPlanKey];
+              console.log(`[Billing] Found plan "${mainPlanKey}" in main tenant`);
+            } else {
+              console.warn(`[Billing] Plan "${userPlan}" also not found in main tenant. Available main plans:`, Object.keys(mainConfigs));
+            }
+          } else {
+            console.warn('[Billing] Could not fetch main tenant plans. Error:', mainError);
+          }
+        }
+        
+        // Final fallback - use the plan name from database if available, otherwise free
+        if (!planConfig) {
+          console.warn(`[Billing] Plan "${userPlan}" not found in any tenant configs, using fallback. Available plans:`, Object.keys(configs));
+          // If user has a plan in database but config not found, show it anyway
+          if (userData?.plan && userData.plan !== 'free') {
+            planConfig = {
+              key: userData.plan.toLowerCase(),
+              name: userData.plan.charAt(0).toUpperCase() + userData.plan.slice(1), // Capitalize first letter
+              price: 0, // Unknown price
+              features: []
+            };
+            console.log(`[Billing] Using fallback plan config for:`, planConfig);
+          } else {
+            planConfig = configs.free || {
+              key: 'free',
+              name: 'Free',
+              price: 0,
+              features: []
+            };
+          }
+        }
 
         // Determine plan status
         const isActive = userData?.is_active ?? true;
