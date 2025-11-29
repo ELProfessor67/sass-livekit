@@ -380,28 +380,9 @@ router.post('/minutes/purchase', validateAuth, async (req, res) => {
                 });
             }
 
-            // Add minutes to customer's account
-            const customerCurrentLimit = userData.minutes_limit || 0;
-            const customerNewLimit = customerCurrentLimit + minutes;
-            const { error: customerUpdateError } = await supabase
-                .from('users')
-                .update({ minutes_limit: customerNewLimit })
-                .eq('id', req.userId);
-
-            if (customerUpdateError) {
-                console.error('Error updating customer minutes:', customerUpdateError);
-                // Rollback admin minutes
-                await supabase
-                    .from('users')
-                    .update({ minutes_used: whitelabelAdmin.minutes_used || 0 })
-                    .eq('id', whitelabelAdmin.id);
-                return res.status(500).json({
-                    success: false,
-                    error: 'Failed to process purchase'
-                });
-            }
-
             // Create purchase record for customer (credit)
+            // NOTE: Do NOT manually add minutes here - the database trigger will handle it
+            // when status is set to 'completed'. This prevents double-counting.
             const { data: purchase, error: purchaseError } = await supabase
                 .from('minutes_purchases')
                 .insert({
@@ -418,6 +399,15 @@ router.post('/minutes/purchase', validateAuth, async (req, res) => {
 
             if (purchaseError) {
                 console.error('Error creating purchase record:', purchaseError);
+                // Rollback admin minutes since purchase failed
+                await supabase
+                    .from('users')
+                    .update({ minutes_used: whitelabelAdmin.minutes_used || 0 })
+                    .eq('id', whitelabelAdmin.id);
+                return res.status(500).json({
+                    success: false,
+                    error: 'Failed to create purchase record'
+                });
             }
 
             // Create debit record for whitelabel admin (debit - minutes sold to customer)
