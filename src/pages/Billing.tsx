@@ -243,9 +243,12 @@ export default function Billing() {
           nextBilling
         });
 
-        // Set minutes balance and usage
-        setMinutesBalance(userData?.minutes_limit || 0);
-        setMinutesUsed(userData?.minutes_used || 0);
+        // Set minutes balance (remaining = limit - used) and usage
+        const minutesLimit = userData?.minutes_limit || 0;
+        const minutesUsed = userData?.minutes_used || 0;
+        const remainingMinutes = Math.max(0, minutesLimit - minutesUsed);
+        setMinutesBalance(remainingMinutes);
+        setMinutesUsed(minutesUsed);
 
         // Fetch assistants for the user
         const { data: assistantsData } = await supabase
@@ -668,8 +671,11 @@ export default function Billing() {
               .single();
 
             if (userData) {
-              setMinutesBalance(userData.minutes_limit || 0);
-              setMinutesUsed(userData.minutes_used || 0);
+              const minutesLimit = userData.minutes_limit || 0;
+              const minutesUsed = userData.minutes_used || 0;
+              const remainingMinutes = Math.max(0, minutesLimit - minutesUsed);
+              setMinutesBalance(remainingMinutes);
+              setMinutesUsed(minutesUsed);
             }
           }}
         />

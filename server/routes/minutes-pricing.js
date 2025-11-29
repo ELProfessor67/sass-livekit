@@ -380,9 +380,29 @@ router.post('/minutes/purchase', validateAuth, async (req, res) => {
                 });
             }
 
-            // Create purchase record for customer (credit)
-            // NOTE: Do NOT manually add minutes here - the database trigger will handle it
-            // when status is set to 'completed'. This prevents double-counting.
+            // Add minutes to customer's account (handled in API, not trigger)
+            const customerCurrentLimit = userData.minutes_limit || 0;
+            const customerNewLimit = customerCurrentLimit + minutes;
+            const { error: customerUpdateError } = await supabase
+                .from('users')
+                .update({ minutes_limit: customerNewLimit })
+                .eq('id', req.userId);
+
+            if (customerUpdateError) {
+                console.error('Error updating customer minutes:', customerUpdateError);
+                // Rollback admin minutes since purchase failed
+                await supabase
+                    .from('users')
+                    .update({ minutes_used: whitelabelAdmin.minutes_used || 0 })
+                    .eq('id', whitelabelAdmin.id);
+                return res.status(500).json({
+                    success: false,
+                    error: 'Failed to update customer minutes'
+                });
+            }
+
+            // Create purchase record for customer (credit) - for accounting/history only
+            // NOTE: We handle minutes in API above, not via trigger
             const { data: purchase, error: purchaseError } = await supabase
                 .from('minutes_purchases')
                 .insert({
@@ -399,19 +419,13 @@ router.post('/minutes/purchase', validateAuth, async (req, res) => {
 
             if (purchaseError) {
                 console.error('Error creating purchase record:', purchaseError);
-                // Rollback admin minutes since purchase failed
-                await supabase
-                    .from('users')
-                    .update({ minutes_used: whitelabelAdmin.minutes_used || 0 })
-                    .eq('id', whitelabelAdmin.id);
-                return res.status(500).json({
-                    success: false,
-                    error: 'Failed to create purchase record'
-                });
+                // Non-critical - log but don't fail since minutes were already added
             }
 
             // Create debit record for whitelabel admin (debit - minutes sold to customer)
             // Store positive values but use payment_method to identify as debit
+            // NOTE: The database trigger should skip this record (payment_method = 'whitelabel_customer_sale')
+            // and NOT add minutes to the admin's minutes_limit. This is just for accounting/audit purposes.
             const { data: debitRecord, error: debitError } = await supabase
                 .from('minutes_purchases')
                 .insert({
@@ -419,7 +433,7 @@ router.post('/minutes/purchase', validateAuth, async (req, res) => {
                     minutes_purchased: minutes, // Store positive value
                     amount_paid: amount, // Store positive value
                     currency: pricing.currency,
-                    payment_method: 'whitelabel_customer_sale', // This identifies it as a debit
+                    payment_method: 'whitelabel_customer_sale', // This identifies it as a debit - trigger should skip it
                     status: 'completed',
                     notes: `Sold ${minutes} minutes to customer (${userData.name || req.userId})`
                 })
@@ -428,6 +442,27 @@ router.post('/minutes/purchase', validateAuth, async (req, res) => {
 
             if (debitError) {
                 console.error('Error creating debit record for whitelabel admin:', debitError);
+                // Non-critical error - log but don't fail the transaction
+            } else {
+                // Verify that the trigger didn't incorrectly add minutes to admin
+                // The admin's minutes_limit should NOT increase from this debit record
+                const { data: verifyAdmin } = await supabase
+                    .from('users')
+                    .select('minutes_limit, minutes_used')
+                    .eq('id', whitelabelAdmin.id)
+                    .single();
+                
+                if (verifyAdmin) {
+                    const expectedLimit = whitelabelAdmin.minutes_limit; // Should stay the same
+                    if (verifyAdmin.minutes_limit !== expectedLimit) {
+                        console.error(`[BUG] Admin minutes_limit incorrectly increased! Expected: ${expectedLimit}, Got: ${verifyAdmin.minutes_limit}. This debit record should NOT add minutes.`);
+                        // Rollback the incorrect increase
+                        await supabase
+                            .from('users')
+                            .update({ minutes_limit: expectedLimit })
+                            .eq('id', whitelabelAdmin.id);
+                    }
+                }
             }
 
             // Get updated user balance
@@ -480,8 +515,23 @@ router.post('/minutes/purchase', validateAuth, async (req, res) => {
         // Calculate amount
         const amount = (minutes * pricing.price_per_minute).toFixed(2);
 
-        // For demo/trial mode, create a completed purchase without payment
-        // In production, you would create a Stripe checkout session here
+        // Add minutes to user's account (handled in API, not trigger)
+        const currentLimit = userData.minutes_limit || 0;
+        const newLimit = currentLimit + minutes;
+        const { error: updateError } = await supabase
+            .from('users')
+            .update({ minutes_limit: newLimit })
+            .eq('id', req.userId);
+
+        if (updateError) {
+            console.error('Error updating minutes:', updateError);
+            return res.status(500).json({
+                success: false,
+                error: 'Failed to update minutes'
+            });
+        }
+
+        // Create purchase record for accounting/history (handled in API, not trigger)
         const { data: purchase, error: purchaseError } = await supabase
             .from('minutes_purchases')
             .insert({
@@ -497,11 +547,8 @@ router.post('/minutes/purchase', validateAuth, async (req, res) => {
             .single();
 
         if (purchaseError) {
-            console.error('Error creating purchase:', purchaseError);
-            return res.status(500).json({
-                success: false,
-                error: 'Failed to create purchase'
-            });
+            console.error('Error creating purchase record:', purchaseError);
+            // Non-critical - log but don't fail since minutes were already added
         }
 
         // Get updated user balance
@@ -597,7 +644,36 @@ router.post('/admin/customers/:customerId/add-minutes', validateAdminAccess, asy
             });
         }
 
-        // Create a manual/promotional purchase record
+        // Add minutes to user's account (handled in API, not trigger)
+        const { data: customerData, error: fetchError } = await supabase
+            .from('users')
+            .select('minutes_limit')
+            .eq('id', customerId)
+            .single();
+
+        if (fetchError || !customerData) {
+            return res.status(500).json({
+                success: false,
+                error: 'Failed to fetch customer data'
+            });
+        }
+
+        const currentLimit = customerData.minutes_limit || 0;
+        const newLimit = currentLimit + minutes;
+        const { error: updateError } = await supabase
+            .from('users')
+            .update({ minutes_limit: newLimit })
+            .eq('id', customerId);
+
+        if (updateError) {
+            console.error('Error updating minutes:', updateError);
+            return res.status(500).json({
+                success: false,
+                error: 'Failed to add minutes'
+            });
+        }
+
+        // Create purchase record for accounting/history (handled in API, not trigger)
         const { data: purchase, error: purchaseError } = await supabase
             .from('minutes_purchases')
             .insert({
@@ -613,11 +689,8 @@ router.post('/admin/customers/:customerId/add-minutes', validateAdminAccess, asy
             .single();
 
         if (purchaseError) {
-            console.error('Error creating manual purchase:', purchaseError);
-            return res.status(500).json({
-                success: false,
-                error: 'Failed to add minutes'
-            });
+            console.error('Error creating manual purchase record:', purchaseError);
+            // Non-critical - log but don't fail since minutes were already added
         }
 
         // Get updated balance
