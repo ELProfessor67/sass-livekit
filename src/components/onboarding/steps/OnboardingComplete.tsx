@@ -177,53 +177,6 @@ export function OnboardingComplete() {
         }
       }
 
-      // Validate minutes availability for white label tenants before creating account
-      if (finalTenant !== 'main') {
-        // Get tenant admin's minutes
-        const { data: adminData } = await supabase
-          .from('users')
-          .select('minutes_limit')
-          .eq('slug_name', finalTenant)
-          .eq('role', 'admin')
-          .single();
-        
-        if (adminData) {
-          const adminMinutesLimit = adminData.minutes_limit || 0;
-          
-          // If admin has limited minutes, validate availability
-          if (adminMinutesLimit > 0) {
-            // Prevent unlimited plans for limited admin
-            if (minutesLimit === 0) {
-              throw new Error("Unlimited plans are not available. Please select a plan with limited minutes.");
-            }
-            
-            // Calculate total minutes already allocated to customers
-            const { data: existingCustomers } = await supabase
-              .from('users')
-              .select('minutes_limit')
-              .eq('tenant', finalTenant)
-              .neq('role', 'admin'); // Exclude admin
-            
-            const allocatedMinutes = (existingCustomers || []).reduce((sum, customer) => {
-              const customerMinutes = customer.minutes_limit || 0;
-              // Only count limited plans (exclude unlimited/0)
-              return customerMinutes > 0 ? sum + customerMinutes : sum;
-            }, 0);
-            
-            const availableMinutes = adminMinutesLimit - allocatedMinutes;
-            
-            // Check if there are enough minutes available
-            if (minutesLimit > availableMinutes) {
-              throw new Error(
-                `Cannot create account with ${minutesLimit.toLocaleString()} minutes. ` +
-                `Only ${availableMinutes.toLocaleString()} minutes are available. ` +
-                `Please contact your administrator to request more minutes or select a different plan.`
-              );
-            }
-          }
-        }
-      }
-
       // Check if user is a white label admin (has slug_name)
       // We need to preserve their admin role and slug_name
       let userRole = data.role || "user";
@@ -255,7 +208,7 @@ export function OnboardingComplete() {
         notifications: data.notifications,
         goals: data.goals,
         plan: data.plan,
-        minutes_limit: minutesLimit,
+        minutes_limit: 0, // Start with 0 minutes - users purchase minutes separately
         minutes_used: 0,
         onboarding_completed: true,
         contact: {
