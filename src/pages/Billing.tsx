@@ -62,12 +62,26 @@ export default function Billing() {
         // Fetch user data for subscription info FIRST (to get real plan from database)
         const { data: userData } = await supabase
           .from('users')
-          .select('is_active, trial_ends_at, plan, minutes_limit, minutes_used, billing, stripe_customer_id, updated_at')
+          .select('is_active, trial_ends_at, plan, minutes_limit, minutes_used, billing, stripe_customer_id, updated_at, tenant, slug_name')
           .eq('id', user.id)
           .single();
 
-        // Fetch plan configs
-        const configs = await getPlanConfigs();
+        // Determine which tenant's plans to fetch
+        // For whitelabel customers, use their tenant (which points to their admin's tenant)
+        // For whitelabel admins, use their slug_name as tenant
+        // For main tenant users, use null (main tenant)
+        let planTenant: string | null = null;
+        if (userData?.tenant && userData.tenant !== 'main') {
+          // User belongs to a whitelabel tenant - use that tenant for plans
+          planTenant = userData.tenant;
+        } else if (userData?.slug_name) {
+          // User is a whitelabel admin - use their slug as tenant
+          planTenant = userData.slug_name;
+        }
+        // Otherwise planTenant stays null (main tenant)
+
+        // Fetch plan configs for the user's tenant (not hostname tenant)
+        const configs = await getPlanConfigs(planTenant);
         setPlanConfigs(configs);
 
         // Use REAL plan from database (not from auth context)
