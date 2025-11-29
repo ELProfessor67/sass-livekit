@@ -59,12 +59,19 @@ export default function Billing() {
       try {
         setLoading(true);
 
+        // Fetch user data for subscription info FIRST (to get real plan from database)
+        const { data: userData } = await supabase
+          .from('users')
+          .select('is_active, trial_ends_at, plan, minutes_limit, minutes_used, billing, stripe_customer_id, updated_at')
+          .eq('id', user.id)
+          .single();
+
         // Fetch plan configs
         const configs = await getPlanConfigs();
         setPlanConfigs(configs);
 
-        // Get current plan config with proper fallback
-        const userPlan = user.plan?.toLowerCase() || 'free';
+        // Use REAL plan from database (not from auth context)
+        const userPlan = (userData?.plan?.toLowerCase() || user?.plan?.toLowerCase() || 'free');
         const planConfig = configs[userPlan] || configs.free || {
           key: 'free',
           name: 'Free',
@@ -72,27 +79,30 @@ export default function Billing() {
           features: []
         };
 
-        // Fetch user data for subscription info
-        const { data: userData } = await supabase
-          .from('users')
-          .select('is_active, trial_ends_at, plan, minutes_limit, minutes_used')
-          .eq('id', user.id)
-          .single();
-
         // Determine plan status
         const isActive = userData?.is_active ?? true;
         const status = isActive ? 'active' : 'inactive';
 
-        // Calculate next billing date
+        // Calculate next billing date from real subscription data
         let nextBilling: string | null = null;
-        if (userData?.trial_ends_at) {
-          nextBilling = new Date(userData.trial_ends_at).toISOString().split('T')[0];
-        } else if (planConfig.price > 0) {
-          // If paid plan, calculate next billing (30 days from now)
-          const nextDate = new Date();
-          nextDate.setDate(nextDate.getDate() + 30);
-          nextBilling = nextDate.toISOString().split('T')[0];
+        
+        // Check billing JSON field for subscription info (Stripe subscription data)
+        if (userData?.billing && typeof userData.billing === 'object') {
+          const billing = userData.billing as any;
+          // Check for Stripe subscription next billing date
+          if (billing.subscription?.current_period_end) {
+            nextBilling = new Date(billing.subscription.current_period_end * 1000).toISOString().split('T')[0];
+          } else if (billing.next_billing_date) {
+            nextBilling = new Date(billing.next_billing_date).toISOString().split('T')[0];
+          }
         }
+        
+        // Fallback to trial_ends_at if no subscription billing date
+        if (!nextBilling && userData?.trial_ends_at) {
+          nextBilling = new Date(userData.trial_ends_at).toISOString().split('T')[0];
+        } 
+        // For paid plans without subscription data, don't show dummy date
+        // Only show if we have real subscription data
 
         setCurrentPlan({
           name: planConfig.name,
