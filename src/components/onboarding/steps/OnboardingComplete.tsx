@@ -7,7 +7,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle, Sparkles } from "lucide-react";
-import { getMinutesLimitForPlan } from "@/lib/plan-config";
 import { extractTenantFromHostname } from "@/lib/tenant-utils";
 
 export function OnboardingComplete() {
@@ -49,32 +48,26 @@ export function OnboardingComplete() {
         const siteUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
         const redirectTo = `${siteUrl}/auth/callback`;
 
-        // Extract tenant from hostname if not whitelabel signup
-        let tenant = 'main';
-        if (!signupData.whitelabel || !signupData.slug) {
-          tenant = extractTenantFromHostname();
-          
-          // If tenant is not 'main', verify it exists
-          if (tenant !== 'main') {
-            try {
-              const { data: tenantOwner } = await supabase
-                .from('users')
-                .select('slug_name')
-                .eq('slug_name', tenant)
-                .maybeSingle();
-              
-              // If no tenant owner found, default to main
-              if (!tenantOwner) {
-                tenant = 'main';
-              }
-            } catch (error) {
-              console.warn('Error verifying tenant, defaulting to main:', error);
+        // Extract tenant from hostname
+        let tenant = extractTenantFromHostname();
+        
+        // If tenant is not 'main', verify it exists
+        if (tenant !== 'main') {
+          try {
+            const { data: tenantOwner } = await supabase
+              .from('users')
+              .select('slug_name')
+              .eq('slug_name', tenant)
+              .maybeSingle();
+            
+            // If no tenant owner found, default to main
+            if (!tenantOwner) {
               tenant = 'main';
             }
+          } catch (error) {
+            console.warn('Error verifying tenant, defaulting to main:', error);
+            tenant = 'main';
           }
-        } else {
-          // For whitelabel signup, tenant = slug
-          tenant = signupData.slug;
         }
 
         // Create auth user with email auto-confirmed
@@ -88,8 +81,6 @@ export function OnboardingComplete() {
               name: signupData.name,
               contactPhone: signupData.phone,
               countryCode: signupData.countryCode,
-              slug: signupData.slug,
-              whitelabel: signupData.whitelabel,
               tenant: tenant // Include tenant in metadata so trigger can use it
             }
           },
@@ -106,33 +97,6 @@ export function OnboardingComplete() {
         userId = authData.user.id;
         isNewUser = true;
 
-        // If white label signup, complete signup via backend to ensure slug is assigned
-        if (signupData.whitelabel && signupData.slug && userId) {
-          try {
-            const apiUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
-            const completeSignupResponse = await fetch(`${apiUrl}/api/v1/user/complete-signup`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                user_id: userId,
-                slug: signupData.slug,
-                whitelabel: true
-              })
-            });
-
-            const completeSignupData = await completeSignupResponse.json();
-            if (!completeSignupData.success) {
-              console.error('Error completing white label signup:', completeSignupData.message);
-              // Don't fail the signup, but log the error
-            }
-          } catch (completeError) {
-            console.error('Error calling complete-signup:', completeError);
-            // Don't fail the signup
-          }
-        }
-
         // Clear signup data from localStorage after we've used it
         localStorage.removeItem("signup-data");
       }
@@ -145,29 +109,71 @@ export function OnboardingComplete() {
       const trialEndsAt = new Date();
       trialEndsAt.setDate(trialEndsAt.getDate() + 7);
       
-      // Get minutes limit based on selected plan
-      const minutesLimit = getMinutesLimitForPlan(data.plan);
+      // Save payment method if provided
+      if (data.paymentMethodId) {
+        try {
+          // Check if payment method already exists
+          const { data: existingPaymentMethod } = await (supabase as any)
+            .from('payment_methods')
+            .select('id')
+            .eq('stripe_payment_method_id', data.paymentMethodId)
+            .maybeSingle();
+
+          if (!existingPaymentMethod) {
+            // Extract card details from payment method data if available
+            const paymentMethodData: any = {
+              user_id: userId,
+              stripe_payment_method_id: data.paymentMethodId,
+              is_default: true,
+              is_active: true,
+            };
+
+            // Add optional fields if they exist in onboarding data
+            if (data.cardBrand) paymentMethodData.card_brand = data.cardBrand;
+            if (data.cardLast4) paymentMethodData.card_last4 = data.cardLast4;
+            if (data.cardExpMonth) paymentMethodData.card_exp_month = data.cardExpMonth;
+            if (data.cardExpYear) paymentMethodData.card_exp_year = data.cardExpYear;
+            if (signupData?.email || data.email) paymentMethodData.billing_email = signupData?.email || data.email;
+            if (signupData?.name || data.name) paymentMethodData.billing_name = signupData?.name || data.name;
+
+            const { error: paymentMethodError } = await (supabase as any)
+              .from('payment_methods')
+              .insert(paymentMethodData);
+
+            if (paymentMethodError) {
+              console.error('Error saving payment method:', paymentMethodError);
+              // Don't throw - continue with onboarding even if payment method save fails
+              toast({
+                title: "Payment method not saved",
+                description: "You can add a payment method later in settings.",
+                variant: "default",
+              });
+            } else {
+              console.log('Payment method saved successfully');
+            }
+          }
+        } catch (error) {
+          console.error('Error processing payment method:', error);
+          // Don't throw - continue with onboarding
+        }
+      }
 
       // Determine tenant first (before creating userProfileData)
       let finalTenant = 'main';
-      if (signupData?.whitelabel && signupData?.slug) {
-        finalTenant = signupData.slug;
-      } else {
-        const tenant = extractTenantFromHostname();
-        if (tenant !== 'main') {
-          try {
-            const { data: tenantOwner } = await supabase
-              .from('users')
-              .select('slug_name')
-              .eq('slug_name', tenant)
-              .maybeSingle();
-            
-            if (tenantOwner) {
-              finalTenant = tenant;
-            }
-          } catch (error) {
-            console.warn('Error verifying tenant, defaulting to main:', error);
+      const tenantFromHost = extractTenantFromHostname();
+      if (tenantFromHost !== 'main') {
+        try {
+          const { data: tenantOwner } = await supabase
+            .from('users')
+            .select('slug_name')
+            .eq('slug_name', tenantFromHost)
+            .maybeSingle();
+          
+          if (tenantOwner) {
+            finalTenant = tenantFromHost;
           }
+        } catch (error) {
+          console.warn('Error verifying tenant, defaulting to main:', error);
         }
       }
 
@@ -230,11 +236,7 @@ export function OnboardingComplete() {
         .eq('id', userId)
         .maybeSingle();
       
-      if (signupData?.whitelabel && signupData?.slug) {
-        // White label user should be admin
-        userRole = "admin";
-        existingSlugName = signupData.slug.toLowerCase();
-      } else if (existingUser?.slug_name) {
+      if (existingUser?.slug_name) {
         // If user has slug_name, they should be admin
         userRole = 'admin';
         existingSlugName = existingUser.slug_name;
@@ -272,9 +274,6 @@ export function OnboardingComplete() {
         // Preserve existing slug_name and set tenant to slug
         userProfileData.slug_name = existingSlugName;
         userProfileData.tenant = existingSlugName;
-      } else if (signupData?.whitelabel && signupData?.slug) {
-        userProfileData.slug_name = signupData.slug.toLowerCase();
-        userProfileData.tenant = finalTenant;
       } else {
         // Use the tenant we already determined
         userProfileData.tenant = finalTenant;

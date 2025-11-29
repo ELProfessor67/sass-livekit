@@ -19,3 +19,4 @@ COMMENT ON COLUMN public.assistant.transfer_condition IS 'Description of when th
 CREATE INDEX IF NOT EXISTS idx_assistant_transfer_enabled ON public.assistant(transfer_enabled) 
 WHERE transfer_enabled = true;
 
+

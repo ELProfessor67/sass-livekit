@@ -13,6 +13,7 @@ import { Eye, EyeOff, Mail, Lock, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
+import { useWebsiteSettings } from "@/contexts/WebsiteSettingsContext";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -26,6 +27,7 @@ export default function Login() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { signIn } = useAuth();
+  const { websiteSettings } = useWebsiteSettings();
   const [showPassword, setShowPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
 
@@ -47,13 +49,13 @@ export default function Login() {
       console.log('Starting sign in process...');
       const result = await signIn(data.email, data.password);
       console.log('Sign in result:', result);
-      
+
       if (result.success) {
         console.log('Sign in successful, navigating...');
-        
+
         // Clear any stale signup data (user is logging in, so they already have an account)
         localStorage.removeItem("signup-data");
-        
+
         toast({
           title: "Welcome back!",
           description: "You've been signed in successfully.",
@@ -113,11 +115,20 @@ export default function Login() {
 
       <Card className="w-full max-w-md backdrop-blur-xl bg-white/[0.02] border border-white/[0.08] rounded-2xl shadow-2xl">
         <CardHeader className="text-center space-y-2">
+          {websiteSettings?.logo && (
+            <div className="flex justify-center mb-4">
+              <img
+                src={websiteSettings.logo}
+                alt={websiteSettings.website_name || "Logo"}
+                className="h-12 w-auto object-contain"
+              />
+            </div>
+          )}
           <CardTitle className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/80">
             Welcome back
           </CardTitle>
           <CardDescription className="text-muted-foreground">
-            Sign in to your AI Call Center account
+            Sign in to your {websiteSettings?.website_name || "AI Call Center"} account
           </CardDescription>
         </CardHeader>
 

@@ -20,6 +20,7 @@ import { connect } from '@ngrok/ngrok';
 import knowledgeBaseRouter from './routes/knowledge-base.js';
 import supportAccessRouter from './routes/supportAccess.js';
 import minutesRouter from './routes/minutes.js';
+import minutesPricingRouter from './routes/minutes-pricing.js';
 import adminRouter from './routes/admin.js';
 import whitelabelRouter from './routes/whitelabel.js';
 import userRouter from './routes/user.js';
@@ -53,12 +54,14 @@ app.use('/api/v1/livekit', livekitRoomRouter);
 app.use('/api/v1/knowledge-base', knowledgeBaseRouter);
 app.use('/api/v1/support-access', supportAccessRouter);
 app.use('/api/v1/minutes', minutesRouter);
+app.use('/api/v1', minutesPricingRouter); // Minutes pricing routes (includes /admin/minutes-pricing and /minutes-pricing)
 app.use('/api/v1/admin', adminRouter);
 app.use('/api/v1/whitelabel', whitelabelRouter);
 app.use('/api/v1/user', userRouter);
 console.log('Knowledge base routes registered at /api/v1/knowledge-base');
 console.log('Support access routes registered at /api/v1/support-access');
 console.log('Minutes routes registered at /api/v1/minutes');
+console.log('Minutes pricing routes registered at /api/v1/minutes-pricing and /api/v1/admin/minutes-pricing');
 console.log('Admin routes registered at /api/v1/admin');
 console.log('White label routes registered at /api/v1/whitelabel');
 console.log('User routes registered at /api/v1/user');
@@ -94,7 +97,7 @@ app.get('/api/v1/call/recording/:recordingSid/audio', async (req, res) => {
   try {
     const { recordingSid } = req.params;
     const { accountSid, authToken } = req.query;
-    
+
     // Decode URL-encoded parameters
     const decodedAccountSid = decodeURIComponent(accountSid);
     const decodedAuthToken = decodeURIComponent(authToken);
@@ -108,7 +111,7 @@ app.get('/api/v1/call/recording/:recordingSid/audio', async (req, res) => {
 
     // Construct the Twilio recording URL
     const recordingUrl = `https://api.twilio.com/2010-04-01/Accounts/${decodedAccountSid}/Recordings/${recordingSid}.wav`;
-    
+
     // Debug: Log credential info
     console.log('Audio request debug:', {
       recordingSid,
@@ -118,7 +121,7 @@ app.get('/api/v1/call/recording/:recordingSid/audio', async (req, res) => {
       authTokenPreview: decodedAuthToken?.substring(0, 10) + '...',
       recordingUrl
     });
-    
+
     // Make authenticated request to Twilio
     const response = await fetch(recordingUrl, {
       headers: {
@@ -128,7 +131,7 @@ app.get('/api/v1/call/recording/:recordingSid/audio', async (req, res) => {
 
     if (!response.ok) {
       console.error('Failed to fetch recording from Twilio:', response.status, response.statusText);
-      
+
       // Get the error response body for better debugging
       let errorBody = '';
       try {
@@ -137,7 +140,7 @@ app.get('/api/v1/call/recording/:recordingSid/audio', async (req, res) => {
       } catch (e) {
         console.error('Could not read error response body');
       }
-      
+
       return res.status(response.status).json({
         success: false,
         message: `Failed to fetch recording: ${response.statusText}`,
@@ -147,7 +150,7 @@ app.get('/api/v1/call/recording/:recordingSid/audio', async (req, res) => {
 
     // Get the audio data as a buffer
     const audioBuffer = await response.arrayBuffer();
-    
+
     // Set appropriate headers for audio streaming
     res.setHeader('Content-Type', 'audio/wav');
     res.setHeader('Content-Length', audioBuffer.byteLength);
@@ -185,13 +188,13 @@ app.post('/api/v1/livekit/dispatch', async (req, res) => {
     const apiKey = process.env.LIVEKIT_API_KEY;
     const apiSecret = process.env.LIVEKIT_API_SECRET;
     const livekitUrl = process.env.LIVEKIT_URL || process.env.LIVEKIT_HOST;
-    
+
     const { roomName, agentName = 'ai', metadata = {} } = req.body;
-    
+
     if (!roomName) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'roomName is required' 
+      return res.status(400).json({
+        success: false,
+        message: 'roomName is required'
       });
     }
 
@@ -199,7 +202,7 @@ app.post('/api/v1/livekit/dispatch', async (req, res) => {
 
     // Create or update room with agent dispatch metadata
     const roomService = new RoomServiceClient(livekitUrl, apiKey, apiSecret);
-    
+
     try {
       // Update room metadata to include agent dispatch information
       await roomService.updateRoomMetadata(roomName, JSON.stringify({
@@ -210,7 +213,7 @@ app.post('/api/v1/livekit/dispatch', async (req, res) => {
       }));
 
       console.log(`Agent '${agentName}' dispatched to room '${roomName}'`);
-      
+
       res.json({
         success: true,
         message: `Agent ${agentName} dispatched to room ${roomName}`,
@@ -230,7 +233,7 @@ app.post('/api/v1/livekit/dispatch', async (req, res) => {
       });
 
       console.log(`Created new room '${roomName}' and dispatched agent '${agentName}'`);
-      
+
       res.json({
         success: true,
         message: `Room created and agent ${agentName} dispatched`,
@@ -241,10 +244,10 @@ app.post('/api/v1/livekit/dispatch', async (req, res) => {
 
   } catch (err) {
     console.error('Error dispatching agent:', err);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to dispatch agent', 
-      error: err.message 
+    res.status(500).json({
+      success: false,
+      message: 'Failed to dispatch agent',
+      error: err.message
     });
   }
 });
@@ -254,9 +257,9 @@ app.post('/api/v1/livekit/create-token', async (req, res) => {
     const apiKey = process.env.LIVEKIT_API_KEY;
     const apiSecret = process.env.LIVEKIT_API_SECRET;
     const livekitUrl = process.env.LIVEKIT_URL || process.env.LIVEKIT_HOST;
-    
+
     const { roomName, identity: requestedIdentity, metadata = {}, dispatch, roomConfig } = req.body;
-    
+
     // Use provided room name or generate one
     const room = roomName || `room-${Math.random().toString(36).slice(2, 8)}`;
     const identity = requestedIdentity || `web-${Math.random().toString(36).slice(2, 8)}`;
@@ -266,7 +269,7 @@ app.post('/api/v1/livekit/create-token', async (req, res) => {
     // If dispatch is requested, create room with agent configuration
     if (dispatch || roomConfig) {
       const roomService = new RoomServiceClient(livekitUrl, apiKey, apiSecret);
-      
+
       try {
         // Prepare room metadata with assistant configuration
         const assistantId = metadata.assistantId || dispatch?.metadata?.assistantId;
@@ -285,10 +288,10 @@ app.post('/api/v1/livekit/create-token', async (req, res) => {
         });
 
         console.log(`✅ Room '${room}' created with agent dispatch metadata`);
-        
+
         // Wait a moment for room to be fully created before dispatching
         await new Promise(resolve => setTimeout(resolve, 500));
-        
+
         // Dispatch agent using AgentDispatchClient (same as voiceagents)
         try {
           // Convert WebSocket URL to HTTP/HTTPS for API calls
@@ -298,16 +301,16 @@ app.post('/api/v1/livekit/create-token', async (req, res) => {
           } else if (livekitUrl.startsWith('ws://')) {
             httpUrl = livekitUrl.replace('ws://', 'http://');
           }
-          
+
           console.log(`🤖 Dispatching agent to room '${room}' via ${httpUrl}`);
-          
+
           // Create AgentDispatchClient (same pattern as voiceagents)
           const agentDispatchClient = new AgentDispatchClient(
             httpUrl,
             apiKey,
             apiSecret
           );
-          
+
           const agentName = dispatch?.agentName || 'ai';
           const agentMetadata = {
             agentId: assistantId,
@@ -316,13 +319,13 @@ app.post('/api/v1/livekit/create-token', async (req, res) => {
             source: 'web',
             ...(dispatch?.metadata || {}),
           };
-          
+
           console.log(`📤 Dispatching agent with params:`, {
             room,
             agentName,
             metadata: agentMetadata
           });
-          
+
           const dispatchResult = await agentDispatchClient.createDispatch(
             room,
             agentName,
@@ -330,16 +333,16 @@ app.post('/api/v1/livekit/create-token', async (req, res) => {
               metadata: JSON.stringify(agentMetadata),
             }
           );
-          
+
           console.log('✅ Agent dispatched successfully:', JSON.stringify(dispatchResult, null, 2));
-          
+
         } catch (dispatchError) {
           console.error('❌ Failed to dispatch agent:', dispatchError.message);
           console.error('❌ Dispatch error details:', dispatchError);
           console.error('❌ Full error:', JSON.stringify(dispatchError, Object.getOwnPropertyNames(dispatchError), 2));
           // Continue anyway - user can still connect
         }
-        
+
       } catch (roomError) {
         // Room might already exist, continue
         console.warn(`Room creation note: ${roomError.message}`);

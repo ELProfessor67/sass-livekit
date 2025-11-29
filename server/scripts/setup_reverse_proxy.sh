@@ -46,3 +46,4 @@ sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos -m admin@$DOMAIN -
 
 echo "✅ Nginx reverse proxy + SSL setup completed for https://$DOMAIN"
 
+

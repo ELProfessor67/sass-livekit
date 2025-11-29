@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { PLAN_CONFIGS, getMinutesLimitForPlan, getPlanConfig, getPlanConfigs, invalidatePlanConfigsCache, type PlanConfig } from "@/lib/plan-config";
+import { PLAN_CONFIGS, getPlanConfig, getPlanConfigs, invalidatePlanConfigsCache, type PlanConfig } from "@/lib/plan-config";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MoreHorizontal, Search, Edit, Trash2, Eye, Shield } from 'lucide-react';
@@ -51,6 +52,15 @@ interface UserStats {
   plan: string | null;
 }
 
+interface MinutePricingConfig {
+  id: string;
+  price_per_minute: number | string;
+  minimum_purchase: number | string;
+  currency: string;
+  is_active: boolean;
+  tenant: string;
+}
+
 
 const AdminPanel = () => {
   const { user, isImpersonating, exitImpersonation, activeSupportSession: contextActiveSupportSession, startSupportAccess } = useAuth();
@@ -70,63 +80,66 @@ const AdminPanel = () => {
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
   const [planDialogUser, setPlanDialogUser] = useState<User | null>(null);
   const [planDialogPlan, setPlanDialogPlan] = useState<string>("free");
-  const [planDialogMinutesLimit, setPlanDialogMinutesLimit] = useState<number>(getMinutesLimitForPlan("free"));
-  const [planDialogMinutesUsed, setPlanDialogMinutesUsed] = useState<number>(0);
   const [planDialogLoading, setPlanDialogLoading] = useState(false);
-  
+
   // Plan configuration management state
   const [planConfigs, setPlanConfigs] = useState<Record<string, PlanConfig>>({});
   const [loadingPlanConfigs, setLoadingPlanConfigs] = useState(false);
   const [editingPlanKey, setEditingPlanKey] = useState<string | null>(null);
   const [editPlanData, setEditPlanData] = useState<Partial<PlanConfig>>({});
   const [isEditPlanOpen, setIsEditPlanOpen] = useState(false);
-  const [adminMinutesLimit, setAdminMinutesLimit] = useState<number | null>(null);
-  
-  // Get effective minutes limit (from DB or calculate from plan)
-  const getEffectiveMinutesLimit = (user: User): number => {
-    // If minutes_limit exists in DB, use it
-    if (user.minutes_limit !== null && user.minutes_limit !== undefined) {
-      return user.minutes_limit;
-    }
-    // Otherwise, calculate from plan
-    return getMinutesLimitForPlan(user.plan);
+
+  const [deletingPlanKey, setDeletingPlanKey] = useState<string | null>(null);
+  const [isDeletePlanOpen, setIsDeletePlanOpen] = useState(false);
+
+  // Minute Pricing state
+  const [minutePricing, setMinutePricing] = useState<MinutePricingConfig | null>(null);
+  const [loadingMinutePricing, setLoadingMinutePricing] = useState(false);
+  const [savingMinutePricing, setSavingMinutePricing] = useState(false);
+
+  // Check if current admin is a whitelabel admin based on hostname
+  const [isWhitelabelAdmin, setIsWhitelabelAdmin] = useState<boolean>(false);
+
+  // Detect if we're on a whitelabel domain
+  useEffect(() => {
+    const hostname = window.location.hostname;
+    // Main domain is just "localhost" or "127.0.0.1" without any subdomain
+    // Whitelabel domains have subdomains like "gomgom.localhost" or "tenant1.localhost"
+    const parts = hostname.split('.');
+    const isMainDomain = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('127.0.0.1:');
+    setIsWhitelabelAdmin(!isMainDomain);
+  }, []);
+
+  const formatPlanName = (plan?: string | null) => {
+    if (!plan) return 'Free';
+    return plan.charAt(0).toUpperCase() + plan.slice(1);
   };
 
-  const formatMinutes = (value?: number | null, plan?: string | null) => {
-    // If value is null, try to get from plan
-    if (value === null || value === undefined) {
-      if (plan) {
-        const planMinutes = getMinutesLimitForPlan(plan);
-        if (planMinutes === 0) return 'Unlimited';
-        return `${planMinutes.toLocaleString()} min`;
-      }
-      return '—';
-    }
-    if (value === 0) return 'Unlimited';
-    return `${value.toLocaleString()} min`;
+  const formatMinutes = (minutes: number | null | undefined, plan: string | null | undefined) => {
+    if (minutes === 0 || minutes === null || minutes === undefined) return 'Unlimited';
+    return `${minutes.toLocaleString()} min`;
   };
 
   const getRemainingMinutes = (user: User) => {
-    const limit = getEffectiveMinutesLimit(user);
-    if (limit === 0) return 'Unlimited';
+    if (user.minutes_limit === 0 || user.minutes_limit === null || user.minutes_limit === undefined) return 'Unlimited';
     const used = user.minutes_used || 0;
-    const remaining = Math.max(limit - used, 0);
+    const remaining = Math.max(0, user.minutes_limit - used);
     return `${remaining.toLocaleString()} min`;
   };
 
   const getUsageStatus = (user: User) => {
-    const limit = getEffectiveMinutesLimit(user);
-    if (limit === 0) return 'Unlimited';
+    if (user.minutes_limit === 0 || user.minutes_limit === null || user.minutes_limit === undefined) return 'Unlimited';
+
     const used = user.minutes_used || 0;
-    const percentage = (used / limit) * 100;
+    const limit = user.minutes_limit;
+
     if (used >= limit) return 'Exceeded';
-    if (percentage >= 90) return 'Critical';
-    if (percentage >= 75) return 'Warning';
+
+    const percentage = used / limit;
+    if (percentage >= 0.9) return 'Critical';
+    if (percentage >= 0.75) return 'Warning';
+
     return 'OK';
-  };
-  const formatPlanName = (plan?: string | null) => {
-    if (!plan) return 'Free';
-    return plan.charAt(0).toUpperCase() + plan.slice(1);
   };
 
   const getStatusBadgeClasses = (status: string) => {
@@ -149,15 +162,7 @@ const AdminPanel = () => {
     setPlanDialogUser(user);
     const userPlan = user.plan || "free";
     setPlanDialogPlan(userPlan);
-    setPlanDialogMinutesLimit(user.minutes_limit ?? getMinutesLimitForPlan(userPlan));
-    setPlanDialogMinutesUsed(user.minutes_used ?? 0);
     setPlanDialogOpen(true);
-  };
-
-  const handlePlanDialogPlanChange = (planKey: string) => {
-    setPlanDialogPlan(planKey);
-    const defaultMinutes = getMinutesLimitForPlan(planKey);
-    setPlanDialogMinutesLimit(defaultMinutes);
   };
 
   const handlePlanSave = async () => {
@@ -168,8 +173,6 @@ const AdminPanel = () => {
         .from("users")
         .update({
           plan: planDialogPlan,
-          minutes_limit: planDialogMinutesLimit,
-          minutes_used: planDialogMinutesUsed,
         })
         .eq("id", planDialogUser.id);
 
@@ -186,14 +189,14 @@ const AdminPanel = () => {
       setPlanDialogLoading(false);
     }
   };
-  
+
   // Support Access state
   const [activeSupportSession, setActiveSupportSession] = useState<any>(null);
   const [showActiveSessions, setShowActiveSessions] = useState(false);
 
   // Check if current user is admin OR if we're in a support access session
   const isAdmin = user?.role === 'admin' || contextActiveSupportSession;
-  
+
   // Debug logging
   console.log('AdminPanel Debug:', {
     userRole: user?.role,
@@ -209,7 +212,8 @@ const AdminPanel = () => {
     }
     fetchUsers();
     fetchPlanConfigs();
-  }, [isAdmin]);
+    fetchMinutePricing();
+  }, [isAdmin, user?.id]);
 
   // Fetch plan configurations from database
   const fetchPlanConfigs = async () => {
@@ -235,123 +239,165 @@ const AdminPanel = () => {
     }
   };
 
-  // Open edit plan dialog
-  const openEditPlanDialog = async (planKey: string) => {
-    const plan = planConfigs[planKey] || PLAN_CONFIGS[planKey];
-    if (plan) {
-      setEditingPlanKey(planKey);
-      setEditPlanData({
-        key: plan.key,
-        name: plan.name,
-        price: plan.price,
-        minutesLimit: plan.minutesLimit,
-        features: [...plan.features]
-      });
-      
-      // Get admin's minutes limit for validation
+  // Fetch minute pricing
+  const fetchMinutePricing = async () => {
+    try {
+      setLoadingMinutePricing(true);
+      let tenant: string | null = null;
       if (user) {
         const { data: userData } = await supabase
           .from('users')
-          .select('slug_name, minutes_limit')
+          .select('slug_name')
           .eq('id', user.id)
           .single();
-        
-        if (userData?.slug_name) {
-          // White label admin - get their minutes limit
-          setAdminMinutesLimit(userData.minutes_limit || 0);
-        } else {
-          // Main tenant admin - no limit
-          setAdminMinutesLimit(null);
-        }
-      } else {
-        setAdminMinutesLimit(null);
+        tenant = userData?.slug_name || 'main';
       }
-      
-      setIsEditPlanOpen(true);
+
+      const { data, error } = await supabase
+        .from('minutes_pricing_config')
+        .select('*')
+        .eq('tenant', tenant || 'main')
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        setMinutePricing(data);
+      } else {
+        // Set default if not found
+        setMinutePricing({
+          id: '',
+          price_per_minute: 0.01,
+          minimum_purchase: 0,
+          currency: 'USD',
+          is_active: true,
+          tenant: tenant || 'main'
+        } as any);
+      }
+    } catch (error) {
+      console.error('Error fetching minute pricing:', error);
+    } finally {
+      setLoadingMinutePricing(false);
     }
+  };
+
+  const handleSaveMinutePricing = async () => {
+    if (!minutePricing) return;
+
+    try {
+      setSavingMinutePricing(true);
+
+      let tenant: string | null = null;
+      if (user) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('slug_name')
+          .eq('id', user.id)
+          .single();
+        tenant = userData?.slug_name || 'main';
+      }
+
+      const payload = {
+        tenant: tenant || 'main',
+        price_per_minute: parseFloat(minutePricing.price_per_minute.toString()),
+        minimum_purchase: parseInt(minutePricing.minimum_purchase.toString()),
+        currency: minutePricing.currency,
+        is_active: true
+      };
+
+      const { data, error } = await supabase
+        .from('minutes_pricing_config')
+        .upsert(payload, { onConflict: 'tenant' })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setMinutePricing(data);
+      toast.success('Minute pricing updated successfully');
+    } catch (error: any) {
+      console.error('Error saving minute pricing:', error);
+      toast.error(error.message || 'Failed to save minute pricing');
+    } finally {
+      setSavingMinutePricing(false);
+    }
+  };
+
+  // Open edit plan dialog
+  const openEditPlanDialog = async (planKey: string | null) => {
+    if (planKey) {
+      // Editing existing plan
+      const plan = planConfigs[planKey] || PLAN_CONFIGS[planKey];
+      if (plan) {
+        setEditingPlanKey(planKey);
+        setEditPlanData({
+          key: plan.key,
+          name: plan.name,
+          price: plan.price,
+          features: [...plan.features],
+          whitelabelEnabled: plan.whitelabelEnabled ?? false
+        });
+      }
+    } else {
+      // Creating new plan
+      setEditingPlanKey(null);
+      setEditPlanData({
+        key: '',
+        name: '',
+        price: 0,
+        features: [],
+        whitelabelEnabled: false
+      });
+    }
+
+    setIsEditPlanOpen(true);
   };
 
   // Save plan configuration
   const handleSavePlan = async () => {
-    if (!editingPlanKey) return;
+    // For new plans, use the key from editPlanData
+    const planKey = editingPlanKey || editPlanData.key;
+
+    if (!planKey) {
+      toast.error('Plan key is required');
+      return;
+    }
+
+    // Validate required fields for new plans
+    if (!editingPlanKey) {
+      if (!editPlanData.name?.trim()) {
+        toast.error('Plan name is required');
+        return;
+      }
+      if (editPlanData.price === undefined || editPlanData.price === null) {
+        toast.error('Plan price is required');
+        return;
+      }
+    }
 
     try {
       setLoadingPlanConfigs(true);
-      
+
       // Get current user's tenant (slug_name for whitelabel admins, null for main tenant admin)
       let tenant: string | null = null;
-      let adminMinutes: number = 0;
       if (user) {
         const { data: userData } = await supabase
           .from('users')
-          .select('slug_name, tenant, minutes_limit')
+          .select('slug_name, tenant')
           .eq('id', user.id)
           .single();
-        
+
         // If user has slug_name, they're a whitelabel admin - use their slug as tenant
         // Otherwise, they're main tenant admin - use null
         tenant = userData?.slug_name || null;
-        adminMinutes = userData?.minutes_limit || 0;
       }
-      
-      // Validate minutes limit for white label admins
-      if (tenant) {
-        // If admin has unlimited minutes (0), allow any plan configuration
-        if (adminMinutes === 0) {
-          // Admin with unlimited can create any plan config, including unlimited
-          // No validation needed
-        } else if (adminMinutes > 0) {
-          // Get all plan configs for this tenant (excluding the one being edited)
-          const { data: existingPlans } = await supabase
-            .from('plan_configs')
-            .select('plan_key, minutes_limit')
-            .eq('tenant', tenant)
-            .neq('plan_key', editingPlanKey); // Exclude the plan being edited
-          
-          // Calculate current total minutes across all plans
-          const currentTotal = (existingPlans || []).reduce((sum, plan) => {
-            const planMinutes = plan.minutes_limit || 0;
-            // Only count limited plans (exclude unlimited/0)
-            return planMinutes > 0 ? sum + planMinutes : sum;
-          }, 0);
-          
-          // Get the new minutes for the plan being edited
-          // Check explicitly for 0 (unlimited), not just falsy values
-          const newPlanMinutes = editPlanData.minutesLimit !== undefined && editPlanData.minutesLimit !== null 
-            ? editPlanData.minutesLimit 
-            : 0;
-          
-          // Prevent setting plan to unlimited (0) unless admin also has unlimited
-          if (newPlanMinutes === 0 && adminMinutes > 0) {
-            toast.error(`Cannot set plan to unlimited minutes. You have a limited plan (${adminMinutes.toLocaleString()} minutes). Only admins with unlimited plans can create unlimited plan configurations.`);
-            setLoadingPlanConfigs(false);
-            return;
-          }
-          
-          // Calculate new total
-          const newTotal = currentTotal + newPlanMinutes;
-          
-          // Validate: new total cannot exceed admin's minutes
-          if (newTotal > adminMinutes) {
-            const available = adminMinutes - currentTotal;
-            toast.error(
-              `Cannot set plan minutes to ${newPlanMinutes}. ` +
-              `Available: ${available} minutes ` +
-              `(You have ${adminMinutes} total, ${currentTotal} already allocated across other plans). ` +
-              `The sum of all plan configuration minutes cannot exceed your plan minutes.`
-            );
-            setLoadingPlanConfigs(false);
-            return;
-          }
-        }
-      }
-      
+
       // Check if plan exists for this tenant
-      let existingPlanQuery = supabase
+      let existingPlanQuery = (supabase as any)
         .from('plan_configs')
-        .select('id, tenant, minutes_limit')
-        .eq('plan_key', editingPlanKey);
-      
+        .select('id, tenant')
+        .eq('plan_key', planKey);
+
       if (tenant) {
         // For whitelabel admin, check for their tenant-specific plan
         existingPlanQuery = existingPlanQuery.eq('tenant', tenant);
@@ -359,24 +405,25 @@ const AdminPanel = () => {
         // For main tenant admin, check for main tenant plan (tenant IS NULL)
         existingPlanQuery = existingPlanQuery.is('tenant', null);
       }
-      
+
       const { data: existingPlan } = await existingPlanQuery.maybeSingle();
-      
+
       const updateData: any = {
         name: editPlanData.name,
         price: editPlanData.price,
-        minutes_limit: editPlanData.minutesLimit,
         features: editPlanData.features || [],
-        tenant: tenant // Set tenant for whitelabel admins
+        whitelabel_enabled: editPlanData.whitelabelEnabled,
+        tenant: tenant
       };
-      
+
+
       if (existingPlan) {
         // Update existing plan
-        let updateQuery = supabase
+        let updateQuery = (supabase as any)
           .from('plan_configs')
           .update(updateData)
-          .eq('plan_key', editingPlanKey);
-        
+          .eq('plan_key', planKey);
+
         if (tenant) {
           // For whitelabel admin, update their tenant-specific plan
           updateQuery = updateQuery.eq('tenant', tenant);
@@ -384,31 +431,29 @@ const AdminPanel = () => {
           // For main tenant admin, update main tenant plan (tenant IS NULL)
           updateQuery = updateQuery.is('tenant', null);
         }
-        
+
         const { error } = await updateQuery;
         if (error) throw error;
       } else {
-        // Create new tenant-specific plan (for whitelabel admins)
-        // Main tenant plans should already exist, but create if missing
-        const { error } = await supabase
+        // Create new plan
+        const { error } = await (supabase as any)
           .from('plan_configs')
           .insert({
-            plan_key: editingPlanKey,
+            plan_key: planKey,
             ...updateData
           });
-        
+
         if (error) throw error;
       }
 
       // Invalidate cache and refetch
       invalidatePlanConfigsCache();
       await fetchPlanConfigs();
-      
-      toast.success(tenant 
-        ? 'Your tenant plan updated successfully!' 
-        : 'Plan updated successfully!');
+
+      toast.success(existingPlan
+        ? (tenant ? 'Your tenant plan updated successfully!' : 'Plan updated successfully!')
+        : (tenant ? 'Your tenant plan created successfully!' : 'Plan created successfully!'));
       setIsEditPlanOpen(false);
-      setEditingPlanKey(null);
     } catch (error: any) {
       console.error('Error saving plan:', error);
       toast.error(error?.message || 'Failed to save plan configuration');
@@ -417,8 +462,90 @@ const AdminPanel = () => {
     }
   };
 
+  // Delete plan configuration
+  const handleDeletePlan = async () => {
+    if (!deletingPlanKey) return;
+
+    try {
+      setLoadingPlanConfigs(true);
+
+      // Get current user's tenant
+      let tenant: string | null = null;
+      if (user) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('slug_name, tenant')
+          .eq('id', user.id)
+          .single();
+
+        tenant = userData?.slug_name || null;
+      }
+
+      // Check if plan exists for this tenant
+      let existingPlanQuery = supabase
+        .from('plan_configs')
+        .select('id')
+        .eq('plan_key', deletingPlanKey);
+
+      if (tenant) {
+        existingPlanQuery = existingPlanQuery.eq('tenant', tenant);
+      } else {
+        existingPlanQuery = existingPlanQuery.is('tenant', null);
+      }
+
+      const { data: existingPlan, error: fetchError } = await existingPlanQuery.maybeSingle();
+      if (fetchError) throw fetchError;
+
+      if (existingPlan) {
+        // Update existing plan to be inactive
+        const { error } = await supabase
+          .from('plan_configs')
+          .update({ is_active: false })
+          .eq('id', existingPlan.id);
+
+        if (error) throw error;
+      } else {
+        // Create new inactive plan (to hide default)
+        // We need to get default values to populate required fields, but is_active=false is key
+        const defaultPlan = PLAN_CONFIGS[deletingPlanKey] || {
+          name: deletingPlanKey,
+          price: 0,
+          features: []
+        };
+
+        const { error } = await supabase
+          .from('plan_configs')
+          .insert({
+            plan_key: deletingPlanKey,
+            tenant: tenant,
+            name: defaultPlan.name,
+            price: defaultPlan.price,
+            features: defaultPlan.features,
+            is_active: false
+          });
+
+        if (error) throw error;
+      }
+
+      // Invalidate cache and refetch
+      invalidatePlanConfigsCache();
+      await fetchPlanConfigs();
+
+      toast.success(tenant
+        ? 'Your tenant plan deleted successfully!'
+        : 'Plan deleted successfully!');
+      setIsDeletePlanOpen(false);
+      setDeletingPlanKey(null);
+    } catch (error: any) {
+      console.error('Error deleting plan:', error);
+      toast.error(error?.message || 'Failed to delete plan configuration');
+    } finally {
+      setLoadingPlanConfigs(false);
+    }
+  };
+
   useEffect(() => {
-    const filtered = users.filter(user => 
+    const filtered = users.filter(user =>
       user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.contact?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.company?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -429,7 +556,7 @@ const AdminPanel = () => {
   const filteredPlanUsers = useMemo(() => {
     if (!planSearchTerm) return users;
     const term = planSearchTerm.toLowerCase();
-    return users.filter(user => 
+    return users.filter(user =>
       user.name?.toLowerCase().includes(term) ||
       user.contact?.email?.toLowerCase().includes(term) ||
       user.plan?.toLowerCase().includes(term)
@@ -460,7 +587,26 @@ const AdminPanel = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      
+
+      // Get current user's tenant/slug_name to filter if whitelabel admin
+      let currentUserTenant: string | null = null;
+      let isMainAdmin = false;
+      if (user?.id) {
+        const { data: currentUserData } = await supabase
+          .from('users')
+          .select('slug_name, tenant, role')
+          .eq('id', user.id)
+          .single();
+        
+        // Check if current user is a whitelabel admin (admin with slug_name)
+        if (currentUserData?.role === 'admin' && currentUserData?.slug_name) {
+          currentUserTenant = currentUserData.slug_name;
+        } else if (currentUserData?.role === 'admin' && !currentUserData?.slug_name) {
+          // Main admin (admin without slug_name)
+          isMainAdmin = true;
+        }
+      }
+
       // Alternative implementation: Single API call to backend
       // Backend fetches from auth.users first, then enriches with users table data
       const { data: { session } } = await supabase.auth.getSession();
@@ -469,7 +615,7 @@ const AdminPanel = () => {
       }
 
       const backendUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      
+
       const response = await fetch(`${backendUrl}/api/v1/admin/users`, {
         method: 'GET',
         headers: {
@@ -484,17 +630,37 @@ const AdminPanel = () => {
       }
 
       const result = await response.json();
-      
+
       if (result.success && result.data) {
         // Data is already complete with emails merged from auth.users
         // Backend has already:
         // 1. Fetched from auth.users (has emails)
         // 2. Fetched from users table (has profile data)
         // 3. Merged them together
-        setUsers(result.data);
         
-        // Fetch stats for all users
-        await fetchAllUserStats(result.data);
+        let filteredUsers = result.data;
+        
+        // If current user is a whitelabel admin, filter to only show users from their tenant
+        if (currentUserTenant) {
+          filteredUsers = result.data.filter((u: User) => {
+            // Include users that belong to the same tenant
+            return u.tenant === currentUserTenant || u.slug_name === currentUserTenant;
+          });
+        } else if (isMainAdmin) {
+          // Main admin: show main tenant users + whitelabel admins (but not whitelabel customers)
+          filteredUsers = result.data.filter((u: User) => {
+            // Include users from main tenant (tenant is 'main' or null, and no slug_name)
+            const isMainTenantUser = (u.tenant === 'main' || !u.tenant) && !u.slug_name;
+            // Include whitelabel admins (admin role with slug_name)
+            const isWhitelabelAdmin = u.role === 'admin' && u.slug_name;
+            return isMainTenantUser || isWhitelabelAdmin;
+          });
+        }
+        
+        setUsers(filteredUsers);
+
+        // Fetch stats for all filtered users
+        await fetchAllUserStats(filteredUsers);
       } else {
         throw new Error(result.error || 'Failed to fetch users');
       }
@@ -582,7 +748,7 @@ const AdminPanel = () => {
       results.forEach(({ userId, stats }) => {
         statsMap[userId] = stats;
       });
-      
+
       setAllUserStats(statsMap);
     } catch (error) {
       console.error('Error fetching all user stats:', error);
@@ -593,7 +759,7 @@ const AdminPanel = () => {
     try {
       setLoadingStats(true);
       console.log('🔍 Fetching stats for user:', userId);
-      
+
       // Fetch assistants count
       const { data: assistantsData, error: assistantsError } = await supabase
         .from('assistant')
@@ -618,12 +784,12 @@ const AdminPanel = () => {
           .from('call_history')
           .select('call_duration')
           .in('assistant_id', assistantIds);
-        
+
         callsData = callsResult.data || [];
         callsError = callsResult.error;
-        
+
         console.log('📞 Calls data:', callsData, 'Error:', callsError);
-        
+
         if (callsError) {
           console.error('Error fetching calls:', callsError);
         }
@@ -954,7 +1120,7 @@ const AdminPanel = () => {
       }
 
       const backendUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      
+
       const deleteResponse = await fetch(`${backendUrl}/api/v1/admin/users/${userId}`, {
         method: 'DELETE',
         headers: {
@@ -979,7 +1145,7 @@ const AdminPanel = () => {
         .map(([item, count]) => `${count} ${item}`)
         .join(', ');
 
-      const successMessage = deletedItems 
+      const successMessage = deletedItems
         ? `User deleted successfully along with: ${deletedItems}`
         : 'User deleted successfully';
 
@@ -989,7 +1155,7 @@ const AdminPanel = () => {
       fetchUsers();
     } catch (error: any) {
       console.error('Error deleting user:', error);
-      
+
       // Provide more specific error messages
       if (error.code === '23503') {
         toast.error('Cannot delete user: User still has associated data. Please contact support.');
@@ -1154,130 +1320,130 @@ const AdminPanel = () => {
                     </div>
                   </CardHeader>
                   <CardContent>
-                {loading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Role</TableHead>
-                        <TableHead>White Label</TableHead>
-                        <TableHead>Plan</TableHead>
-                        <TableHead>Assistants</TableHead>
-                        <TableHead>Calls</TableHead>
-                        <TableHead>Total Minutes</TableHead>
-                        <TableHead>Used Minutes</TableHead>
-                        <TableHead>Remaining Minutes</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredUsers.map((user) => (
-                        <TableRow key={user.id}>
-                          <TableCell className="font-medium">{user.name || 'N/A'}</TableCell>
-                          <TableCell>{user.contact?.email || 'N/A'}</TableCell>
-                          <TableCell>
-                          <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
-                            {user.role || 'user'}
-                          </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={user.is_whitelabel ? 'default' : 'outline'}>
-                              {user.is_whitelabel ? 'Yes' : 'No'}
-                            </Badge>
-                            {user.is_whitelabel && user.slug_name && (
-                              <span className="ml-2 text-xs text-muted-foreground">
-                                ({user.slug_name})
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">
-                              {allUserStats[user.id]?.plan || user.plan || 'Free'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="font-medium text-blue-400">
-                              {allUserStats[user.id]?.totalAssistants || 0}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="font-medium text-green-400">
-                              {allUserStats[user.id]?.totalCalls || 0}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="font-medium text-blue-400">
-                              {formatMinutes(user.minutes_limit, user.plan)}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="font-medium text-orange-400">
-                              {user.minutes_used?.toLocaleString() || 0} min
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="font-medium text-emerald-400">
-                              {getRemainingMinutes(user)}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={user.is_active ? 'default' : 'destructive'}>
-                              {user.is_active ? 'Active' : 'Inactive'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" className="h-8 w-8 p-0">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => openViewDialog(user)}>
-                                  <Eye className="mr-2 h-4 w-4" />
-                                  View
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => openEditDialog(user)}>
-                                  <Edit className="mr-2 h-4 w-4" />
-                                  Edit
-                                </DropdownMenuItem>
-                                <SupportAccessDialog
-                                  userId={user.id}
-                                  userName={user.name || 'Unknown User'}
-                                  userEmail={user.contact?.email || 'No email'}
-                                  onSupportAccess={handleSupportAccess}
-                                >
-                                  <DropdownMenuItem 
-                                    disabled={user.role === 'admin'}
-                                    onSelect={(e) => e.preventDefault()}
-                                  >
-                                    <Shield className="mr-2 h-4 w-4" />
-                                    Support Access
-                                  </DropdownMenuItem>
-                                </SupportAccessDialog>
-                                <DropdownMenuItem 
-                                  onClick={() => openDeleteDialog(user)}
-                                  className="text-red-600"
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </ThemeCard>
+                    {loading ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Name</TableHead>
+                            <TableHead>Email</TableHead>
+                            <TableHead>Role</TableHead>
+                            <TableHead>White Label</TableHead>
+                            <TableHead>Plan</TableHead>
+                            <TableHead>Assistants</TableHead>
+                            <TableHead>Calls</TableHead>
+                            <TableHead>Total Minutes</TableHead>
+                            <TableHead>Used Minutes</TableHead>
+                            <TableHead>Remaining Minutes</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredUsers.map((user) => (
+                            <TableRow key={user.id}>
+                              <TableCell className="font-medium">{user.name || 'N/A'}</TableCell>
+                              <TableCell>{user.contact?.email || 'N/A'}</TableCell>
+                              <TableCell>
+                                <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
+                                  {user.role || 'user'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={user.slug_name ? 'default' : 'outline'}>
+                                  {user.slug_name ? 'Yes' : 'No'}
+                                </Badge>
+                                {user.slug_name && (
+                                  <span className="ml-2 text-xs text-muted-foreground">
+                                    ({user.slug_name})
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">
+                                  {allUserStats[user.id]?.plan || user.plan || 'Free'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <span className="font-medium text-blue-400">
+                                  {allUserStats[user.id]?.totalAssistants || 0}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <span className="font-medium text-green-400">
+                                  {allUserStats[user.id]?.totalCalls || 0}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <span className="font-medium text-blue-400">
+                                  {formatMinutes(user.minutes_limit, user.plan)}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <span className="font-medium text-orange-400">
+                                  {user.minutes_used?.toLocaleString() || 0} min
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <span className="font-medium text-emerald-400">
+                                  {getRemainingMinutes(user)}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={user.is_active ? 'default' : 'destructive'}>
+                                  {user.is_active ? 'Active' : 'Inactive'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" className="h-8 w-8 p-0">
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => openViewDialog(user)}>
+                                      <Eye className="mr-2 h-4 w-4" />
+                                      View
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => openEditDialog(user)}>
+                                      <Edit className="mr-2 h-4 w-4" />
+                                      Edit
+                                    </DropdownMenuItem>
+                                    <SupportAccessDialog
+                                      userId={user.id}
+                                      userName={user.name || 'Unknown User'}
+                                      userEmail={user.contact?.email || 'No email'}
+                                      onSupportAccess={handleSupportAccess}
+                                    >
+                                      <DropdownMenuItem
+                                        disabled={user.role === 'admin'}
+                                        onSelect={(e) => e.preventDefault()}
+                                      >
+                                        <Shield className="mr-2 h-4 w-4" />
+                                        Support Access
+                                      </DropdownMenuItem>
+                                    </SupportAccessDialog>
+                                    <DropdownMenuItem
+                                      onClick={() => openDeleteDialog(user)}
+                                      className="text-red-600"
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </ThemeCard>
               </TabsContent>
 
               <TabsContent value="plans" className="mt-0 space-y-6">
@@ -1287,11 +1453,16 @@ const AdminPanel = () => {
                     <div className="flex items-center justify-between">
                       <div>
                         <CardTitle>Plan Configuration</CardTitle>
-                        <CardDescription>Manage plan prices, minutes, and features</CardDescription>
+                        <CardDescription>Manage plan prices and features (minutes sold separately)</CardDescription>
                       </div>
-                      <Button onClick={fetchPlanConfigs} variant="outline" size="sm">
-                        Refresh
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button onClick={() => openEditPlanDialog(null)} variant="default" size="sm">
+                          Add Plan
+                        </Button>
+                        <Button onClick={fetchPlanConfigs} variant="outline" size="sm">
+                          Refresh
+                        </Button>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -1311,26 +1482,81 @@ const AdminPanel = () => {
                                 <p className="text-xl font-semibold">${plan.price}/month</p>
                               </div>
                               <div>
-                                <Label className="text-sm text-muted-foreground">Minutes Limit</Label>
-                                <p className="text-lg">
-                                  {plan.minutesLimit === 0 ? 'Unlimited' : `${plan.minutesLimit.toLocaleString()} min`}
-                                </p>
-                              </div>
-                              <div>
                                 <Label className="text-sm text-muted-foreground">Features</Label>
                                 <p className="text-sm text-muted-foreground">{plan.features.length} features</p>
                               </div>
-                              <Button 
-                                onClick={() => openEditPlanDialog(plan.key)} 
-                                variant="outline" 
-                                className="w-full"
-                              >
-                                <Edit className="mr-2 h-4 w-4" />
-                                Edit Plan
-                              </Button>
+                              <div className="flex gap-2">
+                                <Button
+                                  onClick={() => openEditPlanDialog(plan.key)}
+                                  variant="outline"
+                                  className="flex-1"
+                                >
+                                  <Edit className="mr-2 h-4 w-4" />
+                                  Edit
+                                </Button>
+                                <Button
+                                  onClick={() => {
+                                    setDeletingPlanKey(plan.key);
+                                    setIsDeletePlanOpen(true);
+                                  }}
+                                  variant="destructive"
+                                  size="icon"
+                                  className="shrink-0"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </CardContent>
                           </Card>
                         ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </ThemeCard>
+
+                {/* Minute Pricing Configuration */}
+                <ThemeCard>
+                  <CardHeader>
+                    <CardTitle>Minute Pricing</CardTitle>
+                    <CardDescription>Set the price per minute for pay-as-you-go purchases</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {loadingMinutePricing ? (
+                      <div className="text-center py-4">Loading pricing...</div>
+                    ) : (
+                      <div className="grid gap-6 md:grid-cols-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="price-per-minute">Price per Minute (USD)</Label>
+                          <Input
+                            id="price-per-minute"
+                            type="number"
+                            step="0.0001"
+                            min="0"
+                            value={minutePricing?.price_per_minute ?? 0.01}
+                            onChange={(e) => setMinutePricing(prev => prev ? ({ ...prev, price_per_minute: e.target.value }) : null)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="min-purchase">Minimum Purchase (Minutes)</Label>
+                          <Input
+                            id="min-purchase"
+                            type="number"
+                            step="1"
+                            min="0"
+                            value={minutePricing?.minimum_purchase ?? 0}
+                            onChange={(e) => setMinutePricing(prev => prev ? ({ ...prev, minimum_purchase: e.target.value }) : null)}
+                          />
+                          <p className="text-xs text-muted-foreground">0 means no minimum</p>
+                        </div>
+                        <div className="flex items-end">
+                          <Button
+                            onClick={handleSaveMinutePricing}
+                            disabled={savingMinutePricing}
+                            className="w-full"
+                          >
+                            {savingMinutePricing ? 'Saving...' : 'Save Pricing'}
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </CardContent>
@@ -1406,455 +1632,462 @@ const AdminPanel = () => {
               </TabsContent>
             </Tabs>
 
-        {/* Edit User Dialog */}
-        <Dialog open={isEditUserOpen} onOpenChange={setIsEditUserOpen}>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Edit User</DialogTitle>
-              <DialogDescription>
-                Update user information and permissions.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-name" className="text-right">Name</Label>
-                <Input
-                  id="edit-name"
-                  value={editUserData.name || ''}
-                  onChange={(e) => setEditUserData({...editUserData, name: e.target.value})}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-role" className="text-right">Role</Label>
-                <Select value={editUserData.role || ''} onValueChange={(value) => setEditUserData({...editUserData, role: value})}>
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="user">User</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-company" className="text-right">Company</Label>
-                <Input
-                  id="edit-company"
-                  value={editUserData.company || ''}
-                  onChange={(e) => setEditUserData({...editUserData, company: e.target.value})}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-industry" className="text-right">Industry</Label>
-                <Input
-                  id="edit-industry"
-                  value={editUserData.industry || ''}
-                  onChange={(e) => setEditUserData({...editUserData, industry: e.target.value})}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-status" className="text-right">Status</Label>
-                <Select value={editUserData.is_active ? 'active' : 'inactive'} onValueChange={(value) => setEditUserData({...editUserData, is_active: value === 'active'})}>
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsEditUserOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleEditUser}>
-                Save Changes
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            {/* Edit User Dialog */}
+            <Dialog open={isEditUserOpen} onOpenChange={setIsEditUserOpen}>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Edit User</DialogTitle>
+                  <DialogDescription>
+                    Update user information and permissions.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="edit-name" className="text-right">Name</Label>
+                    <Input
+                      id="edit-name"
+                      value={editUserData.name || ''}
+                      onChange={(e) => setEditUserData({ ...editUserData, name: e.target.value })}
+                      className="col-span-3"
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="edit-role" className="text-right">Role</Label>
+                    <Select value={editUserData.role || ''} onValueChange={(value) => setEditUserData({ ...editUserData, role: value })}>
+                      <SelectTrigger className="col-span-3">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="user">User</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="edit-company" className="text-right">Company</Label>
+                    <Input
+                      id="edit-company"
+                      value={editUserData.company || ''}
+                      onChange={(e) => setEditUserData({ ...editUserData, company: e.target.value })}
+                      className="col-span-3"
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="edit-industry" className="text-right">Industry</Label>
+                    <Input
+                      id="edit-industry"
+                      value={editUserData.industry || ''}
+                      onChange={(e) => setEditUserData({ ...editUserData, industry: e.target.value })}
+                      className="col-span-3"
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="edit-status" className="text-right">Status</Label>
+                    <Select value={editUserData.is_active ? 'active' : 'inactive'} onValueChange={(value) => setEditUserData({ ...editUserData, is_active: value === 'active' })}>
+                      <SelectTrigger className="col-span-3">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="inactive">Inactive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsEditUserOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleEditUser}>
+                    Save Changes
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
-        {/* View User Dialog */}
-        <Dialog open={isViewUserOpen} onOpenChange={(open) => {
-          setIsViewUserOpen(open);
-          if (open && selectedUser) {
-            fetchUserStats(selectedUser.id);
-          }
-        }}>
-          <DialogContent className="sm:max-w-[700px]">
-            <DialogHeader>
-              <DialogTitle>User Details</DialogTitle>
-              <DialogDescription>
-                Complete information about the selected user.
-              </DialogDescription>
-            </DialogHeader>
-            {selectedUser && (
-              <div className="grid gap-6 py-4">
-                {/* Basic Information */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-white">Basic Information</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-sm font-medium">Name</Label>
-                      <p className="text-sm text-white">{selectedUser.name || 'N/A'}</p>
+            {/* View User Dialog */}
+            <Dialog open={isViewUserOpen} onOpenChange={(open) => {
+              setIsViewUserOpen(open);
+              if (open && selectedUser) {
+                fetchUserStats(selectedUser.id);
+              }
+            }}>
+              <DialogContent className="sm:max-w-[700px]">
+                <DialogHeader>
+                  <DialogTitle>User Details</DialogTitle>
+                  <DialogDescription>
+                    Complete information about the selected user.
+                  </DialogDescription>
+                </DialogHeader>
+                {selectedUser && (
+                  <div className="grid gap-6 py-4">
+                    {/* Basic Information */}
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-semibold text-white">Basic Information</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-sm font-medium">Name</Label>
+                          <p className="text-sm text-white">{selectedUser.name || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <Label className="text-sm font-medium">Email</Label>
+                          <p className="text-sm text-white">{selectedUser.contact?.email || 'N/A'}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-sm font-medium">Phone</Label>
+                          <p className="text-sm text-white">{selectedUser.contact?.phone || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <Label className="text-sm font-medium">Role</Label>
+                          <Badge variant={selectedUser.role === 'admin' ? 'default' : 'secondary'}>
+                            {selectedUser.role || 'user'}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-sm font-medium">Company</Label>
+                          <p className="text-sm text-white">{selectedUser.company || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <Label className="text-sm font-medium">Industry</Label>
+                          <p className="text-sm text-white">{selectedUser.industry || 'N/A'}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-sm font-medium">Status</Label>
+                          <Badge variant={selectedUser.is_active ? 'default' : 'destructive'}>
+                            {selectedUser.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </div>
+                        <div>
+                          <Label className="text-sm font-medium">Created</Label>
+                          <p className="text-sm text-white">
+                            {selectedUser.created_on ? new Date(selectedUser.created_on).toLocaleString() : 'N/A'}
+                          </p>
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium">Last Updated</Label>
+                        <p className="text-sm text-white">
+                          {selectedUser.updated_at ? new Date(selectedUser.updated_at).toLocaleString() : 'N/A'}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <Label className="text-sm font-medium">Email</Label>
-                      <p className="text-sm text-white">{selectedUser.contact?.email || 'N/A'}</p>
+
+                    {/* User Statistics */}
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-semibold text-white">Usage Statistics</h3>
+                      {loadingStats ? (
+                        <div className="flex items-center justify-center py-8">
+                          <div className="text-sm text-gray-400">Loading statistics...</div>
+                        </div>
+                      ) : userStats ? (
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-gray-800/50 p-4 rounded-lg">
+                            <Label className="text-sm font-medium text-blue-300">Total Assistants</Label>
+                            <p className="text-2xl font-bold text-white">{userStats.totalAssistants}</p>
+                          </div>
+                          <div className="bg-gray-800/50 p-4 rounded-lg">
+                            <Label className="text-sm font-medium text-green-300">Total Calls</Label>
+                            <p className="text-2xl font-bold text-white">{userStats.totalCalls}</p>
+                          </div>
+                          <div className="bg-gray-800/50 p-4 rounded-lg">
+                            <Label className="text-sm font-medium text-yellow-300">Total Hours</Label>
+                            <p className="text-2xl font-bold text-white">{userStats.totalHours}</p>
+                          </div>
+                          <div className="bg-gray-800/50 p-4 rounded-lg">
+                            <Label className="text-sm font-medium text-purple-300">Total Messages</Label>
+                            <p className="text-2xl font-bold text-white">{userStats.totalMessages}</p>
+                          </div>
+                          <div className="bg-gray-800/50 p-4 rounded-lg col-span-2">
+                            <Label className="text-sm font-medium text-orange-300">Current Plan</Label>
+                            <Badge variant="outline" className="text-lg px-3 py-1">
+                              {userStats.plan || 'Free'}
+                            </Badge>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="text-sm text-red-400">Failed to load statistics</div>
+                          <div className="text-xs text-gray-500">
+                            Debug info: loadingStats={loadingStats.toString()}, userStats={userStats ? 'exists' : 'null'}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => selectedUser && fetchUserStats(selectedUser.id)}
+                            className="text-xs"
+                          >
+                            Retry Loading Stats
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-sm font-medium">Phone</Label>
-                      <p className="text-sm text-white">{selectedUser.contact?.phone || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <Label className="text-sm font-medium">Role</Label>
-                      <Badge variant={selectedUser.role === 'admin' ? 'default' : 'secondary'}>
-                        {selectedUser.role || 'user'}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-sm font-medium">Company</Label>
-                      <p className="text-sm text-white">{selectedUser.company || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <Label className="text-sm font-medium">Industry</Label>
-                      <p className="text-sm text-white">{selectedUser.industry || 'N/A'}</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-sm font-medium">Status</Label>
-                      <Badge variant={selectedUser.is_active ? 'default' : 'destructive'}>
-                        {selectedUser.is_active ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </div>
-                    <div>
-                      <Label className="text-sm font-medium">Created</Label>
-                      <p className="text-sm text-white">
-                        {selectedUser.created_on ? new Date(selectedUser.created_on).toLocaleString() : 'N/A'}
+                )}
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsViewUserOpen(false)}>
+                    Close
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* Delete User Dialog */}
+            <Dialog open={isDeleteUserOpen} onOpenChange={setIsDeleteUserOpen}>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Delete User</DialogTitle>
+                  <DialogDescription>
+                    Are you sure you want to delete this user? This action cannot be undone.
+                  </DialogDescription>
+                </DialogHeader>
+                {selectedUser && (
+                  <div className="py-4">
+                    <p className="text-sm text-white">
+                      You are about to delete <strong>{selectedUser.name}</strong> ({selectedUser.contact?.email}).
+                      This will permanently remove their account and all associated data.
+                    </p>
+                    <div className="mt-3 p-3 bg-red-900/20 border border-red-500/30 rounded-md">
+                      <p className="text-sm text-red-200 font-medium">⚠️ Warning:</p>
+                      <p className="text-sm text-red-200 mt-1">
+                        This action will permanently delete ALL user data including:
+                      </p>
+                      <ul className="text-sm text-red-200 mt-2 ml-4 list-disc">
+                        <li>Assistants and their configurations</li>
+                        <li>Campaigns and call history</li>
+                        <li>Contacts and contact lists</li>
+                        <li>CSV files and uploaded data</li>
+                        <li>SMS messages and history</li>
+                        <li>Knowledge bases and documents</li>
+                        <li>Calendar and WhatsApp integrations</li>
+                        <li>Twilio credentials and settings</li>
+                        <li>Workspace preferences</li>
+                      </ul>
+                      <p className="text-sm text-red-200 mt-2 font-medium">
+                        This action cannot be undone!
                       </p>
                     </div>
                   </div>
-                  <div>
-                    <Label className="text-sm font-medium">Last Updated</Label>
-                    <p className="text-sm text-white">
-                      {selectedUser.updated_at ? new Date(selectedUser.updated_at).toLocaleString() : 'N/A'}
-                    </p>
-                  </div>
-                </div>
+                )}
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsDeleteUserOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button variant="destructive" onClick={handleDeleteUser}>
+                    Delete User
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
-                {/* User Statistics */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-white">Usage Statistics</h3>
-                  {loadingStats ? (
-                    <div className="flex items-center justify-center py-8">
-                      <div className="text-sm text-gray-400">Loading statistics...</div>
+            {/* Plan & Minutes Dialog */}
+            <Dialog
+              open={planDialogOpen}
+              onOpenChange={(open) => {
+                setPlanDialogOpen(open);
+                if (!open) {
+                  setPlanDialogUser(null);
+                }
+              }}
+            >
+              <DialogContent className="sm:max-w-[480px]">
+                <DialogHeader>
+                  <DialogTitle>Assign Plan</DialogTitle>
+                  <DialogDescription>
+                    Update the subscription plan for this user. Minutes are now purchased separately.
+                  </DialogDescription>
+                </DialogHeader>
+                {planDialogUser && (
+                  <div className="space-y-4">
+                    <div className="grid gap-2 rounded-lg border border-border/40 bg-muted/10 p-4">
+                      <div className="text-sm text-muted-foreground">User</div>
+                      <div className="text-lg font-medium text-foreground">{planDialogUser.name || planDialogUser.contact?.email || 'N/A'}</div>
+                      <div className="text-xs text-muted-foreground">{planDialogUser.contact?.email || 'No email on file'}</div>
                     </div>
-                  ) : userStats ? (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-gray-800/50 p-4 rounded-lg">
-                        <Label className="text-sm font-medium text-blue-300">Total Assistants</Label>
-                        <p className="text-2xl font-bold text-white">{userStats.totalAssistants}</p>
-                      </div>
-                      <div className="bg-gray-800/50 p-4 rounded-lg">
-                        <Label className="text-sm font-medium text-green-300">Total Calls</Label>
-                        <p className="text-2xl font-bold text-white">{userStats.totalCalls}</p>
-                      </div>
-                      <div className="bg-gray-800/50 p-4 rounded-lg">
-                        <Label className="text-sm font-medium text-yellow-300">Total Hours</Label>
-                        <p className="text-2xl font-bold text-white">{userStats.totalHours}</p>
-                      </div>
-                      <div className="bg-gray-800/50 p-4 rounded-lg">
-                        <Label className="text-sm font-medium text-purple-300">Total Messages</Label>
-                        <p className="text-2xl font-bold text-white">{userStats.totalMessages}</p>
-                      </div>
-                      <div className="bg-gray-800/50 p-4 rounded-lg col-span-2">
-                        <Label className="text-sm font-medium text-orange-300">Current Plan</Label>
-                        <Badge variant="outline" className="text-lg px-3 py-1">
-                          {userStats.plan || 'Free'}
-                        </Badge>
-                      </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Plan</Label>
+                      <Select
+                        value={planDialogPlan}
+                        onValueChange={setPlanDialogPlan}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select plan" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.values(planConfigs).length > 0 ? (
+                            Object.values(planConfigs).map((plan) => (
+                              <SelectItem key={plan.key} value={plan.key}>
+                                {plan.name} (${plan.price}/month)
+                              </SelectItem>
+                            ))
+                          ) : (
+                            Object.values(PLAN_CONFIGS).map((plan) => (
+                              <SelectItem key={plan.key} value={plan.key}>
+                                {plan.name} (${plan.price}/month)
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Minutes are purchased separately via the Billing page.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                  <Button variant="outline" onClick={() => setPlanDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handlePlanSave} disabled={planDialogLoading}>
+                    {planDialogLoading ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* Edit Plan Configuration Dialog */}
+            <Dialog open={isEditPlanOpen} onOpenChange={setIsEditPlanOpen}>
+              <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>{editingPlanKey ? 'Edit' : 'Add'} Plan Configuration</DialogTitle>
+                  <DialogDescription>
+                    {user?.slug_name
+                      ? `Update plan price and features for your whitelabel tenant. Minutes are sold separately. Changes will apply to all new subscriptions on your tenant.`
+                      : `Update plan price and features. Minutes are sold separately. Changes will apply to all new subscriptions.`}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  {editingPlanKey ? (
+                    <div className="grid gap-2 rounded-lg border border-border/40 bg-muted/10 p-4">
+                      <div className="text-sm text-muted-foreground">Plan Key</div>
+                      <div className="text-lg font-medium text-foreground">{editingPlanKey}</div>
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <div className="text-sm text-red-400">Failed to load statistics</div>
-                      <div className="text-xs text-gray-500">
-                        Debug info: loadingStats={loadingStats.toString()}, userStats={userStats ? 'exists' : 'null'}
-                      </div>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => selectedUser && fetchUserStats(selectedUser.id)}
-                        className="text-xs"
-                      >
-                        Retry Loading Stats
-                      </Button>
+                      <Label htmlFor="new-plan-key">Plan Key *</Label>
+                      <Input
+                        id="new-plan-key"
+                        value={editPlanData.key || ''}
+                        onChange={(e) => setEditPlanData({ ...editPlanData, key: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '') })}
+                        placeholder="e.g., starter, professional, enterprise"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Unique identifier for this plan (lowercase, alphanumeric, hyphens, and underscores only)
+                      </p>
                     </div>
                   )}
-                </div>
-              </div>
-            )}
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsViewUserOpen(false)}>
-                Close
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
 
-        {/* Delete User Dialog */}
-        <Dialog open={isDeleteUserOpen} onOpenChange={setIsDeleteUserOpen}>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Delete User</DialogTitle>
-              <DialogDescription>
-                Are you sure you want to delete this user? This action cannot be undone.
-              </DialogDescription>
-            </DialogHeader>
-            {selectedUser && (
-              <div className="py-4">
-                <p className="text-sm text-white">
-                  You are about to delete <strong>{selectedUser.name}</strong> ({selectedUser.contact?.email}).
-                  This will permanently remove their account and all associated data.
-                </p>
-                <div className="mt-3 p-3 bg-red-900/20 border border-red-500/30 rounded-md">
-                  <p className="text-sm text-red-200 font-medium">⚠️ Warning:</p>
-                  <p className="text-sm text-red-200 mt-1">
-                    This action will permanently delete ALL user data including:
-                  </p>
-                  <ul className="text-sm text-red-200 mt-2 ml-4 list-disc">
-                    <li>Assistants and their configurations</li>
-                    <li>Campaigns and call history</li>
-                    <li>Contacts and contact lists</li>
-                    <li>CSV files and uploaded data</li>
-                    <li>SMS messages and history</li>
-                    <li>Knowledge bases and documents</li>
-                    <li>Calendar and WhatsApp integrations</li>
-                    <li>Twilio credentials and settings</li>
-                    <li>Workspace preferences</li>
-                  </ul>
-                  <p className="text-sm text-red-200 mt-2 font-medium">
-                    This action cannot be undone!
-                  </p>
-                </div>
-              </div>
-            )}
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsDeleteUserOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="destructive" onClick={handleDeleteUser}>
-                Delete User
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Plan & Minutes Dialog */}
-        <Dialog
-          open={planDialogOpen}
-          onOpenChange={(open) => {
-            setPlanDialogOpen(open);
-            if (!open) {
-              setPlanDialogUser(null);
-            }
-          }}
-        >
-          <DialogContent className="sm:max-w-[480px]">
-            <DialogHeader>
-              <DialogTitle>Assign Plan & Minutes</DialogTitle>
-              <DialogDescription>
-                Update the subscription plan and minutes allocation for this user.
-              </DialogDescription>
-            </DialogHeader>
-            {planDialogUser && (
-              <div className="space-y-4">
-                <div className="grid gap-2 rounded-lg border border-border/40 bg-muted/10 p-4">
-                  <div className="text-sm text-muted-foreground">User</div>
-                  <div className="text-lg font-medium text-foreground">{planDialogUser.name || planDialogUser.contact?.email || 'N/A'}</div>
-                  <div className="text-xs text-muted-foreground">{planDialogUser.contact?.email || 'No email on file'}</div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Plan</Label>
-                  <Select
-                    value={planDialogPlan}
-                    onValueChange={handlePlanDialogPlanChange}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select plan" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.values(planConfigs).length > 0 ? (
-                        Object.values(planConfigs).map((plan) => (
-                          <SelectItem key={plan.key} value={plan.key}>
-                            {plan.name} ({plan.minutesLimit === 0 ? 'Unlimited' : `${plan.minutesLimit.toLocaleString()} min`})
-                          </SelectItem>
-                        ))
-                      ) : (
-                        Object.values(PLAN_CONFIGS).map((plan) => (
-                          <SelectItem key={plan.key} value={plan.key}>
-                            {plan.name} ({plan.minutesLimit === 0 ? 'Unlimited' : `${plan.minutesLimit.toLocaleString()} min`})
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Minutes Limit</Label>
+                    <Label htmlFor="edit-plan-name">Plan Name *</Label>
                     <Input
-                      type="number"
-                      min={0}
-                      value={planDialogMinutesLimit ?? ''}
-                      onChange={(e) => setPlanDialogMinutesLimit(Math.max(0, Number(e.target.value)))}
+                      id="edit-plan-name"
+                      value={editPlanData.name || ''}
+                      onChange={(e) => setEditPlanData({ ...editPlanData, name: e.target.value })}
+                      placeholder="e.g., Starter, Professional"
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Set to 0 for unlimited minutes.
-                    </p>
                   </div>
+
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Minutes Used</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={planDialogMinutesUsed ?? 0}
-                      onChange={(e) => setPlanDialogMinutesUsed(Math.max(0, Number(e.target.value)))}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Set starting usage (defaults to 0 when changing plans).
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-            <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <Button variant="outline" onClick={() => setPlanDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handlePlanSave} disabled={planDialogLoading}>
-                {planDialogLoading ? 'Saving...' : 'Save Changes'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Edit Plan Configuration Dialog */}
-        <Dialog open={isEditPlanOpen} onOpenChange={setIsEditPlanOpen}>
-          <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Edit Plan Configuration</DialogTitle>
-              <DialogDescription>
-                {user?.slug_name 
-                  ? `Update plan price, minutes limit, and features for your whitelabel tenant. Changes will apply to all new subscriptions on your tenant.`
-                  : `Update plan price, minutes limit, and features. Changes will apply to all new subscriptions.`}
-              </DialogDescription>
-            </DialogHeader>
-            {editingPlanKey && (
-              <div className="space-y-4">
-                <div className="grid gap-2 rounded-lg border border-border/40 bg-muted/10 p-4">
-                  <div className="text-sm text-muted-foreground">Plan Key</div>
-                  <div className="text-lg font-medium text-foreground">{editingPlanKey}</div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit-plan-name">Plan Name</Label>
-                  <Input
-                    id="edit-plan-name"
-                    value={editPlanData.name || ''}
-                    onChange={(e) => setEditPlanData({...editPlanData, name: e.target.value})}
-                    placeholder="e.g., Starter, Professional"
-                  />
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-plan-price">Price (USD/month)</Label>
+                    <Label htmlFor="edit-plan-price">Price (USD/month) *</Label>
                     <Input
                       id="edit-plan-price"
                       type="number"
                       min={0}
                       step="0.01"
                       value={editPlanData.price ?? ''}
-                      onChange={(e) => setEditPlanData({...editPlanData, price: Number(e.target.value)})}
+                      onChange={(e) => setEditPlanData({ ...editPlanData, price: Number(e.target.value) })}
                       placeholder="0.00"
                     />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-plan-minutes">Minutes Limit</Label>
-                    <Input
-                      id="edit-plan-minutes"
-                      type="number"
-                      min={adminMinutesLimit !== null && adminMinutesLimit > 0 ? 1 : 0}
-                      value={editPlanData.minutesLimit ?? ''}
-                      onChange={(e) => {
-                        const value = Number(e.target.value);
-                        // Prevent setting to 0 (unlimited) if admin has limited minutes
-                        if (adminMinutesLimit !== null && adminMinutesLimit > 0 && value === 0) {
-                          toast.error(`Cannot set to unlimited. You have a limited plan (${adminMinutesLimit} minutes).`);
-                          return;
-                        }
-                        setEditPlanData({...editPlanData, minutesLimit: value});
-                      }}
-                      placeholder={adminMinutesLimit !== null && adminMinutesLimit > 0 ? "Enter minutes (min: 1)" : "0 for unlimited"}
-                    />
                     <p className="text-xs text-muted-foreground">
-                      {adminMinutesLimit !== null && adminMinutesLimit > 0 
-                        ? `You have ${adminMinutesLimit.toLocaleString()} total minutes. The sum of all plan minutes cannot exceed this.`
-                        : "Set to 0 for unlimited minutes"}
+                      Monthly subscription price. Minutes are purchased separately.
                     </p>
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="edit-plan-features">Features</Label>
-                  <Textarea
-                    id="edit-plan-features"
-                    value={(editPlanData.features || []).join('\n')}
-                    onChange={(e) => {
-                      const features = e.target.value.split('\n').filter(f => f.trim());
-                      setEditPlanData({...editPlanData, features});
-                    }}
-                    placeholder="Enter one feature per line"
-                    rows={6}
-                    className="font-mono text-sm"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Enter one feature per line. Each line will be a separate feature.
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-plan-features">Features</Label>
+                    <Textarea
+                      id="edit-plan-features"
+                      value={(editPlanData.features || []).join('\n')}
+                      onChange={(e) => {
+                        const features = e.target.value.split('\n').filter(f => f.trim());
+                        setEditPlanData({ ...editPlanData, features });
+                      }}
+                      placeholder="Enter one feature per line"
+                      rows={6}
+                      className="font-mono text-sm"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Enter one feature per line. Each line will be a separate feature.
+                    </p>
+                  </div>
+
+                  {/* Only show whitelabel toggle for main tenant admins */}
+                  {!isWhitelabelAdmin && (
+                    <div className="flex items-center justify-between rounded-lg border border-border/40 bg-muted/10 p-4">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Includes Whitelabel</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Only subscribers on plans with Whitelabel enabled can access the branding settings.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={!!editPlanData.whitelabelEnabled}
+                        onCheckedChange={(checked) => setEditPlanData({ ...editPlanData, whitelabelEnabled: checked })}
+                      />
+                    </div>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => {
+                    setIsEditPlanOpen(false);
+                  }}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleSavePlan} disabled={loadingPlanConfigs}>
+                    {loadingPlanConfigs ? 'Saving...' : 'Save Plan'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* Delete Plan Dialog */}
+            <Dialog open={isDeletePlanOpen} onOpenChange={setIsDeletePlanOpen}>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Delete Plan</DialogTitle>
+                  <DialogDescription>
+                    Are you sure you want to delete this plan? This action cannot be undone.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                  <p className="text-sm text-muted-foreground">
+                    You are about to delete the plan <strong>{deletingPlanKey}</strong>.
+                    Users currently on this plan will not be affected immediately, but they won't be able to switch back to it if they change plans.
                   </p>
                 </div>
-              </div>
-            )}
-            <DialogFooter>
-              <Button variant="outline" onClick={() => {
-                setIsEditPlanOpen(false);
-                setAdminMinutesLimit(null);
-              }}>
-                Cancel
-              </Button>
-              <Button onClick={handleSavePlan} disabled={loadingPlanConfigs}>
-                {loadingPlanConfigs ? 'Saving...' : 'Save Plan'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsDeletePlanOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button variant="destructive" onClick={handleDeletePlan} disabled={loadingPlanConfigs}>
+                    {loadingPlanConfigs ? 'Deleting...' : 'Delete Plan'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
+          </div>
         </div>
-      </div>
-    </ThemeContainer>
-  </DashboardLayout>
-);
+      </ThemeContainer>
+    </DashboardLayout>
+  );
 };
 
 export default AdminPanel;

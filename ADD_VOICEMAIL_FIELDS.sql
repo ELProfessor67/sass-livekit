@@ -13,3 +13,4 @@ COMMENT ON COLUMN public.assistant.voicemail_message IS 'Custom message to leave
 CREATE INDEX IF NOT EXISTS idx_assistant_voicemail_enabled ON public.assistant(voicemail_detection_enabled) 
 WHERE voicemail_detection_enabled = true;
 
+

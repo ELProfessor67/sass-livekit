@@ -4,16 +4,16 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { useTheme } from "@/components/ThemeProvider";
 import { useAccountMinutes } from "@/hooks/useAccountMinutes";
-import { Bell, Search, BarChart3, Phone, Bot, MessageSquare, Users, Megaphone, User, Settings, CreditCard, Zap, LogOut, Shield } from "lucide-react";
+import { BarChart3, Phone, Bot, Search, Bell, MessageSquare, Users, Megaphone, User, Settings, CreditCard, Zap, LogOut, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggleMinimal } from "@/components/ThemeToggle";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-
-import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
+import { useWebsiteSettings } from "@/contexts/WebsiteSettingsContext";
+
 export default function TopNavigation() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -21,8 +21,9 @@ export default function TopNavigation() {
   const isAuthenticated = !!user;
   const isAdmin = user?.role === 'admin';
   const { uiStyle } = useTheme();
-  const { remainingMinutes, planName, percentageUsed, isLoading: minutesLoading } = useAccountMinutes();
-  const [searchOpen, setSearchOpen] = useState(false);
+  const { remainingMinutes, percentageUsed, isLoading: minutesLoading } = useAccountMinutes();
+  const { websiteSettings } = useWebsiteSettings();
+
   const navItems = [{
     icon: <BarChart3 size={16} />,
     label: "Dashboard",
@@ -57,15 +58,30 @@ export default function TopNavigation() {
       to: "/admin"
     });
   }
-  return <header className="relative z-50 transition-all duration-300">
+
+  return (
+    <header className="relative z-50 transition-all duration-300">
       <div className="container mx-auto px-6 py-3">
         <div className="flex items-center justify-between">
           {/* Left section - Logo */}
           <div className="flex items-center gap-4">
+            <Link to={isAuthenticated ? "/dashboard" : "/"} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+              {websiteSettings?.logo ? (
+                <img
+                  src={websiteSettings.logo}
+                  alt={websiteSettings.website_name || "Logo"}
+                  className="h-8 w-auto object-contain max-w-[150px]"
+                />
+              ) : (
+                <h1 className="font-sans font-light text-xl tracking-tight text-foreground">
+                  {websiteSettings?.website_name || "AI Call Center"}
+                </h1>
+              )}
+            </Link>
             <h1 className="font-sans font-light text-xl tracking-tight text-foreground">
-              AI Call Center
+              {websiteSettings?.website_name || "AI Call Center"}
             </h1>
-            
+
             {/* Impersonation Indicator */}
             {isImpersonating && originalUser && (
               <div className="flex items-center gap-2 px-3 py-1 bg-orange-500/20 border border-orange-500/30 rounded-full">
@@ -101,10 +117,10 @@ export default function TopNavigation() {
                     <Link key={item.to} to={item.to}>
                       <button className={cn(
                         "px-4 py-2 rounded-full text-sm font-sans tracking-tighter transition-all duration-300 hover:scale-105 active:scale-95 flex items-center gap-2",
-                        isActive 
+                        isActive
                           ? cn("text-foreground shadow-lg", uiStyle === "glass" ? "nav-item-active-glass" : "nav-item-active-minimal")
-                          : cn("text-muted-foreground hover:text-foreground", 
-                               uiStyle === "glass" ? "hover:bg-white/10" : "hover:bg-muted/50")
+                          : cn("text-muted-foreground hover:text-foreground",
+                            uiStyle === "glass" ? "hover:bg-white/10" : "hover:bg-muted/50")
                       )}>
                         {item.icon}
                         <span>{item.label}</span>
@@ -119,23 +135,9 @@ export default function TopNavigation() {
           {/* Right section - User controls */}
           <div className="flex items-center space-x-3">
             <ThemeToggleMinimal />
-            
+
             {isAuthenticated ? (
               <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Search</TooltipContent>
-                </Tooltip>
-                
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Notifications</TooltipContent>
-                </Tooltip>
-                
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="relative h-10 w-10 rounded-full transition-all hover:scale-105">
@@ -166,7 +168,7 @@ export default function TopNavigation() {
                               <p className={cn(
                                 "text-xs font-medium truncate transition-colors hover:text-foreground",
                                 percentageUsed >= 90 ? "text-destructive" :
-                                percentageUsed >= 75 ? "text-yellow-600" : "text-emerald-600"
+                                  percentageUsed >= 75 ? "text-yellow-600" : "text-emerald-600"
                               )}>
                                 {remainingMinutes.toLocaleString()} minutes left
                               </p>
@@ -175,7 +177,7 @@ export default function TopNavigation() {
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="p-2">
                       <DropdownMenuItem asChild className="cursor-pointer text-muted-foreground hover:text-foreground rounded-xl">
                         <Link to="/settings?tab=account&subtab=profile" className="flex items-center gap-3">
@@ -202,9 +204,9 @@ export default function TopNavigation() {
                         </Link>
                       </DropdownMenuItem>
                     </div>
-                    
+
                     <div className="border-t border-border/40 p-2">
-                      <DropdownMenuItem 
+                      <DropdownMenuItem
                         className="cursor-pointer flex items-center gap-3 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl"
                         onClick={() => {
                           signOut();
@@ -231,5 +233,6 @@ export default function TopNavigation() {
           </div>
         </div>
       </div>
-    </header>;
+    </header>
+  );
 }

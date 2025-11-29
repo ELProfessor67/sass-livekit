@@ -12,8 +12,8 @@ import {
 } from "@/components/ui/typography";
 
 interface PaymentMethod {
-  id: number;
-  type: "visa" | "mastercard";
+  id: string | number;
+  type: "visa" | "mastercard" | "amex" | "discover" | "jcb" | "diners" | "unionpay" | string;
   last4: string;
   expMonth: number;
   expYear: number;
@@ -39,7 +39,12 @@ export function PaymentMethodsCard({ paymentMethods }: PaymentMethodsCardProps) 
       </CardHeader>
       <CardContent className="pt-4">
         <div className="space-y-4">
-          {paymentMethods.map((method) => (
+          {paymentMethods.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <p className="text-sm">No payment methods saved</p>
+            </div>
+          ) : (
+            paymentMethods.map((method) => (
             <div 
               key={method.id}
               className="group relative overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.01] p-4 transition-all hover:border-white/[0.16] hover:bg-white/[0.02] backdrop-blur-sm"
@@ -49,8 +54,12 @@ export function PaymentMethodsCard({ paymentMethods }: PaymentMethodsCardProps) 
                   <div className="flex h-9 w-14 items-center justify-center rounded-lg border border-white/[0.12] bg-white/[0.04] backdrop-blur-sm">
                     {method.type === "visa" ? (
                       <div className="text-blue-600 font-bold text-xs">VISA</div>
-                    ) : (
+                    ) : method.type === "mastercard" ? (
                       <div className="text-red-600 font-bold text-xs">MC</div>
+                    ) : method.type === "amex" ? (
+                      <div className="text-blue-500 font-bold text-xs">AMEX</div>
+                    ) : (
+                      <CreditCard className="h-4 w-4 text-muted-foreground" />
                     )}
                   </div>
                   <div>
@@ -69,7 +78,8 @@ export function PaymentMethodsCard({ paymentMethods }: PaymentMethodsCardProps) 
                 )}
               </div>
             </div>
-          ))}
+          ))
+          )}
         </div>
       </CardContent>
     </Card>

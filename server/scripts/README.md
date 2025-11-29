@@ -130,3 +130,4 @@ sudo bash server/scripts/setup_reverse_proxy.sh demo.frontend.ultratalkai.com 80
 - All output is logged to console
 - SSL certificate is automatically renewed by Certbot
 
+

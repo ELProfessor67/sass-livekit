@@ -5,15 +5,15 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // Initialize Supabase client with service role key for admin operations
 // Add custom headers to help bypass Cloudflare bot detection
-const supabase = supabaseUrl && supabaseServiceKey 
+const supabase = supabaseUrl && supabaseServiceKey
   ? createClient(supabaseUrl, supabaseServiceKey, {
-      global: {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; Server/1.0)',
-          'X-Client-Info': 'supabase-js-server',
-        },
+    global: {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; Server/1.0)',
+        'X-Client-Info': 'supabase-js-server',
       },
-    })
+    },
+  })
   : null;
 
 // Hardcoded hosts that should always map to the main tenant
@@ -39,7 +39,7 @@ function isIgnoredRoute(uri) {
 async function extractTenantFromUrl(url) {
   try {
     if (!url || url.trim() === '') return 'main';
-    
+
     let parsedUrl;
     try {
       parsedUrl = new URL(url);
@@ -50,10 +50,10 @@ async function extractTenantFromUrl(url) {
       }
       return 'main';
     }
-    
+
     let hostname = parsedUrl.hostname;
     if (!hostname) return 'main';
-    
+
     hostname = hostname.replace('www.', '');
 
     if (hardcodedMainHosts.includes(hostname)) {
@@ -83,14 +83,14 @@ async function extractTenantFromUrl(url) {
     // For multi-level subdomains like gomezlouis.frontend.ultratalkai.com, parts will be ['gomezlouis', 'frontend', 'ultratalkai', 'com']
     const isLocalhostSubdomain = parts.length === 2 && parts[1] === 'localhost';
     const isRegularSubdomain = parts.length > minParts;
-    
+
     if (isLocalhostSubdomain || isRegularSubdomain) {
       const subdomain = parts[0];
-      
+
       if (process.env.NODE_ENV === 'development') {
         console.log('[extractTenantFromUrl] Detected subdomain:', subdomain, 'from hostname:', hostname);
       }
-      
+
       if (!supabase) {
         console.warn('Supabase not initialized, returning main tenant');
         return 'main';
@@ -100,22 +100,22 @@ async function extractTenantFromUrl(url) {
       let tenantOwner = null;
       let error = null;
       const maxRetries = 3;
-      
+
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         const result = await supabase
           .from('users')
           .select('slug_name, tenant')
           .eq('slug_name', subdomain)
           .maybeSingle();
-        
+
         error = result.error;
         tenantOwner = result.data;
-        
+
         // If successful or not a network/Cloudflare error, break
         if (!error || (error.code !== 'PGRST116' && error.code !== 'PGRST301' && !error.message?.includes('fetch'))) {
           break;
         }
-        
+
         // If it's a network error (possibly Cloudflare), retry with exponential backoff
         if (attempt < maxRetries) {
           const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Max 5 seconds
@@ -188,33 +188,34 @@ export const tenantMiddleware = async (req, res, next) => {
 
   // For authenticated API routes (like whitelabel, admin, etc.), allow through even if tenant can't be determined
   // These routes will handle authentication and authorization themselves
-  const isAuthenticatedApiRoute = uri.startsWith('/api/v1/whitelabel') || 
-                                  uri.startsWith('/api/v1/admin') ||
-                                  uri.startsWith('/api/v1/minutes') ||
-                                  uri.startsWith('/api/v1/support-access');
-  
+  const isAuthenticatedApiRoute = uri.startsWith('/api/v1/whitelabel') ||
+    uri.startsWith('/api/v1/admin') ||
+    uri.startsWith('/api/v1/minutes') ||
+    uri.startsWith('/api/v1/support-access');
+
   // Extract tenant from multiple sources, in order of preference
   let urlToCheck = origin || referer;
-  
+
   // If origin/referer not available, try x-forwarded-host (set by reverse proxies)
   if (!urlToCheck && forwardedHost) {
     const forwardedProto = req.headers['x-forwarded-proto'] || '';
     const protocol = forwardedProto === 'https' || req.secure ? 'https' : 'http';
     urlToCheck = `${protocol}://${forwardedHost}`;
   }
-  
+
   // Last resort: use host header (but this might be API server's hostname, not frontend's)
   if (!urlToCheck && host) {
-    // Only use host header if it looks like a frontend subdomain (has more than 2 parts)
+    // Only use host header if it looks like a frontend subdomain (has more than 2 parts, or is localhost subdomain)
     // This helps avoid using API server's hostname
     const hostParts = host.split(':')[0].split('.'); // Remove port if present
-    if (hostParts.length > 2) {
+    const isLocalhost = hostParts.length === 2 && hostParts[1] === 'localhost';
+    if (hostParts.length > 2 || isLocalhost) {
       const forwardedProto = req.headers['x-forwarded-proto'] || '';
       const protocol = forwardedProto === 'https' || req.secure ? 'https' : 'http';
       urlToCheck = `${protocol}://${host}`;
     }
   }
-  
+
   // Debug logging (can be removed in production if not needed)
   if (process.env.NODE_ENV === 'development') {
     console.log('[TenantMiddleware] Extracting tenant from:', {
@@ -226,14 +227,14 @@ export const tenantMiddleware = async (req, res, next) => {
       uri
     });
   }
-  
+
   const tenant = await extractTenantFromUrl(urlToCheck);
-  
+
   // Debug logging
   if (process.env.NODE_ENV === 'development') {
     console.log('[TenantMiddleware] Extracted tenant:', tenant);
   }
-  
+
   // Production logging for tenant extraction failures (helps debug whitelabel issues)
   if (!tenant && !isIgnoredRoute(uri) && !isAuthenticatedApiRoute) {
     console.warn('[TenantMiddleware] Failed to extract tenant:', {

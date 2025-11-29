@@ -23,7 +23,6 @@ interface PlanDetails {
   period: string;
   validUntil: string;
   usage: {
-    calls: UsageMetric;
     storage: UsageMetric;
     agents: UsageMetric;
   };
@@ -53,32 +52,32 @@ export function PlanCard({ planDetails, onDismissAlert, showExpirationAlert }: P
               <p className="text-sm font-medium text-amber-500">Plan expiring soon</p>
               <p className="text-xs text-amber-400 mt-0.5">Your plan will automatically renew on {planDetails.validUntil}</p>
             </div>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="ml-auto -mr-1" 
+            <Button
+              variant="ghost"
+              size="icon"
+              className="ml-auto -mr-1"
               onClick={onDismissAlert}
             >
               <span className="sr-only">Dismiss</span>
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                width="24" 
-                height="24" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2" 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
                 className="h-4 w-4 text-amber-500"
               >
-                <path d="M18 6 6 18"/>
-                <path d="m6 6 12 12"/>
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
               </svg>
             </Button>
           </div>
         )}
-      
+
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
           <div className="space-y-1">
             <h3 className="text-lg font-medium">{planDetails.name} Plan</h3>
@@ -88,16 +87,8 @@ export function PlanCard({ planDetails, onDismissAlert, showExpirationAlert }: P
             <p className="text-3xl font-bold">${planDetails.price}<span className="text-muted-foreground text-base font-normal">/mo</span></p>
           </div>
         </div>
-        
+
         <div className="space-y-4">
-          <UsageMetric
-            label="Call Minutes"
-            used={planDetails.usage.calls.used}
-            total={planDetails.usage.calls.total}
-            percentage={planDetails.usage.calls.percentage}
-            unit="minutes"
-          />
-          
           <UsageMetric
             label="Storage"
             used={planDetails.usage.storage.used}
@@ -105,7 +96,7 @@ export function PlanCard({ planDetails, onDismissAlert, showExpirationAlert }: P
             percentage={planDetails.usage.storage.percentage}
             unit="GB"
           />
-          
+
           <UsageMetric
             label="Active Agents"
             used={planDetails.usage.agents.used}
@@ -114,7 +105,7 @@ export function PlanCard({ planDetails, onDismissAlert, showExpirationAlert }: P
             unit="agents"
           />
         </div>
-        
+
         <div className="pt-2">
           <Button className="w-full sm:w-auto">
             Upgrade Plan <ExternalLink className="ml-2 h-4 w-4" />

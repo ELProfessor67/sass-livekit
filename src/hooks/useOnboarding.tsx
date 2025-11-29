@@ -10,7 +10,13 @@ export interface OnboardingData {
   notifications: boolean;
   goals: string[];
   plan: string;
+  name?: string;
+  email?: string;
   paymentMethodId?: string;
+  cardBrand?: string;
+  cardLast4?: string;
+  cardExpMonth?: number;
+  cardExpYear?: number;
   subscriptionStatus?: string;
 }
 

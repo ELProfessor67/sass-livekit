@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Building, Upload, Globe, Clock, Link2 } from "lucide-react";
+import { Globe, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -60,13 +60,7 @@ const industries = [
 ];
 
 export function GeneralSettings() {
-  const [logoUrl, setLogoUrl] = useState<string>("");
-  const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isSavingWhitelabel, setIsSavingWhitelabel] = useState(false);
-  const [slugName, setSlugName] = useState<string | null>(null);
-  const [loadingSettings, setLoadingSettings] = useState(true);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<WorkspaceSettingsForm>({
     resolver: zodResolver(workspaceSettingsSchema),
@@ -82,144 +76,6 @@ export function GeneralSettings() {
     },
   });
 
-  // Fetch existing whitelabel settings on mount
-  useEffect(() => {
-    const fetchWhitelabelSettings = async () => {
-      try {
-        // Get auth session to include token
-        const { data: { session } } = await supabase.auth.getSession();
-        const apiUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
-        
-        const headers: HeadersInit = {
-          'Content-Type': 'application/json',
-        };
-        
-        // Include auth token if available
-        if (session?.access_token) {
-          headers['Authorization'] = `Bearer ${session.access_token}`;
-        }
-
-        const response = await fetch(`${apiUrl}/api/v1/whitelabel/website-settings`, {
-          method: 'GET',
-          headers,
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.settings) {
-            const settings = data.settings;
-            if (settings.logo) {
-              setLogoUrl(settings.logo);
-            }
-            if (settings.slug_name) {
-              setSlugName(settings.slug_name);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching whitelabel settings:', error);
-      } finally {
-        setLoadingSettings(false);
-      }
-    };
-
-    fetchWhitelabelSettings();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleLogoUpload = async (file: File) => {
-    if (!file) return;
-    
-    setIsUploading(true);
-    try {
-      // Get current user and session
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error("No session token");
-
-      // Upload file to Supabase Storage
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}/logo.${fileExt}`;
-      
-      const { data, error } = await supabase.storage
-        .from('workspace-logos')
-        .upload(fileName, file, { upsert: true });
-
-      if (error) throw error;
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('workspace-logos')
-        .getPublicUrl(fileName);
-
-      // Save logo URL to whitelabel settings via API
-      const apiUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      const response = await fetch(`${apiUrl}/api/v1/whitelabel/website-settings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          logo: publicUrl,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to save logo to whitelabel settings');
-      }
-
-      setLogoUrl(publicUrl);
-      toast.success("Logo uploaded and saved successfully");
-    } catch (error) {
-      console.error("Error uploading logo:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to upload logo");
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleSaveWhitelabelSettings = async () => {
-    setIsSavingWhitelabel(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        throw new Error("Not authenticated");
-      }
-
-      const apiUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      
-      const updateData: { logo?: string } = {};
-      if (logoUrl) {
-        updateData.logo = logoUrl;
-      }
-
-      const response = await fetch(`${apiUrl}/api/v1/whitelabel/website-settings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify(updateData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to save whitelabel settings');
-      }
-
-      toast.success("White label settings saved successfully");
-    } catch (error) {
-      console.error("Error saving whitelabel settings:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to save whitelabel settings");
-    } finally {
-      setIsSavingWhitelabel(false);
-    }
-  };
-
   const onSubmit = async (data: WorkspaceSettingsForm) => {
     setIsSaving(true);
     try {
@@ -230,7 +86,6 @@ export function GeneralSettings() {
         .from('workspace_settings')
         .upsert({
           user_id: user.id,
-          logo_url: logoUrl,
           ...data,
         });
 
@@ -250,74 +105,12 @@ export function GeneralSettings() {
       <div>
         <h2 className="text-3xl font-extralight tracking-tight text-foreground">General Settings</h2>
         <p className="mt-2 text-muted-foreground leading-relaxed">
-          Configure your workspace logo, name, timezone, and business information
+          Configure your workspace name, timezone, and business information
         </p>
       </div>
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-          {/* White Label Branding Section */}
-          <div className="settings-card">
-            <div className="flex items-center gap-3 mb-6">
-              <Link2 className="w-5 h-5 text-primary" />
-              <h3 className="settings-card-title">White Label Branding</h3>
-            </div>
-            
-            <div className="space-y-6">
-              {/* Logo Upload */}
-              <div>
-                <Label className="text-sm font-medium mb-3 block">Brand Logo</Label>
-                <div className="flex items-center gap-6">
-                  <div className="flex-shrink-0">
-                    <div className="w-20 h-20 rounded-lg border-2 border-dashed border-border bg-muted/30 flex items-center justify-center overflow-hidden">
-                      {logoUrl ? (
-                        <img src={logoUrl} alt="Brand logo" className="w-full h-full object-cover" />
-                      ) : (
-                        <Building className="w-8 h-8 text-muted-foreground" />
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="flex-1">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleLogoUpload(file);
-                      }}
-                      className="hidden"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isUploading}
-                      className="w-full sm:w-auto"
-                    >
-                      <Upload className="w-4 h-4 mr-2" />
-                      {isUploading ? "Uploading..." : "Upload Logo"}
-                    </Button>
-                    <p className="text-sm text-muted-foreground mt-2">
-                      PNG, JPG or SVG. Max file size 5MB. This logo will be used for your white label branding.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <Button 
-                  type="button" 
-                  onClick={handleSaveWhitelabelSettings}
-                  disabled={isSavingWhitelabel || isUploading}
-                >
-                  {isSavingWhitelabel ? "Saving..." : "Save Branding Settings"}
-                </Button>
-              </div>
-            </div>
-          </div>
-
           {/* Workspace Information */}
           <div className="settings-card">
             <div className="flex items-center gap-3 mb-6">

@@ -386,7 +386,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const signUp = async (name: string, email: string, password: string, metadata?: { phone?: string; countryCode?: string; slug?: string; whitelabel?: boolean }) => {
+  const signUp = async (name: string, email: string, password: string, metadata?: { phone?: string; countryCode?: string }) => {
     try {
       // Get the site URL from environment variable or use current origin
       const siteUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
@@ -401,42 +401,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           data: { 
             name, 
             contactPhone: metadata?.phone, 
-            countryCode: metadata?.countryCode,
-            slug: metadata?.slug,
-            whitelabel: metadata?.whitelabel
+            countryCode: metadata?.countryCode
           } 
         },
       });
       
       if (error) {
         return { success: false, message: error.message };
-      }
-
-      // If white label signup, complete signup via backend to ensure slug is assigned
-      if (metadata?.whitelabel && metadata?.slug && data.user) {
-        try {
-          const apiUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
-          const completeSignupResponse = await fetch(`${apiUrl}/api/v1/user/complete-signup`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              user_id: data.user.id,
-              slug: metadata.slug,
-              whitelabel: true
-            })
-          });
-
-          const completeSignupData = await completeSignupResponse.json();
-          if (!completeSignupData.success) {
-            console.error('Error completing white label signup:', completeSignupData.message);
-            // Don't fail the signup, but log the error
-          }
-        } catch (completeError) {
-          console.error('Error calling complete-signup:', completeError);
-          // Don't fail the signup
-        }
       }
 
       // Email is auto-confirmed, user can login immediately

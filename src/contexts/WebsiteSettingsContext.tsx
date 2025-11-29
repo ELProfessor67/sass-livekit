@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { extractTenantFromHostname } from '@/lib/tenant-utils';
+import { supabase } from '@/integrations/supabase/client';
 
 interface WebsiteSettings {
   slug_name?: string | null;
@@ -39,8 +41,17 @@ export const WebsiteSettingsProvider: React.FC<WebsiteSettingsProviderProps> = (
   const fetchWebsiteSettings = async () => {
     try {
       setLoading(true);
-      const apiUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      const response = await fetch(`${apiUrl}/api/v1/whitelabel/website-settings`, {
+
+      // Get tenant from hostname client-side
+      const tenant = extractTenantFromHostname();
+      console.log('[WebsiteSettings] Fetching settings for tenant:', tenant);
+
+      // In development, force relative URL to use Vite proxy and preserve Host header
+      const apiUrl = import.meta.env.DEV ? '' : (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '');
+
+      // Pass the tenant slug explicitly to the API to ensure correct resolution
+      // This bypasses potential proxy/header issues and RLS restrictions (backend uses service role)
+      const response = await fetch(`${apiUrl}/api/v1/whitelabel/website-settings?slug=${tenant}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -53,6 +64,7 @@ export const WebsiteSettingsProvider: React.FC<WebsiteSettingsProviderProps> = (
 
       const data = await response.json();
       if (data.success) {
+        console.log('[WebsiteSettings] Received settings:', data.settings);
         setWebsiteSettings(data.settings || {});
       }
     } catch (error) {
@@ -92,6 +104,3 @@ export const WebsiteSettingsProvider: React.FC<WebsiteSettingsProviderProps> = (
     </WebsiteSettingsContext.Provider>
   );
 };
-
-
-

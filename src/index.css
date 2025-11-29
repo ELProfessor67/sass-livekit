@@ -83,7 +83,16 @@
 [data-radix-dialog-content] button,
 [data-radix-dialog-content] input,
 [data-radix-dialog-content] select,
-[data-radix-dialog-content] textarea {
+[data-radix-dialog-content] textarea,
+[data-radix-dialog-content] table,
+[data-radix-dialog-content] table *,
+[data-radix-dialog-content] thead,
+[data-radix-dialog-content] thead *,
+[data-radix-dialog-content] tbody,
+[data-radix-dialog-content] tbody *,
+[data-radix-dialog-content] th,
+[data-radix-dialog-content] td,
+[data-radix-dialog-content] tr {
   color: #ffffff !important;
 }
 
@@ -121,8 +130,17 @@
 /* Ensure all badges and status indicators in dialogs are white */
 [data-radix-dialog-content] .badge,
 [data-radix-dialog-content] [class*="badge"],
+[data-radix-dialog-content] [class*="Badge"],
 [data-radix-dialog-content] .status-indicator,
-[data-radix-dialog-content] .status-badge {
+[data-radix-dialog-content] .status-badge,
+[data-radix-dialog-content] [role="status"],
+[data-radix-dialog-content] [data-badge] {
+  color: #ffffff !important;
+}
+
+/* Force badge text content to be white */
+[data-radix-dialog-content] [class*="badge"] *,
+[data-radix-dialog-content] [class*="Badge"] * {
   color: #ffffff !important;
 }
 
@@ -221,6 +239,22 @@
   color: #ffffff !important;
 }
 
+/* Force table elements in dialogs to be white */
+[data-radix-dialog-content] table,
+[data-radix-dialog-content] table *,
+[data-radix-dialog-content] thead,
+[data-radix-dialog-content] thead *,
+[data-radix-dialog-content] tbody,
+[data-radix-dialog-content] tbody *,
+[data-radix-dialog-content] th,
+[data-radix-dialog-content] td,
+[data-radix-dialog-content] tr,
+[data-radix-dialog-content] [role="columnheader"],
+[data-radix-dialog-content] [role="cell"],
+[data-radix-dialog-content] [role="row"] {
+  color: #ffffff !important;
+}
+
 /* Ultra-specific targeting for dialog titles and descriptions */
 [data-radix-dialog-content] h1,
 [data-radix-dialog-content] h2,
@@ -239,6 +273,30 @@
 [data-radix-dialog-content] button[data-state="open"],
 [data-radix-dialog-content] [data-radix-dialog-close],
 [data-radix-dialog-content] svg {
+  color: #ffffff !important;
+}
+
+/* Force table elements in dialogs to be white - maximum specificity */
+[data-radix-dialog-content] table,
+[data-radix-dialog-content] table *,
+[data-radix-dialog-content] thead,
+[data-radix-dialog-content] thead *,
+[data-radix-dialog-content] tbody,
+[data-radix-dialog-content] tbody *,
+[data-radix-dialog-content] tfoot,
+[data-radix-dialog-content] tfoot *,
+[data-radix-dialog-content] th,
+[data-radix-dialog-content] th *,
+[data-radix-dialog-content] td,
+[data-radix-dialog-content] td *,
+[data-radix-dialog-content] tr,
+[data-radix-dialog-content] tr *,
+[data-radix-dialog-content] [role="table"],
+[data-radix-dialog-content] [role="table"] *,
+[data-radix-dialog-content] [role="columnheader"],
+[data-radix-dialog-content] [role="cell"],
+[data-radix-dialog-content] [role="row"],
+[data-radix-dialog-content] [role="row"] * {
   color: #ffffff !important;
 }
 

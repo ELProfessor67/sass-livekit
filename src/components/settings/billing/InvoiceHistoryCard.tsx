@@ -84,28 +84,42 @@ export function InvoiceHistoryCard({ invoices }: InvoiceHistoryCardProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginatedInvoices.map((invoice) => (
-              <TableRow key={invoice.id} className="group">
-                <TableCell className="font-medium">{invoice.id}</TableCell>
-                <TableCell>{invoice.date}</TableCell>
-                <TableCell>
-                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-500/10 text-green-500">
-                    {invoice.status === "paid" ? "Paid" : "Pending"}
-                  </span>
-                </TableCell>
-                <TableCell>{invoice.amount}</TableCell>
-                <TableCell className="text-right">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <span className="sr-only">Download</span>
-                    <Download className="h-3.5 w-3.5" />
-                  </Button>
+            {paginatedInvoices.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  <p className="text-sm">No invoices found</p>
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              paginatedInvoices.map((invoice) => (
+                <TableRow key={invoice.id} className="group">
+                  <TableCell className="font-medium">{invoice.id}</TableCell>
+                  <TableCell>
+                  {new Date(invoice.date).toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'short', 
+                    day: 'numeric' 
+                  })}
+                </TableCell>
+                  <TableCell>
+                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-500/10 text-green-500">
+                      {invoice.status === "paid" ? "Paid" : "Pending"}
+                    </span>
+                  </TableCell>
+                  <TableCell>{invoice.amount}</TableCell>
+                  <TableCell className="text-right">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <span className="sr-only">Download</span>
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </CardContent>

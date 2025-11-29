@@ -4,10 +4,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { CreditCard, Download, Calendar, Zap, Phone, MessageSquare, Users, Loader2 } from "lucide-react";
+import { CreditCard, Download, Calendar, Zap, Phone, MessageSquare, Users, Loader2, Clock } from "lucide-react";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { getPlanConfig, getPlanConfigs } from "@/lib/plan-config";
 import { supabase } from "@/integrations/supabase/client";
+import { MinutesPurchaseDialog } from "@/components/settings/billing/MinutesPurchaseDialog";
 
 interface UsageItem {
   name: string;
@@ -21,6 +22,9 @@ interface Invoice {
   date: string;
   amount: string;
   status: string;
+  type?: 'credit' | 'debit';
+  minutes?: number;
+  description?: string;
 }
 
 export default function Billing() {
@@ -36,6 +40,9 @@ export default function Billing() {
   } | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [planConfigs, setPlanConfigs] = useState<Record<string, any>>({});
+  const [minutesBalance, setMinutesBalance] = useState(0);
+  const [minutesUsed, setMinutesUsed] = useState(0);
+  const [isPurchaseDialogOpen, setIsPurchaseDialogOpen] = useState(false);
 
   const getUsagePercentage = (used: number, limit: number) => {
     if (limit === 0) return 0; // Unlimited
@@ -56,8 +63,14 @@ export default function Billing() {
         const configs = await getPlanConfigs();
         setPlanConfigs(configs);
 
-        // Get current plan config
-        const planConfig = configs[user.plan?.toLowerCase() || 'free'] || configs.free;
+        // Get current plan config with proper fallback
+        const userPlan = user.plan?.toLowerCase() || 'free';
+        const planConfig = configs[userPlan] || configs.free || {
+          key: 'free',
+          name: 'Free',
+          price: 0,
+          features: []
+        };
 
         // Fetch user data for subscription info
         const { data: userData } = await supabase
@@ -89,6 +102,10 @@ export default function Billing() {
           nextBilling
         });
 
+        // Set minutes balance and usage
+        setMinutesBalance(userData?.minutes_limit || 0);
+        setMinutesUsed(userData?.minutes_used || 0);
+
         // Fetch assistants for the user
         const { data: assistantsData } = await supabase
           .from('assistant')
@@ -101,19 +118,19 @@ export default function Billing() {
         // 1. API Calls (count of calls from call_history)
         const apiCallsPromise = assistantIds.length > 0
           ? supabase
-              .from('call_history')
-              .select('*', { count: 'exact', head: true })
-              .in('assistant_id', assistantIds)
-              .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
+            .from('call_history')
+            .select('*', { count: 'exact', head: true })
+            .in('assistant_id', assistantIds)
+            .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
           : Promise.resolve({ count: 0, error: null });
 
         // 2. Phone Minutes (sum of call_duration from call_history, convert seconds to minutes)
         const phoneMinutesPromise = assistantIds.length > 0
           ? supabase
-              .from('call_history')
-              .select('call_duration')
-              .in('assistant_id', assistantIds)
-              .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
+            .from('call_history')
+            .select('call_duration')
+            .in('assistant_id', assistantIds)
+            .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
           : Promise.resolve({ data: [], error: null });
 
         // 3. Text Messages (count from sms_messages)
@@ -132,18 +149,18 @@ export default function Billing() {
               .select('workspace_id')
               .eq('user_id', user.id)
               .eq('status', 'active');
-            
+
             if (userWorkspaceMembers && userWorkspaceMembers.length > 0) {
               // Get all unique workspace IDs
               const workspaceIds = [...new Set(userWorkspaceMembers.map(m => m.workspace_id))];
-              
+
               // Count all active members in those workspaces
               const { count: membersCount } = await supabase
                 .from('workspace_members')
                 .select('*', { count: 'exact', head: true })
                 .in('workspace_id', workspaceIds)
                 .eq('status', 'active');
-              
+
               return { count: membersCount || 1, error: null };
             }
             return { count: 1, error: null }; // At least the current user
@@ -169,48 +186,96 @@ export default function Billing() {
         const teamMembersCount = teamMembersResult.count || 0;
 
         // Get limits from plan config (using reasonable defaults if not in plan config)
-        const apiCallsLimit = planConfig.features?.find((f: string) => f.includes('calls')) 
-          ? parseInt(planConfig.features.find((f: string) => f.includes('calls'))?.match(/\d+/)?.[0] || '2500') 
+        const apiCallsLimit = planConfig.features?.find((f: string) => f.includes('calls'))
+          ? parseInt(planConfig.features.find((f: string) => f.includes('calls'))?.match(/\d+/)?.[0] || '2500')
           : 2500;
-        
-        const phoneMinutesLimit = userData?.minutes_limit ?? planConfig.minutesLimit ?? 1000;
+
         const textMessagesLimit = 2000; // Default, could be from plan config
-        const teamMembersLimit = planConfig.features?.find((f: string) => f.includes('team')) 
+        const teamMembersLimit = planConfig.features?.find((f: string) => f.includes('team'))
           ? parseInt(planConfig.features.find((f: string) => f.includes('team'))?.match(/\d+/)?.[0] || '10')
           : 10;
 
         setUsage([
           { name: "API Calls", used: apiCallsCount, limit: apiCallsLimit, icon: Zap },
-          { name: "Phone Minutes", used: phoneMinutes, limit: phoneMinutesLimit === 0 ? Infinity : phoneMinutesLimit, icon: Phone },
           { name: "Text Messages", used: textMessagesCount, limit: textMessagesLimit, icon: MessageSquare },
           { name: "Team Members", used: teamMembersCount, limit: teamMembersLimit, icon: Users }
         ]);
 
-        // Fetch invoices (if invoices table exists)
+        // Fetch invoices and minutes purchases for billing history
+        const allInvoices: Invoice[] = [];
+
+        // Fetch from invoices table
         try {
           const { data: invoicesData, error: invoicesError } = await supabase
             .from('invoices')
             .select('*')
             .eq('user_id', user.id)
             .order('created_at', { ascending: false })
-            .limit(10);
+            .limit(20);
 
           if (!invoicesError && invoicesData) {
-            setInvoices(invoicesData.map((inv: any) => ({
-              id: inv.id || inv.invoice_number || `INV-${inv.id?.slice(0, 8)}`,
-              date: new Date(inv.created_at || inv.date).toISOString().split('T')[0],
-              amount: `$${Number(inv.amount || 0).toFixed(2)}`,
-              status: inv.status || 'paid'
-            })));
-          } else {
-            // No invoices table or error - set empty array
-            setInvoices([]);
+            invoicesData.forEach((inv: any) => {
+              const invoiceDate = new Date(inv.created_at || inv.date);
+              allInvoices.push({
+                id: inv.id || inv.invoice_number || `INV-${inv.id?.slice(0, 8)}`,
+                date: invoiceDate.toISOString().split('T')[0],
+                amount: `$${Number(inv.amount || 0).toFixed(2)}`,
+                status: (inv.status || 'paid') as string
+              });
+            });
           }
         } catch (error) {
-          // Invoices table doesn't exist - set empty array
           console.log('Invoices table not available:', error);
-          setInvoices([]);
         }
+
+        // Fetch from minutes_purchases table
+        try {
+          const { data: purchasesData, error: purchasesError } = await supabase
+            .from('minutes_purchases')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+          if (!purchasesError && purchasesData) {
+            purchasesData.forEach((purchase: any) => {
+              const purchaseDate = new Date(purchase.created_at);
+              // Map status: completed -> paid, pending -> pending, others -> pending
+              const invoiceStatus = purchase.status === 'completed' ? 'paid' : 
+                                   purchase.status === 'pending' ? 'pending' : 'pending';
+              
+              // Determine if this is a credit or debit based on payment_method
+              const isDebit = purchase.payment_method === 'whitelabel_customer_sale';
+              const transactionType = isDebit ? 'debit' : 'credit';
+              const minutes = purchase.minutes_purchased || 0;
+              const amount = Number(purchase.amount_paid || 0);
+              
+              // Get description from notes or payment method
+              let description = purchase.notes || '';
+              if (purchase.payment_method === 'whitelabel_customer_sale') {
+                description = `Sold ${minutes} minutes to customer`;
+              } else if (purchase.payment_method === 'whitelabel_admin') {
+                description = `Purchased ${minutes} minutes from admin`;
+              }
+              
+              allInvoices.push({
+                id: `MIN-${purchase.id.slice(0, 8)}`,
+                date: purchaseDate.toISOString().split('T')[0],
+                amount: isDebit ? `-$${amount.toFixed(2)}` : `$${amount.toFixed(2)}`,
+                status: invoiceStatus,
+                type: transactionType,
+                minutes: minutes,
+                description: description
+              });
+            });
+          }
+        } catch (error) {
+          console.log('Minutes purchases table not available:', error);
+        }
+
+        // Sort all invoices by date (newest first) and set
+        allInvoices.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setInvoices(allInvoices);
 
       } catch (error) {
         console.error('Error fetching billing data:', error);
@@ -291,7 +356,7 @@ export default function Billing() {
                       <span className="text-foreground font-medium">{currentPlan.nextBilling}</span>
                     </div>
                   )}
-                  
+
                   <div className="flex gap-3 pt-2">
                     <Button variant="outline">Change Plan</Button>
                     <Button variant="outline">Cancel Subscription</Button>
@@ -300,6 +365,44 @@ export default function Billing() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Minutes Balance Card */}
+          <Card className="border-border/40 bg-card/50 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Minutes Balance
+              </CardTitle>
+              <CardDescription>Your available call minutes</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Available</span>
+                  <span className="text-2xl font-bold text-foreground">
+                    {minutesBalance.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Used this month</span>
+                  <span className="text-foreground font-medium">
+                    {minutesUsed.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+
+              <Button
+                className="w-full"
+                onClick={() => setIsPurchaseDialogOpen(true)}
+              >
+                Purchase Minutes
+              </Button>
+
+              <p className="text-xs text-muted-foreground text-center">
+                Minutes are purchased separately from your subscription plan
+              </p>
+            </CardContent>
+          </Card>
 
           {/* Usage Overview */}
           <Card className="border-border/40 bg-card/50 backdrop-blur-sm">
@@ -327,8 +430,8 @@ export default function Billing() {
                         </span>
                       </div>
                       {item.limit !== Infinity && (
-                        <Progress 
-                          value={percentage} 
+                        <Progress
+                          value={percentage}
                           className="h-2"
                         />
                       )}
@@ -354,35 +457,81 @@ export default function Billing() {
                   <p className="text-sm text-muted-foreground py-4">No invoices available</p>
                 ) : (
                   <div className="space-y-3">
-                    {invoices.map((invoice) => (
-                      <div key={invoice.id} className="flex items-center justify-between p-3 rounded-lg bg-background/50 border border-border/30">
-                        <div className="flex items-center gap-4">
-                          <div>
-                            <p className="font-medium text-foreground">{invoice.id}</p>
-                            <p className="text-sm text-muted-foreground">{invoice.date}</p>
+                    {invoices.map((invoice) => {
+                      const isDebit = invoice.type === 'debit' || invoice.amount?.startsWith('-');
+                      const isCredit = invoice.type === 'credit' || (!invoice.type && !isDebit);
+                      
+                      return (
+                        <div key={invoice.id} className="flex items-center justify-between p-3 rounded-lg bg-background/50 border border-border/30">
+                          <div className="flex items-center gap-4">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium text-foreground">{invoice.id}</p>
+                                {isDebit && (
+                                  <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 text-xs">
+                                    Debit
+                                  </Badge>
+                                )}
+                                {isCredit && (
+                                  <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs">
+                                    Credit
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground">{invoice.date}</p>
+                              {invoice.description && (
+                                <p className="text-xs text-muted-foreground mt-1">{invoice.description}</p>
+                              )}
+                              {invoice.minutes && (
+                                <p className="text-xs text-muted-foreground">{invoice.minutes.toLocaleString()} minutes</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <span className={`font-medium ${isDebit ? 'text-destructive' : 'text-foreground'}`}>
+                              {invoice.amount}
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className="bg-success/10 text-success border-success/20"
+                            >
+                              {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                            </Badge>
+                            <Button variant="ghost" size="sm" className="gap-2">
+                              <Download className="h-4 w-4" />
+                              Download
+                            </Button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <span className="font-medium text-foreground">{invoice.amount}</span>
-                          <Badge 
-                            variant="outline" 
-                            className="bg-success/10 text-success border-success/20"
-                          >
-                            {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
-                          </Badge>
-                          <Button variant="ghost" size="sm" className="gap-2">
-                            <Download className="h-4 w-4" />
-                            Download
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
             </Card>
           </div>
         </div>
+
+        {/* Minutes Purchase Dialog */}
+        <MinutesPurchaseDialog
+          open={isPurchaseDialogOpen}
+          onOpenChange={setIsPurchaseDialogOpen}
+          currentBalance={minutesBalance}
+          minutesUsed={minutesUsed}
+          onPurchaseComplete={async () => {
+            // Refresh minutes balance after purchase
+            const { data: userData } = await supabase
+              .from('users')
+              .select('minutes_limit, minutes_used')
+              .eq('id', user?.id)
+              .single();
+
+            if (userData) {
+              setMinutesBalance(userData.minutes_limit || 0);
+              setMinutesUsed(userData.minutes_used || 0);
+            }
+          }}
+        />
       </div>
     </DashboardLayout>
   );

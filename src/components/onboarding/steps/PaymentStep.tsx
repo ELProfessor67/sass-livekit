@@ -50,6 +50,7 @@ function PaymentForm() {
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<PlanConfig | null>(null);
   const [loadingPlan, setLoadingPlan] = useState(true);
+  const [billingEmail, setBillingEmail] = useState(data.email || "");
 
   // Fetch the correct plan config based on tenant
   React.useEffect(() => {
@@ -99,6 +100,10 @@ function PaymentForm() {
       const { error, paymentMethod } = await stripe.createPaymentMethod({
         type: 'card',
         card: cardElement,
+        billing_details: {
+          email: billingEmail,
+          name: data.name,
+        },
       });
 
       if (error) {
@@ -112,9 +117,17 @@ function PaymentForm() {
       
       setPaymentSuccess(true);
       
-      // Update onboarding data with payment info
+      // Extract card details for storage
+      const cardDetails = paymentMethod.card;
+      
+      // Update onboarding data with payment info and card details
       updateData({ 
         paymentMethodId: paymentMethod.id,
+        cardBrand: cardDetails?.brand,
+        cardLast4: cardDetails?.last4,
+        cardExpMonth: cardDetails?.exp_month,
+        cardExpYear: cardDetails?.exp_year,
+        email: billingEmail,
         subscriptionStatus: 'active'
       });
 
@@ -239,6 +252,8 @@ function PaymentForm() {
                     type="email"
                     placeholder="your@email.com"
                     className="mt-1 liquid-glass-light border-white/10"
+                    value={billingEmail}
+                    onChange={(e) => setBillingEmail(e.target.value)}
                     required
                   />
                 </div>
