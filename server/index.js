@@ -34,14 +34,9 @@ import './workers/supportAccessCleanup.js';
 
 
 const app = express();
-app.use(cors());
-app.use(express.urlencoded({ extended: false }));
 
-// Create a separate router for Stripe webhook that bypasses ALL middleware
-const stripeWebhookRouter = express.Router();
-
-// Stripe webhook: needs raw body before express.json
-// IMPORTANT: This route must be defined BEFORE tenantMiddleware is applied
+// CRITICAL: Stripe webhook MUST be mounted FIRST, before ANY middleware
+// This ensures it bypasses CORS, tenant middleware, and JSON parsing
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabaseAdmin = supabaseUrl && supabaseServiceKey
@@ -54,9 +49,9 @@ if (!supabaseAdmin) {
 
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-// Stripe webhook endpoint - mounted on separate router to bypass ALL middleware
+// Stripe webhook endpoint - mounted DIRECTLY on app BEFORE all middleware
 // Use raw body parser that matches application/json (with or without charset)
-stripeWebhookRouter.post('/webhook', express.raw({ 
+app.post('/api/v1/stripe/webhook', express.raw({
   type: (req) => {
     const contentType = req.headers['content-type'] || '';
     return contentType.includes('application/json');
@@ -73,7 +68,7 @@ stripeWebhookRouter.post('/webhook', express.raw({
       'content-type': req.headers['content-type'],
     }
   });
-  
+
   if (!stripeWebhookSecret) {
     console.error('STRIPE_WEBHOOK_SECRET not set');
     return res.status(500).send('Stripe webhook not configured');
@@ -92,7 +87,7 @@ stripeWebhookRouter.post('/webhook', express.raw({
   try {
     // Log all webhook events for debugging
     console.log(`[Stripe Webhook] Received event: ${event.type} (id: ${event.id})`);
-    
+
     // Handle both payment_intent.succeeded and charge.updated events
     let metadata = {};
     let amountCents = 0;
@@ -108,11 +103,11 @@ stripeWebhookRouter.post('/webhook', express.raw({
       currency = (metadata.currency || paymentIntent.currency || 'usd').toUpperCase();
       paymentIntentId = paymentIntent.id;
       shouldCredit = paymentIntent.status === 'succeeded';
-      
+
       console.log(`[Stripe Webhook] PaymentIntent metadata:`, JSON.stringify(metadata, null, 2));
     } else if (event.type === 'charge.updated' || event.type === 'charge.succeeded') {
       const charge = event.data.object;
-      
+
       // Only process if charge succeeded
       if (charge.status !== 'succeeded' || !charge.paid) {
         console.log(`Charge ${charge.id} not succeeded (status: ${charge.status}, paid: ${charge.paid}), skipping`);
@@ -121,14 +116,14 @@ stripeWebhookRouter.post('/webhook', express.raw({
 
       paymentIntentId = charge.payment_intent || null;
       chargeId = charge.id;
-      
+
       // Try to get metadata from charge first
       metadata = charge.metadata || {};
       amountCents = Number(metadata.amount || charge.amount || 0);
       currency = (metadata.currency || charge.currency || 'usd').toUpperCase();
-      
+
       console.log(`[Stripe Webhook] Charge metadata:`, JSON.stringify(metadata, null, 2));
-      
+
       // If metadata is missing from charge (common with Stripe Connect), retrieve from PaymentIntent
       if ((!metadata.user_id || !metadata.minutes) && paymentIntentId) {
         try {
@@ -151,7 +146,7 @@ stripeWebhookRouter.post('/webhook', express.raw({
           // Continue with charge metadata even if retrieval fails
         }
       }
-      
+
       shouldCredit = true;
     } else if (event.type === 'payment_intent.created') {
       // Acknowledge payment_intent.created events (no action needed, just log)
@@ -187,10 +182,10 @@ stripeWebhookRouter.post('/webhook', express.raw({
         minutesValue: minutes,
       });
       // Don't return success - log as error so it's visible
-      return res.status(400).json({ 
-        received: true, 
+      return res.status(400).json({
+        received: true,
         error: 'Missing user_id or minutes in metadata',
-        metadata 
+        metadata
       });
     }
 
@@ -227,10 +222,10 @@ stripeWebhookRouter.post('/webhook', express.raw({
         code: userError.code,
         details: userError.details,
       });
-      return res.status(500).json({ 
+      return res.status(500).json({
         received: true,
         error: 'Database error fetching user',
-        userId 
+        userId
       });
     }
 
@@ -241,20 +236,20 @@ stripeWebhookRouter.post('/webhook', express.raw({
         chargeId,
         metadata,
       });
-      return res.status(404).json({ 
+      return res.status(404).json({
         received: true,
         error: `User ${userId} not found for minutes credit`,
-        userId 
+        userId
       });
     }
 
     const tenant = userData.tenant || 'main';
     const isWhitelabelCustomer = tenant !== 'main' && userData.role !== 'admin' && !userData.slug_name;
-    
+
     // For whitelabel customers: increase customer's minutes AND decrease admin's available minutes
     if (isWhitelabelCustomer) {
       console.log(`[Stripe Webhook] Whitelabel customer detected (tenant: ${tenant}), processing purchase...`);
-      
+
       // Find the whitelabel admin (user with slug_name matching customer's tenant)
       const { data: whitelabelAdmin, error: adminError } = await supabaseAdmin
         .from('users')
@@ -265,10 +260,10 @@ stripeWebhookRouter.post('/webhook', express.raw({
 
       if (adminError || !whitelabelAdmin) {
         console.error('❌ [Stripe Webhook] Whitelabel admin not found for tenant:', tenant);
-        return res.status(404).json({ 
+        return res.status(404).json({
           received: true,
           error: `Whitelabel admin not found for tenant ${tenant}`,
-          userId 
+          userId
         });
       }
 
@@ -280,17 +275,17 @@ stripeWebhookRouter.post('/webhook', express.raw({
           requested: minutes,
           adminId: whitelabelAdmin.id
         });
-        return res.status(400).json({ 
+        return res.status(400).json({
           received: true,
           error: `Admin does not have enough minutes available (${adminAvailable} available, ${minutes} requested)`,
-          userId 
+          userId
         });
       }
 
       // 1. Increase customer's minutes_limit
       const customerCurrentLimit = userData.minutes_limit || 0;
       const customerNewLimit = customerCurrentLimit + minutes;
-      
+
       const { error: customerUpdateError } = await supabaseAdmin
         .from('users')
         .update({ minutes_limit: customerNewLimit })
@@ -298,16 +293,16 @@ stripeWebhookRouter.post('/webhook', express.raw({
 
       if (customerUpdateError) {
         console.error('❌ [Stripe Webhook] Error updating customer minutes:', customerUpdateError);
-        return res.status(500).json({ 
+        return res.status(500).json({
           received: true,
           error: 'Failed to update customer minutes',
-          userId 
+          userId
         });
       }
 
       // 2. Decrease admin's available minutes by increasing minutes_used
       const adminNewUsed = (whitelabelAdmin.minutes_used || 0) + minutes;
-      
+
       const { error: adminUpdateError } = await supabaseAdmin
         .from('users')
         .update({ minutes_used: adminNewUsed })
@@ -320,10 +315,10 @@ stripeWebhookRouter.post('/webhook', express.raw({
           .from('users')
           .update({ minutes_limit: customerCurrentLimit })
           .eq('id', userId);
-        return res.status(500).json({ 
+        return res.status(500).json({
           received: true,
           error: 'Failed to update admin minutes',
-          userId 
+          userId
         });
       }
 
@@ -335,7 +330,7 @@ stripeWebhookRouter.post('/webhook', express.raw({
       // to prevent the database trigger from adding minutes again
       const paymentIdentifier = paymentIntentId || chargeId || 'unknown';
       const paymentType = paymentIntentId ? 'PaymentIntent' : 'Charge';
-      
+
       const { error: purchaseError } = await supabaseAdmin
         .from('minutes_purchases')
         .insert({
@@ -395,7 +390,7 @@ stripeWebhookRouter.post('/webhook', express.raw({
     // to prevent the database trigger from adding minutes again (trigger only processes certain payment_methods)
     const paymentIdentifier = paymentIntentId || chargeId || 'unknown';
     const paymentType = paymentIntentId ? 'PaymentIntent' : 'Charge';
-    
+
     const { error: purchaseError } = await supabaseAdmin
       .from('minutes_purchases')
       .insert({
@@ -422,13 +417,13 @@ stripeWebhookRouter.post('/webhook', express.raw({
   }
 });
 
-// Mount Stripe webhook router BEFORE express.json() and tenant middleware
-// IMPORTANT: Router must be mounted before express.json() so raw body is preserved
-// and before tenantMiddleware so it can bypass tenant checks
-app.use('/api/v1/stripe', stripeWebhookRouter);
-console.log('[Server] Stripe webhook router mounted at /api/v1/stripe');
+console.log('[Server] ✅ Stripe webhook handler mounted at /api/v1/stripe/webhook (BEFORE all middleware)');
 
-// JSON body parser must come AFTER the Stripe webhook router
+// Now apply global middleware AFTER Stripe webhook
+app.use(cors());
+app.use(express.urlencoded({ extended: false }));
+
+// JSON body parser must come AFTER the Stripe webhook handler
 // This ensures Stripe webhooks get raw body for signature verification
 app.use(express.json());
 
