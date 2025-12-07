@@ -1,33 +1,8 @@
--- Fix potential double-counting issue by ensuring trigger only fires once per INSERT
--- Check for duplicate triggers and ensure proper trigger configuration
+-- Fix double-crediting issue for Stripe webhook purchases
+-- The webhook handler in server/index.js already credits minutes directly,
+-- so the trigger should skip records with payment_method = 'stripe_webhook'
+-- to prevent double-crediting
 
--- First, check if there are duplicate triggers (shouldn't happen, but let's be safe)
-DO $$
-DECLARE
-    trigger_count INTEGER;
-BEGIN
-    SELECT COUNT(*) INTO trigger_count
-    FROM pg_trigger
-    WHERE tgname = 'add_purchased_minutes_to_user_trigger'
-    AND tgrelid = 'public.minutes_purchases'::regclass;
-    
-    IF trigger_count > 1 THEN
-        RAISE WARNING 'Found % duplicate triggers with name add_purchased_minutes_to_user_trigger. This could cause double-counting!', trigger_count;
-        -- Drop all but one
-        DELETE FROM pg_trigger
-        WHERE tgname = 'add_purchased_minutes_to_user_trigger'
-        AND tgrelid = 'public.minutes_purchases'::regclass
-        AND ctid NOT IN (
-            SELECT MIN(ctid)
-            FROM pg_trigger
-            WHERE tgname = 'add_purchased_minutes_to_user_trigger'
-            AND tgrelid = 'public.minutes_purchases'::regclass
-        );
-    END IF;
-END $$;
-
--- Ensure the trigger function is idempotent and only adds minutes once
--- Add additional safety check to prevent double-counting
 CREATE OR REPLACE FUNCTION public.add_purchased_minutes_to_user()
 RETURNS trigger
 SECURITY DEFINER
@@ -40,6 +15,13 @@ BEGIN
   -- This MUST be the first check to prevent any minutes from being added
   IF NEW.payment_method = 'whitelabel_customer_sale' THEN
     RETURN NEW; -- Exit early - do NOT add minutes
+  END IF;
+  
+  -- CRITICAL: Skip if this is a Stripe webhook purchase (minutes already added by webhook handler)
+  -- The webhook handler in server/index.js already credits minutes directly,
+  -- so we must skip these to prevent double-crediting
+  IF NEW.payment_method = 'stripe_webhook' THEN
+    RETURN NEW; -- Exit early - do NOT add minutes (already handled by webhook)
   END IF;
   
   -- Only add minutes when status changes to 'completed'
@@ -75,22 +57,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Ensure trigger exists and is properly configured
--- Drop and recreate to ensure clean state
-DROP TRIGGER IF EXISTS add_purchased_minutes_to_user_trigger ON public.minutes_purchases;
-
-CREATE TRIGGER add_purchased_minutes_to_user_trigger
-  AFTER INSERT OR UPDATE ON public.minutes_purchases
-  FOR EACH ROW
-  EXECUTE FUNCTION public.add_purchased_minutes_to_user();
-
--- Add comment
+-- Update comment
 COMMENT ON FUNCTION public.add_purchased_minutes_to_user() IS 
 'Adds minutes to user minutes_limit when purchase is completed. 
 SKIPS records with payment_method = whitelabel_customer_sale (debit transactions).
+SKIPS records with payment_method = stripe_webhook (minutes already added by webhook handler).
 Uses OLD.status check to ensure it only fires once per INSERT with status=completed.
 This prevents double-counting when inserting records with status=completed directly.';
-
-
 
 

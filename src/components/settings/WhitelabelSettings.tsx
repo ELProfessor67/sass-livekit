@@ -18,16 +18,18 @@ export function WhitelabelSettings() {
   const [existingSlug, setExistingSlug] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isStripeLoading, setIsStripeLoading] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isCheckingSlug, setIsCheckingSlug] = useState(false);
   const [slugStatusMessage, setSlugStatusMessage] = useState('');
   const [slugError, setSlugError] = useState('');
   const [isSlugUnique, setIsSlugUnique] = useState(false);
-  
-  // Stripe credentials
-  const [stripePublishableKey, setStripePublishableKey] = useState('');
-  const [stripeSecretKey, setStripeSecretKey] = useState('');
-  const [showStripeKeys, setShowStripeKeys] = useState(false);
+
+  const [stripeAccountStatus, setStripeAccountStatus] = useState<{
+    hasAccount: boolean;
+    charges_enabled: boolean;
+    payouts_enabled: boolean;
+  } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   // In development, force relative URL to use Vite proxy and preserve Host header
@@ -63,14 +65,31 @@ export function WhitelabelSettings() {
             if (settings.logo) {
               setLogoUrl(settings.logo);
             }
-            if (settings.stripe_publishable_key) {
-              setStripePublishableKey(settings.stripe_publishable_key);
-            }
-            // Don't show secret key for security, but indicate if it's set
-            if (settings.stripe_enabled) {
-              setShowStripeKeys(true);
+          }
+        }
+
+        // Fetch Stripe account status for current admin (if authenticated)
+        const statusHeaders: HeadersInit = { 'Content-Type': 'application/json' };
+        if (session?.access_token) {
+          statusHeaders.Authorization = `Bearer ${session.access_token}`;
+        }
+        try {
+          const statusResponse = await fetch(`${apiUrl}/api/v1/whitelabel/stripe/account-status`, {
+            method: 'GET',
+            headers: statusHeaders
+          });
+          if (statusResponse.ok) {
+            const statusData = await statusResponse.json();
+            if (statusData.success) {
+              setStripeAccountStatus({
+                hasAccount: !!statusData.hasAccount,
+                charges_enabled: !!statusData.charges_enabled,
+                payouts_enabled: !!statusData.payouts_enabled
+              });
             }
           }
+        } catch (statusError) {
+          console.error('Error fetching Stripe account status:', statusError);
         }
       } catch (error) {
         console.error('Error fetching whitelabel settings:', error);
@@ -201,9 +220,7 @@ export function WhitelabelSettings() {
         body: JSON.stringify({
           slug,
           website_name: brandName.trim(),
-          logo: logoUrl || null,
-          stripe_publishable_key: stripePublishableKey.trim() || null,
-          stripe_secret_key: stripeSecretKey.trim() || null
+          logo: logoUrl || null
         })
       });
 
@@ -244,14 +261,6 @@ export function WhitelabelSettings() {
 
       if (logoUrl) {
         payload.logo = logoUrl;
-      }
-
-      if (stripePublishableKey.trim()) {
-        payload.stripe_publishable_key = stripePublishableKey.trim();
-      }
-
-      if (stripeSecretKey.trim()) {
-        payload.stripe_secret_key = stripeSecretKey.trim();
       }
 
       const response = await fetch(`${apiUrl}/api/v1/whitelabel/website-settings`, {
@@ -389,45 +398,76 @@ export function WhitelabelSettings() {
               </div>
             </div>
 
-            {/* Stripe Credentials Section */}
+            {/* Stripe Connect Section */}
             <div className="pt-6 border-t border-border/40">
               <div className="flex items-center gap-3 mb-4">
                 <CreditCard className="w-5 h-5 text-primary" />
                 <div>
-                  <h4 className="font-medium text-foreground">Stripe Payment Configuration</h4>
+                  <h4 className="font-medium text-foreground">Stripe Connect Payouts</h4>
                   <p className="text-sm text-muted-foreground">
-                    Add your Stripe credentials to accept payments on your branded domain
+                    Connect a Stripe Express account to receive payouts for this whitelabel workspace.
                   </p>
                 </div>
               </div>
 
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Stripe Publishable Key</Label>
-                  <Input
-                    value={stripePublishableKey}
-                    onChange={(e) => setStripePublishableKey(e.target.value)}
-                    placeholder="pk_test_... or pk_live_..."
-                    disabled={isSaving}
-                    type="text"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Your Stripe publishable key (starts with pk_test_ or pk_live_)
-                  </p>
-                </div>
+                <div className="space-y-2 border-border/40">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isSaving || isStripeLoading}
+                    onClick={async () => {
+                      try {
+                        setIsStripeLoading(true);
+                        const accessToken = await ensureAuthenticated();
 
-                <div className="space-y-2">
-                  <Label>Stripe Secret Key</Label>
-                  <Input
-                    value={stripeSecretKey}
-                    onChange={(e) => setStripeSecretKey(e.target.value)}
-                    placeholder="sk_test_... or sk_live_..."
-                    disabled={isSaving}
-                    type="password"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Your Stripe secret key (starts with sk_test_ or sk_live_). This will be encrypted.
-                  </p>
+                        // Ensure Stripe account exists
+                        const createResp = await fetch(`${apiUrl}/api/v1/whitelabel/stripe/create-account`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`
+                          }
+                        });
+                        const createData = await createResp.json();
+                        if (!createResp.ok || !createData.success) {
+                          throw new Error(createData.message || 'Failed to create Stripe account');
+                        }
+
+                        // Generate onboarding link
+                        const linkResp = await fetch(`${apiUrl}/api/v1/whitelabel/stripe/account-link`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`
+                          }
+                        });
+                        const linkData = await linkResp.json();
+                        if (!linkResp.ok || !linkData.success) {
+                          throw new Error(linkData.message || 'Failed to create Stripe onboarding link');
+                        }
+
+                        window.location.href = linkData.url;
+                      } catch (error) {
+                        console.error('Stripe Connect setup error:', error);
+                        toast.error(error instanceof Error ? error.message : 'Failed to start Stripe onboarding');
+                      } finally {
+                        setIsStripeLoading(false);
+                      }
+                    }}
+                  >
+                    {isStripeLoading ? 'Redirecting to Stripe...' : 'Set up Stripe payouts'}
+                  </Button>
+                  {stripeAccountStatus && (
+                    <p className="text-xs text-muted-foreground">
+                      Status:{' '}
+                      {stripeAccountStatus.hasAccount
+                        ? stripeAccountStatus.charges_enabled
+                          ? 'Payments and payouts enabled'
+                          : 'Account created - please finish onboarding in Stripe'
+                        : 'Not connected yet'}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

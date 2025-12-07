@@ -14,3 +14,6 @@ The trigger has been disabled to prevent double-counting. All minutes addition l
 -- If you want to completely remove it, you can run:
 -- DROP FUNCTION IF EXISTS public.add_purchased_minutes_to_user();
 
+
+
+

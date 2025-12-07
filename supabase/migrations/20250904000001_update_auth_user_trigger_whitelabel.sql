@@ -41,20 +41,27 @@ BEGIN
     name,
     slug_name,
     tenant,
-    role
+    role,
+    minutes_limit,
+    minutes_used
   )
   VALUES (
     NEW.id, 
     COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name'),
     user_slug,
     user_tenant,
-    user_role
+    user_role,
+    0, -- Initialize minutes_limit to 0
+    0  -- Initialize minutes_used to 0
   )
   ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     slug_name = COALESCE(EXCLUDED.slug_name, users.slug_name),
     tenant = COALESCE(EXCLUDED.tenant, users.tenant),
-    role = COALESCE(EXCLUDED.role, users.role);
+    role = COALESCE(EXCLUDED.role, users.role),
+    -- Only update minutes if they are NULL (for existing users that might not have these fields)
+    minutes_limit = COALESCE(users.minutes_limit, 0),
+    minutes_used = COALESCE(users.minutes_used, 0);
   
   RETURN NEW;
 END;

@@ -1,5 +1,6 @@
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
+import { stripe } from '../stripe.js';
 
 const router = express.Router();
 
@@ -9,6 +10,22 @@ const getSupabaseClient = () => {
         process.env.SUPABASE_URL,
         process.env.SUPABASE_SERVICE_ROLE_KEY
     );
+};
+
+// Helper to find whitelabel admin for a given tenant
+const findWhitelabelAdminByTenant = async (supabase, tenant) => {
+    if (!tenant || tenant === 'main') return null;
+    const { data, error } = await supabase
+        .from('users')
+        .select('id, slug_name, stripe_account_id')
+        .eq('slug_name', tenant)
+        .eq('role', 'admin')
+        .single();
+    if (error) {
+        console.error('Error fetching whitelabel admin for tenant', tenant, error);
+        return null;
+    }
+    return data;
 };
 
 // Middleware to validate authentication
@@ -275,6 +292,171 @@ router.get('/minutes-pricing', validateAuth, async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Internal server error'
+        });
+    }
+});
+
+/**
+ * POST /api/v1/minutes/create-payment-intent
+ * Create a Stripe PaymentIntent for purchasing minutes.
+ * - If customer is a whitelabel customer, route funds to their whitelabel admin's Stripe account (Connect).
+ * - Application fee logic can be added later for platform commissions.
+ */
+router.post('/minutes/create-payment-intent', validateAuth, async (req, res) => {
+    try {
+        if (!process.env.STRIPE_SECRET) {
+            return res.status(500).json({
+                success: false,
+                error: 'Stripe is not configured on the platform',
+            });
+        }
+
+        const { minutes } = req.body;
+
+        if (!minutes || typeof minutes !== 'number' || minutes <= 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Valid minutes quantity is required',
+            });
+        }
+
+        const supabase = getSupabaseClient();
+
+        // Get user and their tenant/role
+        const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('tenant, role, slug_name')
+            .eq('id', req.userId)
+            .single();
+
+        if (userError || !userData) {
+            return res.status(404).json({
+                success: false,
+                error: 'User profile not found',
+            });
+        }
+
+        const tenant = userData.tenant || 'main';
+        const isWhitelabelAdmin = userData.role === 'admin' && userData.slug_name;
+        const isWhitelabelCustomer =
+            tenant !== 'main' && userData.role !== 'admin' && !userData.slug_name;
+
+        // Determine which tenant's pricing applies
+        // - Whitelabel admins & main users buy at main pricing
+        // - Whitelabel customers buy at their tenant (whitelabel admin's) pricing
+        const pricingTenant = isWhitelabelAdmin ? 'main' : tenant;
+
+        const { data: pricingConfig, error: pricingError } = await supabase
+            .from('minutes_pricing_config')
+            .select('*')
+            .eq('tenant', pricingTenant)
+            .eq('is_active', true)
+            .single();
+
+        const pricing = pricingConfig || {
+            price_per_minute: 0.01,
+            minimum_purchase: 0,
+            currency: 'USD',
+        };
+
+        if (pricing.minimum_purchase > 0 && minutes < pricing.minimum_purchase) {
+            return res.status(400).json({
+                success: false,
+                error: `Minimum purchase is ${pricing.minimum_purchase} minutes`,
+            });
+        }
+
+        // Calculate amount in smallest currency unit (e.g. cents)
+        const amountFloat = minutes * pricing.price_per_minute;
+        const amount = Math.round(amountFloat * 100); // e.g. 1.23 -> 123
+
+        // Determine connected account for destination (if any)
+        let transferData = undefined;
+
+        if (isWhitelabelCustomer) {
+            // Find whitelabel admin and check their minutes availability
+            const { data: whitelabelAdmin, error: adminError } = await supabase
+                .from('users')
+                .select('id, minutes_limit, minutes_used, stripe_account_id, slug_name')
+                .eq('slug_name', tenant)
+                .eq('role', 'admin')
+                .single();
+
+            if (adminError || !whitelabelAdmin) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Whitelabel admin not found. Please contact support.',
+                });
+            }
+
+            if (!whitelabelAdmin.stripe_account_id) {
+                return res.status(400).json({
+                    success: false,
+                    error:
+                        'Whitelabel admin has not configured Stripe payouts yet. Please contact your administrator.',
+                });
+            }
+
+            // Check if admin has enough minutes available
+            const adminAvailable = (whitelabelAdmin.minutes_limit || 0) - (whitelabelAdmin.minutes_used || 0);
+            if (adminAvailable < minutes) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Insufficient minutes available',
+                    warning: true,
+                    adminAvailable,
+                    requested: minutes,
+                    message: `Your administrator currently has ${adminAvailable} minutes available, but you're trying to purchase ${minutes} minutes. Please contact your administrator to purchase more minutes, or reduce your purchase amount.`,
+                });
+            }
+
+            transferData = {
+                destination: whitelabelAdmin.stripe_account_id,
+            };
+        }
+
+        // Optional: add application_fee_amount here if you want platform commission
+        const paymentIntentParams = {
+            amount,
+            currency: pricing.currency.toLowerCase(),
+            metadata: {
+                minutes: String(minutes),
+                user_id: req.userId,
+                tenant,
+                pricing_tenant: pricingTenant,
+                amount: String(amount),
+                currency: pricing.currency,
+            },
+        };
+
+        if (transferData) {
+            paymentIntentParams.transfer_data = transferData;
+        }
+
+        const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
+
+        console.log('[PaymentIntent] Created:', {
+            id: paymentIntent.id,
+            status: paymentIntent.status,
+            amount: paymentIntent.amount,
+            currency: paymentIntent.currency,
+            hasTransferData: !!paymentIntentParams.transfer_data,
+            destination: paymentIntentParams.transfer_data?.destination,
+        });
+
+        return res.json({
+            success: true,
+            clientSecret: paymentIntent.client_secret,
+            currency: pricing.currency,
+            amount,
+            paymentIntentId: paymentIntent.id, // For debugging
+        });
+    } catch (error) {
+        console.error('Error in POST /minutes/create-payment-intent:', error);
+        return res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to create payment intent',
+            details: error.type || error.code || 'unknown_error',
         });
     }
 });

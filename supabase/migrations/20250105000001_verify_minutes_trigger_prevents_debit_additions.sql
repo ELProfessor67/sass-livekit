@@ -61,3 +61,6 @@ COMMENT ON FUNCTION public.add_purchased_minutes_to_user() IS
 SKIPS records with payment_method = whitelabel_customer_sale (debit transactions).
 This prevents whitelabel admins from gaining minutes when their customers purchase.';
 
+
+
+

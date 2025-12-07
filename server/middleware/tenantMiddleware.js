@@ -30,10 +30,16 @@ const ignoreRoutes = [
   '/api/v1/sms/webhook',
   '/api/v1/twilio/sms/webhook',
   '/api/v1/twilio/sms/status-callback',
+  '/api/v1/stripe/webhook', // Stripe webhooks don't have tenant context
+  '/stripe/webhook', // Alternative path format
 ];
 
 function isIgnoredRoute(uri) {
-  return ignoreRoutes.some(route => uri.startsWith(route));
+  const isIgnored = ignoreRoutes.some(route => uri.startsWith(route));
+  if (isIgnored && process.env.NODE_ENV === 'development') {
+    console.log(`[TenantMiddleware] Ignoring route: ${uri} (matches ignored route)`);
+  }
+  return isIgnored;
 }
 
 async function extractTenantFromUrl(url) {
@@ -55,6 +61,83 @@ async function extractTenantFromUrl(url) {
     if (!hostname) return 'main';
 
     hostname = hostname.replace('www.', '');
+
+    // Check if it's an ngrok URL (development tunnel)
+    const isNgrokUrl = hostname.includes('ngrok') || hostname.endsWith('.ngrok-free.app') || hostname.endsWith('.ngrok.io');
+    
+    if (isNgrokUrl) {
+      const parts = hostname.split('.');
+      // For ngrok URLs, check if there's a tenant subdomain
+      // e.g., "acme.baf398848b04.ngrok-free.app" -> parts: ['acme', 'baf398848b04', 'ngrok-free', 'app']
+      // e.g., "baf398848b04.ngrok-free.app" -> parts: ['baf398848b04', 'ngrok-free', 'app']
+      // If parts.length > 3, there's a tenant subdomain
+      if (parts.length > 3) {
+        const tenantSlug = parts[0];
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[extractTenantFromUrl] Detected tenant subdomain in ngrok URL:', tenantSlug, 'from hostname:', hostname);
+        }
+        // Look up the tenant in the database
+        if (!supabase) {
+          console.warn('Supabase not initialized, returning main tenant');
+          return 'main';
+        }
+        
+        // Retry logic for Cloudflare-protected Supabase queries
+        let tenantOwner = null;
+        let error = null;
+        const maxRetries = 3;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          const result = await supabase
+            .from('users')
+            .select('slug_name, tenant')
+            .eq('slug_name', tenantSlug)
+            .maybeSingle();
+
+          error = result.error;
+          tenantOwner = result.data;
+
+          if (!error || (error.code !== 'PGRST116' && error.code !== 'PGRST301' && !error.message?.includes('fetch'))) {
+            break;
+          }
+
+          if (attempt < maxRetries) {
+            const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+            console.warn(`[extractTenantFromUrl] Supabase query failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms:`, error.message);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+
+        if (error) {
+          console.error('Error fetching tenant by slug after retries:', {
+            error: error.message,
+            code: error.code,
+            tenantSlug,
+            attempts: maxRetries
+          });
+          return null;
+        }
+
+        if (!tenantOwner) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[extractTenantFromUrl] No tenant found for slug:', tenantSlug);
+          }
+          return null;
+        }
+
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[extractTenantFromUrl] Found tenant:', tenantOwner.slug_name || tenantOwner.tenant);
+        }
+
+        return tenantOwner.slug_name || tenantOwner.tenant || 'main';
+      } else {
+        // No subdomain in ngrok URL, return main tenant
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[extractTenantFromUrl] Detected ngrok URL without subdomain, returning main tenant:', hostname);
+        }
+        return 'main';
+      }
+    }
 
     if (hardcodedMainHosts.includes(hostname)) {
       return 'main';
@@ -169,6 +252,56 @@ async function extractTenantFromUrl(url) {
 }
 
 export const tenantMiddleware = async (req, res, next) => {
+  const uri = req.url;
+  const originalUrl = req.originalUrl || uri;
+  const path = req.path || uri;
+  const method = req.method;
+
+  // CRITICAL: Skip tenant validation for Stripe webhook FIRST (before any other logic)
+  // Stripe webhooks don't have tenant context and must bypass all validation
+  // Check multiple URL properties to ensure we catch the webhook route
+  // Also check for query strings and trailing slashes
+  const normalizedUri = (uri || '').split('?')[0].replace(/\/$/, ''); // Remove query string and trailing slash
+  const normalizedOriginalUrl = (originalUrl || '').split('?')[0].replace(/\/$/, '');
+  const normalizedPath = (path || '').split('?')[0].replace(/\/$/, '');
+  
+  // Check if this is a Stripe webhook request
+  // Stripe sends POST requests to /api/v1/stripe/webhook
+  const isStripeWebhook = method === 'POST' && (
+    uri === '/api/v1/stripe/webhook' || 
+    uri.startsWith('/api/v1/stripe/webhook') ||
+    originalUrl === '/api/v1/stripe/webhook' ||
+    originalUrl.startsWith('/api/v1/stripe/webhook') ||
+    path === '/api/v1/stripe/webhook' ||
+    path.startsWith('/api/v1/stripe/webhook') ||
+    normalizedUri === '/api/v1/stripe/webhook' ||
+    normalizedUri.startsWith('/api/v1/stripe/webhook') ||
+    normalizedOriginalUrl === '/api/v1/stripe/webhook' ||
+    normalizedOriginalUrl.startsWith('/api/v1/stripe/webhook') ||
+    normalizedPath === '/api/v1/stripe/webhook' ||
+    normalizedPath.startsWith('/api/v1/stripe/webhook') ||
+    (uri && uri.includes('/stripe/webhook')) ||
+    (originalUrl && originalUrl.includes('/stripe/webhook')) ||
+    (path && path.includes('/stripe/webhook')) ||
+    // Also check for Stripe signature header as additional confirmation
+    (req.headers['stripe-signature'] && (uri.includes('/stripe') || originalUrl.includes('/stripe')))
+  );
+  
+  if (isStripeWebhook) {
+    console.log(`[TenantMiddleware] ✅ SKIPPING tenant validation for Stripe webhook: ${method} ${uri} (originalUrl: ${originalUrl}, path: ${path})`);
+    req.tenant = 'main';
+    return next();
+  }
+
+  // Skip tenant validation for other ignored routes
+  if (isIgnoredRoute(uri)) {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[TenantMiddleware] Skipping tenant validation for: ${method} ${uri}`);
+    }
+    req.tenant = 'main';
+    return next();
+  }
+
   // Try multiple sources for the hostname in order of preference:
   // 1. origin header (most reliable for CORS requests)
   // 2. referer header (fallback for same-origin requests)
@@ -178,13 +311,6 @@ export const tenantMiddleware = async (req, res, next) => {
   const referer = req.headers.referer || '';
   const forwardedHost = req.headers['x-forwarded-host'] || '';
   const host = req.headers.host || '';
-  const uri = req.url;
-
-  // Skip tenant validation for ignored routes
-  if (isIgnoredRoute(uri)) {
-    req.tenant = 'main';
-    return next();
-  }
 
   // For authenticated API routes (like whitelabel, admin, etc.), allow through even if tenant can't be determined
   // These routes will handle authentication and authorization themselves
@@ -228,7 +354,37 @@ export const tenantMiddleware = async (req, res, next) => {
     });
   }
 
-  const tenant = await extractTenantFromUrl(urlToCheck);
+  // Try to extract tenant from URL first
+  let tenant = await extractTenantFromUrl(urlToCheck);
+
+  // Fallback: In development, allow tenant to be specified via query parameter or header
+  // This is useful when using ngrok without subdomain support
+  if (!tenant && process.env.NODE_ENV === 'development') {
+    const tenantFromQuery = req.query?.tenant || req.query?.slug;
+    const tenantFromHeader = req.headers['x-tenant'] || req.headers['x-tenant-slug'];
+    
+    if (tenantFromQuery || tenantFromHeader) {
+      const tenantSlug = tenantFromQuery || tenantFromHeader;
+      
+      if (supabase) {
+        // Look up the tenant in the database
+        const result = await supabase
+          .from('users')
+          .select('slug_name, tenant')
+          .eq('slug_name', tenantSlug)
+          .maybeSingle();
+
+        if (!result.error && result.data) {
+          tenant = result.data.slug_name || result.data.tenant || 'main';
+          console.log(`[TenantMiddleware] Extracted tenant from ${tenantFromQuery ? 'query parameter' : 'header'}:`, tenant);
+        } else {
+          console.warn(`[TenantMiddleware] Tenant slug not found in database:`, tenantSlug);
+        }
+      } else {
+        console.warn('[TenantMiddleware] Supabase not initialized, cannot validate tenant from query/header');
+      }
+    }
+  }
 
   // Debug logging
   if (process.env.NODE_ENV === 'development') {

@@ -4,6 +4,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { stripe } from '../stripe.js';
 
 const router = express.Router();
 
@@ -613,6 +614,8 @@ router.post('/website-settings', async (req, res) => {
           slug_name: slug,
           tenant: slug || 'main',
           role: userRole,
+          minutes_limit: 0, // Initialize to 0 for new users
+          minutes_used: 0,  // Initialize to 0 for new users
         }, {
           onConflict: 'id',
           ignoreDuplicates: false
@@ -801,6 +804,216 @@ router.post('/website-settings', async (req, res) => {
       success: false,
       message: 'An error occurred while updating website settings'
     });
+  }
+});
+
+// Create Stripe Connect account for current whitelabel admin
+router.post('/stripe/create-account', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ success: false, message: 'Database not configured' });
+    }
+    if (!process.env.STRIPE_SECRET) {
+      return res.status(500).json({ success: false, message: 'Stripe not configured on platform' });
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+    const token = authHeader.replace('Bearer ', '');
+
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !authUser) {
+      return res.status(401).json({ success: false, message: 'Invalid authentication token' });
+    }
+
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('id, slug_name, tenant, role, stripe_account_id')
+      .eq('id', authUser.id)
+      .maybeSingle();
+
+    if (userError || !userData) {
+      return res.status(404).json({ success: false, message: 'User profile not found' });
+    }
+
+    if (!userData.slug_name || userData.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Only whitelabel admins can create Stripe accounts' });
+    }
+
+    if (userData.stripe_account_id) {
+      return res.status(200).json({
+        success: true,
+        accountId: userData.stripe_account_id,
+        message: 'Stripe account already exists for this whitelabel',
+      });
+    }
+
+    const account = await stripe.accounts.create({
+      type: 'express',
+      metadata: {
+        user_id: userData.id,
+        tenant: userData.tenant,
+        slug_name: userData.slug_name,
+      },
+    });
+
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ stripe_account_id: account.id })
+      .eq('id', userData.id);
+
+    if (updateError) {
+      console.error('Error saving stripe_account_id:', updateError);
+      return res.status(500).json({ success: false, message: 'Failed to save Stripe account' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      accountId: account.id,
+    });
+  } catch (err) {
+    console.error('Error creating Stripe Connect account:', err);
+    
+    // Handle specific Stripe errors with user-friendly messages
+    if (err.code === 'captcha_score_too_high') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Stripe flagged this request. Please try again in 15-30 minutes, or use a different browser/network. If the issue persists, contact Stripe support.' 
+      });
+    }
+    
+    return res.status(500).json({ success: false, message: err.message || 'Failed to create Stripe account' });
+  }
+});
+
+// Generate Stripe onboarding link for current whitelabel admin
+router.post('/stripe/account-link', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ success: false, message: 'Database not configured' });
+    }
+    if (!process.env.STRIPE_SECRET) {
+      return res.status(500).json({ success: false, message: 'Stripe not configured on platform' });
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+    const token = authHeader.replace('Bearer ', '');
+
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !authUser) {
+      return res.status(401).json({ success: false, message: 'Invalid authentication token' });
+    }
+
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('id, slug_name, stripe_account_id')
+      .eq('id', authUser.id)
+      .maybeSingle();
+
+    if (userError || !userData) {
+      return res.status(404).json({ success: false, message: 'User profile not found' });
+    }
+
+    if (!userData.slug_name) {
+      return res.status(403).json({ success: false, message: 'Only whitelabel admins can access Stripe onboarding' });
+    }
+
+    if (!userData.stripe_account_id) {
+      return res.status(400).json({ success: false, message: 'Stripe account not created yet' });
+    }
+
+    const mainDomain = process.env.MAIN_DOMAIN || process.env.VITE_MAIN_DOMAIN || req.headers.host;
+    const baseDomain = mainDomain.replace(/^https?:\/\//, '');
+    const baseUrl = `https://${baseDomain}`;
+
+    const accountLink = await stripe.accountLinks.create({
+      account: userData.stripe_account_id,
+      type: 'account_onboarding',
+      refresh_url: `${baseUrl}/whitelabel/stripe/refresh`,
+      return_url: `${baseUrl}/whitelabel/stripe/success`,
+    });
+
+    return res.status(200).json({
+      success: true,
+      url: accountLink.url,
+    });
+  } catch (err) {
+    console.error('Error generating Stripe account link:', err);
+    
+    // Handle specific Stripe errors with user-friendly messages
+    if (err.code === 'captcha_score_too_high') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Stripe flagged this request. Please try again in 15-30 minutes, or use a different browser/network. If the issue persists, contact Stripe support.' 
+      });
+    }
+    
+    return res.status(500).json({ success: false, message: err.message || 'Failed to generate account link' });
+  }
+});
+
+// Get Stripe account status for current whitelabel admin
+router.get('/stripe/account-status', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ success: false, message: 'Database not configured' });
+    }
+    if (!process.env.STRIPE_SECRET) {
+      return res.status(500).json({ success: false, message: 'Stripe not configured on platform' });
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+    const token = authHeader.replace('Bearer ', '');
+
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !authUser) {
+      return res.status(401).json({ success: false, message: 'Invalid authentication token' });
+    }
+
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('id, slug_name, stripe_account_id')
+      .eq('id', authUser.id)
+      .maybeSingle();
+
+    if (userError || !userData) {
+      return res.status(404).json({ success: false, message: 'User profile not found' });
+    }
+
+    if (!userData.slug_name) {
+      return res.status(403).json({ success: false, message: 'Only whitelabel admins have Stripe accounts' });
+    }
+
+    if (!userData.stripe_account_id) {
+      return res.status(200).json({
+        success: true,
+        hasAccount: false,
+        charges_enabled: false,
+        payouts_enabled: false,
+      });
+    }
+
+    const account = await stripe.accounts.retrieve(userData.stripe_account_id);
+
+    return res.status(200).json({
+      success: true,
+      hasAccount: true,
+      accountId: account.id,
+      charges_enabled: account.charges_enabled,
+      payouts_enabled: account.payouts_enabled,
+      requirements: account.requirements,
+    });
+  } catch (err) {
+    console.error('Error fetching Stripe account status:', err);
+    return res.status(500).json({ success: false, message: err.message || 'Failed to get account status' });
   }
 });
 

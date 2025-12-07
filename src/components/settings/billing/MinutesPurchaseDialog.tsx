@@ -6,9 +6,17 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, CreditCard, History, Plus, Check } from "lucide-react";
+import { Loader2, CreditCard, History, Plus, Check, AlertTriangle } from "lucide-react";
+import { loadStripe } from "@stripe/stripe-js";
+import {
+    Elements,
+    CardElement,
+    useStripe,
+    useElements,
+} from "@stripe/react-stripe-js";
 
 interface MinutesPurchaseDialogProps {
     open: boolean;
@@ -44,13 +52,18 @@ interface PaymentMethod {
     is_default: boolean;
 }
 
-export function MinutesPurchaseDialog({
+// Stripe initialization (platform publishable key)
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "");
+
+function MinutesPurchaseDialogInner({
     open,
     onOpenChange,
     currentBalance,
     minutesUsed,
     onPurchaseComplete
 }: MinutesPurchaseDialogProps) {
+    const stripe = useStripe();
+    const elements = useElements();
     const [minutesToPurchase, setMinutesToPurchase] = useState<number>(100);
     const [pricing, setPricing] = useState<PricingConfig | null>(null);
     const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -61,6 +74,9 @@ export function MinutesPurchaseDialog({
     const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false);
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null);
     const [showNewCardForm, setShowNewCardForm] = useState(false);
+    const [paymentError, setPaymentError] = useState<string | null>(null);
+    const [adminMinutesWarning, setAdminMinutesWarning] = useState<{ available: number; requested: number } | null>(null);
+    const [userProfile, setUserProfile] = useState<{ tenant: string; role: string; slug_name: string | null } | null>(null);
 
     // Fetch pricing configuration and payment methods
     useEffect(() => {
@@ -68,8 +84,79 @@ export function MinutesPurchaseDialog({
             fetchPricing();
             fetchPurchaseHistory();
             fetchPaymentMethods();
+            fetchUserProfile();
         }
     }, [open]);
+
+    // Check admin minutes availability when minutes change (for whitelabel customers)
+    useEffect(() => {
+        if (open && userProfile && minutesToPurchase > 0) {
+            checkAdminMinutesAvailability();
+        }
+    }, [open, minutesToPurchase, userProfile]);
+
+    const fetchUserProfile = async () => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            const { data, error } = await supabase
+                .from('users')
+                .select('tenant, role, slug_name')
+                .eq('id', user.id)
+                .single();
+
+            if (!error && data) {
+                setUserProfile(data);
+            }
+        } catch (error) {
+            console.error('Error fetching user profile:', error);
+        }
+    };
+
+    const checkAdminMinutesAvailability = async () => {
+        if (!userProfile) return;
+
+        const tenant = userProfile.tenant || 'main';
+        const isWhitelabelCustomer = tenant !== 'main' && userProfile.role !== 'admin' && !userProfile.slug_name;
+
+        if (!isWhitelabelCustomer) {
+            setAdminMinutesWarning(null);
+            return;
+        }
+
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) return;
+
+            const backendUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
+            const response = await fetch(`${backendUrl}/api/v1/minutes/create-payment-intent`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`,
+                },
+                body: JSON.stringify({ minutes: minutesToPurchase }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                if (errorData.warning && errorData.adminAvailable !== undefined) {
+                    setAdminMinutesWarning({
+                        available: errorData.adminAvailable,
+                        requested: errorData.requested || minutesToPurchase,
+                    });
+                } else {
+                    setAdminMinutesWarning(null);
+                }
+            } else {
+                setAdminMinutesWarning(null);
+            }
+        } catch (error) {
+            console.error('Error checking admin minutes:', error);
+            setAdminMinutesWarning(null);
+        }
+    };
 
     const fetchPricing = async () => {
         try {
@@ -187,41 +274,125 @@ export function MinutesPurchaseDialog({
 
         try {
             setLoading(true);
+            setPaymentError(null);
             const { data: { session } } = await supabase.auth.getSession();
             if (!session?.access_token) {
                 throw new Error('No session found');
             }
 
             const backendUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
-            const response = await fetch(`${backendUrl}/api/v1/minutes/purchase`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${session.access_token}`,
-                },
-                body: JSON.stringify({ minutes: minutesToPurchase }),
-            });
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: 'Failed to purchase minutes' }));
-                throw new Error(errorData.error || 'Failed to purchase minutes');
-            }
-
-            const result = await response.json();
-            if (result.success) {
-                toast.success(result.message || `Successfully purchased ${minutesToPurchase} minutes`);
-                await fetchPurchaseHistory();
-                if (onPurchaseComplete) {
-                    onPurchaseComplete();
+            if (showNewCardForm) {
+                // Full Stripe payment flow with new card (minutes credited via Stripe webhook)
+                if (!stripe || !elements) {
+                    throw new Error('Payment system not ready. Please try again in a moment.');
                 }
-                // Reset to default amount
-                setMinutesToPurchase(Math.max(pricing.minimum_purchase || 0, 100));
+
+                const cardElement = elements.getElement(CardElement);
+                if (!cardElement) {
+                    throw new Error('Card element not found');
+                }
+
+                // 1) Create PaymentIntent on backend (Stripe Connect, correct tenant routing)
+                const intentResp = await fetch(`${backendUrl}/api/v1/minutes/create-payment-intent`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${session.access_token}`,
+                    },
+                    body: JSON.stringify({ minutes: minutesToPurchase }),
+                });
+
+                if (!intentResp.ok) {
+                    const errorData = await intentResp.json().catch(() => ({ error: 'Failed to start payment' }));
+                    
+                    // Check if it's a warning about insufficient admin minutes
+                    if (errorData.warning && errorData.message) {
+                        toast.error(errorData.message, {
+                            duration: 8000,
+                            description: `Available: ${errorData.adminAvailable} minutes | Requested: ${errorData.requested} minutes`,
+                        });
+                        throw new Error(errorData.message);
+                    }
+                    
+                    throw new Error(errorData.error || 'Failed to start payment');
+                }
+
+                const intentData = await intentResp.json();
+                if (!intentData.success || !intentData.clientSecret) {
+                    throw new Error(intentData.error || 'Invalid payment intent response');
+                }
+
+                console.log('[Payment] PaymentIntent created:', {
+                    paymentIntentId: intentData.paymentIntentId,
+                    clientSecret: intentData.clientSecret?.substring(0, 20) + '...',
+                    publishableKey: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY?.substring(0, 20) + '...',
+                });
+
+                // 2) Confirm card payment with Stripe.js
+                const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(
+                    intentData.clientSecret,
+                    {
+                        payment_method: {
+                            card: cardElement,
+                        },
+                    }
+                );
+
+                if (confirmError) {
+                    console.error('Stripe confirmCardPayment error:', confirmError);
+                    
+                    // Provide helpful error message for common issues
+                    let errorMessage = confirmError.message || 'Payment failed';
+                    if (confirmError.code === 'resource_missing') {
+                        errorMessage = 'PaymentIntent not found. This usually means your Stripe keys don\'t match. Please ensure VITE_STRIPE_PUBLISHABLE_KEY matches your backend STRIPE_SECRET account.';
+                    }
+                    
+                    setPaymentError(errorMessage);
+                    throw new Error(errorMessage);
+                }
+
+                if (paymentIntent?.status !== 'succeeded') {
+                    throw new Error(`Payment not completed (status: ${paymentIntent?.status || 'unknown'})`);
+                }
+
+                // Minutes will be credited by Stripe webhook handler
+                toast.success(`Payment successful! Your minutes will appear shortly.`);
             } else {
-                throw new Error(result.error || 'Purchase failed');
+                // Existing demo flow for saved cards (no real charge yet)
+                const response = await fetch(`${backendUrl}/api/v1/minutes/purchase`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${session.access_token}`,
+                    },
+                    body: JSON.stringify({ minutes: minutesToPurchase }),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: 'Failed to purchase minutes' }));
+                    throw new Error(errorData.error || 'Failed to purchase minutes');
+                }
+
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.error || 'Purchase failed');
+                }
+
+                toast.success(result.message || `Successfully purchased ${minutesToPurchase} minutes`);
             }
+
+            await fetchPurchaseHistory();
+            if (onPurchaseComplete) {
+                onPurchaseComplete();
+            }
+            // Reset to default amount
+            setMinutesToPurchase(Math.max(pricing.minimum_purchase || 0, 100));
         } catch (error: any) {
             console.error('Error purchasing minutes:', error);
-            toast.error(error.message || 'Failed to purchase minutes');
+            const message = error?.message || 'Failed to purchase minutes';
+            setPaymentError(message);
+            toast.error(message);
         } finally {
             setLoading(false);
         }
@@ -315,6 +486,23 @@ export function MinutesPurchaseDialog({
                                 />
                             </div>
 
+                            {/* Admin Minutes Warning for Whitelabel Customers */}
+                            {adminMinutesWarning && (
+                                <Alert variant="destructive">
+                                    <AlertTriangle className="h-4 w-4" />
+                                    <AlertDescription>
+                                        <div className="font-semibold mb-1">Insufficient Minutes Available</div>
+                                        <div className="text-sm">
+                                            Your administrator currently has <strong>{adminMinutesWarning.available.toLocaleString()}</strong> minutes available, 
+                                            but you're trying to purchase <strong>{adminMinutesWarning.requested.toLocaleString()}</strong> minutes.
+                                        </div>
+                                        <div className="text-sm mt-2">
+                                            Please contact your administrator to purchase more minutes, or reduce your purchase amount.
+                                        </div>
+                                    </AlertDescription>
+                                </Alert>
+                            )}
+
                             {/* Payment Method Selection */}
                             <div className="space-y-3">
                                 <Label>Payment Method</Label>
@@ -354,13 +542,30 @@ export function MinutesPurchaseDialog({
                                         )}
 
                                         {showNewCardForm ? (
-                                            <div className="rounded-lg border border-border/40 bg-muted/10 p-4">
-                                                <p className="text-sm text-white mb-2">
-                                                    New card form will be integrated with Stripe Elements here
+                                            <div className="rounded-lg border border-border/40 bg-muted/10 p-4 space-y-3">
+                                                <p className="text-sm text-white">
+                                                    Enter your card details to pay securely with Stripe. Your whitelabel
+                                                    admin (or main account) will receive payouts via Stripe Connect.
                                                 </p>
-                                                <p className="text-xs text-white">
-                                                    For now, using demo mode (auto-completes purchase)
-                                                </p>
+                                                <div className="mt-2 p-3 bg-background/40 border border-border/40 rounded-md">
+                                                    <CardElement
+                                                        options={{
+                                                            style: {
+                                                                base: {
+                                                                    fontSize: '16px',
+                                                                    color: '#ffffff',
+                                                                    '::placeholder': { color: '#a1a1aa' },
+                                                                },
+                                                                invalid: { color: '#ef4444' },
+                                                            },
+                                                        }}
+                                                    />
+                                                </div>
+                                                {paymentError && (
+                                                    <p className="text-xs text-destructive mt-2">
+                                                        {paymentError}
+                                                    </p>
+                                                )}
                                             </div>
                                         ) : paymentMethods.length > 0 && (
                                             <Button
@@ -468,5 +673,13 @@ export function MinutesPurchaseDialog({
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+    );
+}
+
+export function MinutesPurchaseDialog(props: MinutesPurchaseDialogProps) {
+    return (
+        <Elements stripe={stripePromise}>
+            <MinutesPurchaseDialogInner {...props} />
+        </Elements>
     );
 }
