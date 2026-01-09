@@ -1022,10 +1022,179 @@ class CallHandler:
             else:
                 # logger.error(f"CALL_HISTORY_SAVE_FAILED | call_id={call_id}")
                 pass
+            
+            # Execute custom workflows
+            try:
+                await self._execute_user_workflows(assistant_config, call_data)
+            except Exception as workflow_error:
+                logger.error(f"WORKFLOW_EXECUTION_ERROR | error={str(workflow_error)}")
                 
         except Exception as e:
             # logger.error(f"CALL_HISTORY_SAVE_ERROR | error={str(e)}")
             pass
+
+    async def _execute_user_workflows(self, assistant_config: Dict[str, Any], call_data: Dict[str, Any]) -> None:
+        """Fetch and execute user-defined node-based workflows."""
+        user_id = assistant_config.get("user_id")
+        if not user_id:
+            return
+
+        try:
+            # Fetch active workflows for the user
+            db_client = get_database_client()
+            if not db_client:
+                return
+
+            assistant_id = assistant_config.get("id")
+            
+            if not hasattr(self.supabase, 'client') or self.supabase.client is None:
+                logger.warning("WORKFLOW_EXECUTION_SKIP | Supabase client not initialized")
+                return
+
+            # Perform the query to find workflows for this user
+            query = self.supabase.client.table("workflows").select("*").eq("user_id", user_id).eq("is_active", True)
+            
+            if assistant_id:
+                query = query.or_(f"assistant_id.eq.{assistant_id},assistant_id.is.null")
+            else:
+                query = query.is_("assistant_id", "null")
+                
+            response = query.execute()
+            workflows = response.data if hasattr(response, 'data') else []
+
+            if not workflows:
+                logger.debug(f"WORKFLOW_EXECUTION_SKIP | no active workflows for user={user_id}")
+                return
+
+            logger.info(f"WORKFLOW_EXECUTION_START | user={user_id} | count={len(workflows)}")
+
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                for workflow in workflows:
+                    workflow_id = workflow.get("id")
+                    nodes = workflow.get("nodes", [])
+                    edges = workflow.get("edges", [])
+
+                    if not nodes:
+                        continue
+
+                    await self._run_workflow_engine(workflow, nodes, edges, call_data, client)
+
+        except Exception as e:
+            logger.error(f"WORKFLOW_FETCH_FAILED | error={str(e)}")
+
+    async def _run_workflow_engine(self, workflow, nodes, edges, call_data, http_client):
+        """Simplistic engine to traverse nodes and execute actions."""
+        workflow_name = workflow.get("name")
+        logger.info(f"RUNNING_WORKFLOW | name={workflow_name}")
+
+        # Find trigger node (for now, any node with type 'trigger' or 'post_call')
+        trigger_nodes = [n for n in nodes if n.get("type") in ["trigger", "post_call"]]
+        
+        if not trigger_nodes:
+            # Fallback for legacy webhooks converted to workflows? 
+            # (In this case, we don't have any yet, so we just return)
+            logger.warning(f"WORKFLOW_NO_TRIGGER | workflow={workflow_name}")
+            return
+
+        for trigger in trigger_nodes:
+            # For each trigger, find connected action nodes
+            visited = set()
+            queue = [trigger.get("id")]
+            
+            while queue:
+                current_id = queue.pop(0)
+                if current_id in visited:
+                    continue
+                visited.add(current_id)
+
+                # Find downstream neighbors
+                downstream_edges = [e for e in edges if e.get("source") == current_id]
+                for edge in downstream_edges:
+                    target_id = edge.get("target")
+                    target_node = next((n for n in nodes if n.get("id") == target_id), None)
+                    
+                    if target_node:
+                        # Execute target node
+                        await self._execute_node(target_node, call_data, http_client)
+                        queue.append(target_id)
+
+    async def _execute_node(self, node, call_data, http_client):
+        node_type = node.get("type")
+        node_data = node.get("data", {})
+        
+        logger.info(f"EXECUTING_NODE | type={node_type}")
+
+        if node_type == "webhook":
+            await self._execute_webhook_node(node_data, call_data, http_client)
+        elif node_type == "twilio_sms":
+            await self._execute_twilio_sms_node(node_data, call_data)
+        else:
+            logger.warning(f"UNKNOWN_NODE_TYPE | type={node_type}")
+
+    async def _execute_webhook_node(self, node_data, call_data, http_client):
+        url = node_data.get("url")
+        selected_fields = node_data.get("fields", [])
+        method = node_data.get("method", "POST").upper()
+
+        if not url:
+            return
+
+        payload = {}
+        if not selected_fields:
+            payload = call_data
+        else:
+            for field in selected_fields:
+                if field in call_data:
+                    payload[field] = call_data[field]
+
+        try:
+            if method == "POST":
+                resp = await http_client.post(url, json=payload)
+            elif method == "PUT":
+                resp = await http_client.put(url, json=payload)
+            elif method == "PATCH":
+                resp = await http_client.patch(url, json=payload)
+            
+            logger.info(f"WEBHOOK_NODE_RESULT | url={url} | status={resp.status_code}")
+        except Exception as e:
+            logger.error(f"WEBHOOK_NODE_FAILED | url={url} | error={str(e)}")
+
+    async def _execute_twilio_sms_node(self, node_data, call_data):
+        to_number = node_data.get("to_number")
+        message_template = node_data.get("message", "A call from {phone_number} just ended.")
+        
+        if not to_number:
+            logger.warning("TWILIO_SMS_NODE_SKIP | No 'to_number' provided")
+            return
+
+        # Simple template replacement
+        message = message_template
+        for key, value in call_data.items():
+            if f"{{{key}}}" in message:
+                message = message.replace(f"{{{key}}}", str(value))
+
+        try:
+            # We need to import twilio here or assume it's available
+            from twilio.rest import Client
+            import os
+            
+            account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
+            auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
+            from_number = os.environ.get('TWILIO_PHONE_NUMBER')
+
+            if not (account_sid and auth_token and from_number):
+                logger.error("TWILIO_SMS_NODE_FAILED | Missing Twilio credentials in environment")
+                return
+
+            client = Client(account_sid, auth_token)
+            client.messages.create(
+                body=message,
+                from_=from_number,
+                to=to_number
+            )
+            logger.info(f"TWILIO_SMS_NODE_SUCCESS | to={to_number}")
+        except Exception as e:
+            logger.error(f"TWILIO_SMS_NODE_FAILED | error={str(e)}")
 
     def _extract_call_sid(self, ctx: JobContext, participant) -> Optional[str]:
         """Extract call_sid from various sources like in old implementation."""

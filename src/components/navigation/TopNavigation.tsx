@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { useTheme } from "@/components/ThemeProvider";
 import { useAccountMinutes } from "@/hooks/useAccountMinutes";
-import { BarChart3, Phone, Bot, Search, Bell, MessageSquare, Users, Megaphone, User, Settings, CreditCard, Zap, LogOut, Shield } from "lucide-react";
+import { BarChart3, Phone, Bot, Search, Bell, MessageSquare, Users, Megaphone, User, Settings, CreditCard, Zap, LogOut, Shield, Workflow } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggleMinimal } from "@/components/ThemeToggle";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -44,6 +44,10 @@ export default function TopNavigation() {
     icon: <Megaphone size={16} />,
     label: "Campaigns",
     to: "/campaigns"
+  }, {
+    icon: <Workflow size={16} />,
+    label: "Workflows",
+    to: "/workflows"
   }, {
     icon: <Phone size={16} />,
     label: "Calls",

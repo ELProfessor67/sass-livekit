@@ -26,6 +26,7 @@ import minutesPricingRouter from './routes/minutes-pricing.js';
 import adminRouter from './routes/admin.js';
 import whitelabelRouter from './routes/whitelabel.js';
 import userRouter from './routes/user.js';
+import workflowsRouter from './routes/workflows.js';
 import { tenantMiddleware } from './middleware/tenantMiddleware.js';
 import './workers/supportAccessCleanup.js';
 
@@ -450,6 +451,7 @@ app.use('/api/v1', minutesPricingRouter); // Minutes pricing routes (includes /a
 app.use('/api/v1/admin', adminRouter);
 app.use('/api/v1/whitelabel', whitelabelRouter);
 app.use('/api/v1/user', userRouter);
+app.use('/api/v1/workflows', workflowsRouter);
 console.log('Knowledge base routes registered at /api/v1/knowledge-base');
 console.log('Support access routes registered at /api/v1/support-access');
 console.log('Minutes routes registered at /api/v1/minutes');

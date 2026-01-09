@@ -31,6 +31,7 @@ import Onboarding from "./pages/Onboarding";
 import VoiceAgent from "./pages/VoiceAgent";
 import AdminPanel from "./pages/AdminPanel";
 import AuthCallback from "./pages/AuthCallback";
+import Workflows from "./pages/Workflows";
 
 // Create a client with better error handling and retry limits
 const queryClient = new QueryClient({
@@ -48,17 +49,17 @@ const queryClient = new QueryClient({
 
 function ProtectedAuthPage({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
-  
+
   // If user is authenticated, redirect to dashboard
   if (user && !loading) {
     return <Navigate to="/dashboard" replace />;
   }
-  
+
   // If still loading, show loading state
   if (loading) {
     return <div>Loading...</div>;
   }
-  
+
   // If not authenticated, show the auth page
   return <>{children}</>;
 }
@@ -74,18 +75,18 @@ function RequireOnboarding() {
       const checkOnboardingStatus = async () => {
         try {
           // Set a timeout for the database query
-          const timeoutPromise = new Promise((_, reject) => 
+          const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Database timeout')), 3000)
           );
-          
+
           const queryPromise = supabase
             .from("users")
             .select("onboarding_completed")
             .eq("id", user.id)
             .single();
-          
+
           const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
-          
+
           if (error) {
             console.error("Error checking onboarding status:", error);
             // If we can't check the database, assume onboarding is completed for existing users
@@ -117,7 +118,7 @@ function RequireOnboarding() {
 
   const localCompleted = localStorage.getItem("onboarding-completed") === "true";
   const signupData = localStorage.getItem("signup-data");
-  
+
   // If user has signup data but hasn't completed onboarding, redirect to onboarding
   if (signupData && !localCompleted && location.pathname !== "/onboarding") {
     return <Navigate to="/onboarding" replace />;
@@ -165,6 +166,7 @@ function AnimatedRoutes() {
         <Route path="/campaigns" element={<Campaigns />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/workflows" element={<Workflows />} />
         <Route path="/integrations" element={<Integrations />} />
         <Route path="/billing" element={<Billing />} />
       </Route>

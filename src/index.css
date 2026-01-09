@@ -149,8 +149,10 @@
 [data-radix-dialog-content] select,
 [data-radix-dialog-content] textarea {
   color: #ffffff !important;
-  background-color: rgba(55, 65, 81, 0.8) !important; /* gray-800 with opacity */
-  border-color: rgba(75, 85, 99, 0.6) !important; /* gray-600 with opacity */
+  background-color: rgba(55, 65, 81, 0.8) !important;
+  /* gray-800 with opacity */
+  border-color: rgba(75, 85, 99, 0.6) !important;
+  /* gray-600 with opacity */
 }
 
 [data-radix-dialog-content] input::placeholder,
@@ -458,8 +460,8 @@ html body div[data-radix-dialog-content].sm\\:max-w-4xl textarea {
 
 /* Theme-aware calendar styles */
 .glass-ui .rdp {
-  @apply backdrop-blur-2xl bg-white/[0.03] border border-white/[0.12] rounded-xl text-foreground 
-         shadow-[0_32px_80px_rgba(0,0,0,0.4),0_8px_32px_rgba(255,255,255,0.1)_inset,0_0_0_1px_rgba(255,255,255,0.05)_inset];
+  @apply backdrop-blur-2xl bg-white/[0.03] border border-white/[0.12] rounded-xl text-foreground;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.4), 0 8px 32px rgba(255, 255, 255, 0.1) inset, 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
   transform: translateZ(0);
   will-change: transform;
 }
@@ -469,9 +471,8 @@ html body div[data-radix-dialog-content].sm\\:max-w-4xl textarea {
 }
 
 .rdp-day_selected {
-  @apply bg-gradient-to-br from-primary to-primary/80 
-         text-primary-foreground font-medium rounded-lg
-         shadow-[0_4px_16px_rgba(255,74,113,0.4)] !important;
+  @apply bg-gradient-to-br from-primary to-primary/80 text-primary-foreground font-medium rounded-lg;
+  box-shadow: 0 4px 16px rgba(255, 74, 113, 0.4) !important;
 }
 
 .glass-ui .rdp-day_range_middle {
@@ -482,11 +483,10 @@ html body div[data-radix-dialog-content].sm\\:max-w-4xl textarea {
   @apply bg-primary/10 text-foreground rounded-2xl !important;
 }
 
-.rdp-day_range_start, 
+.rdp-day_range_start,
 .rdp-day_range_end {
-  @apply bg-gradient-to-br from-primary to-primary/80 
-         text-primary-foreground font-medium rounded-lg
-         shadow-[0_4px_16px_rgba(255,74,113,0.4)] !important;
+  @apply bg-gradient-to-br from-primary to-primary/80 text-primary-foreground font-medium rounded-lg;
+  box-shadow: 0 4px 16px rgba(255, 74, 113, 0.4) !important;
 }
 
 /* Page header styling - black text for headers outside cards */
@@ -514,8 +514,8 @@ html body div[data-radix-dialog-content].sm\\:max-w-4xl textarea {
 }
 
 .glass-ui .popover-content-calendar {
-  @apply backdrop-blur-xl bg-white/[0.12] border border-white/[0.15] rounded-xl
-         shadow-[0_20px_60px_rgba(0,0,0,0.25)];
+  @apply backdrop-blur-xl bg-white/[0.12] border border-white/[0.15] rounded-xl;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
 }
 
 .minimal-ui .popover-content-calendar {
@@ -595,22 +595,43 @@ html body div[data-radix-dialog-content].sm\\:max-w-4xl textarea {
 
 /* Delivery Status Colors */
 :root {
-  --status-sending: 156 39% 54%; /* Gray */
-  --status-delivered: 142 76% 36%; /* Green */
-  --status-read: 212 100% 50%; /* Blue */
-  --status-failed: 0 84% 60%; /* Red */
+  --status-sending: 156 39% 54%;
+  /* Gray */
+  --status-delivered: 142 76% 36%;
+  /* Green */
+  --status-read: 212 100% 50%;
+  /* Blue */
+  --status-failed: 0 84% 60%;
+  /* Red */
 }
 
 /* Delivery Status Animations */
 @keyframes pulse-sending {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
+
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 @keyframes shake-failed {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-2px); }
-  75% { transform: translateX(2px); }
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-2px);
+  }
+
+  75% {
+    transform: translateX(2px);
+  }
 }
 
 .status-sending {
@@ -633,4 +654,14 @@ html body div[data-radix-dialog-content].sm\\:max-w-4xl textarea {
 [data-radix-dialog-content] div,
 [data-radix-dialog-content] label {
   color: #ffffff !important;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+
+.animate-dash {
+  animation: dash 2s linear infinite;
 }

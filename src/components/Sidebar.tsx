@@ -11,6 +11,7 @@ import {
   X,
   Bot,
   MessageSquare,
+  Workflow,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -42,6 +43,7 @@ export function Sidebar() {
   const links = [
     { icon: <BarChart3 size={20} className="text-primary/80" />, label: "Dashboard", to: "/dashboard" },
     { icon: <Bot size={20} className="text-primary/80" />, label: "Assistants", to: "/assistants" },
+    { icon: <Workflow size={20} className="text-primary/80" />, label: "Workflows", to: "/workflows" },
     { icon: <Phone size={20} className="text-primary/80" />, label: "Calls", to: "/calls" },
     { icon: <MessageSquare size={20} className="text-primary/80" />, label: "Conversations", to: "/conversations" },
     { icon: <Settings size={20} className="text-primary/80" />, label: "Settings", to: "/settings" },
