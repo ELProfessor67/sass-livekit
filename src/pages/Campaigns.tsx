@@ -24,42 +24,7 @@ import { exportAllCampaignDataToExcel } from "@/lib/utils/excelExport";
 
 // Campaign interface imported from API
 
-const mockCampaigns: Campaign[] = [
-  {
-    id: '1',
-    name: 'Q4 Sales Outreach',
-    status: 'active',
-    dailyCap: 100,
-    agent: 'Sarah Johnson',
-    list: 'Sales Prospects',
-    dials: 847,
-    pickups: 234,
-    doNotCall: 12,
-    outcomes: {
-      interested: 45,
-      notInterested: 156,
-      callback: 33
-    },
-    totalUsage: 1250
-  },
-  {
-    id: '2',
-    name: 'Customer Support Follow-up',
-    status: 'paused',
-    dailyCap: 50,
-    agent: 'Mike Chen',
-    list: 'Support Tickets',
-    dials: 156,
-    pickups: 89,
-    doNotCall: 3,
-    outcomes: {
-      interested: 67,
-      notInterested: 18,
-      callback: 4
-    },
-    totalUsage: 320
-  }
-];
+
 
 export default function Campaigns() {
   const { user } = useAuth();
@@ -78,7 +43,7 @@ export default function Campaigns() {
   useEffect(() => {
     const loadCampaigns = async () => {
       if (!user?.id) return;
-      
+
       try {
         const response = await fetchCampaigns();
         setCampaigns(response.campaigns);
@@ -120,7 +85,7 @@ export default function Campaigns() {
       };
 
       const result = await saveCampaign(saveData);
-      
+
       if (result.success) {
         // Reload campaigns from database
         const response = await fetchCampaigns();
@@ -145,8 +110,8 @@ export default function Campaigns() {
         // Pause the campaign
         const result = await pauseCampaign({ campaignId: id });
         if (result.success) {
-          setCampaigns(prev => prev.map(c => 
-            c.id === id 
+          setCampaigns(prev => prev.map(c =>
+            c.id === id
               ? { ...c, execution_status: 'paused' as const }
               : c
           ));
@@ -157,8 +122,8 @@ export default function Campaigns() {
         // Resume the campaign
         const result = await resumeCampaign({ campaignId: id });
         if (result.success) {
-          setCampaigns(prev => prev.map(c => 
-            c.id === id 
+          setCampaigns(prev => prev.map(c =>
+            c.id === id
               ? { ...c, execution_status: 'running' as const }
               : c
           ));
@@ -169,8 +134,8 @@ export default function Campaigns() {
         // Start the campaign
         const result = await startCampaign({ campaignId: id });
         if (result.success) {
-          setCampaigns(prev => prev.map(c => 
-            c.id === id 
+          setCampaigns(prev => prev.map(c =>
+            c.id === id
               ? { ...c, execution_status: 'running' as const }
               : c
           ));
@@ -195,7 +160,7 @@ export default function Campaigns() {
     setDeleting(true);
     try {
       const result = await deleteCampaignAPI({ campaignId: selectedCampaignId });
-      
+
       if (result.success) {
         // Remove from local state
         setCampaigns(prev => prev.filter(campaign => campaign.id !== selectedCampaignId));
@@ -277,8 +242,8 @@ export default function Campaigns() {
                       Launch your AI agents and start creating amazing campaigns that will help you connect with your customers in a meaningful way.
                     </p>
                   </div>
-                  
-                  <Button 
+
+                  <Button
                     onClick={handleNewCampaign}
                     size="lg"
                     className="px-8 py-3 text-lg font-medium"
@@ -290,14 +255,14 @@ export default function Campaigns() {
             </div>
           </div>
 
-          <TermsOfUseDialog 
-            open={termsOpen} 
+          <TermsOfUseDialog
+            open={termsOpen}
             onOpenChange={setTermsOpen}
             onAccepted={handleTermsAccepted}
           />
-          
-          <CampaignSettingsDialog 
-            open={settingsOpen} 
+
+          <CampaignSettingsDialog
+            open={settingsOpen}
             onOpenChange={setSettingsOpen}
             onSave={handleCampaignCreated}
           />
@@ -321,10 +286,10 @@ export default function Campaigns() {
                     Manage and monitor your AI agent campaigns
                   </p>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
-                  <Button 
-                    onClick={handleExportAllCampaigns} 
+                  <Button
+                    onClick={handleExportAllCampaigns}
                     variant="outline"
                     disabled={exporting}
                     className="px-4"
@@ -372,82 +337,82 @@ export default function Campaigns() {
                         </TableRow>
                       ) : (
                         campaigns.map((campaign) => (
-                        <TableRow key={campaign.id}>
-                          <TableCell>
-                            {getStatusBadge(campaign.execution_status)}
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            <Button
-                              variant="link"
-                              className="p-0 h-auto font-medium text-left"
-                              onClick={() => openCampaignDetails(campaign.id, campaign.name)}
-                            >
-                              {campaign.name}
-                            </Button>
-                          </TableCell>
-                          <TableCell>
-                            {campaign.daily_cap}
-                          </TableCell>
-                          <TableCell>
-                            {campaign.assistant_name || 'Unknown'}
-                          </TableCell>
-                          <TableCell>
-                            {campaign.contact_source === 'contact_list' 
-                              ? (campaign.contact_list_name || 'Unknown List')
-                              : (campaign.csv_file_name || 'Unknown CSV')
-                            }
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {campaign.dials}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {campaign.pickups}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {campaign.do_not_call}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex flex-col text-xs space-y-1">
-                              <span className="text-success">I: {campaign.interested}</span>
-                              <span className="text-destructive">NI: {campaign.not_interested}</span>
-                              <span className="text-warning">CB: {campaign.callback}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {campaign.total_usage}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-2">
+                          <TableRow key={campaign.id}>
+                            <TableCell>
+                              {getStatusBadge(campaign.execution_status)}
+                            </TableCell>
+                            <TableCell className="font-medium">
                               <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-theme-secondary hover:text-theme-primary"
+                                variant="link"
+                                className="p-0 h-auto font-medium text-left"
+                                onClick={() => openCampaignDetails(campaign.id, campaign.name)}
                               >
-                                <Eye className="w-4 h-4" />
+                                {campaign.name}
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => toggleCampaignStatus(campaign.id)}
-                                className="text-theme-secondary hover:text-theme-primary"
-                              >
-                                {campaign.execution_status === 'running' ? (
-                                  <Pause className="w-4 h-4" />
-                                ) : (
-                                  <Play className="w-4 h-4" />
-                                )}
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDeleteCampaign(campaign.id, campaign.name)}
-                                className="text-destructive hover:text-destructive/80"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
+                            </TableCell>
+                            <TableCell>
+                              {campaign.daily_cap}
+                            </TableCell>
+                            <TableCell>
+                              {campaign.assistant_name || 'Unknown'}
+                            </TableCell>
+                            <TableCell>
+                              {campaign.contact_source === 'contact_list'
+                                ? (campaign.contact_list_name || 'Unknown List')
+                                : (campaign.csv_file_name || 'Unknown CSV')
+                              }
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {campaign.dials}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {campaign.pickups}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {campaign.do_not_call}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex flex-col text-xs space-y-1">
+                                <span className="text-success">I: {campaign.interested}</span>
+                                <span className="text-destructive">NI: {campaign.not_interested}</span>
+                                <span className="text-warning">CB: {campaign.callback}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {campaign.total_usage}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-theme-secondary hover:text-theme-primary"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => toggleCampaignStatus(campaign.id)}
+                                  className="text-theme-secondary hover:text-theme-primary"
+                                >
+                                  {campaign.execution_status === 'running' ? (
+                                    <Pause className="w-4 h-4" />
+                                  ) : (
+                                    <Play className="w-4 h-4" />
+                                  )}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteCampaign(campaign.id, campaign.name)}
+                                  className="text-destructive hover:text-destructive/80"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
                         ))
                       )}
                     </TableBody>
@@ -458,25 +423,25 @@ export default function Campaigns() {
           </div>
         </div>
 
-        <TermsOfUseDialog 
-          open={termsOpen} 
+        <TermsOfUseDialog
+          open={termsOpen}
           onOpenChange={setTermsOpen}
           onAccepted={handleTermsAccepted}
         />
-        
-        <CampaignSettingsDialog 
-          open={settingsOpen} 
+
+        <CampaignSettingsDialog
+          open={settingsOpen}
           onOpenChange={setSettingsOpen}
           onSave={handleCampaignCreated}
         />
-        
+
         <CampaignDetailsDialog
           open={detailsOpen}
           onOpenChange={setDetailsOpen}
           campaignId={selectedCampaignId}
           campaignName={selectedCampaignName}
         />
-        
+
         <DeleteCampaignDialog
           open={deleteOpen}
           onOpenChange={setDeleteOpen}

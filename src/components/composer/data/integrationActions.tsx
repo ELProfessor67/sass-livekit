@@ -1,0 +1,237 @@
+import React from "react";
+import {
+    GoHighLevelIcon,
+    HubSpotIcon,
+    ShopifyIcon,
+    SlackIcon,
+    GmailIcon,
+    KlaviyoIcon,
+    GoogleSheetsIcon,
+    AirtableIcon,
+    NotionIcon,
+    WebhookIcon,
+    HttpIcon,
+    OpenAIIcon,
+    GeminiIcon,
+    ClaudeIcon,
+    TwilioIcon,
+    TelnyxIcon,
+    WhatsAppIcon,
+    CalcomIcon,
+    ConditionIcon,
+    DelayIcon,
+} from "@/components/composer/nodes/IntegrationIcons";
+
+export interface IntegrationAction {
+    id: string;
+    label: string;
+    description: string;
+}
+
+export interface Integration {
+    type: string;
+    label: string;
+    description: string;
+}
+
+export interface IntegrationCategory {
+    name: string;
+    nodes: Integration[];
+}
+
+export const integrationActions: Record<string, IntegrationAction[]> = {
+    'GoHighLevel': [
+        { id: 'create_contact', label: 'Create Contact', description: 'Create a new contact in GoHighLevel' },
+        { id: 'update_contact', label: 'Update Contact', description: 'Update an existing contact' },
+        { id: 'find_contact', label: 'Find Contact', description: 'Search for a contact by field' },
+        { id: 'add_to_campaign', label: 'Add to Campaign', description: 'Add contact to a campaign' },
+        { id: 'create_opportunity', label: 'Create Opportunity', description: 'Create a new sales opportunity' },
+        { id: 'add_tag', label: 'Add Tag', description: 'Add a tag to a contact' },
+        { id: 'remove_tag', label: 'Remove Tag', description: 'Remove a tag from a contact' },
+    ],
+    'HubSpot': [
+        { id: 'add_to_list', label: 'Add Contact to List', description: 'Add contact to list' },
+        { id: 'add_to_workflow', label: 'Add Contact to Workflow', description: 'Adds a contact to a specified workflow in your HubSpot account' },
+        { id: 'create_associations', label: 'Create Associations', description: 'Creates associations between objects' },
+        { id: 'create_company', label: 'Create Company', description: 'Creates a company in HubSpot' },
+        { id: 'create_contact', label: 'Create Contact', description: 'Creates a contact in HubSpot' },
+        { id: 'create_deal', label: 'Create Deal', description: 'Create a new deal in HubSpot' },
+        { id: 'update_contact', label: 'Update Contact', description: 'Updates an existing contact' },
+        { id: 'find_contact', label: 'Find Contact', description: 'Find a contact by email or property' },
+    ],
+    'Shopify': [
+        { id: 'create_order', label: 'Create Order', description: 'Create a new order in Shopify' },
+        { id: 'update_order', label: 'Update Order', description: 'Update an existing order' },
+        { id: 'get_product', label: 'Get Product', description: 'Retrieve product details' },
+        { id: 'create_customer', label: 'Create Customer', description: 'Create a new customer' },
+        { id: 'update_inventory', label: 'Update Inventory', description: 'Update product inventory levels' },
+        { id: 'create_product', label: 'Create Product', description: 'Create a new product' },
+        { id: 'add_product_tag', label: 'Add Product Tag', description: 'Add tags to a product' },
+    ],
+    'Slack': [
+        { id: 'send_message', label: 'Send Message to Channel', description: 'Send a message to a Slack channel' },
+        { id: 'send_direct_message', label: 'Send Direct Message', description: 'Send a direct message to a user' },
+        { id: 'create_channel', label: 'Create Channel', description: 'Create a new Slack channel' },
+        { id: 'update_message', label: 'Update Message', description: 'Update an existing message' },
+        { id: 'add_reaction', label: 'Add Reaction', description: 'Add an emoji reaction to a message' },
+        { id: 'upload_file', label: 'Upload File', description: 'Upload a file to a channel' },
+    ],
+    'Gmail': [
+        { id: 'send_email', label: 'Send Email', description: 'Send a new email message' },
+        { id: 'reply_to_email', label: 'Reply to Email', description: 'Reply to an existing email' },
+        { id: 'create_draft', label: 'Create Draft', description: 'Create an email draft' },
+        { id: 'get_email', label: 'Get Email', description: 'Retrieve email details' },
+        { id: 'add_label', label: 'Add Label', description: 'Add a label to an email' },
+        { id: 'search_emails', label: 'Search Emails', description: 'Search emails by query' },
+    ],
+    'Klaviyo': [
+        { id: 'add_to_list', label: 'Add Profile to List', description: 'Add a profile to a Klaviyo list' },
+        { id: 'remove_from_list', label: 'Remove from List', description: 'Remove a profile from a list' },
+        { id: 'track_event', label: 'Track Event', description: 'Track a custom event for a profile' },
+        { id: 'update_profile', label: 'Update Profile', description: 'Update profile properties' },
+        { id: 'create_profile', label: 'Create Profile', description: 'Create a new profile' },
+        { id: 'get_profile', label: 'Get Profile', description: 'Retrieve profile details' },
+    ],
+    'Google Sheets': [
+        { id: 'read_row', label: 'Read Row', description: 'Read data from a specific row' },
+        { id: 'write_row', label: 'Write Row', description: 'Write data to a new row' },
+        { id: 'update_row', label: 'Update Row', description: 'Update an existing row' },
+        { id: 'delete_row', label: 'Delete Row', description: 'Delete a row from the sheet' },
+        { id: 'create_spreadsheet', label: 'Create Spreadsheet', description: 'Create a new spreadsheet' },
+        { id: 'find_row', label: 'Find Row', description: 'Find a row by column value' },
+        { id: 'clear_range', label: 'Clear Range', description: 'Clear a range of cells' },
+    ],
+    'Airtable': [
+        { id: 'create_record', label: 'Create Record', description: 'Create a new record in a table' },
+        { id: 'update_record', label: 'Update Record', description: 'Update an existing record' },
+        { id: 'find_record', label: 'Find Record', description: 'Find a record by field value' },
+        { id: 'delete_record', label: 'Delete Record', description: 'Delete a record from a table' },
+        { id: 'list_records', label: 'List Records', description: 'List all records in a table' },
+        { id: 'upsert_record', label: 'Upsert Record', description: 'Create or update a record' },
+    ],
+    'Notion': [
+        { id: 'create_database_item', label: 'Create Database Item', description: 'Add a new item to a Notion database with custom field values and optional content' },
+        { id: 'update_database_item', label: 'Update Database Item', description: 'Update specific fields in a Notion database item' },
+        { id: 'find_database_item', label: 'Find Database Item', description: 'Searches for an item in database by field' },
+        { id: 'create_page', label: 'Create Page', description: 'Create a new Notion page as a sub-page with custom title and content' },
+        { id: 'append_to_page', label: 'Append to Page', description: 'Appends content to the end of a page' },
+        { id: 'get_page', label: 'Get Page', description: 'Retrieve page content and properties' },
+    ],
+    'Webhooks': [
+        { id: 'send_webhook', label: 'Send Webhook', description: 'Send data to an external webhook URL' },
+        { id: 'return_response', label: 'Return Response', description: 'Return a custom response to the webhook caller' },
+    ],
+    'HTTP Request': [
+        { id: 'get_request', label: 'GET Request', description: 'Make a GET request to an API' },
+        { id: 'post_request', label: 'POST Request', description: 'Make a POST request with data' },
+        { id: 'put_request', label: 'PUT Request', description: 'Make a PUT request to update data' },
+        { id: 'delete_request', label: 'DELETE Request', description: 'Make a DELETE request' },
+        { id: 'patch_request', label: 'PATCH Request', description: 'Make a PATCH request for partial updates' },
+    ],
+    'OpenAI': [
+        { id: 'ask_chatgpt', label: 'Ask ChatGPT', description: 'Ask ChatGPT anything you want!' },
+        { id: 'ask_assistant', label: 'Ask Assistant', description: 'Ask a GPT assistant anything you want!' },
+        { id: 'generate_image', label: 'Generate Image', description: 'Generate an image using DALL-E models' },
+        { id: 'vision_prompt', label: 'Vision Prompt', description: 'Ask GPT a question about an image' },
+        { id: 'text_to_speech', label: 'Text-to-Speech', description: 'Generate an audio recording from text' },
+        { id: 'transcribe_audio', label: 'Transcribe Audio', description: 'Convert audio to text using Whisper' },
+        { id: 'create_embedding', label: 'Create Embedding', description: 'Create text embeddings for semantic search' },
+    ],
+    'Gemini': [
+        { id: 'generate_text', label: 'Generate Text', description: 'Generate text with Gemini models' },
+        { id: 'generate_with_vision', label: 'Generate with Vision', description: 'Analyze images and generate text' },
+        { id: 'chat_completion', label: 'Chat Completion', description: 'Multi-turn conversation with Gemini' },
+        { id: 'analyze_document', label: 'Analyze Document', description: 'Extract information from documents' },
+    ],
+    'Claude': [
+        { id: 'send_message', label: 'Send Message', description: 'Send a message to Claude' },
+        { id: 'analyze_document', label: 'Analyze Document', description: 'Analyze and extract data from documents' },
+        { id: 'summarize_text', label: 'Summarize Text', description: 'Summarize long text content' },
+        { id: 'code_generation', label: 'Generate Code', description: 'Generate code based on instructions' },
+        { id: 'vision_analysis', label: 'Vision Analysis', description: 'Analyze images with Claude Vision' },
+    ],
+    'Twilio': [
+        { id: 'send_sms', label: 'Send SMS', description: 'Send an SMS message using Twilio' },
+    ],
+};
+
+export const nodeCategories: IntegrationCategory[] = [
+    {
+        name: 'Logic',
+        nodes: [
+            { type: 'condition', label: 'Condition', description: 'Split workflow based on rules' },
+            { type: 'delay', label: 'Delay', description: 'Wait for a period of time' },
+        ],
+    },
+    {
+        name: 'CRM',
+        nodes: [
+            { type: 'action', label: 'GoHighLevel', description: 'Manage leads and contacts' },
+            { type: 'action', label: 'HubSpot', description: 'Sync contacts and deals' },
+        ],
+    },
+    {
+        name: 'E-commerce',
+        nodes: [
+            { type: 'action', label: 'Shopify', description: 'Manage orders and products' },
+        ],
+    },
+    {
+        name: 'Communication',
+        nodes: [
+            { type: 'action', label: 'Slack', description: 'Send Slack messages' },
+            { type: 'action', label: 'Gmail', description: 'Send and manage emails' },
+            { type: 'action', label: 'Twilio', description: 'Send SMS messages' },
+            { type: 'action', label: 'Klaviyo', description: 'Email & SMS marketing' },
+        ],
+    },
+    {
+        name: 'Productivity',
+        nodes: [
+            { type: 'action', label: 'Google Sheets', description: 'Read and write spreadsheets' },
+            { type: 'action', label: 'Airtable', description: 'Manage database records' },
+            { type: 'action', label: 'Notion', description: 'Update pages and databases' },
+        ],
+    },
+    {
+        name: 'Connections',
+        nodes: [
+            { type: 'action', label: 'Webhooks', description: 'Trigger external webhooks' },
+            { type: 'action', label: 'HTTP Request', description: 'Make API calls' },
+        ],
+    },
+    {
+        name: 'AI',
+        nodes: [
+            { type: 'action', label: 'OpenAI', description: 'GPT models and completions' },
+            { type: 'action', label: 'Gemini', description: 'Google AI models' },
+            { type: 'action', label: 'Claude', description: 'Anthropic AI assistant' },
+        ],
+    },
+];
+
+export const getIntegrationIcon = (label: string, size: number = 24): React.ReactNode => {
+    switch (label) {
+        case 'GoHighLevel': return <GoHighLevelIcon size={size} />;
+        case 'HubSpot': return <HubSpotIcon size={size} />;
+        case 'Shopify': return <ShopifyIcon size={size} />;
+        case 'Slack': return <SlackIcon size={size} />;
+        case 'Gmail': return <GmailIcon size={size} />;
+        case 'Klaviyo': return <KlaviyoIcon size={size} />;
+        case 'Google Sheets': return <GoogleSheetsIcon size={size} />;
+        case 'Airtable': return <AirtableIcon size={size} />;
+        case 'Notion': return <NotionIcon size={size} />;
+        case 'Webhooks': return <WebhookIcon size={size} />;
+        case 'HTTP Request': return <HttpIcon size={size} />;
+        case 'OpenAI': return <OpenAIIcon size={size} />;
+        case 'Gemini': return <GeminiIcon size={size} />;
+        case 'Claude': return <ClaudeIcon size={size} />;
+        case 'Twilio': return <TwilioIcon size={size} />;
+        case 'Telnyx': return <TelnyxIcon size={size} />;
+        case 'WhatsApp': return <WhatsAppIcon size={size} />;
+        case 'Cal.com': return <CalcomIcon size={size} />;
+        case 'Condition': return <ConditionIcon size={size} />;
+        case 'Delay': return <DelayIcon size={size} />;
+        default: return null;
+    }
+};

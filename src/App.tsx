@@ -31,7 +31,9 @@ import Onboarding from "./pages/Onboarding";
 import VoiceAgent from "./pages/VoiceAgent";
 import AdminPanel from "./pages/AdminPanel";
 import AuthCallback from "./pages/AuthCallback";
-import Workflows from "./pages/Workflows";
+import Composer from "./pages/Composer";
+import ComposerBuilder from "./pages/ComposerBuilder";
+
 
 // Create a client with better error handling and retry limits
 const queryClient = new QueryClient({
@@ -166,7 +168,8 @@ function AnimatedRoutes() {
         <Route path="/campaigns" element={<Campaigns />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/profile" element={<Profile />} />
-        <Route path="/workflows" element={<Workflows />} />
+        <Route path="/workflows" element={<Composer />} />
+        <Route path="/workflows/:id" element={<ComposerBuilder />} />
         <Route path="/integrations" element={<Integrations />} />
         <Route path="/billing" element={<Billing />} />
       </Route>

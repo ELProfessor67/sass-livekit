@@ -16,7 +16,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const location = useLocation();
   const { setUIStyle } = useTheme();
   const { user, isImpersonating, activeSupportSession, endSupportAccess, exitImpersonation } = useAuth();
-  
+
   // Ensure glass theme is applied when on dashboard
   useEffect(() => {
     setUIStyle("glass");
@@ -29,11 +29,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const handleExitImpersonation = async () => {
     await exitImpersonation();
   };
-  
+
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden">
       <TopNavigation />
-      
+
       {/* Support Access Banner - Global */}
       {isImpersonating && activeSupportSession && (
         <div className="px-4 py-2">
@@ -49,21 +49,21 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           />
         </div>
       )}
-      
+
       <AnimatePresence mode="wait">
-        <motion.div 
+        <motion.div
           key={location.pathname}
           initial={{ opacity: 0, y: 20, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -20, scale: 0.98 }}
-          transition={{ 
-            duration: 0.4, 
+          transition={{
+            duration: 0.4,
             ease: [0.23, 1, 0.320, 1],
             opacity: { duration: 0.25 }
           }}
-          className="flex-1 w-full"
+          className="flex-1 w-full flex flex-col min-h-0 h-full"
         >
-          <main className="w-full">
+          <main className="flex-1 w-full flex flex-col min-h-0 relative">
             {children}
           </main>
         </motion.div>
