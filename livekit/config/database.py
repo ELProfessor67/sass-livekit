@@ -89,7 +89,7 @@ class DatabaseClient:
                 "analysis_summary_prompt, analysis_evaluation_prompt, analysis_structured_data_prompt, "
                 "analysis_structured_data_properties, analysis_summary_timeout, analysis_evaluation_timeout, "
                 "analysis_structured_data_timeout, end_call_message, idle_messages, max_idle_messages, "
-                "silence_timeout, max_call_duration, num_words_to_interrupt_assistant, user_id, "
+                "silence_timeout, max_call_duration, num_words_to_interrupt_assistant, user_id, inbound_workflow_id, "
                 "transfer_enabled, transfer_phone_number, transfer_country_code, transfer_sentence, transfer_condition"
             ).eq("id", assistant_id).single().execute()
             
@@ -154,6 +154,27 @@ class DatabaseClient:
             logging.error(f"Error saving call history: {e}")
             return False
     
+    async def fetch_user_twilio_credentials(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch user's Twilio credentials from database."""
+        if not self.is_available():
+            logging.warning("Database client not available")
+            return None
+        
+        try:
+            result = self._client.table("user_twilio_credentials").select(
+                "account_sid, auth_token, trunk_sid, is_active"
+            ).eq("user_id", user_id).eq("is_active", True).maybe_single().execute()
+            
+            if result.data:
+                return result.data
+            else:
+                logging.warning(f"No active Twilio credentials found for user: {user_id}")
+                return None
+                
+        except Exception as e:
+            logging.error(f"Error fetching Twilio credentials for user {user_id}: {e}")
+            return None
+
     async def deduct_minutes(self, user_id: str, minutes: float) -> Dict[str, Any]:
         """
         Deduct minutes from user's account after a call.

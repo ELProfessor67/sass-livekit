@@ -47,7 +47,7 @@ const CreateAssistant = () => {
 
   // Debug logging
   console.log('CreateAssistant rendered', { isEditing, id, isLoading, activeTab });
-  
+
   // Debug tab switching
   const handleTabClick = (tabId: string) => {
     console.log('Tab clicked:', tabId);
@@ -62,13 +62,16 @@ const CreateAssistant = () => {
     { id: "advanced", label: "Advanced" },
     { id: "n8n", label: "n8n" }
   ];
-  
+
   const searchParams = new URLSearchParams(location.search);
   const providedName = searchParams.get('name');
+  const providedWorkflowId = searchParams.get('inbound_workflow_id');
 
   const [formData, setFormData] = useState<AssistantFormData>({
     name: isEditing ? "john" : (providedName && providedName.trim() ? providedName : "Untitled Assistant"),
+    name: isEditing ? "john" : (providedName && providedName.trim() ? providedName : "Untitled Assistant"),
     id: isEditing ? "asst_abcd1234efgh5678" : "asst_" + Math.random().toString(36).substr(2, 16),
+    inboundWorkflowId: providedWorkflowId || "",
     model: {
       provider: "OpenAI",
       model: "GPT-4.1 Mini",
@@ -213,7 +216,7 @@ const CreateAssistant = () => {
   useEffect(() => {
     const loadExistingAssistant = async () => {
       if (!isEditing || !id) return;
-      
+
       setIsLoading(true);
       try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -245,6 +248,7 @@ const CreateAssistant = () => {
           setFormData({
             name: data.name || "Untitled Assistant",
             id: data.id,
+            inboundWorkflowId: data.inbound_workflow_id || "",
             model: {
               provider: data.llm_provider_setting || "OpenAI",
               model: data.llm_model_setting || "GPT-4.1 Mini",
@@ -422,14 +426,14 @@ const CreateAssistant = () => {
       temperature_setting: formData.model.temperature,
       max_token_setting: formData.model.maxTokens,
       language_setting: formData.model.language,
-      
+
       // Groq-specific settings (only set if provider is Groq)
       ...(formData.model.provider === "Groq" && {
         groq_model: formData.model.model,
         groq_temperature: formData.model.temperature,
         groq_max_tokens: formData.model.maxTokens,
       }),
-      
+
       // Cerebras-specific settings (only set if provider is Cerebras)
       ...(formData.model.provider === "Cerebras" && {
         cerebras_model: formData.model.model,
@@ -510,6 +514,9 @@ const CreateAssistant = () => {
       // n8n Integration
       n8n_webhook_url: formData.n8n.webhookUrl || null,
       n8n_webhook_fields: formData.n8n.webhookFields?.length ? formData.n8n.webhookFields : null,
+
+      // Inbound Workflow
+      inbound_workflow_id: formData.inboundWorkflowId || null,
     } as any;
   };
 
@@ -635,7 +642,7 @@ const CreateAssistant = () => {
                 </div>
               </div>
               <div className="flex items-center gap-[var(--space-md)]">
-                <Button 
+                <Button
                   variant="outline"
                   className="px-[var(--space-lg)]"
                   onClick={handleSave}
@@ -643,7 +650,7 @@ const CreateAssistant = () => {
                 >
                   {isSaving ? 'Saving...' : 'Save'}
                 </Button>
-                <Button 
+                <Button
                   onClick={handleDeploy}
                   disabled={isLoading}
                   className="bg-primary hover:bg-primary/90 text-primary-foreground px-[var(--space-xl)]"
@@ -665,15 +672,15 @@ const CreateAssistant = () => {
                     onClick={() => handleTabClick(tab.id)}
                     className={`
                       relative px-6 py-4 text-sm font-medium transition-all duration-300
-                      ${activeTab === tab.id 
-                        ? 'text-foreground' 
+                      ${activeTab === tab.id
+                        ? 'text-foreground'
                         : 'text-muted-foreground hover:text-foreground/80'
                       }
                     `}
                   >
                     {tab.label}
                     {activeTab === tab.id && (
-                      <motion.div 
+                      <motion.div
                         layoutId="activeTab"
                         className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full"
                         initial={false}
@@ -687,7 +694,7 @@ const CreateAssistant = () => {
 
             {/* Tab Content */}
             <div className="p-8">
-             
+
               {isLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="text-center">
@@ -708,39 +715,39 @@ const CreateAssistant = () => {
                     className="pointer-events-auto"
                   >
                     {activeTab === "model" && (
-                      <ModelTab 
-                        data={formData.model} 
-                        onChange={(data) => handleFormDataChange('model', data)} 
+                      <ModelTab
+                        data={formData.model}
+                        onChange={(data) => handleFormDataChange('model', data)}
                       />
                     )}
                     {activeTab === "voice" && (
-                      <VoiceTab 
-                        data={formData.voice} 
-                        onChange={(data) => handleFormDataChange('voice', data)} 
+                      <VoiceTab
+                        data={formData.voice}
+                        onChange={(data) => handleFormDataChange('voice', data)}
                       />
                     )}
                     {activeTab === "sms" && (
-                      <SMSTab 
-                        data={formData.sms} 
-                        onChange={(data) => handleFormDataChange('sms', data)} 
+                      <SMSTab
+                        data={formData.sms}
+                        onChange={(data) => handleFormDataChange('sms', data)}
                       />
                     )}
                     {activeTab === "analysis" && (
-                      <AnalysisTab 
-                        data={formData.analysis} 
-                        onChange={(data) => handleFormDataChange('analysis', data)} 
+                      <AnalysisTab
+                        data={formData.analysis}
+                        onChange={(data) => handleFormDataChange('analysis', data)}
                       />
                     )}
                     {activeTab === "advanced" && (
-                      <AdvancedTab 
-                        data={formData.advanced} 
-                        onChange={(data) => handleFormDataChange('advanced', data)} 
+                      <AdvancedTab
+                        data={formData.advanced}
+                        onChange={(data) => handleFormDataChange('advanced', data)}
                       />
                     )}
                     {activeTab === "n8n" && (
-                      <N8nTab 
-                        data={formData.n8n} 
-                        onChange={(data) => handleFormDataChange('n8n', data)} 
+                      <N8nTab
+                        data={formData.n8n}
+                        onChange={(data) => handleFormDataChange('n8n', data)}
                       />
                     )}
                   </motion.div>
@@ -770,7 +777,7 @@ const CreateAssistant = () => {
                       Delete Assistant
                     </AlertDialogTitle>
                     <AlertDialogDescription className="text-muted-foreground">
-                      Are you sure you want to delete this assistant? This action cannot be undone 
+                      Are you sure you want to delete this assistant? This action cannot be undone
                       and all associated data will be permanently removed from both local storage and database.
                     </AlertDialogDescription>
                   </AlertDialogHeader>

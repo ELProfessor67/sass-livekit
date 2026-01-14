@@ -145,6 +145,7 @@ export interface N8nData {
 export interface AssistantFormData {
   name: string;
   id: string;
+  inboundWorkflowId?: string;
   model: ModelData;
   voice: VoiceData;
   sms: SMSData;

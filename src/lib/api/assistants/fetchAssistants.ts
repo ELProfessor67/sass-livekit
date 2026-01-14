@@ -10,6 +10,7 @@ export interface Assistant {
   first_sms?: string;
   sms_prompt?: string;
   whatsapp_credentials_id?: string;
+  inbound_workflow_id?: string;
   status: "draft" | "active" | "inactive";
   created_at: string;
   updated_at: string;
@@ -27,7 +28,7 @@ export const fetchAssistants = async (): Promise<AssistantsResponse> => {
   try {
     const userId = await getCurrentUserIdAsync();
     console.log('Fetching assistants for user ID:', userId);
-    
+
     // Get user's tenant
     const { data: userData } = await supabase
       .from('users')
@@ -35,22 +36,22 @@ export const fetchAssistants = async (): Promise<AssistantsResponse> => {
       .eq('id', userId)
       .single();
 
-    const tenant = userData?.tenant || 'main';
+    const tenant = (userData as any)?.tenant || 'main';
 
     // Build query with tenant filter
     let query = supabase
       .from('assistant')
-      .select('id, name, prompt, first_message, first_sms, sms_prompt, whatsapp_credentials_id, created_at, updated_at')
+      .select('id, name, prompt, first_message, first_sms, sms_prompt, whatsapp_credentials_id, inbound_workflow_id, created_at, updated_at')
       .eq('user_id', userId);
 
     // Add tenant filter
     if (tenant === 'main') {
       query = query.or('tenant.eq.main,tenant.is.null');
     } else {
-      query = query.eq('tenant', tenant);
+      query = (query as any).eq('tenant', tenant);
     }
 
-    const { data: assistants, error } = await query.order('created_at', { ascending: false });
+    const { data: assistants, error } = await (query as any);
 
     if (error) {
       console.error('Error fetching assistants:', error);
@@ -65,7 +66,7 @@ export const fetchAssistants = async (): Promise<AssistantsResponse> => {
     }
 
     // Transform the data to match our interface
-    const transformedAssistants: Assistant[] = assistants.map(assistant => ({
+    const transformedAssistants: Assistant[] = (assistants as any[]).map(assistant => ({
       id: assistant.id,
       name: assistant.name || 'Unnamed Assistant',
       description: assistant.prompt ? assistant.prompt.substring(0, 100) + '...' : undefined,
@@ -74,6 +75,7 @@ export const fetchAssistants = async (): Promise<AssistantsResponse> => {
       first_sms: assistant.first_sms,
       sms_prompt: assistant.sms_prompt,
       whatsapp_credentials_id: assistant.whatsapp_credentials_id,
+      inbound_workflow_id: assistant.inbound_workflow_id,
       status: 'active', // Default status since we don't have this field yet
       created_at: assistant.created_at,
       updated_at: assistant.updated_at

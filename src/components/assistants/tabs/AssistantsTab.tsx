@@ -25,6 +25,7 @@ interface Assistant {
   first_message?: string;
   first_sms?: string;
   sms_prompt?: string;
+  inbound_workflow_id?: string;
   status: "draft" | "active" | "inactive";
   interactionCount: number;
   userCount: number;
@@ -37,20 +38,20 @@ interface Assistant {
   updated_at?: string;
 }
 
-function AssistantCard({ 
-  assistant, 
-  onDelete, 
-  onCardClick 
-}: { 
-  assistant: Assistant; 
-  onDelete: (id: string) => void; 
+function AssistantCard({
+  assistant,
+  onDelete,
+  onCardClick
+}: {
+  assistant: Assistant;
+  onDelete: (id: string) => void;
   onCardClick: (assistant: Assistant) => void;
 }) {
   const navigate = useNavigate();
-  
+
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const suppressClickRef = React.useRef(false);
-  
+
   const statusColors = {
     draft: "hsl(45 93% 47%)", // Professional amber
     active: "hsl(142 76% 36%)", // Deep success green  
@@ -72,9 +73,9 @@ function AssistantCard({
   };
 
   return (
-    <ThemeCard 
-      variant="elevated" 
-      interactive 
+    <ThemeCard
+      variant="elevated"
+      interactive
       className="group aspect-square relative"
     >
       <div className="p-5 h-full flex flex-col relative">
@@ -104,14 +105,14 @@ function AssistantCard({
 
         {/* Header Section - Clean layout without action buttons */}
         <div className="mb-3 pr-12">
-          <h3 
+          <h3
             className="font-medium text-base mb-1 text-theme-primary group-hover:text-primary transition-colors line-clamp-2 cursor-pointer hover:underline"
             onClick={handleTitleClick}
           >
             {assistant.name}
           </h3>
           <div className="flex items-center space-x-2">
-            <div 
+            <div
               className="w-2 h-2 rounded-full flex-shrink-0"
               style={{ backgroundColor: statusColors[assistant.status] }}
             />
@@ -124,8 +125,8 @@ function AssistantCard({
         {/* Content Section - Flexible height */}
         <div className="flex-1 mb-4">
           <p className="text-sm text-theme-secondary leading-relaxed">
-            {assistant.description.length > 120 
-              ? `${assistant.description.substring(0, 120)}...` 
+            {assistant.description.length > 120
+              ? `${assistant.description.substring(0, 120)}...`
               : assistant.description
             }
           </p>
@@ -211,11 +212,11 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
     }
 
     console.log("Loading assistants for user:", user.id);
-    
+
     const { data, error } = await supabase
       .from("assistant")
       .select(
-        "id, name, prompt, first_message, first_sms, sms_prompt, cal_api_key, cal_event_type_slug, cal_event_type_id, cal_timezone, created_at, updated_at, user_id"
+        "id, name, prompt, first_message, first_sms, sms_prompt, cal_api_key, cal_event_type_slug, cal_event_type_id, cal_timezone, inbound_workflow_id, created_at, updated_at, user_id"
       )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
@@ -241,12 +242,13 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
       cal_event_type_slug: string | null;
       cal_event_type_id: string | null;
       cal_timezone: string | null;
+      inbound_workflow_id: string | null;
       created_at: string | null;
       updated_at: string | null;
     };
 
     const mapped: Assistant[] =
-      (data as AssistantRow[] | null)?.map((row) => {
+      (data as any)?.map((row: any) => {
         const descriptionSource = row.prompt || row.first_message || "";
         return {
           id: row.id,
@@ -256,6 +258,7 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
           first_message: row.first_message || undefined,
           first_sms: row.first_sms || undefined,
           sms_prompt: row.sms_prompt || undefined,
+          inbound_workflow_id: row.inbound_workflow_id || undefined,
           status: "active",
           interactionCount: 0,
           userCount: 0,
@@ -302,13 +305,13 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
 
       // Remove the assistant from the local state
       setAssistants(prev => prev.filter(assistant => assistant.id !== assistantId));
-      
+
       // Close the detail modal if the deleted assistant is currently being viewed
       if (selectedAssistant?.id === assistantId) {
         setIsDialogOpen(false);
         setSelectedAssistant(null);
       }
-      
+
       toast({
         title: "Assistant deleted",
         description: "The assistant has been permanently deleted.",
@@ -363,7 +366,7 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
             Manage and configure your AI assistants for different use cases
           </p>
         </div>
-        <Button 
+        <Button
           variant="default"
           className="font-medium"
           onClick={(e) => {
@@ -401,9 +404,9 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
           ))
         ) : filteredAssistants.length > 0 ? (
           filteredAssistants.map((assistant) => (
-            <AssistantCard 
-              key={assistant.id} 
-              assistant={assistant} 
+            <AssistantCard
+              key={assistant.id}
+              assistant={assistant}
               onDelete={deleteAssistant}
               onCardClick={handleAssistantClick}
             />
@@ -416,13 +419,13 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
                   No assistants found
                 </h3>
                 <p className="text-muted-foreground mb-4">
-                  {searchQuery 
-                    ? "Try adjusting your search criteria" 
+                  {searchQuery
+                    ? "Try adjusting your search criteria"
                     : "Get started by creating your first AI assistant"
                   }
                 </p>
                 {!searchQuery && (
-                  <Button 
+                  <Button
                     variant="default"
                     className="font-medium"
                     onClick={() => setCreateDialogOpen(true)}
@@ -439,7 +442,7 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
 
       {/* Create Assistant Dialog */}
       {createDialogOpen && (
-        <CreateAssistantDialog 
+        <CreateAssistantDialog
           open={createDialogOpen}
           onOpenChange={setCreateDialogOpen}
           onCreateAssistant={(name: string, description: string) => {

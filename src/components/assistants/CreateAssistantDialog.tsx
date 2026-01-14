@@ -7,9 +7,17 @@ import {
   ThemedDialogContent,
   ThemedDialogHeader,
 } from "@/components/ui/themed-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { useWorkflows } from "@/hooks/useWorkflows";
 
 interface CreateAssistantDialogProps {
   open: boolean;
@@ -20,9 +28,13 @@ interface CreateAssistantDialogProps {
 export function CreateAssistantDialog({ open, onOpenChange, onCreateAssistant }: CreateAssistantDialogProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>("");
   const [isCreating, setIsCreating] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { workflows, isLoading: isLoadingWorkflows } = useWorkflows();
+
+  const activeWorkflows = workflows?.filter(w => w.status === 'active') || [];
 
   const isNameValid = name.trim().length > 0 && name.length <= 40;
   const isNameOverLimit = name.length > 40;
@@ -76,11 +88,15 @@ export function CreateAssistantDialog({ open, onOpenChange, onCreateAssistant }:
       if (description.trim()) {
         params.set('description', description);
       }
+      if (selectedWorkflowId) {
+        params.set('inbound_workflow_id', selectedWorkflowId);
+      }
       navigate(`/assistants/create?${params.toString()}`);
       
       // Reset form and close modal
       setName("");
       setDescription("");
+      setSelectedWorkflowId("");
       onOpenChange(false);
     } catch (error) {
       toast({
@@ -105,6 +121,7 @@ export function CreateAssistantDialog({ open, onOpenChange, onCreateAssistant }:
     if (!open) {
       setName("");
       setDescription("");
+      setSelectedWorkflowId("");
       setIsCreating(false);
     }
   }, [open]);
@@ -201,6 +218,26 @@ export function CreateAssistantDialog({ open, onOpenChange, onCreateAssistant }:
               {/* Group hover glow effect */}
               <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-2xl pointer-events-none" />
             </div>
+          </div>
+
+          {/* Workflow Selection */}
+          <div className="px-1">
+            <Select
+              value={selectedWorkflowId}
+              onValueChange={setSelectedWorkflowId}
+            >
+              <SelectTrigger className="h-12 border-border/50 bg-card/50 backdrop-blur-sm">
+                <SelectValue placeholder="Select a workflow (Optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {activeWorkflows.map((workflow) => (
+                  <SelectItem key={workflow.id} value={workflow.id}>
+                    {workflow.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Preview Text */}

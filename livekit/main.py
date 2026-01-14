@@ -16,8 +16,8 @@ from dotenv import load_dotenv
 import httpx
 from openai import AsyncOpenAI
 
-# Load environment variables from the livekit/.env file
-load_dotenv("livekit/.env")
+# Load environment variables
+load_dotenv()
 
 # LiveKit imports
 from livekit import agents, api
@@ -666,7 +666,7 @@ class CallHandler:
                 # Perform post-call analysis and save to database
                 try:
                     analysis_results = await self._perform_post_call_analysis(assistant_config, session_history, agent, call_duration)
-                    # logger.info(f"POST_CALL_ANALYSIS_RESULTS | summary={bool(analysis_results.get('call_summary'))} | success={analysis_results.get('call_success')} | data_fields={len(analysis_results.get('structured_data', {}))}")
+                    logger.info(f"POST_CALL_ANALYSIS_RESULTS | summary={bool(analysis_results.get('call_summary'))} | success={analysis_results.get('call_success')} | data_fields={len(analysis_results.get('structured_data', {}))}")
                     
                     # Save call history and analysis data to database
                     await self._save_call_history_to_database(
@@ -680,7 +680,7 @@ class CallHandler:
                     )
                     
                 except Exception as e:
-                    # logger.error(f"POST_CALL_ANALYSIS_FAILED | error={str(e)}")
+                    logger.error(f"POST_CALL_ANALYSIS_FAILED | error={str(e)}")
                     pass
 
             # Register shutdown callback to ensure proper cleanup and analysis
@@ -954,11 +954,43 @@ class CallHandler:
             
             # logger.info(f"PARTICIPANT_IDENTITY_DETERMINED | phone={extract_phone_from_room(ctx.room.name)}")
 
+            # Extract agent's phone number (the number called or calling from)
+            agent_phone = None
+            if ctx.job.metadata:
+                try:
+                    job_metadata = json.loads(ctx.job.metadata)
+                    agent_phone = (
+                        job_metadata.get("called_number") or 
+                        job_metadata.get("to_number") or 
+                        job_metadata.get("phoneNumber") or
+                        job_metadata.get("from_number")
+                    )
+                except:
+                    pass
+            
+            if not agent_phone:
+                from utils.data_extractors import extract_did_from_room
+                agent_phone = extract_did_from_room(ctx.room.name)
+            
+            # Fallback: look up in database if still not found
+            if not agent_phone and assistant_config.get("id"):
+                try:
+                    assistant_id = assistant_config.get("id")
+                    phone_result = await asyncio.to_thread(
+                        lambda: self.supabase.client.table("phone_number").select("number").eq("inbound_assistant_id", assistant_id).execute()
+                    )
+                    if phone_result.data and len(phone_result.data) > 0:
+                        agent_phone = phone_result.data[0]["number"]
+                        # logger.info(f"AGENT_PHONE_LOOKUP_SUCCESS | assistant_id={assistant_id} | phone={agent_phone}")
+                except Exception:
+                    pass
+
             # Prepare call data
             call_data = {
                 "call_id": call_id,
                 "assistant_id": assistant_config.get("id"),
                 "phone_number": extract_phone_from_room(ctx.room.name),
+                "agent_phone_number": agent_phone,
                 "participant_identity": extract_phone_from_room(ctx.room.name),
                 "start_time": start_time.isoformat(),
                 "end_time": end_time.isoformat(),
@@ -971,11 +1003,17 @@ class CallHandler:
             # Add analysis results
             if analysis_results.get("call_summary"):
                 call_data["call_summary"] = analysis_results["call_summary"]
+                call_data["summary"] = analysis_results["call_summary"]  # Direct alias for workflows
+            
             if analysis_results.get("call_success") is not None:
                 # Convert boolean to string for database storage
                 call_data["success_evaluation"] = "SUCCESS" if analysis_results["call_success"] else "FAILED"
+            
             if analysis_results.get("structured_data"):
                 call_data["structured_data"] = analysis_results["structured_data"]
+            
+            # Add outcome alias
+            call_data["outcome"] = call_status
             
             # Add outcome analysis details
             if analysis_results.get("outcome_confidence"):
@@ -991,47 +1029,59 @@ class CallHandler:
             if analysis_results.get("follow_up_notes"):
                 call_data["follow_up_notes"] = analysis_results["follow_up_notes"]
             
+            # Separate database payload from workflow context data
+            # Valid columns in call_history table based on migrations
+            VALID_DB_COLUMNS = {
+                "call_id", "assistant_id", "phone_number", "participant_identity",
+                "start_time", "end_time", "call_duration", "call_status", "call_outcome",
+                "transcription", "call_summary", "success_evaluation", "structured_data",
+                "outcome_confidence", "outcome_reasoning", "outcome_key_points",
+                "outcome_sentiment", "follow_up_required", "follow_up_notes"
+            }
+            
+            db_payload = {k: v for k, v in call_data.items() if k in VALID_DB_COLUMNS}
+            
             # Log what we're saving
-            # logger.info(f"CALL_DATA_TO_SAVE | call_sid={call_data.get('call_sid')} | call_id={call_data.get('call_id')} | status={call_data.get('call_status')}")
+            # logger.info(f"DB_PAYLOAD_PREPARED | keys={list(db_payload.keys())}")
             
-            # Save to database with timeout protection (old approach)
-            result = await self._safe_db_insert("call_history", call_data, timeout=6)
+            # Save to database with timeout protection
+            try:
+                result = await self._safe_db_insert("call_history", db_payload, timeout=6)
+                if result.data:
+                    logger.info(f"CALL_HISTORY_SAVED | call_id={call_id} | duration={call_duration}s | ai_status={call_status} | confidence={analysis_results.get('outcome_confidence', 'N/A')} | transcription_items={len(transcription)}")
+                    if transcription:
+                        sample_transcript = transcription[0] if len(transcription) > 0 else {}
+                        logger.info(f"TRANSCRIPTION_SAMPLE | first_entry={sample_transcript}")
+                    
+                    # Deduct minutes from user account after call completes
+                    user_id = assistant_config.get("user_id")
+                    if user_id and call_duration > 0:
+                        db_client = get_database_client()
+                        if db_client:
+                            # Convert seconds to minutes (round up)
+                            minutes_used = call_duration / 60.0
+                            deduction_result = await db_client.deduct_minutes(user_id, minutes_used)
+                            if deduction_result.get("success"):
+                                remaining = deduction_result.get("remaining_minutes", 0)
+                                exceeded = deduction_result.get("exceeded_limit", False)
+                                logger.info(f"MINUTES_DEDUCTED | user={user_id} | minutes={minutes_used:.2f} | remaining={remaining} | exceeded={exceeded}")
+                                if exceeded:
+                                    logger.warning(f"MINUTES_LIMIT_EXCEEDED | user={user_id} | used={deduction_result.get('minutes_used')} | limit={deduction_result.get('minutes_limit')}")
+                            else:
+                                logger.error(f"MINUTES_DEDUCTION_FAILED | user={user_id} | error={deduction_result.get('error')}")
+                else:
+                    logger.error(f"CALL_HISTORY_SAVE_FAILED | call_id={call_id}")
+            except Exception as e:
+                logger.error(f"CALL_HISTORY_SAVE_ERROR | table=call_history | error={str(e)}")
             
-            if result.data:
-                # logger.info(f"CALL_HISTORY_SAVED | call_id={call_id} | duration={call_duration}s | ai_status={call_status} | confidence={analysis_results.get('outcome_confidence', 'N/A')} | transcription_items={len(transcription)}")
-                if transcription:
-                    sample_transcript = transcription[0] if len(transcription) > 0 else {}
-                    # logger.info(f"TRANSCRIPTION_SAMPLE | first_entry={sample_transcript}")
-                
-                # Deduct minutes from user account after call completes
-                user_id = assistant_config.get("user_id")
-                if user_id and call_duration > 0:
-                    db_client = get_database_client()
-                    if db_client:
-                        # Convert seconds to minutes (round up)
-                        minutes_used = call_duration / 60.0
-                        deduction_result = await db_client.deduct_minutes(user_id, minutes_used)
-                        if deduction_result.get("success"):
-                            remaining = deduction_result.get("remaining_minutes", 0)
-                            exceeded = deduction_result.get("exceeded_limit", False)
-                            logger.info(f"MINUTES_DEDUCTED | user={user_id} | minutes={minutes_used:.2f} | remaining={remaining} | exceeded={exceeded}")
-                            if exceeded:
-                                logger.warning(f"MINUTES_LIMIT_EXCEEDED | user={user_id} | used={deduction_result.get('minutes_used')} | limit={deduction_result.get('minutes_limit')}")
-                        else:
-                            logger.error(f"MINUTES_DEDUCTION_FAILED | user={user_id} | error={deduction_result.get('error')}")
-            else:
-                # logger.error(f"CALL_HISTORY_SAVE_FAILED | call_id={call_id}")
-                pass
-            
-            # Execute custom workflows
+            # Execute custom workflows - independent of history saving, uses full call_data
             try:
                 await self._execute_user_workflows(assistant_config, call_data)
             except Exception as workflow_error:
                 logger.error(f"WORKFLOW_EXECUTION_ERROR | error={str(workflow_error)}")
                 
         except Exception as e:
-            # logger.error(f"CALL_HISTORY_SAVE_ERROR | error={str(e)}")
-            pass
+            logger.error(f"POST_CALL_PROCESSING_ERROR | error={str(e)}")
 
     async def _execute_user_workflows(self, assistant_config: Dict[str, Any], call_data: Dict[str, Any]) -> None:
         """Fetch and execute user-defined node-based workflows."""
@@ -1046,6 +1096,7 @@ class CallHandler:
                 return
 
             assistant_id = assistant_config.get("id")
+            inbound_workflow_id = assistant_config.get("inbound_workflow_id")
             
             if not hasattr(self.supabase, 'client') or self.supabase.client is None:
                 logger.warning("WORKFLOW_EXECUTION_SKIP | Supabase client not initialized")
@@ -1054,16 +1105,25 @@ class CallHandler:
             # Perform the query to find workflows for this user
             query = self.supabase.client.table("workflows").select("*").eq("user_id", user_id).eq("is_active", True)
             
+            # Build filter for relevant workflows
+            filters = []
+            if inbound_workflow_id:
+                filters.append(f"id.eq.{inbound_workflow_id}")
             if assistant_id:
-                query = query.or_(f"assistant_id.eq.{assistant_id},assistant_id.is.null")
-            else:
-                query = query.is_("assistant_id", "null")
+                filters.append(f"assistant_id.eq.{assistant_id}")
+            filters.append("assistant_id.is.null")
+            
+            filter_str = ",".join(filters)
+            logger.info(f"WORKFLOW_QUERY | user={user_id} | inbound={inbound_workflow_id} | assistant={assistant_id} | filters=[{filter_str}]")
+            
+            # Apply filters using OR logic
+            query = query.or_(filter_str)
                 
             response = query.execute()
             workflows = response.data if hasattr(response, 'data') else []
 
             if not workflows:
-                logger.debug(f"WORKFLOW_EXECUTION_SKIP | no active workflows for user={user_id}")
+                logger.info(f"WORKFLOW_EXECUTION_SKIP | no active workflows found for user={user_id} with filters [{filter_str}]")
                 return
 
             logger.info(f"WORKFLOW_EXECUTION_START | user={user_id} | count={len(workflows)}")
@@ -1087,14 +1147,37 @@ class CallHandler:
         workflow_name = workflow.get("name")
         logger.info(f"RUNNING_WORKFLOW | name={workflow_name}")
 
-        # Find trigger node (for now, any node with type 'trigger' or 'post_call')
+        # Find trigger node
         trigger_nodes = [n for n in nodes if n.get("type") in ["trigger", "post_call"]]
         
         if not trigger_nodes:
-            # Fallback for legacy webhooks converted to workflows? 
-            # (In this case, we don't have any yet, so we just return)
             logger.warning(f"WORKFLOW_NO_TRIGGER | workflow={workflow_name}")
             return
+
+        # Prepare required fields mapping from trigger configuration
+        required_fields = {}
+        for trigger in trigger_nodes:
+            data = trigger.get("data", {})
+            
+            # 1. Standard Core Mappings
+            core_fields = {
+                "name": data.get("mapping_name") or "name",
+                "summary": data.get("mapping_summary") or "summary",
+                "outcome": data.get("mapping_outcome") or "outcome",
+                "duration": data.get("mapping_duration") or "duration",
+                "transcript": data.get("mapping_transcript") or "transcript"
+            }
+            disabled = data.get("disabled_core_mappings") or []
+            
+            for field_key, mapped_name in core_fields.items():
+                if field_key not in disabled:
+                    required_fields[field_key] = mapped_name
+            
+            # 2. Custom Expected Variables
+            expected = data.get("expected_variables") or []
+            for var in expected:
+                if var not in required_fields:
+                    required_fields[var] = var
 
         for trigger in trigger_nodes:
             # For each trigger, find connected action nodes
@@ -1114,24 +1197,50 @@ class CallHandler:
                     target_node = next((n for n in nodes if n.get("id") == target_id), None)
                     
                     if target_node:
-                        # Execute target node
-                        await self._execute_node(target_node, call_data, http_client)
+                        # Execute target node with required_fields context
+                        await self._execute_node(target_node, call_data, http_client, workflow, required_fields)
                         queue.append(target_id)
 
-    async def _execute_node(self, node, call_data, http_client):
+    async def _execute_node(self, node, call_data, http_client, workflow, required_fields=None):
         node_type = node.get("type")
         node_data = node.get("data", {})
         
         logger.info(f"EXECUTING_NODE | type={node_type}")
 
         if node_type == "webhook":
-            await self._execute_webhook_node(node_data, call_data, http_client)
+            await self._execute_webhook_node(node_data, call_data, http_client, required_fields)
         elif node_type == "twilio_sms":
-            await self._execute_twilio_sms_node(node_data, call_data)
+            await self._execute_twilio_sms_node(node_data, call_data, http_client, workflow)
         else:
             logger.warning(f"UNKNOWN_NODE_TYPE | type={node_type}")
 
-    async def _execute_webhook_node(self, node_data, call_data, http_client):
+    def _get_workflow_context(self, call_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Flatten and normalize call data for workflow variable interpolation."""
+        context = {**call_data}
+        
+        # Add common aliases for convenience if not already present
+        if "call_summary" in call_data and "summary" not in context:
+            context["summary"] = call_data["call_summary"]
+        if "call_status" in call_data and "outcome" not in context:
+            context["outcome"] = call_data["call_status"]
+        if "call_duration" in call_data and "duration" not in context:
+            context["duration"] = call_data["call_duration"]
+        if "phone_number" in call_data and "customer_phone" not in context:
+            context["customer_phone"] = call_data["phone_number"]
+            
+        # Normalize structured data - pull values out of nested dicts if they exist
+        if "structured_data" in call_data and isinstance(call_data["structured_data"], dict):
+            sd = call_data["structured_data"]
+            for key, val in sd.items():
+                # If it's a dict with a 'value' key (common in our agent structured data), extract it
+                if isinstance(val, dict) and "value" in val:
+                    context[key] = val["value"]
+                else:
+                    context[key] = val
+                    
+        return context
+
+    async def _execute_webhook_node(self, node_data, call_data, http_client, required_fields=None):
         url = node_data.get("url")
         selected_fields = node_data.get("fields", [])
         method = node_data.get("method", "POST").upper()
@@ -1139,13 +1248,25 @@ class CallHandler:
         if not url:
             return
 
-        payload = {}
-        if not selected_fields:
+        # Use normalized context for field lookup
+        lookup_data = self._get_workflow_context(call_data)
+
+        if required_fields:
+            # Use fields defined in the trigger
+            for field_key, mapped_name in required_fields.items():
+                val = lookup_data.get(field_key)
+                # If still None, try to get from structured_data explicitly 
+                # (in case keys differ slightly, though lookup_data.update(sd) should cover it)
+                payload[mapped_name] = val if val is not None else None
+        elif not selected_fields:
+            # Fallback: everything
             payload = call_data
         else:
+            # Legacy/Node-specific field selection
             for field in selected_fields:
-                if field in call_data:
-                    payload[field] = call_data[field]
+                payload[field] = lookup_data.get(field)
+
+        logger.info(f"WEBHOOK_NODE_PAYLOAD | url={url} | method={method} | payload_keys={list(payload.keys())}")
 
         try:
             if method == "POST":
@@ -1159,40 +1280,91 @@ class CallHandler:
         except Exception as e:
             logger.error(f"WEBHOOK_NODE_FAILED | url={url} | error={str(e)}")
 
-    async def _execute_twilio_sms_node(self, node_data, call_data):
+    async def _execute_twilio_sms_node(self, node_data, call_data, http_client, workflow):
         to_number = node_data.get("to_number")
         message_template = node_data.get("message", "A call from {phone_number} just ended.")
         
-        if not to_number:
-            logger.warning("TWILIO_SMS_NODE_SKIP | No 'to_number' provided")
+        # If to_number is missing or literally "{phone_number}", use the caller's phone number
+        if not to_number or to_number == "{phone_number}":
+            to_number = call_data.get("phone_number")
+        
+        if not to_number or to_number == "unknown":
+            logger.warning("TWILIO_SMS_NODE_SKIP | No valid 'to_number' available")
             return
+
+        # Use normalized context for template replacement
+        flat_data = self._get_workflow_context(call_data)
 
         # Simple template replacement
         message = message_template
-        for key, value in call_data.items():
-            if f"{{{key}}}" in message:
-                message = message.replace(f"{{{key}}}", str(value))
+        for key, value in flat_data.items():
+            token = f"{{{key}}}"
+            if token in message:
+                message = message.replace(token, str(value) if value is not None else "null")
 
         try:
-            # We need to import twilio here or assume it's available
-            from twilio.rest import Client
             import os
+            from config.database import get_database_client
+            backend_url = os.environ.get('BACKEND_URL', 'http://localhost:4000')
+            user_id = workflow.get("user_id")
             
-            account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
-            auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
-            from_number = os.environ.get('TWILIO_PHONE_NUMBER')
-
-            if not (account_sid and auth_token and from_number):
-                logger.error("TWILIO_SMS_NODE_FAILED | Missing Twilio credentials in environment")
+            # Fetch dynamic credentials from database
+            account_sid = None
+            auth_token = None
+            
+            db_client = get_database_client()
+            if db_client and user_id:
+                credentials = await db_client.fetch_user_twilio_credentials(user_id)
+                if credentials:
+                    account_sid = credentials.get("account_sid")
+                    auth_token = credentials.get("auth_token")
+                    logger.info(f"TWILIO_SMS_NODE | Using dynamic credentials for user {user_id}")
+            
+            # Fallback to environment variables if not found in database
+            if not (account_sid and auth_token):
+                account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
+                auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
+                if account_sid and auth_token:
+                    logger.info(f"TWILIO_SMS_NODE | Falling back to env credentials for user {user_id}")
+            
+            if not (account_sid and auth_token):
+                logger.error(f"TWILIO_SMS_NODE_FAILED | Missing Twilio credentials (none in DB or env)")
                 return
 
-            client = Client(account_sid, auth_token)
-            client.messages.create(
-                body=message,
-                from_=from_number,
-                to=to_number
+            # Force use of the assistant's assigned phone number
+            from_number = call_data.get("agent_phone_number")
+            
+            if not from_number:
+                # Last resort fallback if DB lookup/metadata failed
+                from_number = os.environ.get('TWILIO_PHONE_NUMBER')
+                if from_number:
+                    logger.info(f"TWILIO_SMS_NODE | Falling back to default Twilio number: {from_number}")
+            
+            if not from_number:
+                logger.error("TWILIO_SMS_NODE_FAILED | No 'from' number available (agent_phone_number is missing)")
+                return
+
+            payload = {
+                "accountSid": account_sid,
+                "authToken": auth_token,
+                "to": to_number,
+                "from": from_number,
+                "body": message,
+                "userId": user_id
+            }
+
+            logger.info(f"TWILIO_SMS_NODE_REQUEST | url={backend_url}/api/v1/twilio/sms/send | from={from_number} | to={to_number}")
+            
+            resp = await http_client.post(
+                f"{backend_url}/api/v1/twilio/sms/send", 
+                json=payload,
+                timeout=10.0
             )
-            logger.info(f"TWILIO_SMS_NODE_SUCCESS | to={to_number}")
+            
+            if resp.status_code == 200:
+                logger.info(f"TWILIO_SMS_NODE_SUCCESS | from={from_number} | to={to_number}")
+            else:
+                logger.error(f"TWILIO_SMS_NODE_FAILED | status={resp.status_code} | response={resp.text}")
         except Exception as e:
             logger.error(f"TWILIO_SMS_NODE_FAILED | error={str(e)}")
 
@@ -1981,10 +2153,10 @@ class CallHandler:
                 timeout=timeout
             )
         except asyncio.TimeoutError:
-            # logger.error(f"DATABASE_INSERT_TIMEOUT | table={table} | timeout={timeout}s")
+            logger.error(f"DATABASE_INSERT_TIMEOUT | table={table} | timeout={timeout}s")
             raise
         except Exception as e:
-            # logger.error(f"DATABASE_INSERT_ERROR | table={table} | error={str(e)}")
+            logger.error(f"DATABASE_INSERT_ERROR | table={table} | error={str(e)}")
             raise
 
 

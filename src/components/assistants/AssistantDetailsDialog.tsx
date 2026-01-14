@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { Phone, Users, TrendingUp, Settings, Play } from "lucide-react";
+import { Phone, Users, TrendingUp, Settings, Play, GitBranch, Save } from "lucide-react";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -11,6 +11,15 @@ import {
   ThemedDialogContent,
   ThemedDialogHeader,
 } from "@/components/ui/themed-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useWorkflows } from "@/hooks/useWorkflows";
+import { useToast } from "@/hooks/use-toast";
 
 interface Assistant {
   id: string;
@@ -20,6 +29,7 @@ interface Assistant {
   first_message?: string;
   first_sms?: string;
   sms_prompt?: string;
+  inbound_workflow_id?: string;
   status: "draft" | "active" | "inactive";
   interactionCount: number;
   userCount: number;
@@ -68,8 +78,14 @@ interface AssistantDetailsDialogProps {
 export function AssistantDetailsDialog({ assistant, isOpen, onClose }: AssistantDetailsDialogProps) {
   const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isUpdatingWorkflow, setIsUpdatingWorkflow] = useState(false);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>("");
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const { workflows } = useWorkflows();
+
+  const activeWorkflows = workflows?.filter(w => w.status === 'active') || [];
 
   const handleStartCall = () => {
     navigate(`/voiceagent?assistantId=${assistant.id}`);
@@ -79,6 +95,7 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
   useEffect(() => {
     if (assistant && isOpen) {
       loadPhoneNumbers();
+      setSelectedWorkflowId(assistant.inbound_workflow_id || "none");
     }
   }, [assistant, isOpen]);
 
@@ -106,6 +123,40 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
     }
   };
 
+  const handleWorkflowChange = async (workflowId: string) => {
+    if (!assistant?.id) return;
+
+    setSelectedWorkflowId(workflowId);
+    setIsUpdatingWorkflow(true);
+
+    try {
+      const { error } = await supabase
+        .from("assistant")
+        .update({
+          inbound_workflow_id: workflowId === "none" ? null : workflowId
+        })
+        .eq("id", assistant.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Workflow Updated",
+        description: "The inbound workflow has been updated successfully.",
+      });
+    } catch (error) {
+      console.error("Error updating workflow:", error);
+      toast({
+        title: "Update Failed",
+        description: "Failed to update the workflow. Please try again.",
+        variant: "destructive",
+      });
+      // Revert local state on error
+      setSelectedWorkflowId(assistant.inbound_workflow_id || "none");
+    } finally {
+      setIsUpdatingWorkflow(false);
+    }
+  };
+
   if (!assistant) return null;
 
   const statusColors = {
@@ -127,10 +178,10 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
           title={assistant.name}
           description={assistant.description}
         />
-        
+
         {/* Start Call Button */}
         <div className="flex justify-end pb-4 border-b border-border">
-          <Button 
+          <Button
             onClick={handleStartCall}
             className="gap-2"
           >
@@ -143,7 +194,7 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
           {/* Status Header */}
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
-              <div 
+              <div
                 className="w-2 h-2 rounded-full"
                 style={{ backgroundColor: statusColors[assistant.status] }}
               />
@@ -192,9 +243,9 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
           <div>
             <div className="flex items-center space-x-2 mb-4">
               <Phone className="h-5 w-5" style={{ color: 'white !important' }} />
-              <div 
+              <div
                 className="text-lg font-medium"
-                style={{ 
+                style={{
                   color: '#ffffff !important',
                   fontSize: '18px',
                   fontWeight: '500'
@@ -206,7 +257,7 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
                 {phoneNumbers.length} connected
               </Badge>
             </div>
-            
+
             {loading ? (
               <div className="text-center py-6 bg-muted/20 rounded-lg border border-dashed">
                 <div className="text-sm text-muted-foreground">Loading phone numbers...</div>
@@ -214,7 +265,7 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
             ) : phoneNumbers.length > 0 ? (
               <div className="space-y-3">
                 {phoneNumbers.map((phoneNumber) => (
-                  <div 
+                  <div
                     key={phoneNumber.id}
                     className="flex items-center justify-between p-3 bg-muted/20 rounded-lg border"
                   >
@@ -231,14 +282,14 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <Badge 
+                      <Badge
                         variant={phoneNumber.status === 'active' ? 'default' : 'secondary'}
                         className="text-xs"
                       >
                         {phoneNumber.status}
                       </Badge>
                       <div className="flex items-center space-x-1">
-                        <div 
+                        <div
                           className="w-2 h-2 rounded-full"
                           style={{ backgroundColor: phoneStatusColors[phoneNumber.status as keyof typeof phoneStatusColors] || phoneStatusColors.inactive }}
                         />
@@ -263,13 +314,60 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
             )}
           </div>
 
+          {/* Workflow Section */}
+          <div>
+            <div className="flex items-center space-x-2 mb-4">
+              <GitBranch className="h-5 w-5" style={{ color: 'white !important' }} />
+              <div
+                className="text-lg font-medium"
+                style={{
+                  color: '#ffffff !important',
+                  fontSize: '18px',
+                  fontWeight: '500'
+                }}
+              >
+                Inbound Workflow
+              </div>
+            </div>
+
+            <div className="p-4 bg-muted/20 rounded-lg border border-border/50">
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <Select
+                    value={selectedWorkflowId}
+                    onValueChange={handleWorkflowChange}
+                    disabled={isUpdatingWorkflow}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a workflow to run for inbound calls" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No Workflow</SelectItem>
+                      {activeWorkflows.map((workflow) => (
+                        <SelectItem key={workflow.id} value={workflow.id}>
+                          {workflow.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {isUpdatingWorkflow && (
+                  <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
+                )}
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                This workflow will automatically trigger when this assistant receives an inbound call.
+              </p>
+            </div>
+          </div>
+
           {/* Configuration Details */}
           <div>
             <div className="flex items-center space-x-2 mb-4">
               <Settings className="h-5 w-5" style={{ color: 'white !important' }} />
-              <div 
+              <div
                 className="text-lg font-medium"
-                style={{ 
+                style={{
                   color: '#ffffff !important',
                   fontSize: '18px',
                   fontWeight: '500'
@@ -278,7 +376,7 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
                 Configuration
               </div>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <span className="text-sm text-muted-foreground">Model</span>
