@@ -28,6 +28,8 @@ const ignoreRoutes = [
   '/api/v1/livekit/dispatch',
   '/api/v1/recording',
   '/api/v1/sms/webhook',
+  '/api/v1/twilio/sms/send',
+  '/api/v1/twilio/sms/test',
   '/api/v1/twilio/sms/webhook',
   '/api/v1/twilio/sms/status-callback',
   '/api/v1/stripe/webhook', // Stripe webhooks don't have tenant context
@@ -64,7 +66,7 @@ async function extractTenantFromUrl(url) {
 
     // Check if it's an ngrok URL (development tunnel)
     const isNgrokUrl = hostname.includes('ngrok') || hostname.endsWith('.ngrok-free.app') || hostname.endsWith('.ngrok.io');
-    
+
     if (isNgrokUrl) {
       const parts = hostname.split('.');
       // For ngrok URLs, check if there's a tenant subdomain
@@ -81,7 +83,7 @@ async function extractTenantFromUrl(url) {
           console.warn('Supabase not initialized, returning main tenant');
           return 'main';
         }
-        
+
         // Retry logic for Cloudflare-protected Supabase queries
         let tenantOwner = null;
         let error = null;
@@ -264,11 +266,11 @@ export const tenantMiddleware = async (req, res, next) => {
   const normalizedUri = (uri || '').split('?')[0].replace(/\/$/, ''); // Remove query string and trailing slash
   const normalizedOriginalUrl = (originalUrl || '').split('?')[0].replace(/\/$/, '');
   const normalizedPath = (path || '').split('?')[0].replace(/\/$/, '');
-  
+
   // Check if this is a Stripe webhook request
   // Stripe sends POST requests to /api/v1/stripe/webhook
   const isStripeWebhook = method === 'POST' && (
-    uri === '/api/v1/stripe/webhook' || 
+    uri === '/api/v1/stripe/webhook' ||
     uri.startsWith('/api/v1/stripe/webhook') ||
     originalUrl === '/api/v1/stripe/webhook' ||
     originalUrl.startsWith('/api/v1/stripe/webhook') ||
@@ -286,7 +288,7 @@ export const tenantMiddleware = async (req, res, next) => {
     // Also check for Stripe signature header as additional confirmation
     (req.headers['stripe-signature'] && (uri.includes('/stripe') || originalUrl.includes('/stripe')))
   );
-  
+
   if (isStripeWebhook) {
     console.log(`[TenantMiddleware] ✅ SKIPPING tenant validation for Stripe webhook: ${method} ${uri} (originalUrl: ${originalUrl}, path: ${path})`);
     req.tenant = 'main';
@@ -362,10 +364,10 @@ export const tenantMiddleware = async (req, res, next) => {
   if (!tenant && process.env.NODE_ENV === 'development') {
     const tenantFromQuery = req.query?.tenant || req.query?.slug;
     const tenantFromHeader = req.headers['x-tenant'] || req.headers['x-tenant-slug'];
-    
+
     if (tenantFromQuery || tenantFromHeader) {
       const tenantSlug = tenantFromQuery || tenantFromHeader;
-      
+
       if (supabase) {
         // Look up the tenant in the database
         const result = await supabase
