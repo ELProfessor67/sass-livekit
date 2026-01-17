@@ -112,9 +112,8 @@ class RAGService:
             return None
 
         try:
-            response = (
-                self.supabase.table("knowledge_bases")
-                .select("*").eq("id", knowledge_base_id).single().execute()
+            response = await asyncio.to_thread(
+                lambda: self.supabase.table("knowledge_bases").select("*").eq("id", knowledge_base_id).single().execute()
             )
             if response.data:
                 self._kb_cache[knowledge_base_id] = response.data

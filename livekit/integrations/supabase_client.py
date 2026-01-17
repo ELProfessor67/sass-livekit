@@ -89,9 +89,11 @@ class SupabaseClient:
             "operation": "save_n8n_spreadsheet_id"
         }):
             try:
-                result = self.db_client.client.table("assistant").update({
-                    "n8n_spreadsheet_id": spreadsheet_id
-                }).eq("id", assistant_id).execute()
+                result = await asyncio.to_thread(
+                    lambda: self.db_client.client.table("assistant").update({
+                        "n8n_spreadsheet_id": spreadsheet_id
+                    }).eq("id", assistant_id).execute()
+                )
                 
                 if result.data:
                     self.logger.info(f"N8N_SPREADSHEET_SAVED | assistant_id={assistant_id} | spreadsheet_id={spreadsheet_id}")

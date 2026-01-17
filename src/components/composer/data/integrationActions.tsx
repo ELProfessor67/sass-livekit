@@ -19,7 +19,7 @@ import {
     WhatsAppIcon,
     CalcomIcon,
     ConditionIcon,
-    DelayIcon,
+    FacebookIcon,
 } from "@/components/composer/nodes/IntegrationIcons";
 
 export interface IntegrationAction {
@@ -153,14 +153,23 @@ export const integrationActions: Record<string, IntegrationAction[]> = {
     'Twilio': [
         { id: 'send_sms', label: 'Send SMS', description: 'Send an SMS message using Twilio' },
     ],
+    'Trigger': [
+        { id: 'webhook', label: 'Post-Call Webhook (LiveKit)', description: 'Trigger after a call ends' },
+        { id: 'facebook_leads', label: 'Facebook Leads', description: 'Trigger when a new lead is captured' },
+        { id: 'schedule', label: 'Schedule', description: 'Trigger at a specific time' },
+        { id: 'manual', label: 'Manual Trigger', description: 'Trigger manually from dashboard' },
+    ],
+    'Facebook': [
+        { id: 'facebook_leads', label: 'Facebook Leads', description: 'Trigger when a new lead is captured' },
+    ],
 };
 
 export const nodeCategories: IntegrationCategory[] = [
     {
         name: 'Logic',
         nodes: [
+            { type: 'trigger', label: 'Trigger', description: 'Start workflow on event' },
             { type: 'condition', label: 'Condition', description: 'Split workflow based on rules' },
-            { type: 'delay', label: 'Delay', description: 'Wait for a period of time' },
         ],
     },
     {
@@ -208,6 +217,12 @@ export const nodeCategories: IntegrationCategory[] = [
             { type: 'action', label: 'Claude', description: 'Anthropic AI assistant' },
         ],
     },
+    {
+        name: 'Marketing',
+        nodes: [
+            { type: 'action', label: 'Facebook', description: 'Manage Facebook ads and leads' },
+        ],
+    },
 ];
 
 export const getIntegrationIcon = (label: string, size: number = 24): React.ReactNode => {
@@ -231,7 +246,8 @@ export const getIntegrationIcon = (label: string, size: number = 24): React.Reac
         case 'WhatsApp': return <WhatsAppIcon size={size} />;
         case 'Cal.com': return <CalcomIcon size={size} />;
         case 'Condition': return <ConditionIcon size={size} />;
-        case 'Delay': return <DelayIcon size={size} />;
+        case 'Facebook':
+        case 'Facebook Leads': return <FacebookIcon size={size} />;
         default: return null;
     }
 };

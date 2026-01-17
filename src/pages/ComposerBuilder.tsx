@@ -41,7 +41,6 @@ import { ThemeContainer } from '@/components/theme';
 import { TriggerNode } from '@/components/composer/nodes/TriggerNode';
 import { ActionNode } from '@/components/composer/nodes/ActionNode';
 import { ConditionNode } from '@/components/composer/nodes/ConditionNode';
-import { DelayNode } from '@/components/composer/nodes/DelayNode';
 import { TwilioNode } from '@/components/composer/nodes/TwilioNode';
 import { SmartEdge } from '@/components/composer/edges/SmartEdge';
 import { useLinearLayout } from '@/components/composer/hooks/useLinearLayout';
@@ -55,7 +54,7 @@ const nodeTypes = {
     trigger: TriggerNode,
     action: ActionNode,
     condition: ConditionNode,
-    delay: DelayNode,
+  
     twilio_sms: TwilioNode,
 };
 
@@ -63,14 +62,7 @@ const edgeTypes = {
     smart: SmartEdge,
 };
 
-const initialNodes: Node[] = [
-    {
-        id: '1',
-        type: 'trigger',
-        position: { x: 0, y: 0 },
-        data: { label: 'When a webhook is received', configured: true },
-    },
-];
+const initialNodes: Node[] = [];
 
 const initialEdges: Edge[] = [];
 
@@ -247,8 +239,6 @@ export default function ComposerBuilder() {
     };
 
     const handleDeleteNode = useCallback((nodeId: string) => {
-        if (nodeId === '1') return; // Don't delete trigger
-
         setNodes((nds) => {
             const index = nds.findIndex(n => n.id === nodeId);
             const newNodes = nds.filter((node) => node.id !== nodeId);
@@ -484,6 +474,33 @@ export default function ComposerBuilder() {
                                 </ThemeCard>
                             </Panel>
                         </ReactFlow>
+
+                        {nodes.length === 0 && (
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-50">
+                                <div className="flex flex-col items-center gap-6 animate-in fade-in zoom-in duration-700">
+                                    <div className="w-20 h-20 rounded-3xl bg-primary/10 border border-primary/20 flex items-center justify-center shadow-2xl shadow-primary/20">
+                                        <Lightning size={40} weight="duotone" className="text-primary animate-pulse" />
+                                    </div>
+                                    <div className="text-center space-y-2">
+                                        <h2 className="text-xl font-bold tracking-tight text-foreground/90">Blank Canvas</h2>
+                                        <p className="text-xs text-muted-foreground max-w-[240px] leading-relaxed">
+                                            Your workflow is empty. Start by adding your first node – a trigger or an initial action.
+                                        </p>
+                                    </div>
+                                    <Button
+                                        size="lg"
+                                        className="pointer-events-auto h-12 px-8 rounded-2xl font-bold uppercase tracking-widest text-[10px] shadow-xl shadow-primary/30 hover:shadow-primary/40 transition-all hover:scale-105 cursor-pointer"
+                                        onClick={() => {
+                                            setAddContext(null);
+                                            setShowAddMenu(true);
+                                        }}
+                                    >
+                                        <Plus size={16} className="mr-2" weight="bold" />
+                                        Add First Node
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Configuration / Selection Panels - Glass UI */}

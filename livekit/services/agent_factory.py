@@ -120,6 +120,9 @@ class AgentFactory:
             knowledge_base_id=knowledge_base_id,
             company_id=config.get("company_id"),
             supabase=self.supabase,
+            assistant_id=config.get("id"),
+            user_id=config.get("user_id"),
+            phone_number=config.get("phone_number"),
             prewarmed_llm=prewarmed_llm,
             prewarmed_tts=prewarmed_tts,
             prewarmed_vad=prewarmed_vad

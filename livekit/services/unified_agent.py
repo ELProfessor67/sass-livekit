@@ -167,6 +167,9 @@ class UnifiedAgent(Agent):
         knowledge_base_id: Optional[str] = None,
         company_id: Optional[str] = None,
         supabase: Optional[SupabaseClient] = None,
+        assistant_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        phone_number: Optional[str] = None,
         prewarmed_llm: Optional[object] = None,
         prewarmed_tts: Optional[object] = None,
         prewarmed_vad: Optional[object] = None
@@ -193,6 +196,9 @@ class UnifiedAgent(Agent):
         self.knowledge_base_id = knowledge_base_id
         self.company_id = company_id
         self.supabase = supabase
+        self.assistant_id = assistant_id
+        self.user_id = user_id
+        self.phone_number = phone_number
         
         # Initialize services (singleton; no double init; Supabase is optional for read)
         self.rag_service = get_rag_service() if knowledge_base_id else None
@@ -1033,6 +1039,75 @@ class UnifiedAgent(Agent):
                             raise e
                 logging.info("BOOKING_SUCCESS | appointment scheduled successfully")
                 
+                # Save to bookings table if supabase client is available
+                if self.supabase and self.user_id:
+                    try:
+                        booking_record = {
+                            "user_id": self.user_id,
+                            "assistant_id": self.assistant_id,
+                            "call_id": getattr(self, "_room_name", None),
+                            "attendee_name": self._booking_data.name or "Unknown",
+                            "attendee_email": self._booking_data.email or "Unknown",
+                            "attendee_phone": self._booking_data.phone,
+                            "start_time": self._booking_data.selected_slot.start_time.isoformat(),
+                            "end_time": self._booking_data.selected_slot.end_time.isoformat(),
+                            "notes": self._booking_data.notes,
+                            "status": "booked",
+                            "cal_com_booking_id": str(resp.get("id")) if isinstance(resp, dict) and resp.get("id") else None,
+                            "event_type_id": str(self.calendar.event_type_id) if self.calendar else None
+                        }
+                        
+                        # Use _safe_db_insert if it exists on supabase client or similar
+                        # For now, use the common pattern found in the codebase
+                        insert_res = await asyncio.to_thread(
+                            lambda: self.supabase.client.table("bookings").insert(booking_record).execute()
+                        )
+                        booking_id = insert_res.data[0].get("id") if insert_res.data else None
+                        logging.info("BOOKING_DB_SAVE_SUCCESS | saved to bookings table")
+
+                        # Trigger Dynamic Workflows
+                        try:
+                            import os
+                            import httpx
+                            backend_url = os.environ.get('BACKEND_URL', 'http://localhost:4000')
+                            
+                            # Prepare context for the workflow
+                            context = {
+                                "userId": self.user_id,
+                                "assistantId": self.assistant_id,
+                                "event": "appointment_booked",
+                                "outcome": "Booked Appointment",  # Add at top level for easier condition checking
+                                "callData": {
+                                    "phone_number": self._booking_data.phone,
+                                    "name": self._booking_data.name,
+                                    "email": self._booking_data.email,
+                                    "outcome": "Booked Appointment",
+                                    "agent_phone_number": self.phone_number,
+                                    "structured_data": {
+                                        "booking_id": booking_id,
+                                        "start_time": self._booking_data.selected_slot.start_time.isoformat(),
+                                        "name": self._booking_data.name,
+                                        "phone": self._booking_data.phone,
+                                        "agent_phone": self.phone_number
+                                    }
+                                }
+                            }
+                            
+                            logging.info("TRIGGERING_BACKEND_WORKFLOW | event=appointment_booked | outcome=Booked Appointment | context=%s", str(context))
+                            async with httpx.AsyncClient() as client:
+                                response = await client.post(
+                                    f"{backend_url}/api/v1/workflows/execution/trigger",
+                                    json=context,
+                                    timeout=5.0
+                                )
+                                logging.info("WORKFLOW_TRIGGER_RESPONSE | status=%s | response=%s", response.status_code, response.text[:200] if hasattr(response, 'text') else 'no response text')
+                        except Exception as e:
+                            logging.error("WORKFLOW_TRIGGER_FAILED | error=%s", str(e))
+
+
+                    except Exception as db_err:
+                        logging.error("BOOKING_DB_SAVE_FAILED | error=%s", str(db_err))
+
                 # Format confirmation message with details
                 tz = self._tz()
                 local_time = self._booking_data.selected_slot.start_time.astimezone(tz)

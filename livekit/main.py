@@ -1015,6 +1015,16 @@ class CallHandler:
             # Add outcome alias
             call_data["outcome"] = call_status
             
+            # Add call_outcome from analysis_results if available (for database)
+            # Note: Only add if column exists - check migration status
+            if analysis_results.get("call_outcome"):
+                call_data["call_outcome"] = analysis_results["call_outcome"]
+            elif call_status:
+                # Fallback to call_status if call_outcome not in analysis_results
+                # Only include if we're sure the column exists (commented out until migration is applied)
+                # call_data["call_outcome"] = call_status
+                pass
+            
             # Add outcome analysis details
             if analysis_results.get("outcome_confidence"):
                 call_data["outcome_confidence"] = analysis_results["outcome_confidence"]
@@ -1031,9 +1041,10 @@ class CallHandler:
             
             # Separate database payload from workflow context data
             # Valid columns in call_history table based on migrations
+            # Note: call_outcome column may not exist yet - exclude it until migration is applied
             VALID_DB_COLUMNS = {
                 "call_id", "assistant_id", "phone_number", "participant_identity",
-                "start_time", "end_time", "call_duration", "call_status", "call_outcome",
+                "start_time", "end_time", "call_duration", "call_status",
                 "transcription", "call_summary", "success_evaluation", "structured_data",
                 "outcome_confidence", "outcome_reasoning", "outcome_key_points",
                 "outcome_sentiment", "follow_up_required", "follow_up_notes"
@@ -1084,289 +1095,43 @@ class CallHandler:
             logger.error(f"POST_CALL_PROCESSING_ERROR | error={str(e)}")
 
     async def _execute_user_workflows(self, assistant_config: Dict[str, Any], call_data: Dict[str, Any]) -> None:
-        """Fetch and execute user-defined node-based workflows."""
+        """Trigger backend workflow execution for post-call event."""
         user_id = assistant_config.get("user_id")
-        if not user_id:
+        assistant_id = assistant_config.get("id")
+        
+        if not user_id or not assistant_id:
             return
 
         try:
-            # Fetch active workflows for the user
-            db_client = get_database_client()
-            if not db_client:
-                return
-
-            assistant_id = assistant_config.get("id")
-            inbound_workflow_id = assistant_config.get("inbound_workflow_id")
-            
-            if not hasattr(self.supabase, 'client') or self.supabase.client is None:
-                logger.warning("WORKFLOW_EXECUTION_SKIP | Supabase client not initialized")
-                return
-
-            # Perform the query to find workflows for this user
-            query = self.supabase.client.table("workflows").select("*").eq("user_id", user_id).eq("is_active", True)
-            
-            # Build filter for relevant workflows
-            filters = []
-            if inbound_workflow_id:
-                filters.append(f"id.eq.{inbound_workflow_id}")
-            if assistant_id:
-                filters.append(f"assistant_id.eq.{assistant_id}")
-            filters.append("assistant_id.is.null")
-            
-            filter_str = ",".join(filters)
-            logger.info(f"WORKFLOW_QUERY | user={user_id} | inbound={inbound_workflow_id} | assistant={assistant_id} | filters=[{filter_str}]")
-            
-            # Apply filters using OR logic
-            query = query.or_(filter_str)
-                
-            response = query.execute()
-            workflows = response.data if hasattr(response, 'data') else []
-
-            if not workflows:
-                logger.info(f"WORKFLOW_EXECUTION_SKIP | no active workflows found for user={user_id} with filters [{filter_str}]")
-                return
-
-            logger.info(f"WORKFLOW_EXECUTION_START | user={user_id} | count={len(workflows)}")
-
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                for workflow in workflows:
-                    workflow_id = workflow.get("id")
-                    nodes = workflow.get("nodes", [])
-                    edges = workflow.get("edges", [])
-
-                    if not nodes:
-                        continue
-
-                    await self._run_workflow_engine(workflow, nodes, edges, call_data, client)
-
-        except Exception as e:
-            logger.error(f"WORKFLOW_FETCH_FAILED | error={str(e)}")
-
-    async def _run_workflow_engine(self, workflow, nodes, edges, call_data, http_client):
-        """Simplistic engine to traverse nodes and execute actions."""
-        workflow_name = workflow.get("name")
-        logger.info(f"RUNNING_WORKFLOW | name={workflow_name}")
-
-        # Find trigger node
-        trigger_nodes = [n for n in nodes if n.get("type") in ["trigger", "post_call"]]
-        
-        if not trigger_nodes:
-            logger.warning(f"WORKFLOW_NO_TRIGGER | workflow={workflow_name}")
-            return
-
-        # Prepare required fields mapping from trigger configuration
-        required_fields = {}
-        for trigger in trigger_nodes:
-            data = trigger.get("data", {})
-            
-            # 1. Standard Core Mappings
-            core_fields = {
-                "name": data.get("mapping_name") or "name",
-                "summary": data.get("mapping_summary") or "summary",
-                "outcome": data.get("mapping_outcome") or "outcome",
-                "duration": data.get("mapping_duration") or "duration",
-                "transcript": data.get("mapping_transcript") or "transcript"
-            }
-            disabled = data.get("disabled_core_mappings") or []
-            
-            for field_key, mapped_name in core_fields.items():
-                if field_key not in disabled:
-                    required_fields[field_key] = mapped_name
-            
-            # 2. Custom Expected Variables
-            expected = data.get("expected_variables") or []
-            for var in expected:
-                if var not in required_fields:
-                    required_fields[var] = var
-
-        for trigger in trigger_nodes:
-            # For each trigger, find connected action nodes
-            visited = set()
-            queue = [trigger.get("id")]
-            
-            while queue:
-                current_id = queue.pop(0)
-                if current_id in visited:
-                    continue
-                visited.add(current_id)
-
-                # Find downstream neighbors
-                downstream_edges = [e for e in edges if e.get("source") == current_id]
-                for edge in downstream_edges:
-                    target_id = edge.get("target")
-                    target_node = next((n for n in nodes if n.get("id") == target_id), None)
-                    
-                    if target_node:
-                        # Execute target node with required_fields context
-                        await self._execute_node(target_node, call_data, http_client, workflow, required_fields)
-                        queue.append(target_id)
-
-    async def _execute_node(self, node, call_data, http_client, workflow, required_fields=None):
-        node_type = node.get("type")
-        node_data = node.get("data", {})
-        
-        logger.info(f"EXECUTING_NODE | type={node_type}")
-
-        if node_type == "webhook":
-            await self._execute_webhook_node(node_data, call_data, http_client, required_fields)
-        elif node_type == "twilio_sms":
-            await self._execute_twilio_sms_node(node_data, call_data, http_client, workflow)
-        else:
-            logger.warning(f"UNKNOWN_NODE_TYPE | type={node_type}")
-
-    def _get_workflow_context(self, call_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Flatten and normalize call data for workflow variable interpolation."""
-        context = {**call_data}
-        
-        # Add common aliases for convenience if not already present
-        if "call_summary" in call_data and "summary" not in context:
-            context["summary"] = call_data["call_summary"]
-        if "call_status" in call_data and "outcome" not in context:
-            context["outcome"] = call_data["call_status"]
-        if "call_duration" in call_data and "duration" not in context:
-            context["duration"] = call_data["call_duration"]
-        if "phone_number" in call_data and "customer_phone" not in context:
-            context["customer_phone"] = call_data["phone_number"]
-            
-        # Normalize structured data - pull values out of nested dicts if they exist
-        if "structured_data" in call_data and isinstance(call_data["structured_data"], dict):
-            sd = call_data["structured_data"]
-            for key, val in sd.items():
-                # If it's a dict with a 'value' key (common in our agent structured data), extract it
-                if isinstance(val, dict) and "value" in val:
-                    context[key] = val["value"]
-                else:
-                    context[key] = val
-                    
-        return context
-
-    async def _execute_webhook_node(self, node_data, call_data, http_client, required_fields=None):
-        url = node_data.get("url")
-        selected_fields = node_data.get("fields", [])
-        method = node_data.get("method", "POST").upper()
-
-        if not url:
-            return
-
-        # Use normalized context for field lookup
-        lookup_data = self._get_workflow_context(call_data)
-
-        if required_fields:
-            # Use fields defined in the trigger
-            for field_key, mapped_name in required_fields.items():
-                val = lookup_data.get(field_key)
-                # If still None, try to get from structured_data explicitly 
-                # (in case keys differ slightly, though lookup_data.update(sd) should cover it)
-                payload[mapped_name] = val if val is not None else None
-        elif not selected_fields:
-            # Fallback: everything
-            payload = call_data
-        else:
-            # Legacy/Node-specific field selection
-            for field in selected_fields:
-                payload[field] = lookup_data.get(field)
-
-        logger.info(f"WEBHOOK_NODE_PAYLOAD | url={url} | method={method} | payload_keys={list(payload.keys())}")
-
-        try:
-            if method == "POST":
-                resp = await http_client.post(url, json=payload)
-            elif method == "PUT":
-                resp = await http_client.put(url, json=payload)
-            elif method == "PATCH":
-                resp = await http_client.patch(url, json=payload)
-            
-            logger.info(f"WEBHOOK_NODE_RESULT | url={url} | status={resp.status_code}")
-        except Exception as e:
-            logger.error(f"WEBHOOK_NODE_FAILED | url={url} | error={str(e)}")
-
-    async def _execute_twilio_sms_node(self, node_data, call_data, http_client, workflow):
-        to_number = node_data.get("to_number")
-        message_template = node_data.get("message", "A call from {phone_number} just ended.")
-        
-        # If to_number is missing or literally "{phone_number}", use the caller's phone number
-        if not to_number or to_number == "{phone_number}":
-            to_number = call_data.get("phone_number")
-        
-        if not to_number or to_number == "unknown":
-            logger.warning("TWILIO_SMS_NODE_SKIP | No valid 'to_number' available")
-            return
-
-        # Use normalized context for template replacement
-        flat_data = self._get_workflow_context(call_data)
-
-        # Simple template replacement
-        message = message_template
-        for key, value in flat_data.items():
-            token = f"{{{key}}}"
-            if token in message:
-                message = message.replace(token, str(value) if value is not None else "null")
-
-        try:
-            import os
-            from config.database import get_database_client
             backend_url = os.environ.get('BACKEND_URL', 'http://localhost:4000')
-            user_id = workflow.get("user_id")
             
-            # Fetch dynamic credentials from database
-            account_sid = None
-            auth_token = None
-            
-            db_client = get_database_client()
-            if db_client and user_id:
-                credentials = await db_client.fetch_user_twilio_credentials(user_id)
-                if credentials:
-                    account_sid = credentials.get("account_sid")
-                    auth_token = credentials.get("auth_token")
-                    logger.info(f"TWILIO_SMS_NODE | Using dynamic credentials for user {user_id}")
-            
-            # Fallback to environment variables if not found in database
-            if not (account_sid and auth_token):
-                account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
-                auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
-                if account_sid and auth_token:
-                    logger.info(f"TWILIO_SMS_NODE | Falling back to env credentials for user {user_id}")
-            
-            if not (account_sid and auth_token):
-                logger.error(f"TWILIO_SMS_NODE_FAILED | Missing Twilio credentials (none in DB or env)")
-                return
-
-            # Force use of the assistant's assigned phone number
-            from_number = call_data.get("agent_phone_number")
-            
-            if not from_number:
-                # Last resort fallback if DB lookup/metadata failed
-                from_number = os.environ.get('TWILIO_PHONE_NUMBER')
-                if from_number:
-                    logger.info(f"TWILIO_SMS_NODE | Falling back to default Twilio number: {from_number}")
-            
-            if not from_number:
-                logger.error("TWILIO_SMS_NODE_FAILED | No 'from' number available (agent_phone_number is missing)")
-                return
-
-            payload = {
-                "accountSid": account_sid,
-                "authToken": auth_token,
-                "to": to_number,
-                "from": from_number,
-                "body": message,
-                "userId": user_id
-            }
-
-            logger.info(f"TWILIO_SMS_NODE_REQUEST | url={backend_url}/api/v1/twilio/sms/send | from={from_number} | to={to_number}")
-            
-            resp = await http_client.post(
-                f"{backend_url}/api/v1/twilio/sms/send", 
-                json=payload,
-                timeout=10.0
+            # Prepare context for the workflow
+            # Extract outcome from call_data if available (for condition node evaluation)
+            # Check multiple possible locations where outcome might be stored
+            outcome = (
+                call_data.get("call_outcome") or 
+                call_data.get("outcome") or 
+                call_data.get("call_status") or 
+                None
             )
+            context = {
+                "userId": user_id,
+                "assistantId": assistant_id,
+                "event": "call_ended",
+                "outcome": outcome,  # Add outcome at top level for condition node evaluation
+                "callData": call_data
+            }
             
-            if resp.status_code == 200:
-                logger.info(f"TWILIO_SMS_NODE_SUCCESS | from={from_number} | to={to_number}")
-            else:
-                logger.error(f"TWILIO_SMS_NODE_FAILED | status={resp.status_code} | response={resp.text}")
+            logger.info(f"TRIGGERING_BACKEND_WORKFLOW | event=call_ended | outcome={outcome} | user={user_id} | assistant={assistant_id}")
+            
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"{backend_url}/api/v1/workflows/execution/trigger",
+                    json=context,
+                    timeout=5.0
+                )
         except Exception as e:
-            logger.error(f"TWILIO_SMS_NODE_FAILED | error={str(e)}")
+            logger.error(f"BACKEND_WORKFLOW_TRIGGER_FAILED | error={str(e)}")
 
     def _extract_call_sid(self, ctx: JobContext, participant) -> Optional[str]:
         """Extract call_sid from various sources like in old implementation."""

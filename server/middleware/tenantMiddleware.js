@@ -34,6 +34,7 @@ const ignoreRoutes = [
   '/api/v1/twilio/sms/status-callback',
   '/api/v1/stripe/webhook', // Stripe webhooks don't have tenant context
   '/stripe/webhook', // Alternative path format
+  '/api/v1/workflows/execution/trigger', // Internal trigger for agents
 ];
 
 function isIgnoredRoute(uri) {

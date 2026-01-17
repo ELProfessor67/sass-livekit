@@ -113,10 +113,11 @@ export function NodeSelectionPanel({ onClose, onSelect }: NodeSelectionPanelProp
     const [selectedIntegration, setSelectedIntegration] = useState<string | null>(null);
 
     const handleIntegrationClick = (node: any) => {
-        if (node.type === 'condition' || node.type === 'delay') {
+        if (node.type === 'condition' || node.type === 'facebook_leads') {
             onSelect(node.type, {
                 label: node.label,
                 type: node.type,
+                trigger_type: node.type === 'facebook_leads' ? 'facebook_leads' : undefined,
                 configured: false,
             });
             onClose();
@@ -126,13 +127,21 @@ export function NodeSelectionPanel({ onClose, onSelect }: NodeSelectionPanelProp
     };
 
     const handleActionSelect = (action: IntegrationAction) => {
-        const nodeType = selectedIntegration === 'Twilio' ? 'twilio_sms' : 'action';
+        let nodeType: string = 'action';
+        if (selectedIntegration === 'Twilio') {
+            nodeType = 'twilio_sms';
+        } else if (selectedIntegration === 'Trigger' || selectedIntegration === 'Facebook' || action.id === 'facebook_leads') {
+            nodeType = 'trigger';
+        }
+
         onSelect(nodeType, {
             label: action.label,
             integration: selectedIntegration,
             actionId: action.id,
             type: nodeType,
+            trigger_type: nodeType === 'trigger' ? action.id : undefined,
             configured: false,
+            to_number: selectedIntegration === 'Twilio' ? '{phone_number}' : undefined,
         });
         onClose();
     };

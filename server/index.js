@@ -27,8 +27,12 @@ import adminRouter from './routes/admin.js';
 import whitelabelRouter from './routes/whitelabel.js';
 import userRouter from './routes/user.js';
 import workflowsRouter from './routes/workflows.js';
+import workflowExecutionRouter from './routes/workflow-execution.js';
 import { tenantMiddleware } from './middleware/tenantMiddleware.js';
 import './workers/supportAccessCleanup.js';
+import { smsSchedulingWorker } from './workers/sms-scheduling-worker.js';
+import facebookIntegrationsRouter from './routes/facebook-integrations.js';
+import facebookWebhookRouter from './routes/facebook-webhook.js';
 
 
 
@@ -39,6 +43,7 @@ const app = express();
 // CRITICAL: Stripe webhook MUST be mounted FIRST, before ANY middleware
 // This ensures it bypasses CORS, tenant middleware, and JSON parsing
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const PORT = process.env.PORT || 4000;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabaseAdmin = supabaseUrl && supabaseServiceKey
   ? createClient(supabaseUrl, supabaseServiceKey)
@@ -420,13 +425,24 @@ app.post('/api/v1/stripe/webhook', express.raw({
 
 console.log('[Server] ✅ Stripe webhook handler mounted at /api/v1/stripe/webhook (BEFORE all middleware)');
 
+// Start workers
+smsSchedulingWorker.start();
+
+console.log('[Server] ✅ Workers started');
+console.log('[Server] ✅ SMS scheduling worker started');
+
 // Now apply global middleware AFTER Stripe webhook
 app.use(cors());
 app.use(express.urlencoded({ extended: false }));
 
 // JSON body parser must come AFTER the Stripe webhook handler
 // This ensures Stripe webhooks get raw body for signature verification
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
+
 
 // Apply tenant middleware to all routes (webhook router mounted above should bypass this)
 app.use(tenantMiddleware);
@@ -451,7 +467,10 @@ app.use('/api/v1', minutesPricingRouter); // Minutes pricing routes (includes /a
 app.use('/api/v1/admin', adminRouter);
 app.use('/api/v1/whitelabel', whitelabelRouter);
 app.use('/api/v1/user', userRouter);
+app.use('/api/v1/workflows/execution', workflowExecutionRouter);
 app.use('/api/v1/workflows', workflowsRouter);
+app.use('/api/v1/integrations/facebook', facebookIntegrationsRouter);
+app.use('/api/v1/webhooks/facebook', facebookWebhookRouter);
 console.log('Knowledge base routes registered at /api/v1/knowledge-base');
 console.log('Support access routes registered at /api/v1/support-access');
 console.log('Minutes routes registered at /api/v1/minutes');
@@ -567,7 +586,7 @@ app.get('/api/v1/call/recording/:recordingSid/audio', async (req, res) => {
 
 
 
-const PORT = process.env.PORT || 4000;
+
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });

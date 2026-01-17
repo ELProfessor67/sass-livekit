@@ -57,6 +57,10 @@ class AvailableSlot:
     duration_min: int = 30
 
     @property
+    def end_time(self) -> datetime.datetime:
+        return self.start_time + datetime.timedelta(minutes=self.duration_min)
+
+    @property
     def unique_hash(self) -> str:
         import hashlib, base64
         raw = f"{self.start_time.isoformat()}|{self.duration_min}".encode()
@@ -89,6 +93,7 @@ class CalendarResult:
 
 
 class Calendar(Protocol):
+    event_type_id: Optional[str]
     async def initialize(self) -> None: ...
     async def schedule_appointment(
         self,
@@ -112,6 +117,10 @@ class CalComCalendar(Calendar):
       - v2 /bookings for booking
     """
 
+    @property
+    def event_type_id(self) -> Optional[str]:
+        return self._event_type_id
+
     def __init__(
         self,
         *,
@@ -122,6 +131,7 @@ class CalComCalendar(Calendar):
         event_type_slug: Optional[str] = None,
         org_slug: Optional[str] = None,
     ) -> None:
+
         # Initialize logger first so it's available for timezone validation
         self._log = logging.getLogger("cal.com")
         
@@ -608,11 +618,14 @@ class CalComCalendar(Calendar):
                     booking_id = booking_data.get("id")
                     booking_uid = booking_data.get("uid")
                     self._log.info("Cal.com booking success: ID=%s, UID=%s", booking_id, booking_uid)
+                    return booking_data
                 else:
                     self._log.warning("Cal.com booking response status: %s", response_data.get("status"))
+                    return response_data
             except Exception as e:
                 self._log.warning("Cal.com booking response parsing failed: %s", str(e))
                 self._log.info("Cal.com booking success (raw): %s", txt)
+                return {"raw": txt}
 
     async def close(self) -> None:
         if getattr(self, "_http", None):

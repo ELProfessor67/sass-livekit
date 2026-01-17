@@ -1,13 +1,26 @@
 import { memo } from 'react';
 import { NodeProps } from '@xyflow/react';
 import { BaseNode, BaseNodeData } from './BaseNode';
-import { Webhook } from 'lucide-react';
+import { Webhook, Facebook, Calendar, Play } from 'lucide-react';
 
 export const TriggerNode = memo((props: NodeProps<any>) => {
+    const getIcon = () => {
+        switch (props.data.trigger_type) {
+            case 'facebook_leads':
+                return <Facebook className="w-4 h-4 text-[#1877F2]" />;
+            case 'schedule':
+                return <Calendar className="w-4 h-4 text-blue-500" />;
+            case 'manual':
+                return <Play className="w-4 h-4 text-orange-500" />;
+            default:
+                return <Webhook className="w-4 h-4 text-green-500" />;
+        }
+    };
+
     const nodeData: BaseNodeData = {
         ...props.data,
-        icon: <Webhook className="w-4 h-4 text-green-500" />,
-        iconBgClass: "bg-green-500/10 border border-green-500/20",
+        icon: getIcon(),
+        iconBgClass: props.data.trigger_type === 'facebook_leads' ? "bg-[#1877F2]/10 border border-[#1877F2]/20" : "bg-green-500/10 border border-green-500/20",
         type: 'Trigger',
     };
 
