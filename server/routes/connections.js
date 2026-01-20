@@ -12,7 +12,18 @@ const getFrontendUrl = () => {
   const url = process.env.FRONTEND_URL || process.env.VITE_BACKEND_URL;
   // Handle both undefined and string "undefined"/"null" cases
   if (url && url !== 'undefined' && url !== 'null' && url.trim() !== '') {
-    return url.trim();
+    let trimmedUrl = url.trim();
+    // Ensure URL has a protocol (http:// or https://)
+    // If it doesn't start with http:// or https://, add https://
+    if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+      // Default to https for production-like domains, http for localhost
+      if (trimmedUrl.includes('localhost') || trimmedUrl.includes('127.0.0.1')) {
+        trimmedUrl = `http://${trimmedUrl}`;
+      } else {
+        trimmedUrl = `https://${trimmedUrl}`;
+      }
+    }
+    return trimmedUrl;
   }
   // Default fallback based on environment
   return process.env.NODE_ENV === 'production' 
@@ -154,12 +165,25 @@ router.get('/slack/callback', async (req, res) => {
     }
     
     console.log('[Slack Callback] Successfully saved Slack connection');
+    // Build redirect URL - MUST redirect to FRONTEND_URL, NOT backend API
     const frontendUrl = getFrontendUrl();
-    res.redirect(`${frontendUrl}/settings?tab=integrations&status=connected&provider=slack`);
+    
+    // Safety check: ensure we're not accidentally using backend URL
+    const backendUrl = process.env.BACKEND_URL || '';
+    if (frontendUrl.includes(backendUrl) && backendUrl) {
+      console.error('[Slack Callback] ERROR: Frontend URL appears to be backend URL!', { frontendUrl, backendUrl });
+    }
+    
+    const redirectUrl = `${frontendUrl}/settings?tab=integrations&status=connected&provider=slack`;
+    console.log('[Slack Callback] Redirecting to frontend:', redirectUrl);
+    res.redirect(redirectUrl);
   } catch (err) {
     console.error('[Slack Callback] Error:', err);
+    // Build redirect URL - MUST redirect to FRONTEND_URL, NOT backend API
     const frontendUrl = getFrontendUrl();
-    res.redirect(`${frontendUrl}/settings?tab=integrations&status=error&provider=slack`);
+    const errorRedirect = `${frontendUrl}/settings?tab=integrations&status=error&provider=slack`;
+    console.log('[Slack Callback] Error redirect to frontend:', errorRedirect);
+    res.redirect(errorRedirect);
   }
 });
 
@@ -325,8 +349,20 @@ router.get('/facebook/callback', async (req, res) => {
     
     console.log('[Facebook Callback Phase 1] Successfully saved Facebook connection (login only)', { connectionId });
     
-    // Build redirect URL with fallback for FRONTEND_URL
+    // Build redirect URL - MUST redirect to FRONTEND_URL, NOT backend API
     const frontendUrl = getFrontendUrl();
+    
+    // Safety check: ensure we're not accidentally using backend URL
+    const backendUrl = process.env.BACKEND_URL || '';
+    if (frontendUrl.includes(backendUrl) && backendUrl) {
+      console.error('[Facebook Callback Phase 1] ERROR: Frontend URL appears to be backend URL!', { frontendUrl, backendUrl });
+    }
+    
+    // Ensure frontend URL doesn't contain /api/ paths
+    if (frontendUrl.includes('/api/')) {
+      console.error('[Facebook Callback Phase 1] ERROR: Frontend URL contains /api/ path!', { frontendUrl });
+    }
+    
     let redirectUrl = `${frontendUrl}/settings?tab=integrations&status=connected&provider=facebook&phase=1`;
     if (connectionId && connectionId !== 'undefined' && connectionId !== 'null') {
       redirectUrl += `&connectionId=${encodeURIComponent(connectionId)}`;
@@ -334,13 +370,14 @@ router.get('/facebook/callback', async (req, res) => {
       console.warn('[Facebook Callback Phase 1] Connection ID not available or invalid, redirecting without it', { connectionId });
     }
     
-    console.log('[Facebook Callback Phase 1] Redirecting to:', redirectUrl);
+    console.log('[Facebook Callback Phase 1] Redirecting to frontend:', redirectUrl);
     res.redirect(redirectUrl);
   } catch (err) {
     console.error('[Facebook Callback Phase 1] Error:', err);
+    // Build redirect URL - MUST redirect to FRONTEND_URL, NOT backend API
     const frontendUrl = getFrontendUrl();
     const errorRedirect = `${frontendUrl}/settings?tab=integrations&status=error&provider=facebook`;
-    console.log('[Facebook Callback Phase 1] Error redirect to:', errorRedirect);
+    console.log('[Facebook Callback Phase 1] Error redirect to frontend:', errorRedirect);
     res.redirect(errorRedirect);
   }
 });
@@ -413,14 +450,25 @@ router.get('/facebook/pages/callback', async (req, res) => {
     }
     
     console.log('[Facebook Callback Phase 2] Successfully updated Facebook connection with page permissions');
+    // Build redirect URL - MUST redirect to FRONTEND_URL, NOT backend API
     const frontendUrl = getFrontendUrl();
+    
+    // Safety check: ensure we're not accidentally using backend URL
+    const backendUrl = process.env.BACKEND_URL || '';
+    if (frontendUrl.includes(backendUrl) && backendUrl) {
+      console.error('[Facebook Callback Phase 2] ERROR: Frontend URL appears to be backend URL!', { frontendUrl, backendUrl });
+    }
+    
     const redirectUrl = `${frontendUrl}/settings?tab=integrations&status=connected&provider=facebook&phase=2`;
-    console.log('[Facebook Callback Phase 2] Redirecting to:', redirectUrl);
+    console.log('[Facebook Callback Phase 2] Redirecting to frontend:', redirectUrl);
     res.redirect(redirectUrl);
   } catch (err) {
     console.error('[Facebook Callback Phase 2] Error:', err);
+    // Build redirect URL - MUST redirect to FRONTEND_URL, NOT backend API
     const frontendUrl = getFrontendUrl();
-    res.redirect(`${frontendUrl}/settings?tab=integrations&status=error&provider=facebook&phase=2`);
+    const errorRedirect = `${frontendUrl}/settings?tab=integrations&status=error&provider=facebook&phase=2`;
+    console.log('[Facebook Callback Phase 2] Error redirect to frontend:', errorRedirect);
+    res.redirect(errorRedirect);
   }
 });
 
