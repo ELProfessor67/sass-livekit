@@ -35,6 +35,9 @@ const ignoreRoutes = [
   '/api/v1/stripe/webhook', // Stripe webhooks don't have tenant context
   '/stripe/webhook', // Alternative path format
   '/api/v1/workflows/execution/trigger', // Internal trigger for agents
+  '/api/v1/connections/slack/callback', // OAuth callbacks don't have tenant context (called by external providers)
+  '/api/v1/connections/facebook/callback', // OAuth callbacks don't have tenant context (called by external providers)
+  '/api/v1/connections/facebook/pages/callback', // OAuth callbacks don't have tenant context (called by external providers)
 ];
 
 function isIgnoredRoute(uri) {
