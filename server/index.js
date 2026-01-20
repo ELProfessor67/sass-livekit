@@ -33,6 +33,7 @@ import './workers/supportAccessCleanup.js';
 import { smsSchedulingWorker } from './workers/sms-scheduling-worker.js';
 import facebookIntegrationsRouter from './routes/facebook-integrations.js';
 import facebookWebhookRouter from './routes/facebook-webhook.js';
+import connectionsRouter from './routes/connections.js';
 
 
 
@@ -471,6 +472,7 @@ app.use('/api/v1/workflows/execution', workflowExecutionRouter);
 app.use('/api/v1/workflows', workflowsRouter);
 app.use('/api/v1/integrations/facebook', facebookIntegrationsRouter);
 app.use('/api/v1/webhooks/facebook', facebookWebhookRouter);
+app.use('/api/v1/connections', connectionsRouter);
 console.log('Knowledge base routes registered at /api/v1/knowledge-base');
 console.log('Support access routes registered at /api/v1/support-access');
 console.log('Minutes routes registered at /api/v1/minutes');

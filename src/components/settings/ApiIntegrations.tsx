@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Database, Users, Zap, Phone, MessageSquare, Calendar, CheckCircle2, Plus } from "lucide-react";
+import { Building2, Database, Users, Zap, Phone, MessageSquare, Calendar, CheckCircle2, Plus, Globe, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { TwilioIntegrationCard } from "./integrations/TwilioIntegrationCard";
 import { SecurityCard } from "./integrations/SecurityCard";
@@ -15,8 +16,29 @@ import { TwilioCredentialsService, type UserTwilioCredentials } from "@/lib/twil
 import { CalendarCredentialsService, type UserCalendarCredentials, type CalendarCredentialsInput } from "@/lib/calendar-credentials";
 import { WhatsAppIntegrationCard } from "./WhatsAppIntegrationCard";
 import { WhatsAppCredentialsService, type UserWhatsAppCredentials } from "@/lib/whatsapp-credentials";
+import { SlackIcon, FacebookIcon } from "@/components/composer/nodes/IntegrationIcons";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 
 const integrations = [
+  // NEW: Leads Category
+  {
+    id: "facebook",
+    name: "Facebook",
+    description: "Capture leads from Facebook ads and forms",
+    icon: FacebookIcon,
+    status: "available",
+    category: "Leads",
+    brandColor: "#1877F2"
+  },
+  {
+    id: "google_ads",
+    name: "Google Ads",
+    description: "Capture leads from Google campaigns",
+    icon: Globe,
+    status: "available",
+    category: "Leads",
+    brandColor: "#4285F4"
+  },
   // CRM Integrations
   {
     id: "hubspot",
@@ -65,6 +87,15 @@ const integrations = [
     brandColor: "#f22f46"
   },
   {
+    id: "slack",
+    name: "Slack",
+    description: "Send messages to Slack channels and workspaces",
+    icon: SlackIcon,
+    status: "available",
+    category: "Communication",
+    brandColor: "#4A154B"
+  },
+  {
     id: "telnyx",
     name: "Telnyx",
     description: "Global connectivity platform for voice and messaging",
@@ -96,21 +127,109 @@ const integrations = [
 
 export function ApiIntegrations() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeCategory, setActiveCategory] = useState("all");
   const [twilioIntegrations, setTwilioIntegrations] = useState<TwilioIntegration[]>([]);
   const [calendarIntegrations, setCalendarIntegrations] = useState<UserCalendarCredentials[]>([]);
   const [whatsappIntegrations, setWhatsappIntegrations] = useState<any[]>([]);
+  const [slackConnections, setSlackConnections] = useState<any[]>([]);
+  const [facebookConnections, setFacebookConnections] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showTwilioDetails, setShowTwilioDetails] = useState(false);
   const [showCalendarDetails, setShowCalendarDetails] = useState(false);
   const [showWhatsappDetails, setShowWhatsappDetails] = useState(false);
+
+  // Helper function to check if connection has page permissions
+  const hasPagePermissions = (connection: any): boolean => {
+    return connection?.metadata?.has_page_permissions === true;
+  };
 
   // Load credentials on component mount
   useEffect(() => {
     loadTwilioCredentials();
     loadCalendarCredentials();
     loadWhatsAppCredentials();
-  }, []);
+    loadSlackConnections();
+    loadFacebookConnections();
+  }, [user]);
+
+  // Handle OAuth callback parameters
+  useEffect(() => {
+    const status = searchParams.get('status');
+    const provider = searchParams.get('provider');
+    const phase = searchParams.get('phase');
+    const connectionId = searchParams.get('connectionId');
+
+    if (status === 'connected' && provider === 'facebook') {
+      if (phase === '1') {
+        // Phase 1 completed - show message about Phase 2
+        toast({
+          title: "Facebook connected",
+          description: "Your Facebook account is connected. Connect your pages to enable lead capture.",
+          duration: 5000,
+        });
+        // Reload connections to get the new one
+        loadFacebookConnections();
+        // Clean up URL params
+        searchParams.delete('status');
+        searchParams.delete('provider');
+        searchParams.delete('phase');
+        searchParams.delete('connectionId');
+        setSearchParams(searchParams, { replace: true });
+      } else if (phase === '2') {
+        // Phase 2 completed
+        toast({
+          title: "Page permissions granted",
+          description: "You can now select and manage Facebook pages for lead capture.",
+        });
+        loadFacebookConnections();
+        // Clean up URL params
+        searchParams.delete('status');
+        searchParams.delete('provider');
+        searchParams.delete('phase');
+        setSearchParams(searchParams, { replace: true });
+      } else {
+        // Legacy flow or no phase specified
+        loadFacebookConnections();
+        searchParams.delete('status');
+        searchParams.delete('provider');
+        setSearchParams(searchParams, { replace: true });
+      }
+    } else if (status === 'error' && provider === 'facebook') {
+      toast({
+        title: "Connection failed",
+        description: "Failed to connect Facebook. Please try again.",
+        variant: "destructive",
+      });
+      searchParams.delete('status');
+      searchParams.delete('provider');
+      searchParams.delete('phase');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams, toast]);
+
+  const loadSlackConnections = async () => {
+    if (!user?.id) return;
+    try {
+      const res = await fetch(`/api/v1/connections?provider=slack&userId=${user.id}`);
+      const data = await res.json();
+      setSlackConnections(data.connections || []);
+    } catch (error) {
+      console.error("Error loading Slack connections:", error);
+    }
+  };
+
+  const loadFacebookConnections = async () => {
+    if (!user?.id) return;
+    try {
+      const res = await fetch(`/api/v1/connections?provider=facebook&userId=${user.id}`);
+      const data = await res.json();
+      setFacebookConnections(data.connections || []);
+    } catch (error) {
+      console.error("Error loading Facebook connections:", error);
+    }
+  };
 
   const loadTwilioCredentials = async () => {
     try {
@@ -229,12 +348,31 @@ export function ApiIntegrations() {
         status: whatsappIntegrations.length > 0 ? "connected" : "available"
       };
     }
+    if (integration.id === "slack") {
+      return {
+        ...integration,
+        status: slackConnections.length > 0 ? "connected" : "available"
+      };
+    }
+    if (integration.id === "facebook") {
+      return {
+        ...integration,
+        status: facebookConnections.length > 0 ? "connected" : "available"
+      };
+    }
     return integration;
   });
 
   const filteredIntegrations = activeCategory === "all" 
     ? updatedIntegrations 
-    : updatedIntegrations.filter(integration => integration.category.toLowerCase() === activeCategory);
+    : updatedIntegrations.filter(integration => {
+        const categoryMatch = integration.category.toLowerCase() === activeCategory.toLowerCase();
+        // Handle "Leads" category
+        if (activeCategory === "leads") {
+          return integration.category === "Leads";
+        }
+        return categoryMatch;
+      });
 
   const getCategoryCount = (category: string) => {
     return category === "all" 
@@ -402,6 +540,34 @@ export function ApiIntegrations() {
       return;
     }
     
+    if (integration.id === "slack") {
+      // Redirect to Slack OAuth
+      if (!user?.id) {
+        toast({
+          title: "Authentication required",
+          description: "Please log in to connect Slack",
+          variant: "destructive",
+        });
+        return;
+      }
+      window.location.href = `/api/v1/connections/slack/auth?userId=${user.id}`;
+      return;
+    }
+    
+    if (integration.id === "facebook") {
+      // Redirect to Facebook OAuth Phase 1 (login only)
+      if (!user?.id) {
+        toast({
+          title: "Authentication required",
+          description: "Please log in to connect Facebook",
+          variant: "destructive",
+        });
+        return;
+      }
+      window.location.href = `/api/v1/connections/facebook/auth?userId=${user.id}`;
+      return;
+    }
+    
     // For other integrations, show coming soon or redirect
     console.log(`Connecting to ${integration.name}`);
     toast({
@@ -412,9 +578,18 @@ export function ApiIntegrations() {
 
   const IntegrationCard = ({ integration }: { integration: typeof integrations[0] }) => {
     const IconComponent = integration.icon;
+    const isReactComponent = typeof IconComponent === 'function' && IconComponent.prototype?.isReactComponent === undefined;
     
     // Check if integration is actually connected
     const isConnected = integration.status === "connected";
+    
+    // For Facebook, check if any connection needs page permissions
+    const facebookNeedsPages = integration.id === "facebook" && 
+      facebookConnections.length > 0 && 
+      facebookConnections.some(conn => !hasPagePermissions(conn));
+    const facebookHasPages = integration.id === "facebook" && 
+      facebookConnections.length > 0 && 
+      facebookConnections.some(conn => hasPagePermissions(conn));
 
     
     // Debug logging for integrations
@@ -436,6 +611,23 @@ export function ApiIntegrations() {
       });
     }
     
+    const handleFacebookPageConnect = () => {
+      if (!user?.id) {
+        toast({
+          title: "Authentication required",
+          description: "Please log in to connect Facebook pages",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Find the first connection that doesn't have page permissions
+      const connectionWithoutPages = facebookConnections.find(conn => !hasPagePermissions(conn));
+      if (connectionWithoutPages) {
+        window.location.href = `/api/v1/connections/facebook/pages/auth?userId=${user.id}&connectionId=${connectionWithoutPages.id}`;
+      }
+    };
+    
     return (
       <Card className="group relative border-border/60 bg-card/50 backdrop-blur-sm hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 hover:-translate-y-1 h-full">
         <div className="p-4 h-full flex flex-col">
@@ -445,10 +637,14 @@ export function ApiIntegrations() {
               className="w-8 h-8 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-300"
               style={{ backgroundColor: `${integration.brandColor}15` }}
             >
-              <IconComponent 
-                className="w-4 h-4" 
-                style={{ color: integration.brandColor }}
-              />
+              {isReactComponent ? (
+                <IconComponent size={16} style={{ color: integration.brandColor }} />
+              ) : (
+                <IconComponent 
+                  className="w-4 h-4" 
+                  style={{ color: integration.brandColor }}
+                />
+              )}
             </div>
             
             {isConnected && (
@@ -471,10 +667,22 @@ export function ApiIntegrations() {
             <p className="text-muted-foreground text-xs leading-relaxed line-clamp-2">
               {integration.description}
             </p>
+            
+            {/* Facebook: Show warning if connected but pages not connected */}
+            {integration.id === "facebook" && isConnected && facebookNeedsPages && (
+              <div className="mt-2 p-2 rounded-md bg-amber-500/10 border border-amber-500/20">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-3 h-3 text-amber-500 mt-0.5 flex-shrink-0" />
+                  <p className="text-[10px] text-amber-500/80 leading-relaxed">
+                    Connect your pages to enable lead capture from Facebook ads.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
           
           {/* Action Button */}
-          <div className="mt-auto">
+          <div className="mt-auto space-y-2">
             {integration.id === "twilio" ? (
               <TwilioAuthDialog onSuccess={handleTwilioConnect}>
                 <Button
@@ -497,6 +705,17 @@ export function ApiIntegrations() {
                   Manage
                 </Button>
               </CalendarAuthDialog>
+            ) : integration.id === "facebook" && isConnected && facebookNeedsPages ? (
+              // Show page connection button if Facebook is connected but pages aren't
+              <Button 
+                variant="default"
+                className="w-full text-sm h-8 relative z-10 flex items-center justify-center gap-1.5 bg-primary hover:bg-primary/90"
+                size="sm"
+                onClick={handleFacebookPageConnect}
+              >
+                <Plus className="w-3 h-3" />
+                Connect Pages
+              </Button>
             ) : (
               <Button 
                 variant={isConnected ? "outline" : "default"}
@@ -535,9 +754,12 @@ export function ApiIntegrations() {
 
       {/* Category Tabs */}
       <Tabs value={activeCategory} onValueChange={setActiveCategory} className="w-full">
-        <TabsList className="grid w-full max-w-2xl grid-cols-4 mb-8 h-12 glass-input">
+        <TabsList className="grid w-full max-w-3xl grid-cols-5 mb-8 h-12 glass-input">
           <TabsTrigger value="all" className="text-sm font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
             All ({getCategoryCount("all")})
+          </TabsTrigger>
+          <TabsTrigger value="leads" className="text-sm font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
+            Leads ({getCategoryCount("leads")})
           </TabsTrigger>
           <TabsTrigger value="crm" className="text-sm font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
             CRM ({getCategoryCount("crm")})

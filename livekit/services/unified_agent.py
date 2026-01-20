@@ -32,6 +32,8 @@ class BookingData:
     confirmed: bool = False
     booked: bool = False
     appointment_id: Optional[str] = None
+    calendar_response: Optional[dict] = None
+    booking_uid: Optional[str] = None
 
 
 class UnifiedAgent(Agent):
@@ -207,6 +209,8 @@ class UnifiedAgent(Agent):
         
         # Booking state - will be reset per conversation
         self._booking_data = BookingData()
+        # Persistent booking data - preserved across resets for post-call processing
+        self._finalized_booking_data: Optional[BookingData] = None
         self._slots_map: dict[str, object] = {}
         self._webhook_data: dict[str, dict] = {}
         
@@ -1064,45 +1068,31 @@ class UnifiedAgent(Agent):
                         )
                         booking_id = insert_res.data[0].get("id") if insert_res.data else None
                         logging.info("BOOKING_DB_SAVE_SUCCESS | saved to bookings table")
-
-                        # Trigger Dynamic Workflows
-                        try:
-                            import os
-                            import httpx
-                            backend_url = os.environ.get('BACKEND_URL', 'http://localhost:4000')
-                            
-                            # Prepare context for the workflow
-                            context = {
-                                "userId": self.user_id,
-                                "assistantId": self.assistant_id,
-                                "event": "appointment_booked",
-                                "outcome": "Booked Appointment",  # Add at top level for easier condition checking
-                                "callData": {
-                                    "phone_number": self._booking_data.phone,
-                                    "name": self._booking_data.name,
-                                    "email": self._booking_data.email,
-                                    "outcome": "Booked Appointment",
-                                    "agent_phone_number": self.phone_number,
-                                    "structured_data": {
-                                        "booking_id": booking_id,
-                                        "start_time": self._booking_data.selected_slot.start_time.isoformat(),
-                                        "name": self._booking_data.name,
-                                        "phone": self._booking_data.phone,
-                                        "agent_phone": self.phone_number
-                                    }
-                                }
-                            }
-                            
-                            logging.info("TRIGGERING_BACKEND_WORKFLOW | event=appointment_booked | outcome=Booked Appointment | context=%s", str(context))
-                            async with httpx.AsyncClient() as client:
-                                response = await client.post(
-                                    f"{backend_url}/api/v1/workflows/execution/trigger",
-                                    json=context,
-                                    timeout=5.0
-                                )
-                                logging.info("WORKFLOW_TRIGGER_RESPONSE | status=%s | response=%s", response.status_code, response.text[:200] if hasattr(response, 'text') else 'no response text')
-                        except Exception as e:
-                            logging.error("WORKFLOW_TRIGGER_FAILED | error=%s", str(e))
+                        
+                        # Store booking data for inclusion in call_ended workflow
+                        # This will be picked up by the post-call processing
+                        self._booking_data.appointment_id = booking_id
+                        
+                        # Store calendar response data for appointment object
+                        if isinstance(resp, dict):
+                            self._booking_data.calendar_response = resp
+                            # Extract booking UID if available (for booking link)
+                            # Cal.com returns booking data directly, which includes uid
+                            if resp.get("uid"):
+                                self._booking_data.booking_uid = resp.get("uid")
+                            # Also check if it's nested in a data field
+                            elif resp.get("data") and isinstance(resp.get("data"), dict):
+                                if resp.get("data").get("uid"):
+                                    self._booking_data.booking_uid = resp.get("data").get("uid")
+                        
+                        # Store calendar response data for appointment object
+                        if isinstance(resp, dict):
+                            self._booking_data.calendar_response = resp
+                            # Extract booking link if available
+                            if resp.get("uid"):
+                                # Cal.com booking link format: https://cal.com/{username}/{event-slug}/{uid}
+                                # We'll construct it if we have the necessary info
+                                self._booking_data.booking_uid = resp.get("uid")
 
 
                     except Exception as db_err:
@@ -1114,6 +1104,23 @@ class UnifiedAgent(Agent):
                 formatted_time = local_time.strftime('%A, %B %d at %I:%M %p')
                 
                 self._booking_data.booked = True
+                
+                # Preserve finalized booking data before reset for post-call processing
+                # Create a copy of the booking data with all finalized information
+                self._finalized_booking_data = BookingData(
+                    name=self._booking_data.name,
+                    email=self._booking_data.email,
+                    phone=self._booking_data.phone,
+                    selected_slot=self._booking_data.selected_slot,
+                    notes=self._booking_data.notes,
+                    confirmed=True,
+                    booked=True,
+                    appointment_id=self._booking_data.appointment_id,
+                    calendar_response=self._booking_data.calendar_response,
+                    booking_uid=self._booking_data.booking_uid
+                )
+                logging.info(f"FINALIZED_BOOKING_DATA_PRESERVED | appointment_id={self._finalized_booking_data.appointment_id} | booking_uid={self._finalized_booking_data.booking_uid}")
+                
                 # Reset state after successful booking to allow follow-on bookings
                 prev_email = self._booking_data.email
                 self._reset_state()

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     ReactFlow,
@@ -14,6 +14,7 @@ import {
     getIncomers,
     getOutgoers,
     getConnectedEdges,
+    ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -27,7 +28,9 @@ import {
     RocketLaunch,
     X,
     Plus,
-    Export
+    Export,
+    GridFour,
+    HandGrabbing
 } from 'phosphor-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -42,6 +45,7 @@ import { TriggerNode } from '@/components/composer/nodes/TriggerNode';
 import { ActionNode } from '@/components/composer/nodes/ActionNode';
 import { ConditionNode } from '@/components/composer/nodes/ConditionNode';
 import { TwilioNode } from '@/components/composer/nodes/TwilioNode';
+import { RouterNode } from '@/components/composer/nodes/RouterNode';
 import { SmartEdge } from '@/components/composer/edges/SmartEdge';
 import { useLinearLayout } from '@/components/composer/hooks/useLinearLayout';
 import { NodeSelectionPanel } from '@/components/composer/panels/NodeSelectionPanel';
@@ -54,7 +58,7 @@ const nodeTypes = {
     trigger: TriggerNode,
     action: ActionNode,
     condition: ConditionNode,
-  
+    router: RouterNode,
     twilio_sms: TwilioNode,
 };
 
@@ -92,9 +96,11 @@ export default function ComposerBuilder() {
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
     const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
     const [showAddMenu, setShowAddMenu] = useState(false);
-    const [addContext, setAddContext] = useState<{ sourceId?: string; targetId?: string } | null>(null);
+    const [addContext, setAddContext] = useState<{ sourceId?: string; targetId?: string; branchHandle?: string } | null>(null);
     const [isExpanded, setIsExpanded] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [isStructuredLayout, setIsStructuredLayout] = useState(true); // Default to structured view
+    const reactFlowInstance = useRef<ReactFlowInstance | null>(null);
 
     // Sync state with fetched workflow
     useEffect(() => {
@@ -122,8 +128,74 @@ export default function ComposerBuilder() {
         }));
     }, [edges]);
 
-    // Auto-layout nodes
-    const layoutNodes = useLinearLayout(nodes);
+    // Auto-layout nodes (structured or free mode)
+    const layoutNodes = useLinearLayout(nodes, edges, isStructuredLayout);
+
+    // Auto-fit view when switching modes or when layout changes
+    // Lock viewport in structured mode and align to top
+    useEffect(() => {
+        if (reactFlowInstance.current && layoutNodes.length > 0) {
+            // Use requestAnimationFrame to ensure DOM is ready
+            requestAnimationFrame(() => {
+                if (isStructuredLayout) {
+                    // In structured mode, calculate viewport to align nodes to top
+                    const nodesBounds = reactFlowInstance.current?.getNodesBounds(layoutNodes);
+                    
+                    if (nodesBounds && reactFlowInstance.current) {
+                        const topPadding = 50; // Padding from top
+                        const maxZoom = 0.8;
+                        const padding = 0.1;
+                        
+                        // Get the actual DOM element dimensions
+                        const flowElement = document.querySelector('.react-flow') as HTMLElement;
+                        const viewportWidth = flowElement?.clientWidth || 1200;
+                        
+                        // Calculate zoom to fit nodes horizontally with padding
+                        // Don't constrain by height - allow vertical scrolling if needed
+                        const widthZoom = (viewportWidth * (1 - padding * 2)) / nodesBounds.width;
+                        const zoom = Math.min(maxZoom, widthZoom);
+                        
+                        // Calculate position to center horizontally and align top
+                        const x = (viewportWidth / 2) - (nodesBounds.x + nodesBounds.width / 2) * zoom;
+                        const y = topPadding - nodesBounds.y * zoom;
+                        
+                        // Set viewport in one smooth operation (no duration to avoid glitch)
+                        reactFlowInstance.current.setViewport({ x, y, zoom }, { duration: 0 });
+                    }
+                } else {
+                    // In free mode, just fit view
+                    reactFlowInstance.current?.fitView({ padding: 0.1, maxZoom: 0.8, duration: 300 });
+                }
+            });
+        }
+    }, [isStructuredLayout, layoutNodes.length, layoutNodes]);
+
+    // Custom handler to prevent position updates in structured mode
+    const handleNodesChange = useCallback(
+        (changes: any[]) => {
+            if (isStructuredLayout) {
+                // Filter out position changes in structured mode
+                const filteredChanges = changes.filter(change => {
+                    // Allow all changes except position updates
+                    if (change.type === 'position' && change.dragging === false) {
+                        return false; // Block position updates when drag ends
+                    }
+                    if (change.type === 'position' && change.dragging === true) {
+                        return false; // Block position updates during drag
+                    }
+                    return true; // Allow all other changes (selection, etc.)
+                });
+                
+                if (filteredChanges.length > 0) {
+                    onNodesChange(filteredChanges);
+                }
+            } else {
+                // Free mode: allow all changes
+                onNodesChange(changes);
+            }
+        },
+        [isStructuredLayout, onNodesChange]
+    );
 
     const onConnect = useCallback(
         (params: Connection) => setEdges((eds) => addEdge({ ...params, type: 'smart' }, eds)),
@@ -145,10 +217,47 @@ export default function ComposerBuilder() {
         setSelectedEdgeId(null);
     }, []);
 
+    // Custom wheel handler for structured mode scrolling
+    useEffect(() => {
+        if (!isStructuredLayout) return;
+
+        const handleWheel = (event: WheelEvent) => {
+            if (reactFlowInstance.current) {
+                event.preventDefault();
+                event.stopPropagation();
+                const delta = event.deltaY;
+                const currentViewport = reactFlowInstance.current.getViewport();
+                reactFlowInstance.current.setViewport({
+                    ...currentViewport,
+                    y: currentViewport.y - delta * 0.5
+                }, { duration: 0 });
+            }
+        };
+
+        // Wait for ReactFlow to be mounted
+        const timeoutId = setTimeout(() => {
+            const flowElement = document.querySelector('.react-flow') as HTMLElement;
+            if (flowElement) {
+                flowElement.addEventListener('wheel', handleWheel, { passive: false });
+            }
+        }, 100);
+
+        return () => {
+            clearTimeout(timeoutId);
+            const flowElement = document.querySelector('.react-flow') as HTMLElement;
+            if (flowElement) {
+                flowElement.removeEventListener('wheel', handleWheel);
+            }
+        };
+    }, [isStructuredLayout, layoutNodes.length]);
+
     // Handle custom events from nodes
     useEffect(() => {
         const handleOpenAddMenu = (e: any) => {
-            setAddContext({ sourceId: e.detail.nodeId });
+            setAddContext({ 
+                sourceId: e.detail.nodeId,
+                branchHandle: e.detail.branchHandle 
+            });
             setShowAddMenu(true);
         };
 
@@ -223,12 +332,20 @@ export default function ComposerBuilder() {
                 }
 
                 // If no targetId, we are just adding a new branch from the source
-                newEdges.push({
+                // For router nodes, use the branchHandle as sourceHandle
+                const newEdge: any = {
                     id: `e-${addContext.sourceId}-${newNodeId}`,
                     source: addContext.sourceId,
                     target: newNodeId,
                     type: 'smart',
-                });
+                };
+                
+                // If this is a router branch connection, add sourceHandle
+                if (addContext.branchHandle) {
+                    newEdge.sourceHandle = addContext.branchHandle;
+                }
+                
+                newEdges.push(newEdge);
 
                 return newEdges;
             });
@@ -329,7 +446,10 @@ export default function ComposerBuilder() {
     // Handle custom events from nodes
     useEffect(() => {
         const handleOpenAddMenu = (e: any) => {
-            setAddContext({ sourceId: e.detail.nodeId });
+            setAddContext({ 
+                sourceId: e.detail.nodeId,
+                branchHandle: e.detail.branchHandle 
+            });
             setShowAddMenu(true);
         };
 
@@ -398,6 +518,28 @@ export default function ComposerBuilder() {
 
                     <div className="flex items-center gap-2">
                         <Button
+                            variant={isStructuredLayout ? "default" : "ghost"}
+                            size="sm"
+                            onClick={() => setIsStructuredLayout(!isStructuredLayout)}
+                            title={isStructuredLayout ? "Switch to Free Mode" : "Switch to Structured View"}
+                            className={cn(
+                                "h-8 gap-2 text-xs font-medium",
+                                isStructuredLayout && "shadow-sm shadow-primary/20"
+                            )}
+                        >
+                            {isStructuredLayout ? (
+                                <>
+                                    <GridFour size={14} weight="fill" />
+                                    Structured
+                                </>
+                            ) : (
+                                <>
+                                    <HandGrabbing size={14} weight="fill" />
+                                    Free Mode
+                                </>
+                            )}
+                        </Button>
+                        <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => setIsExpanded(!isExpanded)}
@@ -437,22 +579,38 @@ export default function ComposerBuilder() {
                         <ReactFlow
                             nodes={layoutNodes}
                             edges={enhancedEdges}
-                            onNodesChange={onNodesChange}
+                            onNodesChange={handleNodesChange}
                             onEdgesChange={onEdgesChange}
                             onConnect={onConnect}
                             onNodeClick={onNodeClick}
                             onEdgeClick={onEdgeClick}
                             onPaneClick={onPaneClick}
+                            onInit={(instance) => {
+                                reactFlowInstance.current = instance;
+                            }}
                             nodeTypes={nodeTypes}
                             edgeTypes={edgeTypes}
-                            fitView
-                            minZoom={0.2}
-                            maxZoom={1.5}
+                            fitView={!isStructuredLayout}
+                            fitViewOptions={{ padding: 0.1, maxZoom: 0.8 }}
+                            minZoom={0.1}
+                            maxZoom={2}
                             defaultEdgeOptions={{ type: 'smart' }}
+                            nodesDraggable={!isStructuredLayout}
+                            panOnDrag={!isStructuredLayout}
+                            panOnScroll={!isStructuredLayout}
+                            zoomOnScroll={false}
+                            zoomOnPinch={!isStructuredLayout}
+                            zoomOnDoubleClick={!isStructuredLayout}
+                            preventScrolling={false}
                             style={{ height: '100%', width: '100%' }}
                         >
                             <Background color="rgba(255,255,255,0.15)" gap={32} />
-                            <Controls showInteractive={false} className="glass-controls" />
+                            <Controls 
+                                showInteractive={false} 
+                                className="glass-controls"
+                                showZoom={!isStructuredLayout}
+                                showFitView={!isStructuredLayout}
+                            />
 
                             {/* Legend / Help Panel */}
                             <Panel position="bottom-left" className="m-4">
@@ -530,6 +688,11 @@ export default function ComposerBuilder() {
                                                 ));
                                             }}
                                             onDelete={handleDeleteNode}
+                                            customVariables={(() => {
+                                                // Get custom variables from trigger node
+                                                const triggerNode = nodes.find(n => n.type === 'trigger');
+                                                return triggerNode?.data?.expected_variables || [];
+                                            })()}
                                         />
                                     </ScrollArea>
                                 </div>

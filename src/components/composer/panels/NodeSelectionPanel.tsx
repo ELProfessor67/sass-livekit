@@ -113,11 +113,12 @@ export function NodeSelectionPanel({ onClose, onSelect }: NodeSelectionPanelProp
     const [selectedIntegration, setSelectedIntegration] = useState<string | null>(null);
 
     const handleIntegrationClick = (node: any) => {
-        if (node.type === 'condition' || node.type === 'facebook_leads') {
+        if (node.type === 'condition' || node.type === 'facebook_leads' || node.type === 'router') {
             onSelect(node.type, {
                 label: node.label,
                 type: node.type,
                 trigger_type: node.type === 'facebook_leads' ? 'facebook_leads' : undefined,
+                branches: node.type === 'router' ? [] : undefined,
                 configured: false,
             });
             onClose();

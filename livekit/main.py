@@ -676,7 +676,8 @@ class CallHandler:
                         analysis_results=analysis_results,
                         participant=participant,
                         start_time=start_time,
-                        end_time=end_time
+                        end_time=end_time,
+                        agent=agent
                     )
                     
                 except Exception as e:
@@ -878,7 +879,8 @@ class CallHandler:
         analysis_results: Dict[str, Any],
         participant,
         start_time: datetime.datetime,
-        end_time: datetime.datetime
+        end_time: datetime.datetime,
+        agent=None
     ) -> None:
         """Save call history and analysis data to database."""
         try:
@@ -1009,8 +1011,237 @@ class CallHandler:
                 # Convert boolean to string for database storage
                 call_data["success_evaluation"] = "SUCCESS" if analysis_results["call_success"] else "FAILED"
             
+            # Initialize structured_data from analysis results
+            structured_data = {}
             if analysis_results.get("structured_data"):
-                call_data["structured_data"] = analysis_results["structured_data"]
+                analysis_structured = analysis_results["structured_data"]
+                # Handle different structured_data formats - convert complex objects to dict if needed
+                if isinstance(analysis_structured, dict):
+                    structured_data = analysis_structured.copy()
+                else:
+                    # If it's a complex object, try to convert to dict or preserve as-is
+                    # For now, we'll create a new dict and add booking data
+                    structured_data = {}
+            
+            # Priority: Booking data should override analysis results for name/email/phone
+            # This ensures booking information takes precedence
+            
+            # Create standardized appointment object if booking occurred
+            # Check for appointment_id instead of booked flag, since _reset_state() resets booked to False
+            # Prioritize finalized_booking_data which is preserved across resets
+            appointment = None
+            booking_occurred = False
+            booking_data = None
+            
+            if agent:
+                # First check for finalized booking data (preserved after successful booking)
+                if hasattr(agent, '_finalized_booking_data') and agent._finalized_booking_data:
+                    booking_data = agent._finalized_booking_data
+                    # Check if booking actually occurred by looking for appointment_id
+                    if hasattr(booking_data, 'appointment_id') and booking_data.appointment_id:
+                        booking_occurred = True
+                    elif hasattr(booking_data, 'booked') and booking_data.booked:
+                        booking_occurred = True
+                    logger.info(f"CHECKING_FINALIZED_BOOKING_DATA | appointment_id={booking_data.appointment_id} | booked={booking_data.booked}")
+                # Fallback to current booking_data if finalized not available
+                elif hasattr(agent, '_booking_data'):
+                    booking_data = agent._booking_data
+                    # Check if booking actually occurred by looking for appointment_id
+                    if hasattr(booking_data, 'appointment_id') and booking_data.appointment_id:
+                        booking_occurred = True
+                    elif hasattr(booking_data, 'booked') and booking_data.booked:
+                        booking_occurred = True
+                    # Fallback: If we have all booking details (name, email, phone, slot) and outcome is "Booked Appointment",
+                    # assume booking occurred (handles case where state was reset but booking succeeded)
+                    elif (hasattr(booking_data, 'name') and booking_data.name and
+                          hasattr(booking_data, 'email') and booking_data.email and
+                          hasattr(booking_data, 'phone') and booking_data.phone and
+                          hasattr(booking_data, 'selected_slot') and booking_data.selected_slot and
+                          call_status and "Booked" in call_status):
+                        booking_occurred = True
+                        logger.info(f"BOOKING_INFERRED_FROM_DATA | name={booking_data.name} | outcome={call_status}")
+            
+            if booking_occurred and booking_data:
+                # Use finalized booking data if available, otherwise fallback to current booking_data
+                if hasattr(agent, '_finalized_booking_data') and agent._finalized_booking_data:
+                    booking_data = agent._finalized_booking_data
+                elif hasattr(agent, '_booking_data'):
+                    booking_data = agent._booking_data
+                
+                # Get timezone from calendar or agent
+                timezone_str = "UTC"
+                calendar_name = None
+                booking_link = None
+                
+                if hasattr(agent, 'calendar') and agent.calendar:
+                    # Get timezone from calendar
+                    if hasattr(agent.calendar, 'tz'):
+                        tz_obj = agent.calendar.tz
+                        if tz_obj:
+                            timezone_str = str(tz_obj)
+                    
+                    # Get calendar name/type
+                    calendar_name = type(agent.calendar).__name__.replace('Calendar', '').replace('Cal', 'Cal.com')
+                    
+                    # Construct booking link if we have booking_uid
+                    if booking_data.booking_uid:
+                        # Try to get username/org from calendar config
+                        username = getattr(agent.calendar, '_username', None)
+                        org_slug = getattr(agent.calendar, '_org_slug', None)
+                        event_slug = getattr(agent.calendar, '_event_type_slug', None)
+                        
+                        if username and event_slug:
+                            booking_link = f"https://cal.com/{username}/{event_slug}/{booking_data.booking_uid}"
+                        elif org_slug and event_slug:
+                            booking_link = f"https://cal.com/{org_slug}/{event_slug}/{booking_data.booking_uid}"
+                
+                # Get start and end times
+                start_time_iso = ""
+                end_time_iso = ""
+                if booking_data.selected_slot and hasattr(booking_data.selected_slot, 'start_time'):
+                    start_time_iso = booking_data.selected_slot.start_time.isoformat()
+                    if hasattr(booking_data.selected_slot, 'end_time'):
+                        end_time_iso = booking_data.selected_slot.end_time.isoformat()
+                    else:
+                        # Default to 30 minutes if end_time not available
+                        end_time_iso = (booking_data.selected_slot.start_time + datetime.timedelta(minutes=30)).isoformat()
+                
+                # Create standardized appointment object
+                appointment = {
+                    "status": "booked",
+                    "start_time": start_time_iso,
+                    "end_time": end_time_iso,
+                    "timezone": timezone_str,
+                    "calendar": calendar_name or "Unknown",
+                    "booking_link": booking_link or "",
+                    "contact": {
+                        "name": booking_data.name or "",
+                        "email": booking_data.email or "",
+                        "phone": booking_data.phone or ""
+                    }
+                }
+                
+                logger.info(f"APPOINTMENT_OBJECT_CREATED | status=booked | calendar={calendar_name} | has_link={bool(booking_link)}")
+            else:
+                # No booking occurred
+                appointment = {
+                    "status": "not_booked",
+                    "start_time": "",
+                    "end_time": "",
+                    "timezone": "",
+                    "calendar": "",
+                    "booking_link": "",
+                    "contact": {
+                        "name": "",
+                        "email": "",
+                        "phone": ""
+                    }
+                }
+            
+            # Also add booking data to structured_data for backward compatibility
+            # Check for booking data - prioritize finalized_booking_data (preserved across resets)
+            booking_data_available = False
+            booking_data = None
+            if agent:
+                # First check for finalized booking data (preserved after successful booking)
+                if hasattr(agent, '_finalized_booking_data') and agent._finalized_booking_data:
+                    booking_data = agent._finalized_booking_data
+                    # Check if we have appointment_id (more reliable than booked flag)
+                    if hasattr(booking_data, 'appointment_id') and booking_data.appointment_id:
+                        booking_data_available = True
+                    elif hasattr(booking_data, 'booked') and booking_data.booked:
+                        booking_data_available = True
+                    logger.info(f"USING_FINALIZED_BOOKING_DATA | appointment_id={booking_data.appointment_id} | booked={booking_data.booked}")
+                # Fallback to current booking_data if finalized not available
+                elif hasattr(agent, '_booking_data'):
+                    booking_data = agent._booking_data
+                    # Check if we have appointment_id (more reliable than booked flag)
+                    if hasattr(booking_data, 'appointment_id') and booking_data.appointment_id:
+                        booking_data_available = True
+                    elif hasattr(booking_data, 'booked') and booking_data.booked:
+                        booking_data_available = True
+                    # Also check database for recent booking if we have name/email
+                    if not booking_data_available and hasattr(booking_data, 'name') and booking_data.name:
+                        try:
+                            db_client = get_database_client()
+                            if db_client:
+                                # Query bookings table for recent booking with this name
+                                from datetime import datetime, timedelta
+                                recent_cutoff = (datetime.now() - timedelta(minutes=10)).isoformat()
+                                # Note: This would require a bookings table query method
+                                # For now, we'll rely on appointment_id check
+                        except:
+                            pass
+            
+            if booking_data_available and booking_data:
+                # Ensure structured_data is a dict for merging
+                if not isinstance(structured_data, dict):
+                    structured_data = {}
+                
+                # Add booking information to structured_data (merge with existing data)
+                if booking_data.appointment_id:
+                    structured_data["booking_id"] = booking_data.appointment_id
+                if booking_data.selected_slot and hasattr(booking_data.selected_slot, 'start_time'):
+                    structured_data["start_time"] = booking_data.selected_slot.start_time.isoformat()
+                    # Also add formatted date/time
+                    tz = booking_data.selected_slot.start_time.tzinfo
+                    local_time = booking_data.selected_slot.start_time.astimezone(tz) if tz else booking_data.selected_slot.start_time
+                    structured_data["appointment_date"] = local_time.strftime('%Y-%m-%d')
+                    structured_data["appointment_time"] = local_time.strftime('%I:%M %p')
+                if booking_data.name:
+                    structured_data["booking_name"] = booking_data.name
+                    # Also add 'name' for backward compatibility with {structured_data.name}
+                    structured_data["name"] = booking_data.name
+                    # Override "Customer Name" if it exists (from analysis) with booking name
+                    if "Customer Name" in structured_data:
+                        # If it's a nested object, update the value
+                        if isinstance(structured_data["Customer Name"], dict):
+                            structured_data["Customer Name"]["value"] = booking_data.name
+                        else:
+                            structured_data["Customer Name"] = booking_data.name
+                    else:
+                        # Create "Customer Name" field if it doesn't exist
+                        structured_data["Customer Name"] = booking_data.name
+                if booking_data.phone:
+                    structured_data["booking_phone"] = booking_data.phone
+                    # Also add 'phone' for backward compatibility
+                    structured_data["phone"] = booking_data.phone
+                if booking_data.email:
+                    structured_data["booking_email"] = booking_data.email
+                    # Also add 'email' for backward compatibility
+                    structured_data["email"] = booking_data.email
+                if hasattr(agent, 'phone_number') and agent.phone_number:
+                    structured_data["agent_phone"] = agent.phone_number
+                
+                logger.info(f"BOOKING_DATA_ADDED_TO_CALL_DATA | booking_id={booking_data.appointment_id} | has_slot={bool(booking_data.selected_slot)}")
+                
+                # If appointment was created as "not_booked" but we have booking data, update it to "booked"
+                if appointment and appointment.get("status") == "not_booked":
+                    appointment["status"] = "booked"
+                    # Update appointment contact info from booking data
+                    if booking_data.name:
+                        appointment["contact"]["name"] = booking_data.name
+                    if booking_data.email:
+                        appointment["contact"]["email"] = booking_data.email
+                    if booking_data.phone:
+                        appointment["contact"]["phone"] = booking_data.phone
+                    # Update appointment times if we have slot data
+                    if booking_data.selected_slot and hasattr(booking_data.selected_slot, 'start_time'):
+                        appointment["start_time"] = booking_data.selected_slot.start_time.isoformat()
+                        if hasattr(booking_data.selected_slot, 'end_time'):
+                            appointment["end_time"] = booking_data.selected_slot.end_time.isoformat()
+                        else:
+                            appointment["end_time"] = (booking_data.selected_slot.start_time + datetime.timedelta(minutes=30)).isoformat()
+                    logger.info(f"APPOINTMENT_STATUS_UPDATED | status=booked | booking_id={booking_data.appointment_id}")
+            
+            # Add appointment object to call_data (after potential update)
+            call_data["appointment"] = appointment
+            
+            # Set structured_data in call_data (preserve original if it wasn't a dict, otherwise use merged version)
+            if structured_data or analysis_results.get("structured_data"):
+                # If original was not a dict, keep both - original as structured_data and booking in a sub-key
+                # For now, we'll use the merged dict version
+                call_data["structured_data"] = structured_data if structured_data else analysis_results.get("structured_data")
             
             # Add outcome alias
             call_data["outcome"] = call_status

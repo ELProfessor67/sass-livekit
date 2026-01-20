@@ -26,6 +26,7 @@ export const SmartEdge = memo((props: SmartEdgeProps) => {
         markerEnd,
         source,
         target,
+        sourceHandle,
         data,
     } = props;
 
@@ -42,6 +43,25 @@ export const SmartEdge = memo((props: SmartEdgeProps) => {
         targetPosition,
     });
 
+    // Determine edge color based on branch handle
+    const getEdgeColor = () => {
+        if (sourceHandle && sourceHandle.startsWith('branch-')) {
+            const branchIndex = parseInt(sourceHandle.replace('branch-', ''), 10);
+            // Match the branch colors from RouterNode
+            const branchColors = [
+                '#3b82f6', // blue-500
+                '#f59e0b', // amber-500
+                '#a855f7', // purple-500
+                '#14b8a6', // teal-500
+                '#ec4899', // pink-500
+            ];
+            return branchColors[branchIndex % branchColors.length];
+        }
+        return 'hsl(var(--primary))';
+    };
+
+    const edgeColor = getEdgeColor();
+
     const handleAddClick = (e: React.MouseEvent) => {
         e.stopPropagation();
         if (onAddNode) {
@@ -57,7 +77,7 @@ export const SmartEdge = memo((props: SmartEdgeProps) => {
                 markerEnd={markerEnd}
                 style={{
                     ...style,
-                    stroke: 'hsl(var(--primary))',
+                    stroke: edgeColor,
                     strokeWidth: isHovered ? 5 : 4,
                     strokeDasharray: '1, 12',
                     strokeLinecap: 'round',
@@ -65,8 +85,8 @@ export const SmartEdge = memo((props: SmartEdgeProps) => {
                     transition: 'all 0.2s ease',
                     animation: 'dash 0.8s linear infinite',
                     filter: isHovered
-                        ? 'drop-shadow(0 0 12px hsl(var(--primary) / 0.8))'
-                        : 'drop-shadow(0 0 4px hsl(var(--primary) / 0.3))',
+                        ? `drop-shadow(0 0 12px ${edgeColor}80)`
+                        : `drop-shadow(0 0 4px ${edgeColor}4d)`,
                 }}
             />
             <path
