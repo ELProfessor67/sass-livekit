@@ -60,7 +60,7 @@ const nodeTypes = {
     condition: ConditionNode,
     router: RouterNode,
     twilio_sms: TwilioNode,
-};
+} as any;
 
 const edgeTypes = {
     smart: SmartEdge,
@@ -120,8 +120,9 @@ export default function ComposerBuilder() {
             ...edge,
             data: {
                 ...edge.data,
-                onAddNode: (sourceId: string, targetId: string) => {
-                    setAddContext({ sourceId, targetId });
+                sourceHandle: edge.sourceHandle, // Add this for SmartEdge to consume easily
+                onAddNode: (sourceId: string, targetId: string, sourceHandle?: string | null) => {
+                    setAddContext({ sourceId, targetId, branchHandle: sourceHandle || undefined });
                     setShowAddMenu(true);
                 }
             }
@@ -140,25 +141,25 @@ export default function ComposerBuilder() {
                 if (isStructuredLayout) {
                     // In structured mode, calculate viewport to align nodes to top
                     const nodesBounds = reactFlowInstance.current?.getNodesBounds(layoutNodes);
-                    
+
                     if (nodesBounds && reactFlowInstance.current) {
                         const topPadding = 50; // Padding from top
                         const maxZoom = 0.8;
                         const padding = 0.1;
-                        
+
                         // Get the actual DOM element dimensions
                         const flowElement = document.querySelector('.react-flow') as HTMLElement;
                         const viewportWidth = flowElement?.clientWidth || 1200;
-                        
+
                         // Calculate zoom to fit nodes horizontally with padding
                         // Don't constrain by height - allow vertical scrolling if needed
                         const widthZoom = (viewportWidth * (1 - padding * 2)) / nodesBounds.width;
                         const zoom = Math.min(maxZoom, widthZoom);
-                        
+
                         // Calculate position to center horizontally and align top
                         const x = (viewportWidth / 2) - (nodesBounds.x + nodesBounds.width / 2) * zoom;
                         const y = topPadding - nodesBounds.y * zoom;
-                        
+
                         // Set viewport in one smooth operation (no duration to avoid glitch)
                         reactFlowInstance.current.setViewport({ x, y, zoom }, { duration: 0 });
                     }
@@ -185,7 +186,7 @@ export default function ComposerBuilder() {
                     }
                     return true; // Allow all other changes (selection, etc.)
                 });
-                
+
                 if (filteredChanges.length > 0) {
                     onNodesChange(filteredChanges);
                 }
@@ -205,11 +206,13 @@ export default function ComposerBuilder() {
     const onNodeClick = useCallback((_: any, node: Node) => {
         setSelectedNodeId(node.id);
         setSelectedEdgeId(null);
+        setShowAddMenu(false); // Close add menu when a node is clicked
     }, []);
 
     const onEdgeClick = useCallback((_: any, edge: Edge) => {
         setSelectedEdgeId(edge.id);
         setSelectedNodeId(null);
+        setShowAddMenu(false); // Close add menu when an edge is clicked
     }, []);
 
     const onPaneClick = useCallback(() => {
@@ -251,19 +254,6 @@ export default function ComposerBuilder() {
         };
     }, [isStructuredLayout, layoutNodes.length]);
 
-    // Handle custom events from nodes
-    useEffect(() => {
-        const handleOpenAddMenu = (e: any) => {
-            setAddContext({ 
-                sourceId: e.detail.nodeId,
-                branchHandle: e.detail.branchHandle 
-            });
-            setShowAddMenu(true);
-        };
-
-        window.addEventListener('composer-open-add-menu', handleOpenAddMenu);
-        return () => window.removeEventListener('composer-open-add-menu', handleOpenAddMenu);
-    }, []);
 
     const handleSave = async (statusOverride?: 'active' | 'draft') => {
         if (!id) return;
@@ -318,6 +308,7 @@ export default function ComposerBuilder() {
                         id: `e-${addContext.sourceId}-${newNodeId}`,
                         source: addContext.sourceId,
                         target: newNodeId,
+                        sourceHandle: addContext.branchHandle, // Preserve the branch handle
                         type: 'smart',
                     });
 
@@ -339,12 +330,12 @@ export default function ComposerBuilder() {
                     target: newNodeId,
                     type: 'smart',
                 };
-                
+
                 // If this is a router branch connection, add sourceHandle
                 if (addContext.branchHandle) {
                     newEdge.sourceHandle = addContext.branchHandle;
                 }
-                
+
                 newEdges.push(newEdge);
 
                 return newEdges;
@@ -373,6 +364,7 @@ export default function ComposerBuilder() {
                     id: `e-${inEdge.source}-${outEdge.target}`,
                     source: inEdge.source,
                     target: outEdge.target,
+                    sourceHandle: inEdge.sourceHandle, // Preserve the branch handle
                     type: 'smart',
                 });
             }
@@ -414,6 +406,7 @@ export default function ComposerBuilder() {
                     id: `e-${nodeId}-${newNodeId}`,
                     source: nodeId,
                     target: newNodeId,
+                    sourceHandle: existingOutEdge.sourceHandle, // Preserve the branch handle
                     type: 'smart',
                 });
 
@@ -446,9 +439,9 @@ export default function ComposerBuilder() {
     // Handle custom events from nodes
     useEffect(() => {
         const handleOpenAddMenu = (e: any) => {
-            setAddContext({ 
+            setAddContext({
                 sourceId: e.detail.nodeId,
-                branchHandle: e.detail.branchHandle 
+                branchHandle: e.detail.branchHandle
             });
             setShowAddMenu(true);
         };
@@ -605,8 +598,8 @@ export default function ComposerBuilder() {
                             style={{ height: '100%', width: '100%' }}
                         >
                             <Background color="rgba(255,255,255,0.15)" gap={32} />
-                            <Controls 
-                                showInteractive={false} 
+                            <Controls
+                                showInteractive={false}
                                 className="glass-controls"
                                 showZoom={!isStructuredLayout}
                                 showFitView={!isStructuredLayout}
@@ -689,9 +682,10 @@ export default function ComposerBuilder() {
                                             }}
                                             onDelete={handleDeleteNode}
                                             customVariables={(() => {
-                                                // Get custom variables from trigger node
                                                 const triggerNode = nodes.find(n => n.type === 'trigger');
-                                                return triggerNode?.data?.expected_variables || [];
+                                                return Array.isArray(triggerNode?.data?.expected_variables)
+                                                    ? triggerNode.data.expected_variables
+                                                    : [];
                                             })()}
                                         />
                                     </ScrollArea>

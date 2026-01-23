@@ -1,10 +1,41 @@
 // server/services/workflow-service.js
 import twilio from 'twilio';
 import { createClient } from '@supabase/supabase-js';
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+});
 
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+const UNIVERSAL_EXTRACTION_SCHEMA = {
+    name: "The contact's full name",
+    summary: "Brief overview of the call conversation",
+    outcome: "The final result or disposition of the call (e.g., appointment_booked, lead_qualified, follow_up_needed, no_interest)",
+    email: "Extract the contact's email address if mentioned",
+    phone: "Extract any callback or contact phone number mentioned",
+    address: "Extract any physical address mentioned",
+    company: "Extract the company name if mentioned",
+    notes: "Any additional notes or contact preferences",
+    sentiment: "Overall tone of the caller (positive, neutral, negative, frustrated)",
+    urgent: "Boolean: true if the matter requires immediate attention, false otherwise",
+    appointment: {
+        status: "Booking status: 'booked' or 'not_booked'",
+        start_time: "Appointment start time in ISO format (or descriptive like 'Tomorrow at 2pm')",
+
+        timezone: "Timezone for the appointment",
+
+
+        contact: {
+            name: "Name of the person who booked (often same as caller)",
+            email: "Email of the person who booked",
+            phone: "Phone number of the person who booked"
+        }
+    }
+};
 
 class WorkflowService {
     /**
@@ -17,8 +48,39 @@ class WorkflowService {
     async triggerWorkflows(userId, assistantId, event, callData) {
         try {
             console.log(`[WorkflowService] Triggering workflows for user ${userId}, assistant ${assistantId}, event ${event}`);
-            console.log(`[WorkflowService] callData received:`, JSON.stringify(callData, null, 2));
-            console.log(`[WorkflowService] outcome in callData:`, callData?.outcome, callData?.callData?.outcome);
+
+            let enhancedCallData = { ...callData };
+
+            // For call_ended events, perform universal AI extraction
+            if (event === 'call_ended' && (callData?.transcript || callData?.transcription)) {
+                console.log(`[WorkflowService] Call ended detected, performing universal AI extraction...`);
+                // Gather transcript
+                let transcript = callData.transcript;
+                if (!transcript && callData.transcription) {
+                    if (Array.isArray(callData.transcription)) {
+                        transcript = callData.transcription.map(t => `${t.role}: ${t.content}`).join('\n');
+                    } else {
+                        transcript = callData.transcription;
+                    }
+                }
+
+                if (transcript && transcript.length > 5) {
+                    const extractedData = await this.extractAllVariablesFromTranscription(transcript, enhancedCallData);
+                    if (extractedData) {
+                        console.log(`[WorkflowService] Successfully extracted ${Object.keys(extractedData).length} variables`);
+                        // Merge extracted data into structured_data and top level
+                        enhancedCallData.structured_data = {
+                            ...(enhancedCallData.structured_data || {}),
+                            ...extractedData
+                        };
+                        // Also put at top level for easy access
+                        enhancedCallData = {
+                            ...enhancedCallData,
+                            ...extractedData
+                        };
+                    }
+                }
+            }
 
             // 1. Fetch active workflows linked to this assistant
             const { data: activeWorkflows, error: workflowError } = await supabase
@@ -45,26 +107,73 @@ class WorkflowService {
                 if (workflow && workflow.is_active) {
                     // Pass full context including the event
                     // Extract outcome from various possible locations
-                    const outcome = callData?.outcome || callData?.callData?.outcome || null;
+                    const outcome = enhancedCallData?.outcome || enhancedCallData?.call_outcome || null;
                     const context = {
                         event,
                         userId,
                         assistantId,
-                        ...callData,
+                        ...enhancedCallData,
                         // Explicitly set outcome at top level for condition node evaluation
                         outcome: outcome
                     };
+
                     console.log(`[WorkflowService] Executing workflow ${workflow.id} with context:`, JSON.stringify({
                         event: context.event,
                         outcome: context.outcome,
                         hasCallData: !!context.callData,
-                        callDataOutcome: context.callData?.outcome
+                        extractedName: context.contact_name || context.name
                     }, null, 2));
+
                     this.executeWorkflow(workflow, context);
                 }
             }
         } catch (err) {
             console.error('[WorkflowService] Trigger failed:', err);
+        }
+    }
+
+    /**
+     * Extract all possible variables from call transcription using OpenAI
+     */
+    async extractAllVariablesFromTranscription(transcript, metadata = {}) {
+        try {
+            console.log('[WorkflowService] Calling OpenAI for universal extraction...');
+
+            const response = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: [
+                    {
+                        role: "system",
+                        content: `You are an expert data extractor. Your task is to extract all available information from the provided call transcript and metadata.
+                        
+                        Return a JSON object matching this schema:
+                        ${JSON.stringify(UNIVERSAL_EXTRACTION_SCHEMA, null, 2)}
+                        
+                        Rules:
+                        1. Only include fields where you find clear information.
+                        2. If a field is not mentioned, omit it or set to null.
+                        3. For 'outcome', synthesize the final result of the call.
+                        4. For 'sentiment', use one of: positive, neutral, negative, frustrated.
+                        5. For 'urgent', return a boolean.
+                        6. For 'appointment.status', use 'booked' if a specific time was agreed upon, otherwise 'not_booked'.
+                        
+                        Transcript follows below.`
+                    },
+                    {
+                        role: "user",
+                        content: `Metadata: ${JSON.stringify(metadata)}\n\nTranscript:\n${transcript}`
+                    }
+                ],
+                response_format: { type: "json_object" }
+            });
+
+            const content = response.choices[0].message.content;
+            const extractedData = JSON.parse(content);
+            console.log(`[WorkflowService] Successfully extracted variables:`, Object.keys(extractedData));
+            return extractedData;
+        } catch (err) {
+            console.error('[WorkflowService] Extraction failed:', err);
+            return null;
         }
     }
 
@@ -75,29 +184,29 @@ class WorkflowService {
     convertRouterNodesToConditions(workflow) {
         const nodes = [...(workflow.nodes || [])];
         const edges = [...(workflow.edges || [])];
-        
+
         // Find all router nodes
         const routerNodes = nodes.filter(n => n.type === 'router');
-        
+
         for (const routerNode of routerNodes) {
             const branches = routerNode.data?.branches || [];
             if (branches.length === 0) continue;
-            
+
             // Find incoming edges to this router node
             const incomingEdges = edges.filter(e => e.target === routerNode.id);
-            
+
             // Find outgoing edges from this router node (may have sourceHandle indicating branch)
             const outgoingEdges = edges.filter(e => e.source === routerNode.id);
-            
+
             // For each branch, create a condition node
             const conditionNodes = branches.map((branch, idx) => {
                 const conditionNodeId = `${routerNode.id}_condition_${idx}`;
                 return {
                     id: conditionNodeId,
                     type: 'condition',
-                    position: { 
-                        x: routerNode.position.x + (idx * 200), 
-                        y: routerNode.position.y 
+                    position: {
+                        x: routerNode.position.x + (idx * 200),
+                        y: routerNode.position.y
                     },
                     data: {
                         ...routerNode.data,
@@ -111,14 +220,14 @@ class WorkflowService {
                     }
                 };
             });
-            
+
             // Add condition nodes
             nodes.push(...conditionNodes);
-            
+
             // Activepieces-style: Router evaluates branches in order, first match wins
             // Create a sequential chain: incoming -> condition1 -> condition2 -> condition3...
             // Each condition only proceeds if previous conditions didn't match
-            
+
             // Connect incoming edges to first condition node
             for (const incomingEdge of incomingEdges) {
                 if (conditionNodes.length > 0) {
@@ -133,18 +242,18 @@ class WorkflowService {
                     });
                 }
             }
-            
+
             // Chain condition nodes: if condition1 fails, go to condition2, etc.
             for (let idx = 0; idx < conditionNodes.length; idx++) {
                 const conditionNode = conditionNodes[idx];
                 const branchHandleId = `branch-${idx}`;
-                
+
                 // Find edges from this specific branch
-                const branchEdges = outgoingEdges.filter(e => 
-                    e.sourceHandle === branchHandleId || 
+                const branchEdges = outgoingEdges.filter(e =>
+                    e.sourceHandle === branchHandleId ||
                     e.sourceHandle === `branch-${branches[idx]?.id || idx}`
                 );
-                
+
                 // TRUE path: when condition matches, route to branch's target nodes
                 for (const outgoingEdge of branchEdges) {
                     edges.push({
@@ -157,7 +266,7 @@ class WorkflowService {
                         }
                     });
                 }
-                
+
                 // FALSE path: when condition doesn't match, go to next condition node
                 if (idx < conditionNodes.length - 1) {
                     const nextConditionNode = conditionNodes[idx + 1];
@@ -172,26 +281,26 @@ class WorkflowService {
                     });
                 }
             }
-            
+
             // Remove router node and its edges
             const routerIndex = nodes.findIndex(n => n.id === routerNode.id);
             if (routerIndex !== -1) {
                 nodes.splice(routerIndex, 1);
             }
-            
+
             // Remove old router edges
             const routerEdgeIds = new Set([
                 ...incomingEdges.map(e => e.id),
                 ...outgoingEdges.map(e => e.id)
             ]);
-            
+
             for (let i = edges.length - 1; i >= 0; i--) {
                 if (routerEdgeIds.has(edges[i].id)) {
                     edges.splice(i, 1);
                 }
             }
         }
-        
+
         return {
             ...workflow,
             nodes,
@@ -272,7 +381,7 @@ class WorkflowService {
         // For condition nodes in router context, handle TRUE/FALSE paths differently
         if (node.type === 'condition') {
             const downstreamEdges = edges.filter(e => e.source === nodeId);
-            
+
             if (shouldContinue) {
                 // Condition matched: take TRUE path (router_true edges)
                 const trueEdges = downstreamEdges.filter(e => e.data?.condition === 'router_true');
@@ -351,16 +460,16 @@ class WorkflowService {
         if (!hasVariables) {
             console.log('  (no variables with values available)');
         }
-        
+
         // Only show appointment data if it has meaningful values
         const appointment = context.appointment || context.callData?.appointment;
         if (appointment) {
-            const hasAppointmentData = appointment.status || 
-                                     appointment.start_time || 
-                                     appointment.booking_link ||
-                                     appointment.contact?.name ||
-                                     appointment.contact?.email ||
-                                     appointment.contact?.phone;
+            const hasAppointmentData = appointment.status ||
+                appointment.start_time ||
+                appointment.booking_link ||
+                appointment.contact?.name ||
+                appointment.contact?.email ||
+                appointment.contact?.phone;
             if (hasAppointmentData) {
                 console.log('\n📅 Appointment data:');
                 if (appointment.status) console.log('  {appointment.status} =', appointment.status);
@@ -371,7 +480,7 @@ class WorkflowService {
                 if (appointment.booking_link) console.log('  {appointment.booking_link} =', appointment.booking_link);
             }
         }
-        
+
         // Only show common aliases if they have values
         const hasAliases = flatContext.name || flatContext.email || flatContext.phone || flatContext.booking_status;
         if (hasAliases) {
@@ -388,7 +497,7 @@ class WorkflowService {
         // Interpolate with both flattened (for backward compatibility) and original context (for dot notation)
         let targetNumber = this.interpolate(to_number || '{phone_number}', flatContext, context);
         let body = this.interpolate(message || '', flatContext, context);
-        
+
         // Debug: Log the interpolated message
         console.log('[WorkflowService] Interpolated SMS body:', body);
 
@@ -473,7 +582,7 @@ class WorkflowService {
      */
     async handleSlackNode(node, context, workflow) {
         const { connectionId, channel, message, action = 'send_message' } = node.data || {};
-        
+
         if (!connectionId) {
             console.error('[WorkflowService] Slack node missing connectionId');
             throw new Error('Slack connection not configured');
@@ -543,7 +652,7 @@ class WorkflowService {
         const results = conditions.map(c => {
             // Extract variable name from curly braces if present (e.g., "{outcome}" -> "outcome")
             const variableName = c.variable?.replace(/[{}]/g, '') || c.variable;
-            
+
             // Support dot notation for nested properties (e.g., "appointment.status")
             let actual = '';
             if (variableName.includes('.')) {
@@ -569,7 +678,7 @@ class WorkflowService {
                 // Simple variable lookup from flattened context
                 actual = String(flatContext[variableName] || '').toLowerCase();
             }
-            
+
             const expected = String(c.value || '').toLowerCase();
             const result = (() => {
                 switch (c.operator) {
@@ -611,7 +720,7 @@ class WorkflowService {
      */
     flattenContext(context) {
         const flat = { ...context };
-        
+
         // Helper to extract value from nested structured_data fields
         const extractStructuredValue = (value) => {
             if (typeof value === 'string') {
@@ -622,7 +731,7 @@ class WorkflowService {
             }
             return value;
         };
-        
+
         // Flatten structured_data if present
         if (context.structured_data && typeof context.structured_data === 'object') {
             // Flatten structured_data, handling nested object format
@@ -630,7 +739,7 @@ class WorkflowService {
                 flat[key] = extractStructuredValue(value);
             }
         }
-        
+
         // Flatten callData properties if present (for backward compatibility)
         if (context.callData && typeof context.callData === 'object') {
             Object.assign(flat, context.callData);
@@ -658,7 +767,7 @@ class WorkflowService {
                 }
             }
         }
-        
+
         // Also check for appointment at top level (in case callData was spread)
         if (context.appointment && typeof context.appointment === 'object') {
             // Add appointment fields at top level with appointment_ prefix
@@ -675,44 +784,44 @@ class WorkflowService {
                 flat.appointment_contact_phone = context.appointment.contact.phone || flat.appointment_contact_phone || '';
             }
         }
-        
+
         // Add convenient aliases for common fields
         // Name: try appointment.contact.name, then structured_data.name, then booking_name
         if (!flat.name) {
-            flat.name = flat.appointment_contact_name || 
-                       flat['Customer Name'] || 
-                       flat.booking_name ||
-                       (context.structured_data && (context.structured_data.name || (context.structured_data['Customer Name'] && 
-                        (typeof context.structured_data['Customer Name'] === 'object' ? context.structured_data['Customer Name'].value : context.structured_data['Customer Name'])))) ||
-                       (context.callData && context.callData.structured_data && (context.callData.structured_data.name || 
-                        (context.callData.structured_data['Customer Name'] && (typeof context.callData.structured_data['Customer Name'] === 'object' ? 
-                         context.callData.structured_data['Customer Name'].value : context.callData.structured_data['Customer Name'])))) ||
-                       '';
+            flat.name = flat.appointment_contact_name ||
+                flat['Customer Name'] ||
+                flat.booking_name ||
+                (context.structured_data && (context.structured_data.name || (context.structured_data['Customer Name'] &&
+                    (typeof context.structured_data['Customer Name'] === 'object' ? context.structured_data['Customer Name'].value : context.structured_data['Customer Name'])))) ||
+                (context.callData && context.callData.structured_data && (context.callData.structured_data.name ||
+                    (context.callData.structured_data['Customer Name'] && (typeof context.callData.structured_data['Customer Name'] === 'object' ?
+                        context.callData.structured_data['Customer Name'].value : context.callData.structured_data['Customer Name'])))) ||
+                '';
         }
-        
+
         // Email: try appointment.contact.email, then structured_data.email, then booking_email
         if (!flat.email) {
-            flat.email = flat.appointment_contact_email || 
-                        flat.booking_email ||
-                        (context.structured_data && context.structured_data.email) ||
-                        (context.callData && context.callData.structured_data && context.callData.structured_data.email) ||
-                        '';
+            flat.email = flat.appointment_contact_email ||
+                flat.booking_email ||
+                (context.structured_data && context.structured_data.email) ||
+                (context.callData && context.callData.structured_data && context.callData.structured_data.email) ||
+                '';
         }
-        
+
         // Phone: try appointment.contact.phone, then structured_data.phone, then booking_phone
         if (!flat.phone) {
-            flat.phone = flat.appointment_contact_phone || 
-                        flat.booking_phone ||
-                        (context.structured_data && context.structured_data.phone) ||
-                        (context.callData && context.callData.structured_data && context.callData.structured_data.phone) ||
-                        '';
+            flat.phone = flat.appointment_contact_phone ||
+                flat.booking_phone ||
+                (context.structured_data && context.structured_data.phone) ||
+                (context.callData && context.callData.structured_data && context.callData.structured_data.phone) ||
+                '';
         }
-        
+
         // Booking status: use appointment.status if available
         if (!flat.booking_status) {
             flat.booking_status = flat.appointment_status || '';
         }
-        
+
         return flat;
     }
 
@@ -726,7 +835,7 @@ class WorkflowService {
             if (flatContext[key] !== undefined) {
                 return String(flatContext[key] || '');
             }
-            
+
             // If key contains dot notation, try original context
             if (originalContext && key.includes('.')) {
                 const keys = key.split('.');
@@ -761,19 +870,19 @@ class WorkflowService {
                     return String(value);
                 }
             }
-            
+
             // Also try accessing from structured_data in flatContext if key is like "structured_data.name"
             if (key.includes('.')) {
                 const keys = key.split('.');
                 if (keys[0] === 'structured_data') {
                     // Try multiple paths: context.structured_data, context.callData.structured_data, flatContext.structured_data
-                    let structData = flatContext.structured_data || 
-                                   (originalContext && originalContext.structured_data) ||
-                                   (originalContext && originalContext.callData && originalContext.callData.structured_data);
-                    
+                    let structData = flatContext.structured_data ||
+                        (originalContext && originalContext.structured_data) ||
+                        (originalContext && originalContext.callData && originalContext.callData.structured_data);
+
                     if (structData && typeof structData === 'object') {
                         const fieldName = keys[1];
-                        
+
                         // Try direct access first (e.g., structured_data.name)
                         if (structData[fieldName] !== undefined) {
                             const value = structData[fieldName];
@@ -783,7 +892,7 @@ class WorkflowService {
                             }
                             return String(value || '');
                         }
-                        
+
                         // Try "Customer Name" field if looking for "name"
                         if (fieldName === 'name' && structData['Customer Name']) {
                             const customerName = structData['Customer Name'];
@@ -792,7 +901,7 @@ class WorkflowService {
                             }
                             return String(customerName || '');
                         }
-                        
+
                         // Try "booking_name" or "name" from structured_data
                         if (fieldName === 'name') {
                             const nameValue = structData['booking_name'] || structData['name'] || structData['Customer Name'];
@@ -803,7 +912,7 @@ class WorkflowService {
                                 return String(nameValue || '');
                             }
                         }
-                        
+
                         // Try nested access (e.g., structured_data.contact.name)
                         let nestedValue = structData;
                         for (const k of keys.slice(1)) {
@@ -822,12 +931,12 @@ class WorkflowService {
                     }
                 }
             }
-            
+
             // Try accessing appointment fields directly (e.g., {appointment.status}, {appointment.contact.name})
             if (key.startsWith('appointment.')) {
                 const appointmentPath = key.substring('appointment.'.length);
                 const appointment = context.appointment || (context.callData && context.callData.appointment);
-                
+
                 if (appointment && typeof appointment === 'object') {
                     const keys = appointmentPath.split('.');
                     let value = appointment;
@@ -847,7 +956,7 @@ class WorkflowService {
                     }
                 }
             }
-            
+
             // Return original if not found
             return match;
         });

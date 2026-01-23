@@ -153,8 +153,8 @@ export const integrationActions: Record<string, IntegrationAction[]> = {
     'Twilio': [
         { id: 'send_sms', label: 'Send SMS', description: 'Send an SMS message using Twilio' },
     ],
-    'Trigger': [
-        { id: 'webhook', label: 'Post-Call Webhook', description: 'Trigger after a call ends' },
+    'End Of Call Report': [
+        { id: 'webhook', label: 'End Of Call Report', description: 'Trigger after a call ends' },
         { id: 'facebook_leads', label: 'Facebook Leads', description: 'Trigger when a new lead is captured from Facebook' },
         { id: 'schedule', label: 'Schedule', description: 'Trigger at a specific time' },
         { id: 'manual', label: 'Manual Trigger', description: 'Trigger manually from dashboard' },
@@ -165,7 +165,7 @@ export const nodeCategories: IntegrationCategory[] = [
     {
         name: 'Logic',
         nodes: [
-            { type: 'trigger', label: 'Trigger', description: 'Start workflow on event' },
+            { type: 'trigger', label: 'End Of Call Report', description: 'Start workflow on event' },
             { type: 'condition', label: 'Condition', description: 'Split workflow based on rules' },
             { type: 'router', label: 'Router', description: 'Route workflow to multiple branches' },
         ],

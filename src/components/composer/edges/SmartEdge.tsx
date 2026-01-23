@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface SmartEdgeProps extends EdgeProps {
-    onAddNode?: (sourceId: string, targetId: string) => void;
+    onAddNode?: (sourceId: string, targetId: string, sourceHandleId?: string | null) => void;
 }
 
 export const SmartEdge = memo((props: SmartEdgeProps) => {
@@ -26,11 +26,13 @@ export const SmartEdge = memo((props: SmartEdgeProps) => {
         markerEnd,
         source,
         target,
-        sourceHandle,
+        sourceHandleId,
         data,
     } = props;
 
-    const onAddNode = data?.onAddNode as ((sourceId: string, targetId: string) => void) | undefined;
+    // Use either sourceHandleId or data.sourceHandle provided by ComposerBuilder
+    const activeHandleId = sourceHandleId || (data as any)?.sourceHandle;
+    const onAddNode = data?.onAddNode as ((sourceId: string, targetId: string, sourceHandleId?: string | null) => void) | undefined;
 
     const [isHovered, setIsHovered] = useState(false);
 
@@ -41,23 +43,15 @@ export const SmartEdge = memo((props: SmartEdgeProps) => {
         targetX,
         targetY,
         targetPosition,
+        borderRadius: 0,
     });
 
     // Determine edge color based on branch handle
     const getEdgeColor = () => {
-        if (sourceHandle && sourceHandle.startsWith('branch-')) {
-            const branchIndex = parseInt(sourceHandle.replace('branch-', ''), 10);
-            // Match the branch colors from RouterNode
-            const branchColors = [
-                '#3b82f6', // blue-500
-                '#f59e0b', // amber-500
-                '#a855f7', // purple-500
-                '#14b8a6', // teal-500
-                '#ec4899', // pink-500
-            ];
-            return branchColors[branchIndex % branchColors.length];
+        if (activeHandleId && typeof activeHandleId === 'string' && activeHandleId.startsWith('branch-')) {
+            return 'rgba(67, 56, 202, 0.6)'; // Indigo-600 with opacity
         }
-        return 'hsl(var(--primary))';
+        return '#4f46e5'; // Indigo-600
     };
 
     const edgeColor = getEdgeColor();
@@ -65,7 +59,7 @@ export const SmartEdge = memo((props: SmartEdgeProps) => {
     const handleAddClick = (e: React.MouseEvent) => {
         e.stopPropagation();
         if (onAddNode) {
-            onAddNode(source, target);
+            onAddNode(source, target, activeHandleId || null);
         }
     };
 
@@ -78,8 +72,7 @@ export const SmartEdge = memo((props: SmartEdgeProps) => {
                 style={{
                     ...style,
                     stroke: edgeColor,
-                    strokeWidth: isHovered ? 5 : 4,
-                    strokeDasharray: '1, 12',
+                    strokeWidth: isHovered ? 3 : 2,
                     strokeLinecap: 'round',
                     opacity: isHovered ? 1 : 0.8,
                     transition: 'all 0.2s ease',

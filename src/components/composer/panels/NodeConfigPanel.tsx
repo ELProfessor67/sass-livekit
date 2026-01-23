@@ -2,9 +2,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
     PencilSimple, Sparkle, Lightning, Envelope, ChatCircle, Clock,
-    Plus, Trash, Info, CheckCircle, Warning, Activity, Globe
+    Plus, Trash, Info, CheckCircle, Warning, Activity, Globe,
+    Microphone, Code, CaretUp, CaretDown
 } from "phosphor-react";
 import { Node } from "@xyflow/react";
 import React from "react";
@@ -14,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { VariableInput } from "../components/VariableInput";
 import { useEffect, useState } from "react";
+import { getVariableRegistry, formatVariableKey } from "../utils/variableRegistry";
 
 interface NodeConfigPanelProps {
     node: Node<any>;
@@ -73,615 +76,477 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
     };
 
     return (
-        <div className="space-y-6">
-            {/* Node Header */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-muted/40 border border-border/50 flex items-center justify-center backdrop-blur-sm">
-                        {getNodeIcon(node.type || 'default')}
+        <div className="space-y-6 h-full flex flex-col">
+            <div className="flex-1 space-y-6 overflow-y-auto pr-2 custom-scrollbar">
+                {/* Node Header */}
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-muted/40 border border-border/50 flex items-center justify-center backdrop-blur-sm">
+                            {getNodeIcon(node.type || 'default')}
+                        </div>
+                        <div>
+                            <h3 className="text-base font-semibold text-foreground tracking-tight">{data.label}</h3>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">{integration || node.type || 'Node'}</p>
+                        </div>
                     </div>
-                    <div>
-                        <h3 className="text-base font-semibold text-foreground tracking-tight">{data.label}</h3>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">{integration || node.type || 'Node'}</p>
-                    </div>
+
+                    {node.type !== 'trigger' && onDelete && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                            onClick={() => onDelete(node.id)}
+                        >
+                            <Trash size={16} />
+                        </Button>
+                    )}
                 </div>
 
-                {node.type !== 'trigger' && onDelete && (
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                        onClick={() => onDelete(node.id)}
-                    >
-                        <Trash size={16} />
-                    </Button>
-                )}
-            </div>
+                <div className="h-px bg-gradient-to-r from-transparent via-border/50 to-transparent" />
 
-            <div className="h-px bg-gradient-to-r from-transparent via-border/50 to-transparent" />
+                {/* Configuration Form */}
+                <div className="space-y-5">
+                    <div className="space-y-2">
+                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Node Name</Label>
+                        <Input
+                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                            value={data.label}
+                            onChange={(e) => handleFieldChange('label', e.target.value)}
+                            placeholder="Enter node name..."
+                        />
+                    </div>
 
-            {/* Configuration Form */}
-            <div className="space-y-5">
-                <div className="space-y-2">
-                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Node Name</Label>
-                    <Input
-                        className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
-                        value={data.label}
-                        onChange={(e) => handleFieldChange('label', e.target.value)}
-                        placeholder="Enter node name..."
-                    />
-                </div>
-
-                {/* Twilio Specific Fields */}
-                {integration === 'Twilio' && (
-                    <div className="space-y-4">
-                        <div className="space-y-2">
-                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Recipient Phone</Label>
-                            <div className="h-9 px-3 rounded-md bg-muted/20 border border-border/50 flex items-center">
-                                <span className="text-sm font-medium text-primary">{data.to_number || '{phone_number}'}</span>
-                                <TooltipProvider>
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <Info size={12} className="ml-2 text-muted-foreground/60 cursor-help" />
-                                        </TooltipTrigger>
-                                        <TooltipContent side="top" className="glass-dropdown">
-                                            <p className="text-[10px]">Automatically sends to the caller's phone number.</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                </TooltipProvider>
+                    {/* Twilio Specific Fields */}
+                    {integration === 'Twilio' && (
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Recipient Phone</Label>
+                                <div className="h-9 px-3 rounded-md bg-muted/20 border border-border/50 flex items-center">
+                                    <span className="text-sm font-medium text-primary">{data.to_number || '{phone_number}'}</span>
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <Info size={12} className="ml-2 text-muted-foreground/60 cursor-help" />
+                                            </TooltipTrigger>
+                                            <TooltipContent side="top" className="glass-dropdown">
+                                                <p className="text-[10px]">Automatically sends to the caller's phone number.</p>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">SMS Message</Label>
+                                <VariableInput
+                                    multiline={true}
+                                    className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm min-h-[100px] pt-2"
+                                    value={data.message || ''}
+                                    onChange={(value) => handleFieldChange('message', value)}
+                                    placeholder="Message content..."
+                                    customVariables={customVariables}
+                                />
+                                <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1">
+                                    <Info size={10} />
+                                    Use {"{variable}"} to inject call data or results from previous nodes (e.g. {"{webhook_phone}"})
+                                </p>
                             </div>
                         </div>
-                        <div className="space-y-2">
-                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">SMS Message</Label>
-                            <VariableInput
-                                className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
-                                value={data.message || ''}
-                                onChange={(value) => handleFieldChange('message', value)}
-                                placeholder="Message content..."
-                                customVariables={customVariables}
-                            />
-                            <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1">
-                                <Info size={10} />
-                                Use {"{variable}"} to inject call data or results from previous nodes (e.g. {"{webhook_phone}"})
-                            </p>
-                        </div>
-                    </div>
-                )}
+                    )}
 
-                {/* Slack Specific Fields */}
-                {integration === 'Slack' && (
-                    <div className="space-y-4">
-                        <div className="space-y-2">
-                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Slack Connection</Label>
-                            <Select
-                                value={data.connectionId || ''}
-                                onValueChange={(val) => handleFieldChange('connectionId', val)}
-                                disabled={isLoadingConnections}
-                            >
-                                <SelectTrigger className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9">
-                                    <SelectValue placeholder={isLoadingConnections ? "Loading connections..." : "Select Slack Connection"} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {slackConnections.map(conn => (
-                                        <SelectItem key={conn.id} value={conn.id}>
-                                            {conn.label}
-                                        </SelectItem>
-                                    ))}
-                                    {slackConnections.length === 0 && !isLoadingConnections && (
-                                        <div className="p-2 text-xs text-muted-foreground text-center">
-                                            No Slack connections found
+                    {/* Slack Specific Fields */}
+                    {integration === 'Slack' && (
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Slack Connection</Label>
+                                <Select
+                                    value={data.connectionId || ''}
+                                    onValueChange={(val) => handleFieldChange('connectionId', val)}
+                                    disabled={isLoadingConnections}
+                                >
+                                    <SelectTrigger className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9">
+                                        <SelectValue placeholder={isLoadingConnections ? "Loading connections..." : "Select Slack Connection"} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {slackConnections.map(conn => (
+                                            <SelectItem key={conn.id} value={conn.id}>
+                                                {conn.label}
+                                            </SelectItem>
+                                        ))}
+                                        {slackConnections.length === 0 && !isLoadingConnections && (
+                                            <div className="p-2 text-xs text-muted-foreground text-center">
+                                                No Slack connections found
+                                            </div>
+                                        )}
+                                    </SelectContent>
+                                </Select>
+                                {!data.connectionId && slackConnections.length === 0 && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full h-8 text-xs"
+                                        onClick={() => window.open('/settings?tab=integrations&connect=slack', '_blank')}
+                                    >
+                                        <Plus size={12} className="mr-2" />
+                                        Connect Slack
+                                    </Button>
+                                )}
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Channel</Label>
+                                <VariableInput
+                                    className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                    value={data.channel || ''}
+                                    onChange={(value) => handleFieldChange('channel', value)}
+                                    placeholder="#general or @username"
+                                    customVariables={customVariables}
+                                />
+                                <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1">
+                                    <Info size={10} />
+                                    Use channel name (e.g., #general) or user ID (e.g., @U123456)
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Message</Label>
+                                <VariableInput
+                                    multiline={true}
+                                    className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm min-h-[100px] pt-2"
+                                    value={data.message || ''}
+                                    onChange={(value) => handleFieldChange('message', value)}
+                                    placeholder="Message content..."
+                                    customVariables={customVariables}
+                                />
+                                <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1">
+                                    <Info size={10} />
+                                    Use {"{variable}"} to inject call data or results from previous nodes
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Webhook Specific Fields */}
+                    {(integration === 'Webhooks' || node.type === 'webhook') && (
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Webhook URL</Label>
+                                <VariableInput
+                                    className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                    value={data.url || ''}
+                                    onChange={(value) => handleFieldChange('url', value)}
+                                    placeholder="https://api.example.com/webhook"
+                                    customVariables={customVariables}
+                                />
+                                <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1">
+                                    <Info size={10} />
+                                    Use {"{variable}"} in URL or body.
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Method</Label>
+                                <Select
+                                    value={data.method || 'POST'}
+                                    onValueChange={(val) => handleFieldChange('method', val)}
+                                >
+                                    <SelectTrigger className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9">
+                                        <SelectValue placeholder="Select method" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="POST">POST</SelectItem>
+                                        <SelectItem value="GET">GET</SelectItem>
+                                        <SelectItem value="PUT">PUT</SelectItem>
+                                        <SelectItem value="PATCH">PATCH</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Condition Specific Fields */}
+                    {node.type === 'condition' && (
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Conditions</Label>
+                                <Select
+                                    value={data.condition_logic || 'AND'}
+                                    onValueChange={(val) => handleFieldChange('condition_logic', val)}
+                                >
+                                    <SelectTrigger className="h-7 w-20 bg-muted/40 border-none text-[10px] font-bold">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="AND">AND</SelectItem>
+                                        <SelectItem value="OR">OR</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-4">
+                                {(data.conditions || [{
+                                    variable: data.condition_variable || '',
+                                    operator: data.condition_operator || 'equals',
+                                    value: data.condition_value || ''
+                                }]).map((cond: any, idx: number) => (
+                                    <div key={idx} className="p-3 rounded-xl bg-muted/20 border border-border/50 space-y-3 relative group">
+                                        {idx > 0 && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-6 w-6 absolute -right-2 -top-2 rounded-full bg-background border border-border opacity-0 group-hover:opacity-100 transition-opacity"
+                                                onClick={() => {
+                                                    const newConds = [...(data.conditions || [])];
+                                                    newConds.splice(idx, 1);
+                                                    handleFieldChange('conditions', newConds);
+                                                }}
+                                            >
+                                                <Trash size={12} />
+                                            </Button>
+                                        )}
+                                        <div className="space-y-2">
+                                            <Label className="text-[10px] uppercase font-bold text-muted-foreground/60">Variable</Label>
+                                            <VariableInput
+                                                className="bg-background/50 border-border/30 text-xs h-8"
+                                                value={cond.variable}
+                                                onChange={(value) => {
+                                                    const newConds = [...(data.conditions || [{
+                                                        variable: data.condition_variable,
+                                                        operator: data.condition_operator,
+                                                        value: data.condition_value
+                                                    }])];
+                                                    newConds[idx] = { ...newConds[idx], variable: value };
+                                                    handleFieldChange('conditions', newConds);
+                                                }}
+                                                placeholder="{variable}"
+                                                customVariables={customVariables}
+                                            />
                                         </div>
-                                    )}
-                                </SelectContent>
-                            </Select>
-                            {!data.connectionId && slackConnections.length === 0 && (
-                                <Button 
-                                    variant="outline" 
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-2">
+                                                <Label className="text-[10px] uppercase font-bold text-muted-foreground/60">Operator</Label>
+                                                <Select
+                                                    value={cond.operator}
+                                                    onValueChange={(val) => {
+                                                        const newConds = [...(data.conditions || [{
+                                                            variable: data.condition_variable,
+                                                            operator: data.condition_operator,
+                                                            value: data.condition_value
+                                                        }])];
+                                                        newConds[idx] = { ...newConds[idx], operator: val };
+                                                        handleFieldChange('conditions', newConds);
+                                                    }}
+                                                >
+                                                    <SelectTrigger className="bg-background/50 border-border/30 text-xs h-8">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="equals">Equals</SelectItem>
+                                                        <SelectItem value="not_equals">≠</SelectItem>
+                                                        <SelectItem value="contains">Contains</SelectItem>
+                                                        <SelectItem value="not_contains">!Contains</SelectItem>
+                                                        <SelectItem value="exists">Exists</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label className="text-[10px] uppercase font-bold text-muted-foreground/60">Value</Label>
+                                                <Input
+                                                    className="bg-background/50 border-border/30 text-xs h-8"
+                                                    value={cond.value}
+                                                    onChange={(e) => {
+                                                        const newConds = [...(data.conditions || [{
+                                                            variable: data.condition_variable,
+                                                            operator: data.condition_operator,
+                                                            value: data.condition_value
+                                                        }])];
+                                                        newConds[idx] = { ...newConds[idx], value: e.target.value };
+                                                        handleFieldChange('conditions', newConds);
+                                                    }}
+                                                    placeholder="Value"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )).reverse()}
+
+                                <Button
+                                    variant="outline"
                                     size="sm"
-                                    className="w-full h-8 text-xs"
-                                    onClick={() => window.open('/settings?tab=integrations&connect=slack', '_blank')}
+                                    className="w-full text-[10px] font-bold uppercase tracking-wider h-8 border-dashed border-primary/20 hover:bg-primary/5"
+                                    onClick={() => {
+                                        const currentConds = data.conditions || [{
+                                            variable: data.condition_variable || '',
+                                            operator: data.condition_operator || 'equals',
+                                            value: data.condition_value || ''
+                                        }];
+                                        handleFieldChange('conditions', [...currentConds, { variable: '', operator: 'equals', value: '' }]);
+                                    }}
                                 >
                                     <Plus size={12} className="mr-2" />
-                                    Connect Slack
+                                    Add Condition
                                 </Button>
-                            )}
+                            </div>
                         </div>
-                        <div className="space-y-2">
-                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Channel</Label>
-                            <VariableInput
-                                className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
-                                value={data.channel || ''}
-                                onChange={(value) => handleFieldChange('channel', value)}
-                                placeholder="#general or @username"
-                                customVariables={customVariables}
-                            />
-                            <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1">
-                                <Info size={10} />
-                                Use channel name (e.g., #general) or user ID (e.g., @U123456)
-                            </p>
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Message</Label>
-                            <VariableInput
-                                className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
-                                value={data.message || ''}
-                                onChange={(value) => handleFieldChange('message', value)}
-                                placeholder="Message content..."
-                                customVariables={customVariables}
-                            />
-                            <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1">
-                                <Info size={10} />
-                                Use {"{variable}"} to inject call data or results from previous nodes
-                            </p>
-                        </div>
-                    </div>
-                )}
+                    )}
 
-                {/* Webhook Specific Fields */}
-                {(integration === 'Webhooks' || node.type === 'webhook') && (
-                    <div className="space-y-4">
-                        <div className="space-y-2">
-                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Webhook URL</Label>
-                            <VariableInput
-                                className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
-                                value={data.url || ''}
-                                onChange={(value) => handleFieldChange('url', value)}
-                                placeholder="https://api.example.com/webhook"
-                                customVariables={customVariables}
-                            />
-                            <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1">
-                                <Info size={10} />
-                                Use {"{variable}"} in URL or body.
-                            </p>
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Method</Label>
-                            <Select
-                                value={data.method || 'POST'}
-                                onValueChange={(val) => handleFieldChange('method', val)}
-                            >
-                                <SelectTrigger className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9">
-                                    <SelectValue placeholder="Select method" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="POST">POST</SelectItem>
-                                    <SelectItem value="GET">GET</SelectItem>
-                                    <SelectItem value="PUT">PUT</SelectItem>
-                                    <SelectItem value="PATCH">PATCH</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-                )}
-
-                {/* Condition Specific Fields */}
-                {node.type === 'condition' && (
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Conditions</Label>
-                            <Select
-                                value={data.condition_logic || 'AND'}
-                                onValueChange={(val) => handleFieldChange('condition_logic', val)}
-                            >
-                                <SelectTrigger className="h-7 w-20 bg-muted/40 border-none text-[10px] font-bold">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="AND">AND</SelectItem>
-                                    <SelectItem value="OR">OR</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
+                    {/* Router Specific Fields */}
+                    {node.type === 'router' && (
                         <div className="space-y-4">
-                            {(data.conditions || [{
-                                variable: data.condition_variable || '',
-                                operator: data.condition_operator || 'equals',
-                                value: data.condition_value || ''
-                            }]).map((cond: any, idx: number) => (
-                                <div key={idx} className="p-3 rounded-xl bg-muted/20 border border-border/50 space-y-3 relative group">
-                                    {idx > 0 && (
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Branches</Label>
+                                <p className="text-[10px] text-muted-foreground/50">Each branch routes to different paths</p>
+                            </div>
+
+                            <div className="space-y-3">
+                                {(data.branches || []).map((branch: any, idx: number) => (
+                                    <div key={branch.id || idx} className="p-4 rounded-xl bg-indigo-500/5 border border-indigo-500/20 space-y-3 relative group">
                                         <Button
                                             variant="ghost"
                                             size="icon"
                                             className="h-6 w-6 absolute -right-2 -top-2 rounded-full bg-background border border-border opacity-0 group-hover:opacity-100 transition-opacity"
                                             onClick={() => {
-                                                const newConds = [...(data.conditions || [])];
-                                                newConds.splice(idx, 1);
-                                                handleFieldChange('conditions', newConds);
+                                                const newBranches = [...(data.branches || [])];
+                                                newBranches.splice(idx, 1);
+                                                handleFieldChange('branches', newBranches);
                                             }}
                                         >
                                             <Trash size={12} />
                                         </Button>
-                                    )}
-                                    <div className="space-y-2">
-                                        <Label className="text-[10px] uppercase font-bold text-muted-foreground/60">Variable</Label>
-                                        <VariableInput
-                                            className="bg-background/50 border-border/30 text-xs h-8"
-                                            value={cond.variable}
-                                            onChange={(value) => {
-                                                const newConds = [...(data.conditions || [{
-                                                    variable: data.condition_variable,
-                                                    operator: data.condition_operator,
-                                                    value: data.condition_value
-                                                }])];
-                                                newConds[idx] = { ...newConds[idx], variable: value };
-                                                handleFieldChange('conditions', newConds);
-                                            }}
-                                            placeholder="{variable}"
-                                            customVariables={customVariables}
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
+
                                         <div className="space-y-2">
-                                            <Label className="text-[10px] uppercase font-bold text-muted-foreground/60">Operator</Label>
-                                            <Select
-                                                value={cond.operator}
-                                                onValueChange={(val) => {
-                                                    const newConds = [...(data.conditions || [{
-                                                        variable: data.condition_variable,
-                                                        operator: data.condition_operator,
-                                                        value: data.condition_value
-                                                    }])];
-                                                    newConds[idx] = { ...newConds[idx], operator: val };
-                                                    handleFieldChange('conditions', newConds);
-                                                }}
-                                            >
-                                                <SelectTrigger className="bg-background/50 border-border/30 text-xs h-8">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="equals">Equals</SelectItem>
-                                                    <SelectItem value="not_equals">≠</SelectItem>
-                                                    <SelectItem value="contains">Contains</SelectItem>
-                                                    <SelectItem value="not_contains">!Contains</SelectItem>
-                                                    <SelectItem value="exists">Exists</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label className="text-[10px] uppercase font-bold text-muted-foreground/60">Value</Label>
+                                            <Label className="text-[10px] uppercase font-bold text-muted-foreground/60">Branch Label</Label>
                                             <Input
                                                 className="bg-background/50 border-border/30 text-xs h-8"
-                                                value={cond.value}
+                                                value={branch.label || ''}
                                                 onChange={(e) => {
-                                                    const newConds = [...(data.conditions || [{
-                                                        variable: data.condition_variable,
-                                                        operator: data.condition_operator,
-                                                        value: data.condition_value
-                                                    }])];
-                                                    newConds[idx] = { ...newConds[idx], value: e.target.value };
-                                                    handleFieldChange('conditions', newConds);
+                                                    const newBranches = [...(data.branches || [])];
+                                                    newBranches[idx] = { ...newBranches[idx], label: e.target.value };
+                                                    handleFieldChange('branches', newBranches);
                                                 }}
-                                                placeholder="Value"
+                                                placeholder="e.g., Booked Appointment"
                                             />
                                         </div>
-                                    </div>
-                                </div>
-                            ))}
 
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="w-full text-[10px] font-bold uppercase tracking-wider h-8 border-dashed border-primary/20 hover:bg-primary/5"
-                                onClick={() => {
-                                    const currentConds = data.conditions || [{
-                                        variable: data.condition_variable || '',
-                                        operator: data.condition_operator || 'equals',
-                                        value: data.condition_value || ''
-                                    }];
-                                    handleFieldChange('conditions', [...currentConds, { variable: '', operator: 'equals', value: '' }]);
-                                }}
-                            >
-                                <Plus size={12} className="mr-2" />
-                                Add Condition
-                            </Button>
-                        </div>
-                    </div>
-                )}
-
-                {/* Router Specific Fields */}
-                {node.type === 'router' && (
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Branches</Label>
-                            <p className="text-[10px] text-muted-foreground/50">Each branch routes to different paths</p>
-                        </div>
-
-                        <div className="space-y-3">
-                            {(data.branches || []).map((branch: any, idx: number) => (
-                                <div key={branch.id || idx} className="p-4 rounded-xl bg-indigo-500/5 border border-indigo-500/20 space-y-3 relative group">
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-6 w-6 absolute -right-2 -top-2 rounded-full bg-background border border-border opacity-0 group-hover:opacity-100 transition-opacity"
-                                        onClick={() => {
-                                            const newBranches = [...(data.branches || [])];
-                                            newBranches.splice(idx, 1);
-                                            handleFieldChange('branches', newBranches);
-                                        }}
-                                    >
-                                        <Trash size={12} />
-                                    </Button>
-                                    
-                                    <div className="space-y-2">
-                                        <Label className="text-[10px] uppercase font-bold text-muted-foreground/60">Branch Label</Label>
-                                        <Input
-                                            className="bg-background/50 border-border/30 text-xs h-8"
-                                            value={branch.label || ''}
-                                            onChange={(e) => {
-                                                const newBranches = [...(data.branches || [])];
-                                                newBranches[idx] = { ...newBranches[idx], label: e.target.value };
-                                                handleFieldChange('branches', newBranches);
-                                            }}
-                                            placeholder="e.g., Booked Appointment"
-                                        />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label className="text-[10px] uppercase font-bold text-muted-foreground/60">Condition Variable</Label>
-                                        <VariableInput
-                                            className="bg-background/50 border-border/30 text-xs h-8"
-                                            value={branch.condition?.variable || ''}
-                                            onChange={(value) => {
-                                                const newBranches = [...(data.branches || [])];
-                                                newBranches[idx] = {
-                                                    ...newBranches[idx],
-                                                    condition: {
-                                                        ...(newBranches[idx].condition || { operator: 'contains', value: '' }),
-                                                        variable: value
-                                                    }
-                                                };
-                                                handleFieldChange('branches', newBranches);
-                                            }}
-                                            placeholder="{outcome}"
-                                            customVariables={customVariables}
-                                        />
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-2">
                                         <div className="space-y-2">
-                                            <Label className="text-[10px] uppercase font-bold text-muted-foreground/60">Operator</Label>
-                                            <Select
-                                                value={branch.condition?.operator || 'contains'}
-                                                onValueChange={(val) => {
+                                            <Label className="text-[10px] uppercase font-bold text-muted-foreground/60">Condition Variable</Label>
+                                            <VariableInput
+                                                className="bg-background/50 border-border/30 text-xs h-8"
+                                                value={branch.condition?.variable || ''}
+                                                onChange={(value) => {
                                                     const newBranches = [...(data.branches || [])];
                                                     newBranches[idx] = {
                                                         ...newBranches[idx],
                                                         condition: {
-                                                            ...(newBranches[idx].condition || { variable: '', value: '' }),
-                                                            operator: val
+                                                            ...(newBranches[idx].condition || { operator: 'contains', value: '' }),
+                                                            variable: value
                                                         }
                                                     };
                                                     handleFieldChange('branches', newBranches);
                                                 }}
-                                            >
-                                                <SelectTrigger className="bg-background/50 border-border/30 text-xs h-8">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="equals">Equals</SelectItem>
-                                                    <SelectItem value="not_equals">≠</SelectItem>
-                                                    <SelectItem value="contains">Contains</SelectItem>
-                                                    <SelectItem value="not_contains">!Contains</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label className="text-[10px] uppercase font-bold text-muted-foreground/60">Value</Label>
-                                            <Input
-                                                className="bg-background/50 border-border/30 text-xs h-8"
-                                                value={branch.condition?.value || ''}
-                                                onChange={(e) => {
-                                                    const newBranches = [...(data.branches || [])];
-                                                    newBranches[idx] = {
-                                                        ...newBranches[idx],
-                                                        condition: {
-                                                            ...(newBranches[idx].condition || { variable: '', operator: 'contains' }),
-                                                            value: e.target.value
-                                                        }
-                                                    };
-                                                    handleFieldChange('branches', newBranches);
-                                                }}
-                                                placeholder="e.g., booked"
+                                                placeholder="{outcome}"
+                                                customVariables={customVariables}
                                             />
                                         </div>
-                                    </div>
-                                </div>
-                            ))}
 
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="w-full text-[10px] font-bold uppercase tracking-wider h-8 border-dashed border-indigo-500/20 hover:bg-indigo-500/5"
-                                onClick={() => {
-                                    const newBranch = {
-                                        id: Math.random().toString(36).substring(7),
-                                        label: `Branch ${(data.branches || []).length + 1}`,
-                                        condition: {
-                                            variable: '{outcome}',
-                                            operator: 'contains',
-                                            value: ''
-                                        }
-                                    };
-                                    handleFieldChange('branches', [...(data.branches || []), newBranch]);
-                                }}
-                            >
-                                <Plus size={12} className="mr-2" />
-                                Add Branch
-                            </Button>
-                        </div>
-                    </div>
-                )}
-
-
-                {node.type === 'trigger' && (
-                    <div className="space-y-6">
-                        <div className="space-y-2">
-                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Trigger Type</Label>
-                            <Select
-                                value={data.trigger_type || 'webhook'}
-                                onValueChange={(val) => handleFieldChange('trigger_type', val)}
-                            >
-                                <SelectTrigger className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9">
-                                    <SelectValue placeholder="Select trigger..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="webhook">Webhook (Post-Call Event)</SelectItem>
-                                    <SelectItem value="facebook_leads">Facebook Leads</SelectItem>
-                                    <SelectItem value="schedule">Schedule (Time-based)</SelectItem>
-                                    <SelectItem value="manual">Manual Trigger</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-
-                        {/* Output Variables Section */}
-                        <div className="space-y-4 pt-2">
-                            <div className="flex items-center justify-between">
-                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Available Post-Call Data</Label>
-                                <TooltipProvider>
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <Info size={14} className="text-muted-foreground/60 cursor-help" />
-                                        </TooltipTrigger>
-                                        <TooltipContent side="left" className="glass-dropdown p-3 max-w-[200px]">
-                                            <p className="text-[11px] leading-relaxed">These variables are automatically captured after each call ends and will be sent to your webhook.</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                </TooltipProvider>
-                            </div>
-
-                            {/* Standard Variables (Editable) */}
-                            <div className="space-y-3">
-                                <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">Core Call Data Mappings</Label>
-                                <div className="grid gap-2">
-                                    {[
-                                        { id: 'name', label: 'Contact Name' },
-                                        { id: 'summary', label: 'AI Summary' },
-                                        { id: 'outcome', label: 'Call Outcome' },
-                                        { id: 'duration', label: 'Call Duration' },
-                                        { id: 'transcript', label: 'Full Transcript' }
-                                    ].filter(v => !(data.disabled_core_mappings || []).includes(v.id)).map((v) => {
-                                        const mappingKey = `mapping_${v.id}`;
-                                        const currentVal = data[mappingKey] || v.id;
-
-                                        return (
-                                            <div key={v.id} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.02] border border-white/[0.05] group transition-all hover:bg-white/[0.04]">
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-[10px] text-muted-foreground/40 font-medium uppercase truncate">{v.label}</p>
-                                                    <div className="flex items-center gap-1.5 mt-0.5">
-                                                        <span className="text-primary/40 text-[10px] font-mono">{"{"}</span>
-                                                        <input
-                                                            className="flex-1 bg-transparent border-none p-0 text-xs font-mono text-primary/80 focus:ring-0 placeholder:text-primary/20"
-                                                            value={currentVal}
-                                                            onChange={(e) => handleFieldChange(mappingKey, e.target.value)}
-                                                            placeholder={v.id}
-                                                        />
-                                                        <span className="text-primary/40 text-[10px] font-mono">{"}"}</span>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                                        onClick={() => {
-                                                            const disabled = [...(data.disabled_core_mappings || []), v.id];
-                                                            handleFieldChange('disabled_core_mappings', disabled);
-                                                        }}
-                                                    >
-                                                        <Trash size={12} />
-                                                    </Button>
-                                                </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-2">
+                                                <Label className="text-[10px] uppercase font-bold text-muted-foreground/60">Operator</Label>
+                                                <Select
+                                                    value={branch.condition?.operator || 'contains'}
+                                                    onValueChange={(val) => {
+                                                        const newBranches = [...(data.branches || [])];
+                                                        newBranches[idx] = {
+                                                            ...newBranches[idx],
+                                                            condition: {
+                                                                ...(newBranches[idx].condition || { variable: '', value: '' }),
+                                                                operator: val
+                                                            }
+                                                        };
+                                                        handleFieldChange('branches', newBranches);
+                                                    }}
+                                                >
+                                                    <SelectTrigger className="bg-background/50 border-border/30 text-xs h-8">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="equals">Equals</SelectItem>
+                                                        <SelectItem value="not_equals">≠</SelectItem>
+                                                        <SelectItem value="contains">Contains</SelectItem>
+                                                        <SelectItem value="not_contains">!Contains</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
                                             </div>
-                                        );
-                                    })}
-
-                                    {/* Restore Button (only if something is deleted) */}
-                                    {(data.disabled_core_mappings || []).length > 0 && (
-                                        <Button
-                                            variant="ghost"
-                                            className="w-full h-8 text-[10px] uppercase tracking-wider font-bold text-muted-foreground/40 hover:text-primary/60 hover:bg-primary/5 border border-dashed border-white/5 mt-2"
-                                            onClick={() => handleFieldChange('disabled_core_mappings', [])}
-                                        >
-                                            Restore All Hidden Core Mappings
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Custom Variables */}
-                            <div className="space-y-3 pt-2">
-                                <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">Custom Variables (Expected)</Label>
-                                <div className="space-y-2">
-                                    {(data.expected_variables || []).map((v: string, idx: number) => (
-                                        <div key={idx} className="flex items-center gap-2">
-                                            <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-xl bg-primary/5 border border-primary/10">
-                                                <code className="text-[11px] font-mono text-primary">{`{${v}}`}</code>
+                                            <div className="space-y-2">
+                                                <Label className="text-[10px] uppercase font-bold text-muted-foreground/60">Value</Label>
+                                                <Input
+                                                    className="bg-background/50 border-border/30 text-xs h-8"
+                                                    value={branch.condition?.value || ''}
+                                                    onChange={(e) => {
+                                                        const newBranches = [...(data.branches || [])];
+                                                        newBranches[idx] = {
+                                                            ...newBranches[idx],
+                                                            condition: {
+                                                                ...(newBranches[idx].condition || { variable: '', operator: 'contains' }),
+                                                                value: e.target.value
+                                                            }
+                                                        };
+                                                        handleFieldChange('branches', newBranches);
+                                                    }}
+                                                    placeholder="e.g., booked"
+                                                />
                                             </div>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                                onClick={() => {
-                                                    const newVars = [...(data.expected_variables || [])];
-                                                    newVars.splice(idx, 1);
-                                                    handleFieldChange('expected_variables', newVars);
-                                                }}
-                                            >
-                                                <Trash size={14} />
-                                            </Button>
                                         </div>
-                                    ))}
-
-                                    <div className="flex gap-2">
-                                        <Input
-                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
-                                            placeholder="Enter variable name (e.g. email)"
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    const val = (e.target as HTMLInputElement).value.trim();
-                                                    if (val) {
-                                                        const newVars = [...(data.expected_variables || []), val];
-                                                        handleFieldChange('expected_variables', newVars);
-                                                        (e.target as HTMLInputElement).value = '';
-                                                    }
-                                                }
-                                            }}
-                                        />
-                                        <Button
-                                            variant="outline"
-                                            size="icon"
-                                            className="h-9 w-9 shrink-0 border-primary/20 hover:bg-primary/5"
-                                            onClick={(e) => {
-                                                const input = e.currentTarget.previousElementSibling as HTMLInputElement;
-                                                const val = input.value.trim();
-                                                if (val) {
-                                                    const newVars = [...(data.expected_variables || []), val];
-                                                    handleFieldChange('expected_variables', newVars);
-                                                    input.value = '';
-                                                }
-                                            }}
-                                        >
-                                            <Plus size={16} />
-                                        </Button>
                                     </div>
-                                </div>
-                                <p className="text-[10px] text-muted-foreground/40 italic">Type a name and press Enter to add as a variable</p>
+                                ))}
+
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full text-[10px] font-bold uppercase tracking-wider h-8 border-dashed border-indigo-500/20 hover:bg-indigo-500/5"
+                                    onClick={() => {
+                                        const newBranch = {
+                                            id: Math.random().toString(36).substring(7),
+                                            label: `Branch ${(data.branches || []).length + 1}`,
+                                            condition: {
+                                                variable: '{outcome}',
+                                                operator: 'contains',
+                                                value: ''
+                                            }
+                                        };
+                                        handleFieldChange('branches', [...(data.branches || []), newBranch]);
+                                    }}
+                                >
+                                    <Plus size={12} className="mr-2" />
+                                    Add Branch
+                                </Button>
                             </div>
-                        </div >
-                    </div >
-                )}
+                        </div>
+                    )}
+
+
+                    {node.type === 'trigger' && (
+                        <div className="space-y-6">
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Trigger Type</Label>
+                                <Select
+                                    value={data.trigger_type || 'webhook'}
+                                    onValueChange={(val) => handleFieldChange('trigger_type', val)}
+                                >
+                                    <SelectTrigger className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9">
+                                        <SelectValue placeholder="Select trigger..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="webhook">End Of Call Report</SelectItem>
+                                        <SelectItem value="facebook_leads">Facebook Leads</SelectItem>
+                                        <SelectItem value="schedule">Schedule (Time-based)</SelectItem>
+                                        <SelectItem value="manual">Manual Trigger</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
 
-            <div className="pt-4">
-                <Button variant="outline" className="w-full gap-2 border-dashed border-primary/30 hover:bg-primary/5 hover:border-primary/50 transition-all">
-                    <Sparkle size={16} weight="duotone" className="text-primary" />
-                    <span className="text-xs font-medium">Generate Sample Data (AI)</span>
-                </Button>
-            </div>
-        </div >
+
+        </div>
     );
 }
 
@@ -819,8 +684,8 @@ const FacebookLeadsTriggerConfig = ({ node, onUpdate, userId }: { node: Node, on
                     </SelectContent>
                 </Select>
                 {!data.connectionId && facebookConnections.length === 0 && (
-                    <Button 
-                        variant="outline" 
+                    <Button
+                        variant="outline"
                         size="sm"
                         className="w-full h-8 text-xs"
                         onClick={() => window.open('/settings?tab=integrations&connect=facebook', '_blank')}

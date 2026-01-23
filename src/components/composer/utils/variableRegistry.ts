@@ -28,6 +28,48 @@ export function getVariableRegistry(): VariableCategory[] {
       description: 'Core call information captured during the call',
       variables: [
         {
+          key: 'name',
+          label: 'Contact Name',
+          description: 'Name of the contact from the call report',
+          example: 'John Doe'
+        },
+        {
+          key: 'summary',
+          label: 'AI Summary',
+          description: 'AI-generated call summary',
+          example: 'Customer called to book an appointment...'
+        },
+        {
+          key: 'outcome',
+          label: 'Call Outcome',
+          description: 'Result or status of the call',
+          example: 'Qualified'
+        },
+        {
+          key: 'duration',
+          label: 'Call Duration',
+          description: 'Length of the call in seconds',
+          example: '180'
+        },
+        {
+          key: 'sentiment',
+          label: 'Sentiment',
+          description: 'Overall tone of the caller (positive, neutral, negative, frustrated)',
+          example: 'Positive'
+        },
+        {
+          key: 'urgent',
+          label: 'Is Urgent',
+          description: 'Whether the call requires immediate attention',
+          example: 'true'
+        },
+        {
+          key: 'transcript',
+          label: 'Full Transcript',
+          description: 'Complete conversation transcript',
+          example: 'Agent: Hello, Customer: Hi...'
+        },
+        {
           key: 'phone_number',
           label: 'Phone Number',
           description: 'Caller\'s phone number',
@@ -37,12 +79,6 @@ export function getVariableRegistry(): VariableCategory[] {
           key: 'agent_phone_number',
           label: 'Agent Phone Number',
           description: 'Phone number used by the agent/assistant',
-          example: '+1234567890'
-        },
-        {
-          key: 'participant_identity',
-          label: 'Participant Identity',
-          description: 'Identity of the call participant',
           example: '+1234567890'
         },
         {
@@ -58,45 +94,15 @@ export function getVariableRegistry(): VariableCategory[] {
           example: 'CA1234567890'
         },
         {
-          key: 'summary',
-          label: 'AI Summary',
-          description: 'AI-generated call summary (alias for call_summary)',
-          example: 'Customer called to book an appointment...'
-        },
-        {
-          key: 'call_summary',
-          label: 'Call Summary',
-          description: 'Detailed AI-generated call summary',
-          example: 'Customer interested in scheduling...'
-        },
-        {
-          key: 'outcome',
-          label: 'Call Outcome',
-          description: 'Result of the call (alias for call_status)',
-          example: 'Qualified'
-        },
-        {
-          key: 'call_status',
-          label: 'Call Status',
-          description: 'Status/outcome of the call',
-          example: 'Qualified'
-        },
-        {
-          key: 'call_outcome',
-          label: 'Call Outcome (Detailed)',
-          description: 'Detailed call outcome from AI analysis',
-          example: 'Qualified'
-        },
-        {
           key: 'call_duration',
-          label: 'Call Duration',
-          description: 'Length of the call in seconds',
+          label: 'Call Duration (seconds)',
+          description: 'Internal duration value in seconds',
           example: '180'
         },
         {
           key: 'transcription',
-          label: 'Full Transcript',
-          description: 'Complete conversation transcript (array format)',
+          label: 'Full Transcript (JSON)',
+          description: 'Complete conversation transcript in JSON array format',
           example: '[{"role": "agent", "content": "Hello..."}]'
         },
         {
@@ -104,97 +110,6 @@ export function getVariableRegistry(): VariableCategory[] {
           label: 'Start Time',
           description: 'Call start time (ISO format)',
           example: '2024-01-15T10:00:00'
-        },
-        {
-          key: 'end_time',
-          label: 'End Time',
-          description: 'Call end time (ISO format)',
-          example: '2024-01-15T10:03:00'
-        },
-        {
-          key: 'outcome_confidence',
-          label: 'Outcome Confidence',
-          description: 'Confidence score for the call outcome',
-          example: '0.95'
-        },
-        {
-          key: 'outcome_reasoning',
-          label: 'Outcome Reasoning',
-          description: 'AI reasoning for the call outcome',
-          example: 'Customer expressed strong interest...'
-        },
-        {
-          key: 'outcome_sentiment',
-          label: 'Outcome Sentiment',
-          description: 'Sentiment analysis of the call',
-          example: 'positive'
-        },
-        {
-          key: 'follow_up_required',
-          label: 'Follow Up Required',
-          description: 'Whether follow-up is needed',
-          example: 'true'
-        },
-        {
-          key: 'follow_up_notes',
-          label: 'Follow Up Notes',
-          description: 'Notes about required follow-up',
-          example: 'Customer wants callback tomorrow'
-        },
-        {
-          key: 'success_evaluation',
-          label: 'Success Evaluation',
-          description: 'Whether the call was successful',
-          example: 'SUCCESS'
-        },
-        {
-          key: 'assistant_id',
-          label: 'Assistant ID',
-          description: 'ID of the assistant that handled the call',
-          example: 'asst_123456'
-        }
-      ]
-    },
-    {
-      id: 'structured_data',
-      label: 'Structured Data',
-      description: 'Extracted structured information from the call (fields vary based on assistant configuration)',
-      variables: [
-        {
-          key: 'structured_data.name',
-          label: 'Name',
-          description: 'Extracted name from structured data (may be name, full_name, contact_name, customer_name, or client_name)',
-          example: 'John Doe'
-        },
-        {
-          key: 'structured_data.email',
-          label: 'Email',
-          description: 'Extracted email address',
-          example: 'john@example.com'
-        },
-        {
-          key: 'structured_data.phone',
-          label: 'Phone',
-          description: 'Extracted phone number',
-          example: '+1234567890'
-        },
-        {
-          key: 'structured_data.address',
-          label: 'Address',
-          description: 'Extracted address',
-          example: '123 Main St, City, State'
-        },
-        {
-          key: 'structured_data.company',
-          label: 'Company',
-          description: 'Extracted company name',
-          example: 'Acme Corp'
-        },
-        {
-          key: 'structured_data.notes',
-          label: 'Notes',
-          description: 'Additional notes from structured data',
-          example: 'Customer prefers morning calls'
         }
       ]
     },
@@ -216,12 +131,6 @@ export function getVariableRegistry(): VariableCategory[] {
           example: '2024-01-15T10:00:00+00:00'
         },
         {
-          key: 'appointment.end_time',
-          label: 'End Time',
-          description: 'Appointment end time in ISO format',
-          example: '2024-01-15T10:30:00+00:00'
-        },
-        {
           key: 'appointment.timezone',
           label: 'Timezone',
           description: 'Timezone of the appointment',
@@ -232,12 +141,6 @@ export function getVariableRegistry(): VariableCategory[] {
           label: 'Calendar',
           description: 'Calendar service name (e.g., "Cal.com")',
           example: 'Cal.com'
-        },
-        {
-          key: 'appointment.booking_link',
-          label: 'Booking Link',
-          description: 'URL to view/manage the booking',
-          example: 'https://cal.com/username/event-slug/uid'
         },
         {
           key: 'appointment.contact.name',
@@ -307,7 +210,7 @@ export function extractVariableKey(formatted: string): string {
  */
 export function getAllVariableKeys(): string[] {
   const registry = getVariableRegistry();
-  return registry.flatMap(category => 
+  return registry.flatMap(category =>
     category.variables.map(v => formatVariableKey(v.key))
   );
 }

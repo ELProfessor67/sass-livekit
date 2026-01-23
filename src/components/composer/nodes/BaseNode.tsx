@@ -12,15 +12,18 @@ export interface BaseNodeData {
     icon?: React.ReactNode;
     iconBgClass?: string;
     stepNumber?: number;
+    hasChild?: boolean;
 }
 
-export const BaseNode = memo(({ data, selected, id }: NodeProps<any>) => {
+export const BaseNode = memo(({ data, selected, id, type }: NodeProps<any>) => {
     const nodeData = data as BaseNodeData;
 
     const handleAddClick = (e: React.MouseEvent) => {
         e.stopPropagation();
         window.dispatchEvent(new CustomEvent('composer-open-add-menu', { detail: { nodeId: id } }));
     };
+
+    const isBranchingNode = type === 'router' || type === 'condition';
 
     return (
         <div
@@ -41,11 +44,7 @@ export const BaseNode = memo(({ data, selected, id }: NodeProps<any>) => {
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         {/* Step Number Badge */}
-                        {nodeData.stepNumber && (
-                            <div className="w-6 h-6 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-xs font-semibold text-primary">
-                                {nodeData.stepNumber}
-                            </div>
-                        )}
+
                         <div className={cn(
                             "w-8 h-8 rounded-md flex items-center justify-center backdrop-blur-sm",
                             nodeData.iconBgClass || "bg-primary/20 dark:bg-primary/30 border border-primary/20"
@@ -98,20 +97,22 @@ export const BaseNode = memo(({ data, selected, id }: NodeProps<any>) => {
                 className="!w-3 !h-3 !bg-primary !border-2 !border-background"
             />
 
-            {/* Add Action Button */}
-            <Button
-                size="icon"
-                variant="ghost"
-                onClick={handleAddClick}
-                className={cn(
-                    "absolute -bottom-3 left-1/2 -translate-x-1/2 h-6 w-6 rounded-full nodrag",
-                    "backdrop-blur-xl bg-background/90 border border-white/15",
-                    "shadow-sm hover:shadow transition-all",
-                    "opacity-0 group-hover:opacity-100"
-                )}
-            >
-                <Plus className="h-3 w-3" />
-            </Button>
+            {/* Add Action Button - Only show if not branching and doesn't have a child already */}
+            {!isBranchingNode && !nodeData.hasChild && (
+                <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={handleAddClick}
+                    className={cn(
+                        "absolute -bottom-3 left-1/2 -translate-x-1/2 h-6 w-6 rounded-full nodrag",
+                        "backdrop-blur-xl bg-background/90 border border-white/15",
+                        "shadow-sm hover:shadow transition-all",
+                        "opacity-0 group-hover:opacity-100"
+                    )}
+                >
+                    <Plus className="h-3 w-3" />
+                </Button>
+            )}
         </div>
     );
 });
