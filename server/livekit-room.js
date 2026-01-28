@@ -1,6 +1,6 @@
 // server/livekit-room.js
 import express from 'express';
-import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
+import { AccessToken, RoomServiceClient, AgentDispatchClient } from 'livekit-server-sdk';
 import { createClient } from '@supabase/supabase-js';
 
 export const livekitRoomRouter = express.Router();
@@ -17,37 +17,35 @@ const supabase = createClient(
 livekitRoomRouter.post('/room/:roomName', async (req, res) => {
   try {
     const { roomName } = req.params;
-    const { assistantId, phoneNumber, campaignId, campaignPrompt, contactInfo } = req.body;
 
-    console.log('Creating LiveKit room for outbound call:', {
+    // Handle both body (manual/api) and query (Twilio callback) parameters
+    const assistantId = req.query.assistantId || req.body.assistantId;
+    const phoneNumber = req.query.phoneNumber || req.body.phoneNumber;
+    const campaignId = req.query.campaignId || req.body.campaignId;
+    const campaignPrompt = req.query.campaignPrompt || req.body.campaignPrompt;
+    const contactInfoString = req.query.contactInfo || req.body.contactInfo;
+
+    let contactInfo = {};
+    if (contactInfoString) {
+      try {
+        contactInfo = typeof contactInfoString === 'string' ? JSON.parse(contactInfoString) : contactInfoString;
+      } catch (e) {
+        console.warn('Failed to parse contactInfo:', contactInfoString);
+      }
+    }
+
+    console.log('[LiveKitRoom] TwiML requested by Twilio:', {
       roomName,
       assistantId,
       phoneNumber,
       campaignId,
-      hasCampaignPrompt: !!campaignPrompt,
-      contactInfo
+      query: req.query,
+      body: req.body
     });
 
-    // Get assistant details
-    let assistant = null;
-    if (assistantId) {
-      const { data: assistantData, error: assistantError } = await supabase
-        .from('assistant')
-        .select('*')
-        .eq('id', assistantId)
-        .single();
-
-      if (assistantError) {
-        console.error('Error fetching assistant:', assistantError);
-      } else {
-        assistant = assistantData;
-      }
-    }
-
-    // Create LiveKit access token
     const apiKey = process.env.LIVEKIT_API_KEY;
     const apiSecret = process.env.LIVEKIT_API_SECRET;
-    const livekitUrl = process.env.LIVEKIT_URL;
+    const livekitUrl = process.env.LIVEKIT_URL || process.env.LIVEKIT_HOST;
 
     if (!apiKey || !apiSecret || !livekitUrl) {
       return res.status(500).json({
@@ -56,106 +54,28 @@ livekitRoomRouter.post('/room/:roomName', async (req, res) => {
       });
     }
 
-    // Create room with agent dispatch using LiveKit API
-    const roomService = new RoomServiceClient(livekitUrl, apiKey, apiSecret);
-    
-    try {
-      // Create room with metadata
-      await roomService.createRoom({
-        name: roomName,
-        metadata: JSON.stringify({
-          assistantId,
-          phoneNumber,
-          campaignId,
-          campaignPrompt: campaignPrompt || '',
-          contactInfo: contactInfo || {},
-          source: 'outbound',
-          callType: 'campaign'
-        })
-      });
-      
-      console.log(`Created LiveKit room ${roomName}`);
-    } catch (error) {
-      console.error('Error creating LiveKit room:', error);
-      // Continue anyway - room might already exist
-    }
+    // Return TwiML
+    // We assume the room and agent dispatch were already handled by outbound-calls.js /initiate
+    const callType = campaignId ? 'campaign' : 'lead';
+    const source = 'outbound';
 
-    const grant = {
-      room: roomName,
-      roomJoin: true,
-      canPublish: true,
-      canPublishData: true,
-      canSubscribe: true,
-    };
-
-    // Prepare enhanced metadata with campaign information
-    const participantMetadata = {
-      assistantId,
-      phoneNumber,
-      campaignId,
-      campaignPrompt: campaignPrompt || '',
-      contactInfo: contactInfo || {},
-      source: 'outbound',
-      callType: 'campaign'
-    };
-
-    const at = new AccessToken(apiKey, apiSecret, {
-      identity: `outbound-${phoneNumber}`,
-      metadata: JSON.stringify(participantMetadata),
-    });
-    at.addGrant(grant);
-    const jwt = await at.toJwt();
-
-    // Return TwiML for Twilio to connect to LiveKit room
+    const sipDomain = process.env.LIVEKIT_SIP_URI ? process.env.LIVEKIT_SIP_URI.replace('sip:', '') : '';
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Connect>
-    <Room participantIdentity="outbound-${phoneNumber}" roomName="${roomName}">
-      <Parameter name="assistantId" value="${assistantId || ''}"/>
-      <Parameter name="phoneNumber" value="${phoneNumber}"/>
-      <Parameter name="campaignId" value="${campaignId || ''}"/>
-      <Parameter name="campaignPrompt" value="${(campaignPrompt || '').replace(/"/g, '&quot;')}"/>
-      <Parameter name="contactInfo" value="${JSON.stringify(contactInfo || {}).replace(/"/g, '&quot;')}"/>
-      <Parameter name="source" value="outbound"/>
-      <Parameter name="callType" value="campaign"/>
-    </Room>
-  </Connect>
+  <Dial>
+    <Sip>sip:${phoneNumber || 'agent'}@${sipDomain}?X-LiveKit-Room=${roomName}</Sip>
+  </Dial>
 </Response>`;
 
     res.set('Content-Type', 'text/xml');
     res.send(twiml);
 
   } catch (error) {
-    console.error('Error creating LiveKit room:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create LiveKit room',
-      error: error.message
-    });
+    console.error('Error in livekit-room route:', error);
+    res.status(500).send('Internal server error');
   }
 });
 
-/**
- * Get room status
- * GET /api/v1/livekit/room/:roomName/status
- */
 livekitRoomRouter.get('/room/:roomName/status', async (req, res) => {
-  try {
-    const { roomName } = req.params;
-
-    // This would typically check with LiveKit API for room status
-    // For now, just return a basic response
-    res.json({
-      success: true,
-      roomName,
-      status: 'active'
-    });
-
-  } catch (error) {
-    console.error('Error getting room status:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get room status'
-    });
-  }
+  res.json({ ok: true });
 });

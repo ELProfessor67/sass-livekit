@@ -59,12 +59,12 @@ class ConfigResolver:
             
             if call_type == "outbound":
                 # For outbound calls, get assistant_id from job metadata
-                assistant_id = dial_info.get("agentId") or dial_info.get("assistant_id")
+                assistant_id = dial_info.get("assistantId") or dial_info.get("agentId") or dial_info.get("assistant_id")
                 if assistant_id:
                     logger.info(f"OUTBOUND_ASSISTANT | assistant_id={assistant_id}")
                     return await self._get_assistant_by_id(assistant_id)
                 else:
-                    logger.error("OUTBOUND_NO_ASSISTANT_ID | metadata={metadata}")
+                    logger.error(f"OUTBOUND_NO_ASSISTANT_ID | metadata={metadata}")
                     return None
 
             elif call_type == "inbound_with_assistant":

@@ -98,11 +98,11 @@ export class AuthService {
         this.updateAuthState({ user: null, isAuthenticated: false, isLoading: false });
       }
     } catch (error) {
-      this.updateAuthState({ 
-        user: null, 
-        isAuthenticated: false, 
-        isLoading: false, 
-        error: error instanceof Error ? error.message : 'Authentication error' 
+      this.updateAuthState({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: error instanceof Error ? error.message : 'Authentication error'
       });
     }
 
@@ -193,7 +193,7 @@ export class AuthService {
               .select('slug_name')
               .eq('slug_name', tenant)
               .maybeSingle();
-            
+
             // If no tenant owner found, default to main
             if (!tenantOwner) {
               tenant = 'main';
@@ -244,7 +244,7 @@ export class AuthService {
     this.listeners.add(listener);
     // Immediately call with current state
     listener(this.authState);
-    
+
     // Return unsubscribe function
     return () => {
       this.listeners.delete(listener);
@@ -319,14 +319,14 @@ export class AuthService {
       }
 
       // Get the site URL from environment variable or use current origin
-      const siteUrl = typeof window !== 'undefined' 
+      const siteUrl = typeof window !== 'undefined'
         ? (import.meta.env.VITE_SITE_URL || window.location.origin)
-        : (import.meta.env.VITE_SITE_URL || 'http://localhost:5173');
+        : (import.meta.env.VITE_SITE_URL || 'http://localhost:8080');
       const redirectTo = `${siteUrl}/auth/callback`;
 
       // Extract tenant from hostname
       let tenant = extractTenantFromHostname();
-      
+
       // If tenant is not 'main', verify it exists
       if (tenant !== 'main') {
         try {
@@ -335,7 +335,7 @@ export class AuthService {
             .select('slug_name')
             .eq('slug_name', tenant)
             .maybeSingle();
-          
+
           // If no tenant owner found, default to main
           if (!tenantOwner) {
             tenant = 'main';
@@ -349,18 +349,18 @@ export class AuthService {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { 
+        options: {
           emailRedirectTo: redirectTo,
           email_confirm: true, // Auto-confirm email, skip verification
-          data: { 
-            name, 
-            contactPhone: metadata?.phone, 
+          data: {
+            name,
+            contactPhone: metadata?.phone,
             countryCode: metadata?.countryCode,
             tenant: tenant // Include tenant in metadata so trigger can use it
-          } 
+          }
         },
       });
-      
+
       if (error) throw error;
 
       // If we already have a session, upsert minimal profile row into public.users
@@ -368,7 +368,7 @@ export class AuthService {
         try {
           // Extract tenant from hostname
           let tenant = extractTenantFromHostname();
-          
+
           // If tenant is not 'main', verify it exists
           if (tenant !== 'main') {
             try {
@@ -377,7 +377,7 @@ export class AuthService {
                 .select('slug_name')
                 .eq('slug_name', tenant)
                 .maybeSingle();
-              
+
               // If no tenant owner found, default to main
               if (!tenantOwner) {
                 tenant = 'main';
@@ -437,7 +437,7 @@ export class AuthService {
 
     try {
       this.updateAuthState({ isLoading: true, error: null });
-      
+
       const { data, error } = await supabase
         .from("users")
         .update(updates)
@@ -533,7 +533,7 @@ export const isAuthenticated = () => authService.isAuthenticated();
 export const isLoading = () => authService.isLoading();
 export const getAuthError = () => authService.getError();
 export const signIn = (email: string, password: string) => authService.signIn(email, password);
-export const signUp = (name: string, email: string, password: string, metadata?: SignUpMetadata) => 
+export const signUp = (name: string, email: string, password: string, metadata?: SignUpMetadata) =>
   authService.signUp(name, email, password, metadata);
 export const signOut = () => authService.signOut();
 export const updateProfile = (updates: Partial<UserProfile>) => authService.updateProfile(updates);

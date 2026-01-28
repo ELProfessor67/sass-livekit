@@ -1,6 +1,7 @@
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { workflowService } from '../services/workflow-service.js';
+import crypto from 'crypto';
 
 const router = express.Router();
 
@@ -11,19 +12,36 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 const VERIFY_TOKEN = process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN;
 const APP_SECRET = process.env.FACEBOOK_APP_SECRET;
 
+function isValidSignature(signature, payload, secret) {
+    const elements = signature.split('=');
+    if (elements.length < 2) return false;
+    const signatureHash = elements[1];
+    const expectedHash = crypto
+        .createHmac('sha256', secret)
+        .update(payload)
+        .digest('hex');
+    return signatureHash === expectedHash;
+}
+
 // Webhook Verification (GET)
 router.get('/', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
 
+    console.log('[Facebook Webhook] Verification request:', { mode, token: token ? '***' : 'missing' });
+
     if (mode && token) {
         if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-            console.log('[Facebook Webhook] Verified');
+            console.log('[Facebook Webhook] Verified successfully');
             res.status(200).send(challenge);
         } else {
+            console.warn('[Facebook Webhook] Verification failed: Invalid token');
             res.sendStatus(403);
         }
+    } else {
+        console.warn('[Facebook Webhook] Verification failed: Missing mode or token');
+        res.sendStatus(400);
     }
 });
 
@@ -85,18 +103,7 @@ async function verifySignature(req, res, next) {
     }
 }
 
-function isValidSignature(signature, payload, secret) {
-    const elements = signature.split('=');
-    const signatureHash = elements[1];
-    const expectedHash = crypto
-        .createHmac('sha256', secret)
-        .update(payload)
-        .digest('hex');
-    return signatureHash === expectedHash;
-}
 
-
-import crypto from 'crypto';
 
 // Webhook Notification (POST)
 router.post('/', verifySignature, async (req, res) => {
@@ -124,26 +131,39 @@ router.post('/', verifySignature, async (req, res) => {
 
 async function processLead(leadId, pageId, formId) {
     try {
-        // 1. Find workflows with this form_id directly using JSONB search
+        // 1. Find workflows search (check both status and is_active for backward compatibility)
         const { data: workflows, error: wfError } = await supabase
             .from('workflows')
             .select('*')
-            .eq('is_active', true)
-            .contains('nodes', JSON.stringify([{ data: { trigger_type: 'facebook_leads', form_id: formId } }]));
+            .or('status.eq.active,is_active.eq.true');
 
         if (wfError) throw wfError;
 
         if (!workflows || workflows.length === 0) {
+            console.log(`[Facebook Webhook] No active workflows found in database`);
+            return;
+        }
+
+        // Filter in memory to find matching user and form_id
+        const matchingWorkflows = workflows.filter(wf => {
+            const nodes = wf.nodes || [];
+            return nodes.some(n => n.data?.trigger_type === 'facebook_leads' && n.data?.form_id === formId);
+        });
+
+        if (matchingWorkflows.length === 0) {
             console.log(`[Facebook Webhook] No active workflows found for form ${formId}`);
             return;
         }
+
+        const firstMatchingWorkflow = matchingWorkflows[0];
+        console.log(`[Facebook Webhook] Found ${matchingWorkflows.length} matching workflows`);
 
         // 2. Fetch lead info from Facebook
         // Find the specific integration that contains this page
         const { data: fbIntegration } = await supabase
             .from('facebook_integrations')
             .select('*')
-            .eq('user_id', workflows[0].user_id)
+            .eq('user_id', firstMatchingWorkflow.user_id)
             .contains('pages', JSON.stringify([{ id: pageId }]))
             .single();
 
@@ -180,8 +200,8 @@ async function processLead(leadId, pageId, formId) {
         });
 
         // 4. Trigger workflows
-        for (const wf of workflows) {
-            console.log(`[Facebook Webhook] Executing workflow ${wf.id} for lead ${leadId}`);
+        for (const wf of matchingWorkflows) {
+            console.log(`[Facebook Webhook] ✅ Executing workflow ${wf.id} for lead ${leadId}`);
             workflowService.executeWorkflow(wf, context);
         }
     } catch (err) {

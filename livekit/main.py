@@ -504,6 +504,7 @@ class CallHandler:
 
     async def handle_call(self, ctx: JobContext) -> None:
         """Handle incoming call with proper LiveKit patterns."""
+        logger.info(f"JOB_STARTED | room={ctx.room.name} | job_id={ctx.job.id}")
         call_id = ctx.room.name  # Use room name as call ID
         profiler = LatencyProfiler(call_id, "call_processing")
         
@@ -598,22 +599,6 @@ class CallHandler:
             # Start ambient audio if configured
             await self._maybe_start_background_audio(ctx, session, assistant_config)
 
-            # Trigger first message if configured
-            first_message = assistant_config.get("first_message", "")
-            force_first = os.getenv("FORCE_FIRST_MESSAGE", "true").lower() != "false"
-            if force_first and first_message:
-                # logger.info(f"TRIGGERING_FIRST_MESSAGE | message='{first_message}'")
-                # Use direct TTS for static greeting to shave a round trip
-                async with measure_latency_context("first_message_tts", call_id, {"message_length": len(first_message)}):
-                    try:
-                        await session.say(first_message)
-                    except AttributeError:
-                        # Fallback to generate_reply if say() not available
-                        await session.generate_reply(
-                            instructions=f"Say exactly this: '{first_message}'"
-                        )
-                profiler.checkpoint("first_message_sent")
-
             # Wait for participant with configurable timeout
             participant_timeout = float(os.getenv("PARTICIPANT_TIMEOUT_SECONDS", "35.0"))
             try:
@@ -629,6 +614,23 @@ class CallHandler:
                 # logger.error(f"PARTICIPANT_TIMEOUT | phone={phone_number} | timeout={participant_timeout}s")
                 profiler.finish(success=False, error="Participant timeout")
                 return
+
+            # Trigger first message ONLY AFTER participant joins
+            first_message = assistant_config.get("first_message", "")
+            force_first = os.getenv("FORCE_FIRST_MESSAGE", "true").lower() != "false"
+            if force_first and first_message:
+                # logger.info(f"TRIGGERING_FIRST_MESSAGE | message='{first_message}'")
+                # Wait a tiny bit for participant audio to settle
+                await asyncio.sleep(0.5)
+                async with measure_latency_context("first_message_tts", call_id, {"message_length": len(first_message)}):
+                    try:
+                        await session.say(first_message)
+                    except AttributeError:
+                        # Fallback to generate_reply if say() not available
+                        await session.generate_reply(
+                            instructions=f"Say exactly this: '{first_message}'"
+                        )
+                profiler.checkpoint("first_message_sent")
 
             # Enforce maximum call duration if configured
             self._start_max_call_duration_timer(ctx, assistant_config, session)
@@ -727,7 +729,7 @@ class CallHandler:
                 pass
         
         # Fall back to room name patterns
-        if room_name.startswith("outbound"):
+        if room_name.startswith("outbound") or room_name.startswith("lead") or room_name.startswith("campaign"):
             return "outbound"
         elif room_name.startswith("inbound"):
             return "inbound"
@@ -989,7 +991,7 @@ class CallHandler:
 
             # Prepare call data
             call_data = {
-                "call_id": call_id,
+                "call_id": call_sid or call_id,
                 "assistant_id": assistant_config.get("id"),
                 "phone_number": extract_phone_from_room(ctx.room.name),
                 "agent_phone_number": agent_phone,

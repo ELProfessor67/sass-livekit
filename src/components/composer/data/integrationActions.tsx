@@ -1,4 +1,5 @@
 import React from "react";
+import { Clock, Plus } from "phosphor-react";
 import {
     GoHighLevelIcon,
     HubSpotIcon,
@@ -38,6 +39,67 @@ export interface IntegrationCategory {
     name: string;
     nodes: Integration[];
 }
+
+export const integrationTriggers: Record<string, IntegrationAction[]> = {
+    'Facebook': [
+        { id: 'facebook_leads', label: 'Facebook Lead Created', description: 'Trigger when a new lead is captured from Facebook' },
+    ],
+    'HubSpot': [
+        // Contact Triggers
+        { id: 'hubspot_contact_created', label: 'New Contact', description: 'Trigger when a new contact is created in HubSpot' },
+        { id: 'hubspot_contact_updated', label: 'Contact Recently Created or Updated', description: 'Trigger when a contact is added or modified' },
+        { id: 'hubspot_contact_in_list', label: 'New Contact in List', description: 'Trigger when a contact is added to a specific list' },
+        { id: 'hubspot_contact_property_change', label: 'New Contact Property Change', description: 'Trigger when a selected contact property changes' },
+
+        // Company Triggers
+        { id: 'hubspot_company_created', label: 'New Company', description: 'Trigger when a company is created' },
+        { id: 'hubspot_company_updated', label: 'Company Recently Created or Updated', description: 'Trigger when a company is added or modified' },
+        { id: 'hubspot_company_property_change', label: 'New Company Property Change', description: 'Trigger when a selected company property changes' },
+
+        // Deal Triggers
+        { id: 'hubspot_deal_created', label: 'New Deal', description: 'Trigger when a deal is created' },
+        { id: 'hubspot_deal_property_change', label: 'New Deal Property Change', description: 'Trigger when a deal property is updated' },
+        { id: 'hubspot_deal_stage_updated', label: 'Updated Deal Stage', description: 'Trigger when a deal enters a specific stage' },
+
+        // Line Item & Product Triggers
+        { id: 'hubspot_line_item_created', label: 'New Line Item', description: 'Trigger when a line item is created' },
+        { id: 'hubspot_line_item_updated', label: 'Line Item Recently Created or Updated', description: 'Trigger when a line item is added or modified' },
+        { id: 'hubspot_product_created', label: 'New Product', description: 'Trigger when a product is created' },
+        { id: 'hubspot_product_updated', label: 'Product Recently Created or Updated', description: 'Trigger when a product is added or modified' },
+
+        // Ticket Triggers
+        { id: 'hubspot_ticket_created', label: 'New Ticket', description: 'Trigger when a ticket is created' },
+        { id: 'hubspot_ticket_property_change', label: 'New Ticket Property Change', description: 'Trigger when a ticket property changes' },
+
+        // Task & Engagement Triggers
+        { id: 'hubspot_task_created', label: 'New Task', description: 'Trigger when a task is created' },
+        { id: 'hubspot_engagement_created', label: 'New Engagement', description: 'Trigger when an engagement is logged' },
+
+        // Email & Communication Triggers
+        { id: 'hubspot_email_event', label: 'New Email Event', description: 'Trigger when a tracked email event occurs' },
+        { id: 'hubspot_email_subscription_changed', label: 'New Email Subscriptions Timeline', description: 'Trigger when an email subscription is added' },
+
+        // Forms & Content Triggers
+        { id: 'hubspot_form_submitted', label: 'New Form Submission', description: 'Trigger when a form is submitted' },
+        { id: 'hubspot_blog_article_published', label: 'New COS Blog Article', description: 'Trigger when a blog post is published' },
+
+        // Custom Object Triggers
+        { id: 'hubspot_custom_object_created', label: 'New Custom Object', description: 'Trigger when a custom object is created' },
+        { id: 'hubspot_custom_object_property_change', label: 'New Custom Object Property Change', description: 'Trigger when a custom object property changes' },
+    ],
+    'GoHighLevel': [
+        { id: 'ghl_contact_created', label: 'Contact Created', description: 'Trigger when a new contact is created in GoHighLevel' },
+    ],
+    'Webhook': [
+        { id: 'webhook', label: 'End Of Call', description: 'Trigger after a call ends' },
+    ],
+    'Schedule': [
+        { id: 'schedule', label: 'Schedule', description: 'Trigger at a specific time' },
+    ],
+    'Manual': [
+        { id: 'manual', label: 'Manual Trigger', description: 'Trigger manually from dashboard' },
+    ],
+};
 
 export const integrationActions: Record<string, IntegrationAction[]> = {
     'GoHighLevel': [
@@ -153,19 +215,31 @@ export const integrationActions: Record<string, IntegrationAction[]> = {
     'Twilio': [
         { id: 'send_sms', label: 'Send SMS', description: 'Send an SMS message using Twilio' },
     ],
-    'End Of Call Report': [
-        { id: 'webhook', label: 'End Of Call Report', description: 'Trigger after a call ends' },
-        { id: 'facebook_leads', label: 'Facebook Leads', description: 'Trigger when a new lead is captured from Facebook' },
-        { id: 'schedule', label: 'Schedule', description: 'Trigger at a specific time' },
-        { id: 'manual', label: 'Manual Trigger', description: 'Trigger manually from dashboard' },
-    ],
-};
+}
 
-export const nodeCategories: IntegrationCategory[] = [
+export const triggerCategories: IntegrationCategory[] = [
+    {
+        name: 'Common Triggers',
+        nodes: [
+            { type: 'trigger', label: 'Webhook', description: 'Trigger after a call ends' },
+            { type: 'trigger', label: 'Schedule', description: 'Trigger at a specific time' },
+            { type: 'trigger', label: 'Manual', description: 'Trigger manually from dashboard' },
+        ],
+    },
+    {
+        name: 'Integrations',
+        nodes: [
+            { type: 'trigger', label: 'Facebook', description: 'Trigger from Facebook Leads' },
+            { type: 'trigger', label: 'HubSpot', description: 'Trigger from HubSpot events' },
+            { type: 'trigger', label: 'GoHighLevel', description: 'Trigger from GHL events' },
+        ],
+    },
+];
+
+export const actionCategories: IntegrationCategory[] = [
     {
         name: 'Logic',
         nodes: [
-            { type: 'trigger', label: 'End Of Call Report', description: 'Start workflow on event' },
             { type: 'condition', label: 'Condition', description: 'Split workflow based on rules' },
             { type: 'router', label: 'Router', description: 'Route workflow to multiple branches' },
         ],
@@ -190,6 +264,7 @@ export const nodeCategories: IntegrationCategory[] = [
             { type: 'action', label: 'Gmail', description: 'Send and manage emails' },
             { type: 'action', label: 'Twilio', description: 'Send SMS messages' },
             { type: 'action', label: 'Klaviyo', description: 'Email & SMS marketing' },
+            { type: 'call_lead', label: 'Call Lead', description: 'Initiate AI outbound call' },
         ],
     },
     {
@@ -217,6 +292,9 @@ export const nodeCategories: IntegrationCategory[] = [
     },
 ];
 
+// For backward compatibility and general use, we can still have nodeCategories
+export const nodeCategories = [...triggerCategories, ...actionCategories];
+
 export const getIntegrationIcon = (label: string, size: number = 24): React.ReactNode => {
     switch (label) {
         case 'GoHighLevel': return <GoHighLevelIcon size={size} />;
@@ -241,6 +319,10 @@ export const getIntegrationIcon = (label: string, size: number = 24): React.Reac
         case 'Router': return <ConditionIcon size={size} />; // Use condition icon for router
         case 'Facebook':
         case 'Facebook Leads': return <FacebookIcon size={size} />;
+        case 'Webhook': return <WebhookIcon size={size} />;
+        case 'Schedule': return <Clock size={size} weight="duotone" className="text-purple-500" />;
+        case 'Manual': return <Plus size={size} weight="bold" className="text-purple-500" />;
         default: return null;
     }
 };
+

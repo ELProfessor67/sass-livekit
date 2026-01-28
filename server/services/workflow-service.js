@@ -331,11 +331,14 @@ class WorkflowService {
 
                 // For trigger nodes:
                 if (n.type === 'trigger') {
-                    // 1. Explicit match
+                    // 1. Explicit match on event
                     if (nodeEvent === event) return true;
 
-                    // 2. Legacy fallback: if no event is defined on the node, treat it as call_ended
-                    if (!nodeEvent && event === 'call_ended') return true;
+                    // 2. Match on trigger_type (used for GHL, Facebook, etc.)
+                    if (n.data?.trigger_type === event) return true;
+
+                    // 3. Legacy fallback: if no event is defined on the node, treat it as call_ended
+                    if (!nodeEvent && !n.data?.trigger_type && event === 'call_ended') return true;
                 }
 
                 return false;
@@ -371,6 +374,8 @@ class WorkflowService {
                 shouldContinue = this.handleConditionNode(node, context);
             } else if (node.type === 'action' && node.data?.integration === 'Slack') {
                 await this.handleSlackNode(node, context, workflow);
+            } else if (node.type === 'call_lead') {
+                await this.handleCallLeadNode(node, context, workflow);
             }
         } catch (err) {
             console.error(`[WorkflowService] Node ${nodeId} execution failed:`, err);
@@ -495,14 +500,16 @@ class WorkflowService {
         console.log('================================================\n');
 
         // Interpolate with both flattened (for backward compatibility) and original context (for dot notation)
-        let targetNumber = this.interpolate(to_number || '{phone_number}', flatContext, context);
+        const rawTargetNumber = to_number || '{phone_number}';
+        let targetNumber = this.interpolate(rawTargetNumber, flatContext, context);
         let body = this.interpolate(message || '', flatContext, context);
 
+        console.log(`[WorkflowService] Target Number - Raw: ${rawTargetNumber}, Interpolated: ${targetNumber}`);
         // Debug: Log the interpolated message
         console.log('[WorkflowService] Interpolated SMS body:', body);
 
-        if (!targetNumber || targetNumber === '{phone_number}') {
-            console.warn('[WorkflowService] SMS skipped: No target number found in context');
+        if (!targetNumber || targetNumber === '{phone_number}' || targetNumber === rawTargetNumber && rawTargetNumber.includes('{')) {
+            console.warn(`[WorkflowService] SMS skipped: No target number found in context. (Target: ${targetNumber})`);
             return;
         }
 
@@ -523,8 +530,41 @@ class WorkflowService {
 
         const client = twilio(credentials.account_sid, credentials.auth_token);
 
-        // Determine from number (prefer context, then credits, then env)
+        // Determine from number
         let fromNumber = flatContext.agent_phone_number || credentials.phone_number || process.env.TWILIO_PHONE_NUMBER;
+
+        // If workflow has an assistant_id, use the phone number associated with that assistant
+        if (workflow.assistant_id) {
+            console.log(`[WorkflowService] Workflow has assistant assigned: ${workflow.assistant_id}. Searching for its phone number...`);
+            const { data: assistantPhone, error: phoneError } = await supabase
+                .from('phone_number')
+                .select('number, status, inbound_assistant_id')
+                .eq('inbound_assistant_id', workflow.assistant_id)
+                .eq('status', 'active')
+                .maybeSingle();
+
+            if (phoneError) {
+                console.error(`[WorkflowService] Error switching to assistant phone number:`, phoneError);
+            } else if (assistantPhone?.number) {
+                console.log(`[WorkflowService] ✅ Using workflow assistant phone number: ${assistantPhone.number}`);
+                fromNumber = assistantPhone.number;
+            } else {
+                console.log(`[WorkflowService] ⚠️ No active phone number found for assistant ${workflow.assistant_id}`);
+
+                // Fallback: check if ANY phone number exists for this assistant regardless of status for debugging
+                const { data: allPhone } = await supabase
+                    .from('phone_number')
+                    .select('number, status')
+                    .eq('inbound_assistant_id', workflow.assistant_id)
+                    .limit(1);
+
+                if (allPhone && allPhone.length > 0) {
+                    console.log(`[WorkflowService] Info: Found a phone number for this assistant but it's ${allPhone[0].status}: ${allPhone[0].number}`);
+                }
+            }
+        } else {
+            console.log(`[WorkflowService] No assistant assigned at workflow level.`);
+        }
 
         // If still no fromNumber, try to fetch from phone_number table
         if (!fromNumber) {
@@ -632,6 +672,62 @@ class WorkflowService {
             }
         } catch (err) {
             console.error('[WorkflowService] Slack API error:', err.message);
+            throw err;
+        }
+    }
+
+    /**
+     * Call Lead Node Handler
+     */
+    async handleCallLeadNode(node, context, workflow) {
+        const { to_number, recipient_name, assistant_id } = node.data || {};
+        const flatContext = this.flattenContext(context);
+
+        const targetNumber = this.interpolate(to_number || '{phone_number}', flatContext, context);
+        const contactName = this.interpolate(recipient_name || '{name}', flatContext, context);
+
+        // Use node's assistant_id or fall back to workflow's assistant_id
+        const assistantId = assistant_id || workflow.assistant_id;
+
+        if (!targetNumber || targetNumber === '{phone_number}') {
+            console.warn('[WorkflowService] Call Lead skipped: No target number found in context');
+            return;
+        }
+
+        if (!assistantId) {
+            console.warn('[WorkflowService] Call Lead skipped: No assistant selected');
+            return;
+        }
+
+        console.log(`[WorkflowService] Initiating Call Lead to ${targetNumber} using assistant ${assistantId} (Node: ${node.id})`);
+
+        try {
+            // Get the base URL for the backend
+            const baseUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`;
+
+            // Initiate the call via the cleaner LiveKit outbound-calls API
+            const response = await fetch(`${baseUrl}/api/v1/livekit/outbound-calls/initiate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    phoneNumber: targetNumber,
+                    contactName: contactName,
+                    assistantId: assistantId,
+                    userId: workflow.user_id, // Pass user ID for tracking lead calls
+                    campaignId: null // Lead calls don't have a campaign
+                })
+            });
+
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.message || 'Failed to initiate outbound call');
+            }
+
+            console.log(`[WorkflowService] Call Lead initiated successfully: ${result.callSid}`);
+        } catch (err) {
+            console.error('[WorkflowService] Call Lead failed:', err.message);
             throw err;
         }
     }
@@ -815,6 +911,11 @@ class WorkflowService {
                 (context.structured_data && context.structured_data.phone) ||
                 (context.callData && context.callData.structured_data && context.callData.structured_data.phone) ||
                 '';
+        }
+
+        // Add phone_number alias if missing
+        if (!flat.phone_number) {
+            flat.phone_number = flat.phone;
         }
 
         // Booking status: use appointment.status if available

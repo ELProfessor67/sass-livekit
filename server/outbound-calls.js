@@ -2,6 +2,7 @@
 import express from 'express';
 import Twilio from 'twilio';
 import { createClient } from '@supabase/supabase-js';
+import { RoomServiceClient, AgentDispatchClient, SipClient } from 'livekit-server-sdk';
 
 export const outboundCallsRouter = express.Router();
 
@@ -11,37 +12,56 @@ const supabase = createClient(
 );
 
 /**
- * Initiate outbound call for campaign
+ * Initiate outbound call for campaign or workflow lead
  * POST /api/v1/outbound-calls/initiate
  */
 outboundCallsRouter.post('/initiate', async (req, res) => {
   try {
     const {
       campaignId,
+      userId,
       phoneNumber,
       contactName,
       assistantId,
       fromNumber
     } = req.body;
 
-    if (!campaignId || !phoneNumber || !assistantId) {
+    if ((!campaignId && !userId) || !phoneNumber || !assistantId) {
       return res.status(400).json({
         success: false,
-        message: 'campaignId, phoneNumber, and assistantId are required'
+        message: 'phoneNumber, assistantId, and either campaignId or userId are required'
       });
     }
 
-    // Get campaign details
-    const { data: campaign, error: campaignError } = await supabase
-      .from('campaigns')
-      .select('*')
-      .eq('id', campaignId)
-      .single();
+    let campaign = null;
+    let targetUserId = userId;
 
-    if (campaignError || !campaign) {
-      return res.status(404).json({
+    // If campaignId is provided, validate it
+    if (campaignId && campaignId !== 'null' && campaignId !== 'undefined') {
+      const { data: campaignData, error: campaignError } = await supabase
+        .from('campaigns')
+        .select('*')
+        .eq('id', campaignId)
+        .single();
+
+      if (campaignError || !campaignData) {
+        // Only return 404 if campaignId was explicitly provided and not found
+        if (campaignId.length > 10) { // check if it looks like a UUID
+          return res.status(404).json({
+            success: false,
+            message: 'Campaign not found'
+          });
+        }
+      } else {
+        campaign = campaignData;
+        targetUserId = campaign.user_id;
+      }
+    }
+
+    if (!targetUserId) {
+      return res.status(400).json({
         success: false,
-        message: 'Campaign not found'
+        message: 'User ID could not be determined'
       });
     }
 
@@ -60,128 +80,186 @@ outboundCallsRouter.post('/initiate', async (req, res) => {
     }
 
     // Generate unique room name
-    const roomName = `outbound-${campaignId}-${Date.now()}`;
+    // Using a clear format of phone_timestamp for identification.
+    const roomName = `${phoneNumber}_${Date.now()}`;
 
-    // Create campaign call record
-    const { data: campaignCall, error: callError } = await supabase
-      .from('campaign_calls')
-      .insert({
-        campaign_id: campaignId,
-        phone_number: phoneNumber,
-        contact_name: contactName,
-        room_name: roomName,
-        status: 'calling',
-        scheduled_at: new Date().toISOString()
-      })
-      .select()
-      .single();
-
-    if (callError) {
-      console.error('Error creating campaign call:', callError);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to create campaign call record'
+    const callType = campaign ? 'campaign' : 'lead';
+    // --- REDIRECT LEAD CALLS TO NEW SERVICE ---
+    if (!campaign) {
+      console.log('[OutboundCall] ↔️ Redirecting lead call to new LiveKit service');
+      const baseUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`;
+      const response = await fetch(`${baseUrl}/api/v1/livekit/outbound-calls/initiate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber, contactName, assistantId, userId: targetUserId })
       });
+      return res.json(await response.json());
     }
 
-    // Get the phone number to call from (use assistant's assigned number or fallback)
-    let fromPhoneNumber = fromNumber;
-    
-    if (!fromPhoneNumber) {
-      // Try to get phone number from assistant
-      if (assistantId) {
-        const { data: assistantPhone, error: phoneError } = await supabase
-          .from('phone_number')
-          .select('number')
-          .eq('inbound_assistant_id', assistantId)
-          .eq('status', 'active')
-          .single();
-        
-        if (!phoneError && assistantPhone) {
-          fromPhoneNumber = assistantPhone.number;
-        }
+    let recordId = null;
+
+    if (campaign) {
+      // Create campaign call record
+      const { data: campaignCall, error: callError } = await supabase
+        .from('campaign_calls')
+        .insert({
+          campaign_id: campaignId,
+          phone_number: phoneNumber,
+          contact_name: contactName || '',
+          room_name: roomName,
+          status: 'calling',
+          scheduled_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (callError) {
+        console.error('Error creating campaign call:', callError);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to create campaign call record'
+        });
       }
-      
-      // Fallback to environment variable if no assistant phone found
-    
+      recordId = campaignCall.id;
     }
-    
+
+    // Get the phone number and trunk to call from (use assistant's assigned number or fallback)
+    let fromPhoneNumber = fromNumber;
+    let outboundTrunkId = null;
+
+    if (assistantId) {
+      const { data: assistantPhone, error: phoneError } = await supabase
+        .from('phone_number')
+        .select('number, outbound_trunk_id')
+        .eq('inbound_assistant_id', assistantId)
+        .eq('status', 'active')
+        .single();
+
+      if (!phoneError && assistantPhone) {
+        if (!fromPhoneNumber) fromPhoneNumber = assistantPhone.number;
+        outboundTrunkId = assistantPhone.outbound_trunk_id;
+      }
+    }
+
     if (!fromPhoneNumber) {
+      // Last fallback: check if user has ANY active phone number
+      const { data: userPhone } = await supabase
+        .from('phone_number')
+        .select('number, outbound_trunk_id')
+        .eq('user_id', targetUserId)
+        .eq('status', 'active')
+        .limit(1);
+
+      if (userPhone && userPhone.length > 0) {
+        fromPhoneNumber = userPhone[0].number;
+        if (!outboundTrunkId) outboundTrunkId = userPhone[0].outbound_trunk_id;
+      }
+    }
+
+    if (!fromPhoneNumber) {
+      console.error('[OutboundCall] ❌ No phone number configured for outbound calls. targetUserId:', targetUserId);
       return res.status(400).json({
         success: false,
-        message: 'No phone number configured for outbound calls. Please assign a phone number to the assistant or set TWILIO_PHONE_NUMBER in your environment variables.'
+        message: 'No phone number configured for outbound calls.'
       });
     }
+
+    console.log('[OutboundCall] 📞 Initiating call:', {
+      from: fromPhoneNumber,
+      to: phoneNumber,
+      assistantId,
+      campaignId,
+      outboundTrunkId
+    });
 
     // Create LiveKit room URL for the call
     const baseUrl = process.env.NGROK_URL || process.env.BACKEND_URL;
-    const livekitRoomUrl = `${baseUrl}/api/v1/livekit/room/${roomName}`;
+    const queryParams = new URLSearchParams({
+      assistantId: assistantId || '',
+      phoneNumber: phoneNumber || '',
+      contactName: contactName || '',
+      campaignId: campaignId && campaignId !== 'null' ? campaignId : '',
+      outboundTrunkId: outboundTrunkId || ''
+    }).toString();
+    const livekitRoomUrl = `${baseUrl}/api/v1/livekit/room/${roomName}?${queryParams}`;
 
-    // Get user's active Twilio credentials
-    const { data: credentials, error: credError } = await supabase
-      .from('user_twilio_credentials')
-      .select('*')
-      .eq('user_id', campaign.user_id)
-      .eq('is_active', true)
-      .single();
+    // Create LiveKit SIP client
+    const sipClient = new SipClient(livekitUrl, apiKey, apiSecret);
 
-    if (credError || !credentials) {
-      return res.status(404).json({
-        success: false,
-        message: 'No Twilio credentials found for user'
-      });
-    }
-
-    // Create Twilio client with user's credentials
-    const userTwilio = Twilio(credentials.account_sid, credentials.auth_token);
-
-    // Initiate Twilio call
-    const call = await userTwilio.calls.create({
-      to: phoneNumber,
-      from: fromPhoneNumber,
-      url: livekitRoomUrl,
-      method: 'POST',
-      statusCallback: `${baseUrl}/api/v1/outbound-calls/status-callback`,
-      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
-      statusCallbackMethod: 'POST',
-      record: true,
-      recordingChannels: 'dual',
-      recordingTrack: 'both',
-      recordingStatusCallback: `${baseUrl}/api/v1/recording/status`,
-      recordingStatusCallbackMethod: 'POST'
+    console.log('[OutboundCall] 📞 Initiating LiveKit SIP participant call:', {
+      outboundTrunkId,
+      phoneNumber,
+      roomName,
+      from: fromPhoneNumber
     });
 
-    // Update campaign call with Twilio call SID
-    await supabase
-      .from('campaign_calls')
-      .update({
-        call_sid: call.sid,
-        started_at: new Date().toISOString()
-      })
-      .eq('id', campaignCall.id);
+    // Initiate call via LiveKit SIP Participant (Direct Outbound)
+    const participant = await sipClient.createSipParticipant(
+      outboundTrunkId,
+      phoneNumber,
+      roomName,
+      {
+        participantIdentity: `outbound-${phoneNumber}-${Date.now()}`,
+        participantName: contactName || 'AI Assistant',
+        metadata: JSON.stringify({
+          assistantId,
+          campaignId: campaignId || '',
+          contactName: contactName || '',
+          source: 'outbound',
+          callType: campaign ? 'campaign' : 'lead',
+          call_sid: callSid
+        })
+      }
+    );
 
-    // Update campaign metrics atomically to prevent race conditions
-    const { error: updateError } = await supabase
-      .from('campaigns')
-      .update({
-        dials: campaign.dials + 1,
-        current_daily_calls: campaign.current_daily_calls + 1,
-        total_calls_made: campaign.total_calls_made + 1,
-        last_execution_at: new Date().toISOString()
-      })
-      .eq('id', campaignId);
+    const callSid = participant.sipCallId || `sip-${Date.now()}`;
 
-    if (updateError) {
-      console.error('Error updating campaign metrics:', updateError);
-      // Don't fail the call initiation, just log the error
+    console.log('[OutboundCall] 🚀 LiveKit SIP call initiated successfully:', {
+      participantIdentity: participant.participantIdentity,
+      roomName: roomName,
+      callSid: callSid
+    });
+
+    if (campaign) {
+      // Update campaign call with SIP call ID
+      await supabase
+        .from('campaign_calls')
+        .update({
+          call_sid: callSid,
+          started_at: new Date().toISOString()
+        })
+        .eq('id', recordId);
+
+      // Update campaign metrics
+      await supabase.rpc('increment_campaign_dials', {
+        campaign_id_param: campaignId
+      }).catch(err => console.error('Error updating metrics via RPC:', err));
+    } else {
+      // Record lead call in call_history
+      const { error: historyError } = await supabase
+        .from('call_history')
+        .insert({
+          call_id: callSid,
+          call_sid: callSid,
+          assistant_id: assistantId,
+          phone_number: phoneNumber,
+          contact_name: contactName || '',
+          participant_identity: `outbound-${phoneNumber}`,
+          start_time: new Date().toISOString(),
+          call_status: 'calling'
+        });
+
+      if (historyError) {
+        console.error('Error creating call history record for lead call:', historyError);
+      }
     }
 
     res.json({
       success: true,
-      callSid: call.sid,
+      callSid: callSid,
       roomName: roomName,
-      campaignCallId: campaignCall.id,
-      status: call.status
+      campaignCallId: campaign ? recordId : null,
+      status: 'initiated'
     });
 
   } catch (error) {
@@ -205,8 +283,7 @@ outboundCallsRouter.post('/status-callback', async (req, res) => {
       CallStatus,
       CallDuration,
       To,
-      From,
-      Direction
+      From
     } = req.body;
 
     console.log('Outbound call status callback:', {
@@ -217,21 +294,36 @@ outboundCallsRouter.post('/status-callback', async (req, res) => {
       From
     });
 
-    // Find the campaign call by call SID
-    const { data: campaignCall, error: callError } = await supabase
+    // Find the call - try campaign_calls first
+    const { data: campaignCall, error: campaignError } = await supabase
       .from('campaign_calls')
       .select('*, campaigns(*)')
       .eq('call_sid', CallSid)
       .single();
 
-    if (callError || !campaignCall) {
-      console.error('Campaign call not found for SID:', CallSid);
-      return res.status(404).json({ success: false, message: 'Campaign call not found' });
+    let callRecord = campaignCall;
+    let isCampaign = true;
+
+    if (campaignError || !campaignCall) {
+      // Try call_history for lead calls
+      const { data: leadCall, error: leadError } = await supabase
+        .from('call_history')
+        .select('*')
+        .eq('call_sid', CallSid)
+        .single();
+
+      if (leadError || !leadCall) {
+        console.warn('Call record not found for status update (might be arriving early):', CallSid);
+        return res.json({ success: true }); // Return OK so Twilio doesn't retry
+      }
+
+      callRecord = leadCall;
+      isCampaign = false;
     }
 
-    const campaign = campaignCall.campaigns;
-    let newStatus = campaignCall.status;
-    let outcome = campaignCall.outcome;
+    const campaign = isCampaign ? callRecord.campaigns : null;
+    let newStatus = isCampaign ? callRecord.status : callRecord.call_status;
+    let outcome = callRecord.outcome;
 
     // Update status based on Twilio call status
     switch (CallStatus) {
@@ -239,25 +331,14 @@ outboundCallsRouter.post('/status-callback', async (req, res) => {
         newStatus = 'calling';
         break;
       case 'in-progress':
-        // Don't assume this is a human pickup - wait for LiveKit analysis
-        newStatus = 'calling'; // Keep as calling until we know more
+        newStatus = 'calling';
         break;
       case 'completed':
         newStatus = 'completed';
-        // Determine outcome based on call duration and LiveKit analysis
         if (CallDuration && parseInt(CallDuration) > 0) {
-          // Call was answered by something (human, voicemail, etc.)
-          if (parseInt(CallDuration) < 10) {
-            outcome = 'voicemail'; // Very short = likely voicemail
-          } else if (parseInt(CallDuration) < 30) {
-            outcome = 'voicemail'; // Short = likely voicemail or quick hangup
-          } else {
-            // Longer call - could be human, but we need LiveKit analysis
-            outcome = 'answered'; // Tentative - will be updated by LiveKit
-          }
+          outcome = outcome || 'answered';
         } else {
-          // No duration = no answer
-          outcome = 'no_answer';
+          outcome = outcome || 'no_answer';
         }
         break;
       case 'busy':
@@ -270,69 +351,35 @@ outboundCallsRouter.post('/status-callback', async (req, res) => {
         break;
       case 'failed':
         newStatus = 'failed';
+        outcome = 'failed';
         break;
     }
 
-    // Update campaign call
-    const updateData = {
+    // Update the record
+    const updateData = isCampaign ? {
       status: newStatus,
       call_duration: CallDuration ? parseInt(CallDuration) : 0,
       completed_at: CallStatus === 'completed' ? new Date().toISOString() : null
+    } : {
+      call_status: newStatus,
+      call_duration: CallDuration ? parseInt(CallDuration) : 0,
+      end_time: CallStatus === 'completed' ? new Date().toISOString() : null
     };
 
-    if (outcome) {
-      updateData.outcome = outcome;
-    }
+    if (outcome) updateData.outcome = outcome;
 
-    await supabase
-      .from('campaign_calls')
-      .update(updateData)
-      .eq('id', campaignCall.id);
+    if (isCampaign) {
+      await supabase.from('campaign_calls').update(updateData).eq('id', callRecord.id);
 
-    // Update campaign metrics atomically
-    // Only count as pickup if it's a confirmed human answer (not voicemail)
-    if (outcome === 'answered' && CallDuration && parseInt(CallDuration) >= 30) {
-      const { error: pickupError } = await supabase
-        .from('campaigns')
-        .update({
-          pickups: campaign.pickups + 1,
-          total_calls_answered: campaign.total_calls_answered + 1
-        })
-        .eq('id', campaign.id);
-
-      if (pickupError) {
-        console.error('Error updating pickup metrics:', pickupError);
-      } else {
-        console.log(`📞 Human pickup recorded for campaign ${campaign.id}: ${campaignCall.phone_number} (${CallDuration}s)`);
+      // Update campaign pickups if answered
+      if (outcome === 'answered' && CallStatus === 'completed' && CallDuration && parseInt(CallDuration) > 10) {
+        await supabase.from('campaigns').update({
+          pickups: (campaign.pickups || 0) + 1,
+          total_calls_answered: (campaign.total_calls_answered || 0) + 1
+        }).eq('id', campaign.id);
       }
-    } else if (outcome === 'voicemail') {
-      console.log(`📞 Voicemail detected for campaign ${campaign.id}: ${campaignCall.phone_number} (${CallDuration}s) - not counted as pickup`);
-    }
-
-    // Update outcome-specific metrics
-    if (outcome) {
-      const outcomeUpdates = {};
-      switch (outcome) {
-        case 'interested':
-          outcomeUpdates.interested = campaign.interested + 1;
-          break;
-        case 'not_interested':
-          outcomeUpdates.not_interested = campaign.not_interested + 1;
-          break;
-        case 'callback':
-          outcomeUpdates.callback = campaign.callback + 1;
-          break;
-        case 'do_not_call':
-          outcomeUpdates.do_not_call = campaign.do_not_call + 1;
-          break;
-      }
-
-      if (Object.keys(outcomeUpdates).length > 0) {
-        await supabase
-          .from('campaigns')
-          .update(outcomeUpdates)
-          .eq('id', campaign.id);
-      }
+    } else {
+      await supabase.from('call_history').update(updateData).eq('id', callRecord.id);
     }
 
     res.json({ success: true });
@@ -359,27 +406,15 @@ outboundCallsRouter.get('/campaign/:campaignId', async (req, res) => {
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (status) {
-      query = query.eq('status', status);
-    }
+    if (status) query = query.eq('status', status);
 
     const { data: calls, error } = await query;
+    if (error) throw error;
 
-    if (error) {
-      throw error;
-    }
-
-    res.json({
-      success: true,
-      calls: calls || []
-    });
-
+    res.json({ success: true, calls: calls || [] });
   } catch (error) {
     console.error('Error fetching campaign calls:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch campaign calls'
-    });
+    res.status(500).json({ success: false, message: 'Failed to fetch campaign calls' });
   }
 });
 
@@ -405,69 +440,79 @@ outboundCallsRouter.post('/livekit-callback', async (req, res) => {
       conversation_analysis
     });
 
-    // Find the campaign call by call SID
-    const { data: campaignCall, error: callError } = await supabase
+    // Find the call - try campaign_calls first
+    const { data: campaignCall, error: campaignError } = await supabase
       .from('campaign_calls')
       .select('*, campaigns(*)')
       .eq('call_sid', call_sid)
       .single();
 
-    if (callError || !campaignCall) {
-      console.error('Campaign call not found for SID:', call_sid);
-      return res.status(404).json({ success: false, message: 'Campaign call not found' });
+    let callRecord = campaignCall;
+    let isCampaign = true;
+
+    if (campaignError || !campaignCall) {
+      // Try call_history for lead calls
+      const { data: leadCall, error: leadError } = await supabase
+        .from('call_history')
+        .select('*')
+        .eq('call_sid', call_sid)
+        .single();
+
+      if (leadError || !leadCall) {
+        console.error('Call not found for LiveKit analysis SID:', call_sid);
+        return res.status(404).json({ success: false, message: 'Call not found' });
+      }
+
+      callRecord = leadCall;
+      isCampaign = false;
     }
 
-    const campaign = campaignCall.campaigns;
-    let newOutcome = campaignCall.outcome;
-    let newStatus = campaignCall.status;
+    const campaign = isCampaign ? callRecord.campaigns : null;
+    let newOutcome = callRecord.outcome;
+    let newStatus = isCampaign ? callRecord.status : callRecord.call_status;
 
-    // Analyze the conversation to determine if it was a human pickup
     if (conversation_analysis) {
-      const { is_human, confidence, conversation_quality } = conversation_analysis;
-      
+      const { is_human, confidence } = conversation_analysis;
+
       if (is_human && confidence > 0.7) {
         newOutcome = 'answered';
         newStatus = 'answered';
-        
-        // Update pickup count only for confirmed human conversations
-        const { error: pickupError } = await supabase
-          .from('campaigns')
-          .update({
-            pickups: campaign.pickups + 1,
-            total_calls_answered: campaign.total_calls_answered + 1
-          })
-          .eq('id', campaign.id);
 
-        if (pickupError) {
-          console.error('Error updating pickup metrics:', pickupError);
-        } else {
-          console.log(`📞 LiveKit confirmed human pickup for campaign ${campaign.id}: ${campaignCall.phone_number}`);
+        if (isCampaign) {
+          await supabase.from('campaigns').update({
+            pickups: (campaign.pickups || 0) + 1,
+            total_calls_answered: (campaign.total_calls_answered || 0) + 1
+          }).eq('id', campaign.id);
         }
       } else if (is_human === false || confidence < 0.3) {
         newOutcome = 'voicemail';
-        console.log(`📞 LiveKit confirmed voicemail for campaign ${campaign.id}: ${campaignCall.phone_number}`);
       }
     }
 
-    // Update campaign call with LiveKit analysis
-    const updateData = {
+    const updateData = isCampaign ? {
       status: newStatus,
       outcome: newOutcome,
-      call_duration: call_duration || campaignCall.call_duration,
-      transcription: transcription || campaignCall.transcription,
+      call_duration: call_duration || callRecord.call_duration,
+      transcription: transcription || callRecord.transcription,
       completed_at: new Date().toISOString()
+    } : {
+      call_status: newStatus,
+      outcome: newOutcome,
+      call_duration: call_duration || callRecord.call_duration,
+      transcription: transcription || callRecord.transcription,
+      end_time: new Date().toISOString()
     };
 
-    await supabase
-      .from('campaign_calls')
-      .update(updateData)
-      .eq('id', campaignCall.id);
+    if (isCampaign) {
+      await supabase.from('campaign_calls').update(updateData).eq('id', callRecord.id);
+    } else {
+      await supabase.from('call_history').update(updateData).eq('id', callRecord.id);
+    }
 
     res.json({ success: true });
-
   } catch (error) {
     console.error('Error processing LiveKit callback:', error);
-    res.status(500).json({ success: false, message: 'Failed to process LiveKit callback' });
+    res.status(500).json({ success: false, message: 'Failed to process callback' });
   }
 });
 
@@ -480,13 +525,6 @@ outboundCallsRouter.put('/:callId/outcome', async (req, res) => {
     const { callId } = req.params;
     const { outcome, notes } = req.body;
 
-    if (!outcome) {
-      return res.status(400).json({
-        success: false,
-        message: 'Outcome is required'
-      });
-    }
-
     const { data: call, error: callError } = await supabase
       .from('campaign_calls')
       .select('*, campaigns(*)')
@@ -494,79 +532,36 @@ outboundCallsRouter.put('/:callId/outcome', async (req, res) => {
       .single();
 
     if (callError || !call) {
-      return res.status(404).json({
-        success: false,
-        message: 'Campaign call not found'
-      });
+      // Try call_history
+      const { data: historyCall, error: historyError } = await supabase
+        .from('call_history')
+        .select('*')
+        .eq('id', callId)
+        .single();
+
+      if (historyError || !historyCall) {
+        return res.status(404).json({ success: false, message: 'Call not found' });
+      }
+
+      await supabase.from('call_history').update({ outcome, notes }).eq('id', callId);
+      return res.json({ success: true, message: 'Lead call outcome updated' });
     }
 
-    // Update call outcome
-    const { error: updateError } = await supabase
-      .from('campaign_calls')
-      .update({
-        outcome,
-        notes,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', callId);
+    // Update campaign call
+    await supabase.from('campaign_calls').update({ outcome, notes }).eq('id', callId);
 
-    if (updateError) {
-      throw updateError;
-    }
-
-    // Update campaign metrics
+    // Update campaign metrics (simple version)
     const campaign = call.campaigns;
-    const outcomeUpdates = {};
-    
-    // Remove old outcome count
-    switch (call.outcome) {
-      case 'interested':
-        outcomeUpdates.interested = Math.max(0, campaign.interested - 1);
-        break;
-      case 'not_interested':
-        outcomeUpdates.not_interested = Math.max(0, campaign.not_interested - 1);
-        break;
-      case 'callback':
-        outcomeUpdates.callback = Math.max(0, campaign.callback - 1);
-        break;
-      case 'do_not_call':
-        outcomeUpdates.do_not_call = Math.max(0, campaign.do_not_call - 1);
-        break;
+    const updates = {};
+    if (outcome === 'interested') updates.interested = (campaign.interested || 0) + 1;
+    if (outcome === 'not_interested') updates.not_interested = (campaign.not_interested || 0) + 1;
+    if (Object.keys(updates).length > 0) {
+      await supabase.from('campaigns').update(updates).eq('id', campaign.id);
     }
 
-    // Add new outcome count
-    switch (outcome) {
-      case 'interested':
-        outcomeUpdates.interested = (outcomeUpdates.interested || campaign.interested) + 1;
-        break;
-      case 'not_interested':
-        outcomeUpdates.not_interested = (outcomeUpdates.not_interested || campaign.not_interested) + 1;
-        break;
-      case 'callback':
-        outcomeUpdates.callback = (outcomeUpdates.callback || campaign.callback) + 1;
-        break;
-      case 'do_not_call':
-        outcomeUpdates.do_not_call = (outcomeUpdates.do_not_call || campaign.do_not_call) + 1;
-        break;
-    }
-
-    if (Object.keys(outcomeUpdates).length > 0) {
-      await supabase
-        .from('campaigns')
-        .update(outcomeUpdates)
-        .eq('id', campaign.id);
-    }
-
-    res.json({
-      success: true,
-      message: 'Call outcome updated successfully'
-    });
-
+    res.json({ success: true, message: 'Outcome updated' });
   } catch (error) {
-    console.error('Error updating call outcome:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update call outcome'
-    });
+    console.error('Error updating outcome:', error);
+    res.status(500).json({ success: false, message: 'Internal error' });
   }
 });

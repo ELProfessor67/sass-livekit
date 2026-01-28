@@ -141,7 +141,7 @@ class DatabaseClient:
             if end_time:
                 call_data["end_time"] = end_time
             
-            result = self._client.table("call_history").insert(call_data).execute()
+            result = self._client.table("call_history").upsert(call_data).execute()
             
             if result.data:
                 logging.info(f"Call history saved: {call_id}")
@@ -210,11 +210,9 @@ class DatabaseClient:
             if update_result.data:
                 logging.info(f"Minutes deducted: user={user_id}, deducted={minutes_to_deduct}, used={new_used}/{current_limit}, remaining={remaining}")
                 
-                # Check if user exceeded limit
-                exceeded = new_used > current_limit
+                # Check if user exceeded limit (0 means unlimited)
+                exceeded = (current_limit > 0) and (new_used > current_limit)
                 if exceeded:
-                    # Optionally deactivate user (uncomment if needed)
-                    # self._client.table("users").update({"is_active": False}).eq("id", user_id).execute()
                     logging.warning(f"User {user_id} exceeded minutes limit: {new_used}/{current_limit}")
                 
                 return {

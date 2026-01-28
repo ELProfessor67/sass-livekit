@@ -56,7 +56,7 @@ export async function createLiveKitRoomTwiml({
 
     // Create room with agent dispatch using LiveKit API
     const roomService = new RoomServiceClient(livekitUrl, apiKey, apiSecret);
-    
+
     try {
       // Create room with metadata
       await roomService.createRoom({
@@ -71,7 +71,7 @@ export async function createLiveKitRoomTwiml({
           callType: 'campaign'
         })
       });
-      
+
       console.log(`Created LiveKit room ${roomName}`);
     } catch (error) {
       console.error('Error creating LiveKit room:', error);
@@ -105,19 +105,12 @@ export async function createLiveKitRoomTwiml({
     const jwt = await at.toJwt();
 
     // Return TwiML for Twilio to connect to LiveKit room
+    const sipDomain = process.env.LIVEKIT_SIP_URI ? process.env.LIVEKIT_SIP_URI.replace('sip:', '') : '';
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Connect>
-    <Room participantIdentity="outbound-${phoneNumber}" roomName="${roomName}">
-      <Parameter name="assistantId" value="${assistantId || ''}"/>
-      <Parameter name="phoneNumber" value="${phoneNumber}"/>
-      <Parameter name="campaignId" value="${campaignId || ''}"/>
-      <Parameter name="campaignPrompt" value="${(campaignPrompt || '').replace(/"/g, '&quot;')}"/>
-      <Parameter name="contactInfo" value="${JSON.stringify(contactInfo || {}).replace(/"/g, '&quot;')}"/>
-      <Parameter name="source" value="outbound"/>
-      <Parameter name="callType" value="campaign"/>
-    </Room>
-  </Connect>
+  <Dial>
+    <Sip>sip:${roomName}@${sipDomain}</Sip>
+  </Dial>
 </Response>`;
 
     return twiml;

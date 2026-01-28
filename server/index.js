@@ -34,6 +34,8 @@ import { smsSchedulingWorker } from './workers/sms-scheduling-worker.js';
 import facebookIntegrationsRouter from './routes/facebook-integrations.js';
 import facebookWebhookRouter from './routes/facebook-webhook.js';
 import connectionsRouter from './routes/connections.js';
+import ghlWebhookRouter from './routes/ghl-webhook.js';
+import hubspotWebhookRouter from './routes/hubspot-webhook.js';
 
 
 
@@ -454,7 +456,7 @@ app.use('/api/v1/twilio/user', twilioUserRouter);
 app.use('/api/v1/twilio/sms', twilioSmsRouter);
 app.use('/api/v1/livekit', livekitSipRouter);
 app.use('/api/v1/livekit', livekitPerAssistantTrunkRouter);
-app.use('/api/v1/livekit', livekitOutboundCallsRouter);
+app.use('/api/v1/livekit/outbound-calls', livekitOutboundCallsRouter);
 app.use('/api/v1/recording', recordingWebhookRouter);
 app.use('/api/v1/sms', smsWebhookRouter);
 app.use('/api/v1/outbound-calls', outboundCallsRouter);
@@ -473,6 +475,8 @@ app.use('/api/v1/workflows', workflowsRouter);
 app.use('/api/v1/integrations/facebook', facebookIntegrationsRouter);
 app.use('/api/v1/webhooks/facebook', facebookWebhookRouter);
 app.use('/api/v1/connections', connectionsRouter);
+app.use('/api/v1/webhooks/gohighlevel', ghlWebhookRouter);
+app.use('/api/v1/webhooks/hubspot', hubspotWebhookRouter);
 console.log('Knowledge base routes registered at /api/v1/knowledge-base');
 console.log('Support access routes registered at /api/v1/support-access');
 console.log('Minutes routes registered at /api/v1/minutes');
@@ -852,17 +856,25 @@ app.listen(PORT, async () => {
   // Start ngrok tunnel for Twilio webhooks
   if (process.env.NGROK_AUTHTOKEN) {
     try {
-      const listener = await connect({
+      const ngrokConfig = {
         addr: PORT,
-        authtoken_from_env: true
-      });
+        authtoken_from_env: true,
+      };
+
+      if (process.env.NGROK_DOMAIN) {
+        ngrokConfig.domain = process.env.NGROK_DOMAIN;
+      }
+
+      const listener = await connect(ngrokConfig);
 
       console.log(`🌐 ngrok tunnel established at: ${listener.url()}`);
       console.log(`📱 Use this URL for Twilio webhooks: ${listener.url()}/api/v1/twilio/sms/webhook`);
       console.log(`📞 Use this URL for Twilio status callbacks: ${listener.url()}/api/v1/twilio/sms/status-callback`);
 
-      // Store the ngrok URL for use in SMS sending
+      // Store the ngrok URL in env vars so other parts of the app use the public URL
       process.env.NGROK_URL = listener.url();
+      process.env.BACKEND_URL = listener.url();
+      console.log(`✅ Updated BACKEND_URL to: ${process.env.BACKEND_URL}`);
 
       // SMS webhooks are configured automatically when phone numbers are assigned to assistants
 

@@ -1,12 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
     PencilSimple, Sparkle, Lightning, Envelope, ChatCircle, Clock,
     Plus, Trash, Info, CheckCircle, Warning, Activity, Globe,
-    Microphone, Code, CaretUp, CaretDown
+    Microphone, Code, CaretUp, CaretDown, PhoneCall
 } from "phosphor-react";
 import { Node } from "@xyflow/react";
 import React from "react";
@@ -14,15 +14,18 @@ import { TwilioIcon, FacebookIcon } from "../nodes/IntegrationIcons";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
+import { fetchAssistants, Assistant } from "@/lib/api/assistants/fetchAssistants";
 import { VariableInput } from "../components/VariableInput";
 import { useEffect, useState } from "react";
 import { getVariableRegistry, formatVariableKey } from "../utils/variableRegistry";
+import { integrationTriggers } from "../data/integrationActions";
 
 interface NodeConfigPanelProps {
     node: Node<any>;
     onUpdate: (nodeId: string, data: any) => void;
     onDelete?: (nodeId: string) => void;
     customVariables?: string[]; // Custom variables from trigger node
+    workflowAssistantId?: string | null;
 }
 
 function getNodeIcon(type: string) {
@@ -39,23 +42,50 @@ function getNodeIcon(type: string) {
             return <TwilioIcon size={20} />;
         case 'facebook_leads':
             return <FacebookIcon size={20} />;
+        case 'call_lead':
+            return <PhoneCall size={20} weight="duotone" className="text-emerald-500" />;
+        case 'action':
         default:
             return <Lightning size={20} weight="duotone" className="text-muted-foreground" />;
     }
 }
 
-export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = [] }: NodeConfigPanelProps) {
+function getNodeIconFixed(type: string, integration?: string) {
+    if (integration === 'Call Lead' || type === 'call_lead') {
+        return <PhoneCall size={20} weight="duotone" className="text-emerald-500" />;
+    }
+    return getNodeIcon(type);
+}
+
+export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = [], workflowAssistantId }: NodeConfigPanelProps) {
     const { user } = useAuth();
     const data = node.data;
     const integration = data.integration;
     const [slackConnections, setSlackConnections] = useState<any[]>([]);
     const [isLoadingConnections, setIsLoadingConnections] = useState(false);
+    const [assistants, setAssistants] = useState<Assistant[]>([]);
+    const [isLoadingAssistants, setIsLoadingAssistants] = useState(false);
 
     useEffect(() => {
         if (integration === 'Slack' && user?.id) {
             loadSlackConnections();
         }
-    }, [integration, user?.id]);
+        if (node.type === 'call_lead') {
+            loadAssistants();
+        }
+    }, [integration, node.type, user?.id]);
+
+    const loadAssistants = async () => {
+        setIsLoadingAssistants(true);
+        try {
+            const res = await fetchAssistants();
+            setAssistants(res.assistants);
+        } catch (error) {
+            console.error("Error loading assistants:", error);
+        } finally {
+            setIsLoadingAssistants(false);
+        }
+    };
 
     const loadSlackConnections = async () => {
         if (!user?.id) return;
@@ -82,7 +112,7 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-muted/40 border border-border/50 flex items-center justify-center backdrop-blur-sm">
-                            {getNodeIcon(node.type || 'default')}
+                            {getNodeIconFixed(node.type || 'default', integration)}
                         </div>
                         <div>
                             <h3 className="text-base font-semibold text-foreground tracking-tight">{data.label}</h3>
@@ -150,6 +180,18 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
                                     Use {"{variable}"} to inject call data or results from previous nodes (e.g. {"{webhook_phone}"})
                                 </p>
                             </div>
+
+                            {workflowAssistantId && (
+                                <div className="p-3 rounded-lg bg-primary/5 border border-primary/10 space-y-2">
+                                    <div className="flex items-center gap-2 text-primary">
+                                        <Sparkle size={14} weight="fill" />
+                                        <span className="text-[10px] font-bold uppercase tracking-wider">Workflow Assistant Active</span>
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground leading-relaxed">
+                                        This SMS will be sent using the phone number associated with the assistant assigned to this workflow.
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -520,6 +562,79 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
                         </div>
                     )}
 
+                    {/* Call Lead Specific Fields */}
+                    {(node.type === 'call_lead' || integration === 'Call Lead') && (
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Select Assistant</Label>
+                                {workflowAssistantId ? (
+                                    <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2 text-primary">
+                                                <Sparkle size={14} weight="fill" />
+                                                <span className="text-[10px] font-bold uppercase tracking-wider">Using Workflow Assistant</span>
+                                            </div>
+                                            <Badge variant="outline" className="text-[9px] h-4 bg-primary/10 border-primary/20 text-primary">Active</Badge>
+                                        </div>
+                                        <p className="text-[10px] text-muted-foreground leading-relaxed">
+                                            This node is automatically using the assistant assigned to the entire workflow: <strong>{assistants.find(a => a.id === workflowAssistantId)?.name || 'Loading...'}</strong>
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <Select
+                                            value={data.assistant_id || ''}
+                                            onValueChange={(val) => handleFieldChange('assistant_id', val)}
+                                            disabled={isLoadingAssistants}
+                                        >
+                                            <SelectTrigger className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9">
+                                                <SelectValue placeholder={isLoadingAssistants ? "Loading..." : "Select Assistant"} />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {assistants.map(assistant => (
+                                                    <SelectItem key={assistant.id} value={assistant.id}>
+                                                        {assistant.name}
+                                                    </SelectItem>
+                                                ))}
+                                                {assistants.length === 0 && !isLoadingAssistants && (
+                                                    <div className="p-2 text-xs text-muted-foreground text-center">
+                                                        No assistants found
+                                                    </div>
+                                                )}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1">
+                                            <Info size={10} />
+                                            The call will use this assistant's prompt, voice, and phone number.
+                                        </p>
+                                    </>
+                                )}
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Recipient Phone</Label>
+                                <VariableInput
+                                    className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                    value={data.to_number || '{phone_number}'}
+                                    onChange={(value) => handleFieldChange('to_number', value)}
+                                    placeholder="{phone_number}"
+                                    customVariables={customVariables}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Recipient Name</Label>
+                                <VariableInput
+                                    className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                    value={data.recipient_name || '{name}'}
+                                    onChange={(value) => handleFieldChange('recipient_name', value)}
+                                    placeholder="{name}"
+                                    customVariables={customVariables}
+                                />
+                            </div>
+                        </div>
+                    )}
+
 
                     {node.type === 'trigger' && (
                         <div className="space-y-6">
@@ -533,12 +648,23 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
                                         <SelectValue placeholder="Select trigger..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="webhook">End Of Call Report</SelectItem>
-                                        <SelectItem value="facebook_leads">Facebook Leads</SelectItem>
-                                        <SelectItem value="schedule">Schedule (Time-based)</SelectItem>
-                                        <SelectItem value="manual">Manual Trigger</SelectItem>
+                                        {Object.entries(integrationTriggers).map(([group, items]) => (
+                                            <SelectGroup key={group}>
+                                                <SelectLabel className="text-[10px] uppercase font-bold text-muted-foreground/50 px-2 py-1.5">{group}</SelectLabel>
+                                                {items.map(item => (
+                                                    <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                                                ))}
+                                            </SelectGroup>
+                                        ))}
                                     </SelectContent>
                                 </Select>
+                                {data.trigger_type === 'hubspot_contact_created' && (
+                                    <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1 mt-2">
+                                        <Info size={10} />
+                                        Workflows will trigger when a contact is created in HubSpot.
+                                        Variables: {"{contact_name}"}, {"{contact_email}"}, {"{contact_phone}"}
+                                    </p>
+                                )}
                             </div>
                         </div>
                     )}

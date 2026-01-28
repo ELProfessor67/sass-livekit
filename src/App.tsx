@@ -33,6 +33,8 @@ import AdminPanel from "./pages/AdminPanel";
 import AuthCallback from "./pages/AuthCallback";
 import Composer from "./pages/Composer";
 import ComposerBuilder from "./pages/ComposerBuilder";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
 
 
 // Create a client with better error handling and retry limits
@@ -175,7 +177,8 @@ function AnimatedRoutes() {
       </Route>
       {/* Landing page for unauthenticated users */}
       <Route path="/" element={<LandingPage />} />
-      {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

@@ -228,72 +228,30 @@ class AgentFactory:
             return None
 
     async def _classify_data_fields_with_llm(self, structured_data: list) -> Dict[str, list]:
-        """Use LLM to classify which fields should be asked vs extracted."""
-        try:
-            openai_api_key = os.getenv("OPENAI_API_KEY")
-            if not openai_api_key:
-                logger.warning("OPENAI_API_KEY not configured for field classification")
-                return {"ask_user": [], "extract_from_conversation": []}
-
-            client = get_openai_client()
+        """A fast, deterministic classification of fields to avoid slow LLM calls."""
+        ask_user = []
+        extract = []
+        
+        # Keywords that suggest we should ask the user
+        ASK_KEYWORDS = {
+            "name", "email", "phone", "number", "date", "time", "slot", "appointment", 
+            "booking", "location", "address", "company", "budget", "interest"
+        }
+        
+        for field in structured_data:
+            name = field.get("name", "").lower()
+            desc = field.get("description", "").lower()
             
-            # Prepare field descriptions
-            fields_json = json.dumps([
-                {
-                    "name": field.get("name", ""),
-                    "description": field.get("description", ""),
-                    "type": field.get("type", "string")
-                }
-                for field in structured_data
-            ], indent=2)
+            # If the name or description contains any ask-keywords, assume we ask the user
+            should_ask = any(kw in name or kw in desc for kw in ASK_KEYWORDS)
             
-            classification_prompt = f"""You are analyzing data fields for a voice conversation system. For each field, decide whether it should be:
-1. "ask_user" - Information that should be directly asked from the user during the conversation
-2. "extract_from_conversation" - Information that should be extracted/inferred from the conversation after it ends
-
-Fields to classify:
-{fields_json}
-
-Guidelines:
-- Ask user for: contact details, preferences, specific choices, personal information, scheduling details
-- Extract from conversation: summaries, outcomes, sentiment, quality metrics, call analysis, key points discussed
-
-Return a JSON object with two arrays. You must respond with valid JSON format only:
-{{
-  "ask_user": ["field_name1", "field_name2"],
-  "extract_from_conversation": ["field_name3", "field_name4"]
-}}"""
-
-            response = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": classification_prompt}],
-                    temperature=0.1,
-                    max_tokens=1000
-                ),
-                timeout=10.0
-            )
-            
-            content = response.choices[0].message.content.strip()
-            logger.info(f"FIELD_CLASSIFICATION_RESPONSE | response={content}")
-            
-            # Parse JSON response
-            try:
-                classification = json.loads(content)
-                logger.info(f"FIELD_CLASSIFICATION_SUCCESS | ask_user={len(classification.get('ask_user', []))} | extract={len(classification.get('extract_from_conversation', []))}")
-                return classification
-            except json.JSONDecodeError as e:
-                logger.error(f"FIELD_CLASSIFICATION_JSON_ERROR | error={str(e)} | content={content}")
-                # Fallback to asking user for all fields
-                return {
-                    "ask_user": [field.get("name", "") for field in structured_data],
-                    "extract_from_conversation": []
-                }
-                
-        except Exception as e:
-            logger.error(f"FIELD_CLASSIFICATION_ERROR | error={str(e)}")
-            # Fallback to asking user for all fields
-            return {
-                "ask_user": [field.get("name", "") for field in structured_data],
-                "extract_from_conversation": []
-            }
+            if should_ask:
+                ask_user.append(field.get("name"))
+            else:
+                extract.append(field.get("name"))
+        
+        logger.info(f"DETERMINISTIC_FIELD_CLASSIFICATION | ask_user={len(ask_user)} | extract={len(extract)}")
+        return {
+            "ask_user": ask_user,
+            "extract_from_conversation": extract
+        }

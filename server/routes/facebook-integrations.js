@@ -23,15 +23,21 @@ router.get('/auth', (req, res) => {
 
     const scopes = [
         'pages_show_list',
-        'pages_read_engagement',
-        'pages_manage_metadata',
         'leads_retrieval',
-        'public_profile'
+        'ads_management',
+        'public_profile',
+        'email'
     ];
 
-    const authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${state}&scope=${scopes.join(',')}`;
+    const state = Buffer.from(JSON.stringify({
+        userId,
+        appId: FB_APP_ID,
+        appSecret: FB_APP_SECRET
+    })).toString('base64');
 
-    console.log('[Facebook Auth] Redirecting with User Credentials:', appId);
+    const authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${FB_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${state}&scope=${scopes.join(',')}`;
+
+    console.log('[Facebook Auth] Redirecting for Lead Ads automation:', FB_APP_ID);
     res.redirect(authUrl);
 });
 
@@ -66,13 +72,26 @@ router.get('/callback', async (req, res) => {
 
         if (!appId || !appSecret) throw new Error('Missing credentials in state');
 
-        // Exchange code for access token
+        // Exchange code for short-lived access token
         const tokenRes = await fetch(`https://graph.facebook.com/v18.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&client_secret=${appSecret}&code=${code}`);
         const tokenData = await tokenRes.json();
 
         if (tokenData.error) throw new Error(tokenData.error.message);
 
-        const accessToken = tokenData.access_token;
+        let accessToken = tokenData.access_token;
+
+        // Exchange short-lived token for a long-lived token (60 days)
+        try {
+            const longLivedRes = await fetch(`https://graph.facebook.com/v18.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${accessToken}`);
+            const longLivedData = await longLivedRes.json();
+            if (longLivedData.access_token) {
+                accessToken = longLivedData.access_token;
+                console.log('[Facebook Auth] Successfully exchanged for long-lived token');
+            }
+        } catch (llError) {
+            console.error('[Facebook Auth] Error exchanging for long-lived token:', llError);
+            // Continue with short-lived token if exchange fails
+        }
 
         // Get user info
         const userRes = await fetch(`https://graph.facebook.com/me?access_token=${accessToken}`);

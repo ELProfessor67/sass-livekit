@@ -24,6 +24,8 @@ export interface Workflow {
     account_id: string; // Which client account this belongs to
     account_name?: string; // For agency view
     is_starter: boolean;
+    assistant_id?: string | null;
+    is_active?: boolean;
 }
 
 // Mock data removed to ensure UI shows real data from Supabase

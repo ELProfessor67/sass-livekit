@@ -119,10 +119,10 @@ class CampaignExecutionEngine {
    */
   async processAllCalls(campaign) {
     console.log(`🔄 Starting queue-based processing for campaign: ${campaign.name}`);
-    
+
     // First, queue all contacts for this campaign
     await this.queueCampaignCalls(campaign);
-    
+
     // Process calls from the queue with proper rate limiting
     await this.processCallQueue(campaign);
   }
@@ -315,7 +315,7 @@ class CampaignExecutionEngine {
       for (const queueItem of queueItems) {
         try {
           console.log(`📞 Processing call ${processedCount + 1}/${maxCallsPerExecution}: ${queueItem.phone_number}`);
-          
+
           await this.executeCall(campaign, queueItem);
           processedCount++;
 
@@ -335,11 +335,11 @@ class CampaignExecutionEngine {
 
         } catch (callError) {
           console.error(`❌ Call failed for campaign ${campaign.name}:`, callError);
-          
+
           // Mark call as failed
           await supabase
             .from('campaign_calls')
-            .update({ 
+            .update({
               status: 'failed',
               completed_at: new Date().toISOString(),
               notes: callError.message
@@ -349,7 +349,7 @@ class CampaignExecutionEngine {
           // Mark queue item as failed
           await supabase
             .from('call_queue')
-            .update({ 
+            .update({
               status: 'failed',
               updated_at: new Date().toISOString()
             })
@@ -433,7 +433,7 @@ class CampaignExecutionEngine {
   async createFailedCallRecord(campaign, contact, errorMessage) {
     // Get tenant from campaign to ensure data isolation
     const tenant = campaign.tenant || 'main';
-    
+
     await supabase
       .from('campaign_calls')
       .insert({
@@ -504,7 +504,7 @@ class CampaignExecutionEngine {
   }
 
 
- 
+
 
   async executeCall(campaign, queueItem) {
     try {
@@ -557,9 +557,9 @@ class CampaignExecutionEngine {
       if (baseUrl && baseUrl.startsWith('http')) {
         try {
           const metadataUrl = `${baseUrl}/api/v1/campaigns/metadata/${roomName}`;
-          await fetch(metadataUrl, { 
-            method: 'POST', 
-            headers: { 'Content-Type': 'application/json' }, 
+          await fetch(metadataUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(campaignMetadata),
             timeout: 5000 // 5 second timeout
           });
@@ -603,12 +603,12 @@ class CampaignExecutionEngine {
       const jwt = await at.toJwt();
 
       const agentName = process.env.LK_AGENT_NAME || 'ai';
-      console.log('🔍 Agent configuration:', { 
-        LK_AGENT_NAME: process.env.LK_AGENT_NAME, 
-        agentName, 
-        fallback: 'ai' 
+      console.log('🔍 Agent configuration:', {
+        LK_AGENT_NAME: process.env.LK_AGENT_NAME,
+        agentName,
+        fallback: 'ai'
       });
-      
+
       // Simplified dispatch body
       const dispatchBody = {
         agent_name: agentName,
@@ -623,7 +623,7 @@ class CampaignExecutionEngine {
           outbound_trunk_id: outboundTrunkId,
         }),
       };
-      
+
       console.log('🔍 Dispatch configuration:', dispatchBody);
 
       // Use the AgentDispatchClient method
@@ -632,17 +632,47 @@ class CampaignExecutionEngine {
         room: roomName,
         metadata: dispatchBody.metadata
       });
-      
+
       const dispatchResult = await agentDispatchClient.createDispatch(roomName, agentName, {
         metadata: dispatchBody.metadata,
       });
-      
+
       console.log('✅ Agent dispatch successful:', dispatchResult);
 
-      console.log('✅ Agent dispatched successfully - Python agent will handle outbound calling');
+      // 7) INITIATE ACTUAL SIP CALL
+      console.log('📞 Initiating LiveKit SIP participant call for campaign:', {
+        outboundTrunkId,
+        toNumber,
+        roomName
+      });
+
+      const participant = await sipClient.createSipParticipant(
+        outboundTrunkId,
+        toNumber,
+        roomName,
+        {
+          participantIdentity: `outbound-${toNumber}-${Date.now()}`,
+          participantName: campaignCall.contact_name || 'AI Assistant',
+          metadata: JSON.stringify({
+            assistantId: campaign.assistant_id,
+            campaignId: campaign.id,
+            contactName: campaignCall.contact_name || '',
+            source: 'outbound',
+            callType: 'campaign',
+            call_sid: callSid
+          })
+        }
+      );
+
+      const callSid = participant.sipCallId || `sip-${Date.now()}`;
+      console.log('✅ LiveKit SIP call initiated successfully:', {
+        participantIdentity: participant.participantIdentity,
+        roomName: roomName,
+        callSid: callSid
+      });
 
       // 10) bookkeeping
-      await supabase.from('campaign_calls').update({ call_sid: callId, room_name: roomName }).eq('id', campaignCall.id);
+      await supabase.from('campaign_calls').update({ call_sid: callSid, room_name: roomName }).eq('id', campaignCall.id);
       await supabase.from('campaigns').update({
         // dials: campaign.dials + 1, // Removed - dials are updated in outbound-calls.js
         current_daily_calls: campaign.current_daily_calls + 1,
@@ -658,7 +688,7 @@ class CampaignExecutionEngine {
       // Mark call as failed
       await supabase
         .from('campaign_calls')
-        .update({ 
+        .update({
           status: 'failed',
           completed_at: new Date().toISOString(),
           notes: error.message
@@ -668,7 +698,7 @@ class CampaignExecutionEngine {
       // Mark queue item as failed
       await supabase
         .from('call_queue')
-        .update({ 
+        .update({
           status: 'failed',
           updated_at: new Date().toISOString()
         })

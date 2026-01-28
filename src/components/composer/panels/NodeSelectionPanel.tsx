@@ -4,11 +4,19 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { CaretRight, CaretLeft, X } from "phosphor-react";
-import { integrationActions, nodeCategories, getIntegrationIcon, IntegrationAction } from "../data/integrationActions";
+import {
+    integrationActions,
+    integrationTriggers,
+    triggerCategories,
+    actionCategories,
+    getIntegrationIcon,
+    IntegrationAction
+} from "../data/integrationActions";
 
 interface NodeSelectionPanelProps {
     onClose: () => void;
     onSelect: (nodeType: string, nodeData: any) => void;
+    context?: 'trigger' | 'action';
 }
 
 interface NodeCardProps {
@@ -40,11 +48,12 @@ interface IntegrationActionsViewProps {
     integration: string;
     onBack: () => void;
     onSelectAction: (action: IntegrationAction) => void;
+    isTrigger?: boolean;
 }
 
-function IntegrationActionsView({ integration, onBack, onSelectAction }: IntegrationActionsViewProps) {
+function IntegrationActionsView({ integration, onBack, onSelectAction, isTrigger = false }: IntegrationActionsViewProps) {
     const [searchQuery, setSearchQuery] = useState("");
-    const actions = integrationActions[integration] || [];
+    const actions = (isTrigger ? integrationTriggers : integrationActions)[integration] || [];
     const icon = getIntegrationIcon(integration, 28);
 
     const filteredActions = actions.filter(action =>
@@ -69,7 +78,7 @@ function IntegrationActionsView({ integration, onBack, onSelectAction }: Integra
                     </div>
                     <div>
                         <h3 className="text-base font-semibold text-foreground">{integration}</h3>
-                        <p className="text-xs text-muted-foreground font-medium">Select an action</p>
+                        <p className="text-xs text-muted-foreground font-medium">Select a {isTrigger ? 'trigger' : 'action'}</p>
                     </div>
                 </div>
             </div>
@@ -77,7 +86,7 @@ function IntegrationActionsView({ integration, onBack, onSelectAction }: Integra
             {/* Search */}
             <div className="p-4 border-b border-white/[0.08]">
                 <Input
-                    placeholder={`Search ${integration} actions...`}
+                    placeholder={`Search ${integration} ${isTrigger ? 'triggers' : 'actions'}...`}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="h-9 backdrop-blur-sm bg-white/[0.03] dark:bg-white/[0.05] border-white/[0.08]"
@@ -89,7 +98,7 @@ function IntegrationActionsView({ integration, onBack, onSelectAction }: Integra
                 <div className="p-4 space-y-1">
                     {filteredActions.length === 0 ? (
                         <div className="text-center py-8 text-muted-foreground text-sm font-medium">
-                            No actions found
+                            No {isTrigger ? 'triggers' : 'actions'} found
                         </div>
                     ) : (
                         filteredActions.map((action) => (
@@ -108,16 +117,15 @@ function IntegrationActionsView({ integration, onBack, onSelectAction }: Integra
     );
 }
 
-export function NodeSelectionPanel({ onClose, onSelect }: NodeSelectionPanelProps) {
+export function NodeSelectionPanel({ onClose, onSelect, context = 'action' }: NodeSelectionPanelProps) {
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedIntegration, setSelectedIntegration] = useState<string | null>(null);
 
     const handleIntegrationClick = (node: any) => {
-        if (node.type === 'condition' || node.type === 'facebook_leads' || node.type === 'router') {
+        if (node.type === 'condition' || node.type === 'router' || node.type === 'call_lead') {
             onSelect(node.type, {
                 label: node.label,
                 type: node.type,
-                trigger_type: node.type === 'facebook_leads' ? 'facebook_leads' : undefined,
                 branches: node.type === 'router' ? [] : undefined,
                 configured: false,
             });
@@ -128,10 +136,13 @@ export function NodeSelectionPanel({ onClose, onSelect }: NodeSelectionPanelProp
     };
 
     const handleActionSelect = (action: IntegrationAction) => {
-        let nodeType: string = 'action';
+        let nodeType: string = context === 'trigger' ? 'trigger' : 'action';
+
         if (selectedIntegration === 'Twilio') {
             nodeType = 'twilio_sms';
-        } else if (selectedIntegration === 'Trigger' || selectedIntegration === 'Facebook' || action.id === 'facebook_leads') {
+        } else if (selectedIntegration === 'Call Lead' || action.id === 'call_lead') {
+            nodeType = 'call_lead';
+        } else if (context === 'trigger' || action.id === 'facebook_leads') {
             nodeType = 'trigger';
         }
 
@@ -158,11 +169,14 @@ export function NodeSelectionPanel({ onClose, onSelect }: NodeSelectionPanelProp
                 integration={selectedIntegration}
                 onBack={handleBack}
                 onSelectAction={handleActionSelect}
+                isTrigger={context === 'trigger'}
             />
         );
     }
 
-    const filteredCategories = nodeCategories.map(category => ({
+    const categories = context === 'trigger' ? triggerCategories : actionCategories;
+
+    const filteredCategories = categories.map(category => ({
         ...category,
         nodes: category.nodes.filter(node =>
             node.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -175,7 +189,9 @@ export function NodeSelectionPanel({ onClose, onSelect }: NodeSelectionPanelProp
             {/* Header */}
             <div className="p-4 border-b border-white/[0.08]">
                 <div className="flex items-center justify-between mb-1">
-                    <h3 className="text-base font-semibold text-foreground tracking-tight">Add Action</h3>
+                    <h3 className="text-base font-semibold text-foreground tracking-tight">
+                        {context === 'trigger' ? 'Add Trigger' : 'Add Action'}
+                    </h3>
                     <Button
                         variant="ghost"
                         size="icon"
@@ -185,13 +201,15 @@ export function NodeSelectionPanel({ onClose, onSelect }: NodeSelectionPanelProp
                         <X className="w-4 h-4" />
                     </Button>
                 </div>
-                <p className="text-xs text-muted-foreground font-medium">What should happen next?</p>
+                <p className="text-xs text-muted-foreground font-medium">
+                    {context === 'trigger' ? 'How should this workflow start?' : 'What should happen next?'}
+                </p>
             </div>
 
             {/* Search */}
             <div className="p-4 border-b border-white/[0.08]">
                 <Input
-                    placeholder="Search actions..."
+                    placeholder={`Search ${context === 'trigger' ? 'triggers' : 'actions'}...`}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="h-9 backdrop-blur-sm bg-white/[0.03] dark:bg-white/[0.05] border-white/[0.08]"
@@ -203,7 +221,7 @@ export function NodeSelectionPanel({ onClose, onSelect }: NodeSelectionPanelProp
                 <div className="p-4 space-y-5">
                     {filteredCategories.length === 0 ? (
                         <div className="text-center py-8 text-muted-foreground text-sm font-medium">
-                            No actions found
+                            No {context === 'trigger' ? 'triggers' : 'actions'} found
                         </div>
                     ) : (
                         filteredCategories.map((category) => (

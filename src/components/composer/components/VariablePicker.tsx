@@ -127,7 +127,7 @@ export function VariablePicker({ onSelect, customVariables = [], children }: Var
                         {category.id === 'call_data' ? <Microphone size={20} weight="fill" /> : <Code size={20} weight="bold" />}
                       </div>
                       <span className="text-[15px] font-bold text-foreground/80 tracking-tight">
-                        {category.id === 'call_data' ? `1. End Of Call Report` : category.label}
+                        {category.id === 'call_data' ? `1. End Of Call` : category.label}
                       </span>
                     </div>
                     {expandedCategories[category.id] ? <CaretUp size={18} className="text-muted-foreground/40" /> : <CaretDown size={18} className="text-muted-foreground/40" />}

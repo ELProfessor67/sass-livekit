@@ -54,13 +54,20 @@ def extract_name_from_summary(summary: str) -> Optional[str]:
 def extract_did_from_room(room_name: str) -> Optional[str]:
     """Extract DID (phone number) from room name for inbound calls."""
     try:
-        # Handle patterns like "inbound-_+12017656193_tVG5An7aEcnF"
+        # 1. Handle prefixed patterns: "inbound-_+12017656193_..."
         if room_name.startswith("inbound-"):
             parts = room_name.split("_")
             if len(parts) >= 2:
                 did_part = parts[1]
                 if did_part.startswith("+"):
                     return did_part
+        
+        # 2. Handle prefix-less or other patterns: "+12017656193_..."
+        if room_name.startswith("+"):
+            parts = room_name.split("_")
+            if len(parts) >= 1:
+                return parts[0]
+                
         return None
     except Exception:
         return None

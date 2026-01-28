@@ -16,7 +16,7 @@ import { TwilioCredentialsService, type UserTwilioCredentials } from "@/lib/twil
 import { CalendarCredentialsService, type UserCalendarCredentials, type CalendarCredentialsInput } from "@/lib/calendar-credentials";
 import { WhatsAppIntegrationCard } from "./WhatsAppIntegrationCard";
 import { WhatsAppCredentialsService, type UserWhatsAppCredentials } from "@/lib/whatsapp-credentials";
-import { SlackIcon, FacebookIcon } from "@/components/composer/nodes/IntegrationIcons";
+import { SlackIcon, FacebookIcon, HubSpotIcon } from "@/components/composer/nodes/IntegrationIcons";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 
 const integrations = [
@@ -44,13 +44,12 @@ const integrations = [
     id: "hubspot",
     name: "HubSpot",
     description: "Sync HubSpot contacts and log call activity automatically",
-    icon: Building2,
+    icon: HubSpotIcon,
     status: "available",
     category: "CRM",
     brandColor: "#ff7a59"
-  },
-  {
-    id: "salesforce", 
+  }, {
+    id: "salesforce",
     name: "Salesforce",
     description: "Connect your Salesforce CRM to sync contacts and opportunities",
     icon: Database,
@@ -63,13 +62,13 @@ const integrations = [
     name: "Zoho CRM",
     description: "Integrate with Zoho CRM for seamless contact management",
     icon: Users,
-    status: "available", 
+    status: "available",
     category: "CRM",
     brandColor: "#e42527"
   },
   {
     id: "gohighlevel",
-    name: "GoHighLevel", 
+    name: "GoHighLevel",
     description: "All-in-one CRM and marketing automation platform",
     icon: Zap,
     status: "available",
@@ -83,7 +82,7 @@ const integrations = [
     description: "Cloud communications platform for voice, SMS, and video",
     icon: Phone,
     status: "connected",
-    category: "Communication", 
+    category: "Communication",
     brandColor: "#f22f46"
   },
   {
@@ -135,6 +134,7 @@ export function ApiIntegrations() {
   const [whatsappIntegrations, setWhatsappIntegrations] = useState<any[]>([]);
   const [slackConnections, setSlackConnections] = useState<any[]>([]);
   const [facebookConnections, setFacebookConnections] = useState<any[]>([]);
+  const [hubspotConnections, setHubSpotConnections] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showTwilioDetails, setShowTwilioDetails] = useState(false);
   const [showCalendarDetails, setShowCalendarDetails] = useState(false);
@@ -152,6 +152,7 @@ export function ApiIntegrations() {
     loadWhatsAppCredentials();
     loadSlackConnections();
     loadFacebookConnections();
+    loadHubSpotConnections();
   }, [user]);
 
   // Handle OAuth callback parameters
@@ -206,6 +207,28 @@ export function ApiIntegrations() {
       searchParams.delete('provider');
       searchParams.delete('phase');
       setSearchParams(searchParams, { replace: true });
+      searchParams.delete('phase');
+      setSearchParams(searchParams, { replace: true });
+    } else if (status === 'connected' && provider === 'hubspot') {
+      toast({
+        title: "HubSpot connected",
+        description: "Your HubSpot account has been connected successfully.",
+      });
+      loadHubSpotConnections();
+      searchParams.delete('status');
+      searchParams.delete('provider');
+      setSearchParams(searchParams, { replace: true });
+    } else if (status === 'error' && provider === 'hubspot') {
+      const message = searchParams.get('message');
+      toast({
+        title: "Connection failed",
+        description: message ? decodeURIComponent(message) : "Failed to connect HubSpot. Please try again.",
+        variant: "destructive",
+      });
+      searchParams.delete('status');
+      searchParams.delete('provider');
+      searchParams.delete('message');
+      setSearchParams(searchParams, { replace: true });
     }
   }, [searchParams, setSearchParams, toast]);
 
@@ -231,12 +254,23 @@ export function ApiIntegrations() {
     }
   };
 
+  const loadHubSpotConnections = async () => {
+    if (!user?.id) return;
+    try {
+      const res = await fetch(`/api/v1/connections?provider=hubspot&userId=${user.id}`);
+      const data = await res.json();
+      setHubSpotConnections(data.connections || []);
+    } catch (error) {
+      console.error("Error loading HubSpot connections:", error);
+    }
+  };
+
   const loadTwilioCredentials = async () => {
     try {
       setIsLoading(true);
       const credentials = await TwilioCredentialsService.getAllCredentials();
       console.log("Loaded Twilio credentials:", credentials);
-      
+
       const twilioIntegrations: TwilioIntegration[] = credentials.map(cred => ({
         id: cred.id,
         name: "Twilio",
@@ -283,7 +317,7 @@ export function ApiIntegrations() {
     try {
       const credentials = await WhatsAppCredentialsService.getAllCredentials();
       console.log("Loaded WhatsApp credentials:", credentials);
-      
+
       const whatsappIntegrations = credentials.map(cred => ({
         id: cred.id,
         name: "WhatsApp Business",
@@ -317,10 +351,10 @@ export function ApiIntegrations() {
     const date = new Date(dateString);
     const now = new Date();
     const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
-    
+
     if (diffInHours < 1) return "Just now";
     if (diffInHours < 24) return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
-    
+
     const diffInDays = Math.floor(diffInHours / 24);
     return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
   };
@@ -360,23 +394,29 @@ export function ApiIntegrations() {
         status: facebookConnections.length > 0 ? "connected" : "available"
       };
     }
+    if (integration.id === "hubspot") {
+      return {
+        ...integration,
+        status: hubspotConnections.length > 0 ? "connected" : "available"
+      };
+    }
     return integration;
   });
 
-  const filteredIntegrations = activeCategory === "all" 
-    ? updatedIntegrations 
+  const filteredIntegrations = activeCategory === "all"
+    ? updatedIntegrations
     : updatedIntegrations.filter(integration => {
-        const categoryMatch = integration.category.toLowerCase() === activeCategory.toLowerCase();
-        // Handle "Leads" category
-        if (activeCategory === "leads") {
-          return integration.category === "Leads";
-        }
-        return categoryMatch;
-      });
+      const categoryMatch = integration.category.toLowerCase() === activeCategory.toLowerCase();
+      // Handle "Leads" category
+      if (activeCategory === "leads") {
+        return integration.category === "Leads";
+      }
+      return categoryMatch;
+    });
 
   const getCategoryCount = (category: string) => {
-    return category === "all" 
-      ? updatedIntegrations.length 
+    return category === "all"
+      ? updatedIntegrations.length
       : updatedIntegrations.filter(integration => integration.category.toLowerCase() === category).length;
   };
 
@@ -399,11 +439,11 @@ export function ApiIntegrations() {
       console.log("Saving credentials...");
       await TwilioCredentialsService.saveCredentials(data);
       console.log("Credentials saved successfully");
-      
+
       console.log("Loading Twilio credentials...");
       await loadTwilioCredentials();
       console.log("Twilio credentials loaded");
-      
+
       toast({
         title: "Twilio connected",
         description: "Your Twilio account has been connected successfully. A main trunk will be created automatically.",
@@ -423,7 +463,7 @@ export function ApiIntegrations() {
     try {
       await TwilioCredentialsService.deleteCredentials(id);
       await loadTwilioCredentials();
-      
+
       toast({
         title: "Integration removed",
         description: "The Twilio integration has been removed successfully.",
@@ -441,13 +481,13 @@ export function ApiIntegrations() {
   useEffect(() => {
     console.log("twilioIntegrations updated:", twilioIntegrations);
   }, [twilioIntegrations]);
-  
+
 
   const handleRefreshIntegration = async (id: string) => {
     try {
       await TwilioCredentialsService.setActiveCredentials(id);
       await loadTwilioCredentials();
-      
+
       toast({
         title: "Integration refreshed",
         description: "The Twilio integration has been set as active.",
@@ -467,7 +507,7 @@ export function ApiIntegrations() {
     try {
       await CalendarCredentialsService.saveCredentials(data);
       await loadCalendarCredentials();
-      
+
       toast({
         title: "Calendar connected",
         description: "Your calendar integration has been connected successfully.",
@@ -487,7 +527,7 @@ export function ApiIntegrations() {
     try {
       await CalendarCredentialsService.deleteCredentials(id);
       await loadCalendarCredentials();
-      
+
       toast({
         title: "Integration removed",
         description: "The calendar integration has been removed successfully.",
@@ -506,7 +546,7 @@ export function ApiIntegrations() {
     try {
       await CalendarCredentialsService.setActiveCredentials(id);
       await loadCalendarCredentials();
-      
+
       toast({
         title: "Integration refreshed",
         description: "The calendar integration has been set as active.",
@@ -527,19 +567,19 @@ export function ApiIntegrations() {
       setShowTwilioDetails(!showTwilioDetails);
       return;
     }
-    
+
     if (integration.id === "calcom") {
       // Toggle calendar details visibility
       setShowCalendarDetails(!showCalendarDetails);
       return;
     }
-    
+
     if (integration.id === "whatsapp") {
       // Toggle WhatsApp details visibility
       setShowWhatsappDetails(!showWhatsappDetails);
       return;
     }
-    
+
     if (integration.id === "slack") {
       // Redirect to Slack OAuth
       if (!user?.id) {
@@ -553,7 +593,7 @@ export function ApiIntegrations() {
       window.location.href = `/api/v1/connections/slack/auth?userId=${user.id}`;
       return;
     }
-    
+
     if (integration.id === "facebook") {
       // Redirect to Facebook OAuth Phase 1 (login only)
       if (!user?.id) {
@@ -567,7 +607,35 @@ export function ApiIntegrations() {
       window.location.href = `/api/v1/connections/facebook/auth?userId=${user.id}`;
       return;
     }
-    
+
+    if (integration.id === "gohighlevel") {
+      // Redirect to GoHighLevel OAuth
+      if (!user?.id) {
+        toast({
+          title: "Authentication required",
+          description: "Please log in to connect GoHighLevel",
+          variant: "destructive",
+        });
+        return;
+      }
+      window.location.href = `/api/v1/connections/gohighlevel/auth?userId=${user.id}`;
+      window.location.href = `/api/v1/connections/gohighlevel/auth?userId=${user.id}`;
+      return;
+    }
+
+    if (integration.id === "hubspot") {
+      if (!user?.id) {
+        toast({
+          title: "Authentication required",
+          description: "Please log in to connect HubSpot",
+          variant: "destructive",
+        });
+        return;
+      }
+      window.location.href = `/api/v1/connections/hubspot/auth?userId=${user.id}`;
+      return;
+    }
+
     // For other integrations, show coming soon or redirect
     console.log(`Connecting to ${integration.name}`);
     toast({
@@ -579,19 +647,19 @@ export function ApiIntegrations() {
   const IntegrationCard = ({ integration }: { integration: typeof integrations[0] }) => {
     const IconComponent = integration.icon;
     const isReactComponent = typeof IconComponent === 'function' && IconComponent.prototype?.isReactComponent === undefined;
-    
+
     // Check if integration is actually connected
     const isConnected = integration.status === "connected";
-    
+
     // For Facebook, check if any connection needs page permissions
-    const facebookNeedsPages = integration.id === "facebook" && 
-      facebookConnections.length > 0 && 
+    const facebookNeedsPages = integration.id === "facebook" &&
+      facebookConnections.length > 0 &&
       facebookConnections.some(conn => !hasPagePermissions(conn));
-    const facebookHasPages = integration.id === "facebook" && 
-      facebookConnections.length > 0 && 
+    const facebookHasPages = integration.id === "facebook" &&
+      facebookConnections.length > 0 &&
       facebookConnections.some(conn => hasPagePermissions(conn));
 
-    
+
     // Debug logging for integrations
     if (integration.id === "twilio") {
       console.log("Twilio integration debug:", {
@@ -601,7 +669,7 @@ export function ApiIntegrations() {
         isLoading
       });
     }
-    
+
     if (integration.id === "calcom") {
       console.log("Calendar integration debug:", {
         calendarIntegrationsLength: calendarIntegrations.length,
@@ -610,7 +678,7 @@ export function ApiIntegrations() {
         isLoading
       });
     }
-    
+
     const handleFacebookPageConnect = () => {
       if (!user?.id) {
         toast({
@@ -620,33 +688,33 @@ export function ApiIntegrations() {
         });
         return;
       }
-      
+
       // Find the first connection that doesn't have page permissions
       const connectionWithoutPages = facebookConnections.find(conn => !hasPagePermissions(conn));
       if (connectionWithoutPages) {
         window.location.href = `/api/v1/connections/facebook/pages/auth?userId=${user.id}&connectionId=${connectionWithoutPages.id}`;
       }
     };
-    
+
     return (
       <Card className="group relative border-border/60 bg-card/50 backdrop-blur-sm hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 hover:-translate-y-1 h-full">
         <div className="p-4 h-full flex flex-col">
           {/* Header with Icon and Status */}
           <div className="flex items-start justify-between mb-3">
-            <div 
+            <div
               className="w-8 h-8 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-300"
               style={{ backgroundColor: `${integration.brandColor}15` }}
             >
               {isReactComponent ? (
                 <IconComponent size={16} style={{ color: integration.brandColor }} />
               ) : (
-                <IconComponent 
-                  className="w-4 h-4" 
+                <IconComponent
+                  className="w-4 h-4"
                   style={{ color: integration.brandColor }}
                 />
               )}
             </div>
-            
+
             {isConnected && (
               <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs px-1.5 py-0.5">
                 <CheckCircle2 className="w-2.5 h-2.5 mr-1" />
@@ -654,20 +722,20 @@ export function ApiIntegrations() {
               </Badge>
             )}
           </div>
-          
+
           {/* Content */}
           <div className="flex-1 mb-4">
-          <h3
-  className="font-semibold text-foreground text-sm mb-2 group-hover:text-primary transition-colors leading-tight"
-  onClick={integration.id === "twilio" ? () => handleIntegrationClick(integration) : undefined}
->
-  {integration.name}
-</h3>
+            <h3
+              className="font-semibold text-foreground text-sm mb-2 group-hover:text-primary transition-colors leading-tight"
+              onClick={integration.id === "twilio" ? () => handleIntegrationClick(integration) : undefined}
+            >
+              {integration.name}
+            </h3>
 
             <p className="text-muted-foreground text-xs leading-relaxed line-clamp-2">
               {integration.description}
             </p>
-            
+
             {/* Facebook: Show warning if connected but pages not connected */}
             {integration.id === "facebook" && isConnected && facebookNeedsPages && (
               <div className="mt-2 p-2 rounded-md bg-amber-500/10 border border-amber-500/20">
@@ -680,7 +748,7 @@ export function ApiIntegrations() {
               </div>
             )}
           </div>
-          
+
           {/* Action Button */}
           <div className="mt-auto space-y-2">
             {integration.id === "twilio" ? (
@@ -707,7 +775,7 @@ export function ApiIntegrations() {
               </CalendarAuthDialog>
             ) : integration.id === "facebook" && isConnected && facebookNeedsPages ? (
               // Show page connection button if Facebook is connected but pages aren't
-              <Button 
+              <Button
                 variant="default"
                 className="w-full text-sm h-8 relative z-10 flex items-center justify-center gap-1.5 bg-primary hover:bg-primary/90"
                 size="sm"
@@ -717,7 +785,7 @@ export function ApiIntegrations() {
                 Connect Pages
               </Button>
             ) : (
-              <Button 
+              <Button
                 variant={isConnected ? "outline" : "default"}
                 className="w-full text-sm h-8 relative z-10 flex items-center justify-center gap-1.5"
                 size="sm"
@@ -786,12 +854,12 @@ export function ApiIntegrations() {
           )}
         </TabsContent>
       </Tabs>
-      
+
       {/* Twilio Integration Details - Only show when toggled */}
       {showTwilioDetails && twilioIntegrations.length > 0 && (
         <div className="mt-8 transition-all duration-300 ease-in-out">
           <h3 className="text-lg font-semibold text-foreground mb-4">Connected Twilio Accounts</h3>
-          <TwilioIntegrationCard 
+          <TwilioIntegrationCard
             integrations={twilioIntegrations}
             onSuccess={handleTwilioConnect}
             onRemove={handleRemoveIntegration}
@@ -799,12 +867,12 @@ export function ApiIntegrations() {
           />
         </div>
       )}
-      
+
       {/* Calendar Integration Details - Only show when toggled */}
       {showCalendarDetails && calendarIntegrations.length > 0 && (
         <div className="mt-8 transition-all duration-300 ease-in-out">
           <h3 className="text-lg font-semibold text-foreground mb-4">Connected Calendar Accounts</h3>
-          <CalendarIntegrationCard 
+          <CalendarIntegrationCard
             integrations={calendarIntegrations}
             onSuccess={handleCalendarConnect}
             onRemove={handleRemoveCalendarIntegration}
@@ -812,20 +880,20 @@ export function ApiIntegrations() {
           />
         </div>
       )}
-      
+
       {/* WhatsApp Integration Details - Only show when toggled */}
       {showWhatsappDetails && whatsappIntegrations.length > 0 && (
         <div className="mt-8 transition-all duration-300 ease-in-out">
           <h3 className="text-lg font-semibold text-foreground mb-4">Connected WhatsApp Accounts</h3>
-          <WhatsAppIntegrationCard 
+          <WhatsAppIntegrationCard
             integrations={whatsappIntegrations}
             onIntegrationsChange={setWhatsappIntegrations}
           />
         </div>
       )}
-      
+
       <SecurityCard />
-      
+
       <div className="mb-20"></div>
     </div>
   );

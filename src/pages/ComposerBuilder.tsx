@@ -30,15 +30,25 @@ import {
     Plus,
     Export,
     GridFour,
-    HandGrabbing
+    HandGrabbing,
+    User,
+    CaretDown
 } from 'phosphor-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
 import { cn } from '@/lib/utils';
 import { ThemeCard } from '@/components/theme/ThemeCard';
 import DashboardLayout from "@/layout/DashboardLayout";
 import { ThemeContainer } from '@/components/theme';
+import { supabase } from '@/integrations/supabase/client';
 
 // Custom components
 import { TriggerNode } from '@/components/composer/nodes/TriggerNode';
@@ -46,12 +56,14 @@ import { ActionNode } from '@/components/composer/nodes/ActionNode';
 import { ConditionNode } from '@/components/composer/nodes/ConditionNode';
 import { TwilioNode } from '@/components/composer/nodes/TwilioNode';
 import { RouterNode } from '@/components/composer/nodes/RouterNode';
+import { CallLeadNode } from '@/components/composer/nodes/CallLeadNode';
 import { SmartEdge } from '@/components/composer/edges/SmartEdge';
 import { useLinearLayout } from '@/components/composer/hooks/useLinearLayout';
 import { NodeSelectionPanel } from '@/components/composer/panels/NodeSelectionPanel';
 import { NodeConfigPanel } from '@/components/composer/panels/NodeConfigPanel';
 import { EdgeConfigPanel } from '@/components/composer/panels/EdgeConfigPanel';
 import { WorkflowStatusBadge } from '@/components/composer/WorkflowStatusBadge';
+import { fetchAssistants } from '@/lib/api/assistants/fetchAssistants';
 import { useWorkflows, Workflow } from '@/hooks/useWorkflows';
 
 const nodeTypes = {
@@ -60,6 +72,7 @@ const nodeTypes = {
     condition: ConditionNode,
     router: RouterNode,
     twilio_sms: TwilioNode,
+    call_lead: CallLeadNode,
 } as any;
 
 const edgeTypes = {
@@ -102,6 +115,22 @@ export default function ComposerBuilder() {
     const [isStructuredLayout, setIsStructuredLayout] = useState(true); // Default to structured view
     const reactFlowInstance = useRef<ReactFlowInstance | null>(null);
 
+    const [selectedAssistantId, setSelectedAssistantId] = useState<string | null>(null);
+    const [assistants, setAssistants] = useState<any[]>([]);
+
+    // Fetch assistants
+    useEffect(() => {
+        const loadAssistants = async () => {
+            try {
+                const res = await fetchAssistants();
+                setAssistants(res.assistants);
+            } catch (error) {
+                console.error("Error loading assistants:", error);
+            }
+        };
+        loadAssistants();
+    }, []);
+
     // Sync state with fetched workflow
     useEffect(() => {
         if (workflow && workflow.id === id) {
@@ -110,6 +139,9 @@ export default function ComposerBuilder() {
             }
             if (workflow.edges) {
                 setEdges(workflow.edges);
+            }
+            if (workflow.assistant_id) {
+                setSelectedAssistantId(workflow.assistant_id);
             }
         }
     }, [workflow, id, setNodes, setEdges]);
@@ -259,11 +291,14 @@ export default function ComposerBuilder() {
         if (!id) return;
         setIsSaving(true);
         try {
+            const status = statusOverride || (workflow.status as any) || 'draft';
             await updateWorkflow.mutateAsync({
                 id,
                 nodes,
                 edges,
-                status: statusOverride || (workflow.status as any) || 'draft'
+                assistant_id: selectedAssistantId,
+                status,
+                is_active: status === 'active'
             });
         } catch (error) {
             console.error('Failed to save workflow:', error);
@@ -532,6 +567,32 @@ export default function ComposerBuilder() {
                                 </>
                             )}
                         </Button>
+
+                        <div className="w-px h-4 bg-border/60 mx-1" />
+
+                        <Select
+                            value={selectedAssistantId || "none"}
+                            onValueChange={(val) => setSelectedAssistantId(val === "none" ? null : val)}
+                        >
+                            <SelectTrigger className="h-8 w-[180px] bg-white/[0.03] border-white/[0.05] text-[10px] uppercase font-bold tracking-wider rounded-lg">
+                                <div className="flex items-center gap-2">
+                                    <User size={14} weight="fill" className="text-primary" />
+                                    <SelectValue placeholder="Assign Assistant" />
+                                </div>
+                            </SelectTrigger>
+                            <SelectContent className="bg-background/95 backdrop-blur-xl border-white/[0.08]">
+                                <SelectItem value="none" className="text-[10px] uppercase font-bold tracking-wider">No Assistant</SelectItem>
+                                {assistants.map((assistant) => (
+                                    <SelectItem
+                                        key={assistant.id}
+                                        value={assistant.id}
+                                        className="text-[10px] uppercase font-bold tracking-wider"
+                                    >
+                                        {assistant.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                         <Button
                             variant="ghost"
                             size="icon"
@@ -661,6 +722,7 @@ export default function ComposerBuilder() {
                                 <NodeSelectionPanel
                                     onClose={() => { setShowAddMenu(false); setAddContext(null); }}
                                     onSelect={handleAddNode}
+                                    context={!addContext?.sourceId ? 'trigger' : 'action'}
                                 />
                             ) : selectedNode ? (
                                 <div className="h-full flex flex-col">
@@ -675,6 +737,7 @@ export default function ComposerBuilder() {
                                     <ScrollArea className="flex-1 p-6">
                                         <NodeConfigPanel
                                             node={selectedNode}
+                                            workflowAssistantId={selectedAssistantId}
                                             onUpdate={(id, data) => {
                                                 setNodes((nds) => nds.map((node) =>
                                                     node.id === id ? { ...node, data: { ...node.data, ...data } } : node
