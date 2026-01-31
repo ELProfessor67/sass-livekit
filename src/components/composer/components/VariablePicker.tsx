@@ -10,15 +10,16 @@ import { cn } from '@/lib/utils';
 interface VariablePickerProps {
   onSelect: (variable: string) => void;
   customVariables?: string[]; // Custom variables from trigger node
+  triggerType?: string; // Type of trigger (e.g., 'hubspot_contact_created')
   children?: React.ReactNode;
 }
 
-export function VariablePicker({ onSelect, customVariables = [], children }: VariablePickerProps) {
+export function VariablePicker({ onSelect, customVariables = [], triggerType, children }: VariablePickerProps) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({ 'call_data': true });
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({ 'call_data': true, 'hubspot_contact': true, 'facebook_lead': true });
 
-  const registry = getVariableRegistry();
+  const registry = getVariableRegistry(triggerType);
 
   // Enhance registry with custom variables
   const enhancedRegistry = registry.map(category => {
@@ -73,88 +74,97 @@ export function VariablePicker({ onSelect, customVariables = [], children }: Var
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 w-8 p-0 border-primary/20 hover:bg-primary/5 hover:border-primary/40"
+            className="h-7 w-7 p-0 border-dashed border-primary/30 hover:bg-primary/5 hover:border-primary/50 transition-all rounded-md"
             title="Insert Variable"
           >
-            <Code size={14} weight="bold" className="text-primary" />
+            <Code size={14} weight="bold" className="text-primary/80" />
           </Button>
         )}
       </PopoverTrigger>
       <PopoverContent
-        className="w-[500px] p-0 shadow-[0_20px_50px_rgba(0,0,0,0.5)] border-white/10 rounded-2xl overflow-hidden backdrop-blur-2xl"
+        className="w-[340px] p-0 shadow-2xl border-border/10 rounded-xl overflow-hidden backdrop-blur-3xl"
         align="start"
         side="bottom"
-        sideOffset={4}
+        sideOffset={8}
       >
-        <div className="flex flex-col h-[550px] bg-black/80">
+        <div className="flex flex-col bg-background/95">
           {/* Header */}
-          <div className="px-5 py-4 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-foreground/90">Data Selector</h3>
-            <div className="flex items-center gap-4 text-muted-foreground/60">
-              <CornersOut size={18} className="cursor-pointer hover:text-foreground transition-colors" />
-              <Browsers size={18} className="cursor-pointer hover:text-foreground transition-colors" />
-              <Minus size={18} className="cursor-pointer hover:text-foreground transition-colors" />
+          <div className="px-4 py-3 flex items-center justify-between border-b border-border/10 bg-muted/20">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground/80">Data Selector</h3>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20">
+                {registry.reduce((acc, cat) => acc + cat.variables.length, 0)} Vars
+              </span>
             </div>
           </div>
 
           {/* Search */}
-          <div className="px-5 pb-4">
+          <div className="p-2 border-b border-border/10 bg-background/50">
             <div className="relative group">
               <MagnifyingGlass
-                size={18}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/40 group-focus-within:text-primary transition-colors"
+                size={14}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50 group-focus-within:text-primary transition-colors"
               />
               <Input
-                placeholder="Search"
+                placeholder="Search variables..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 h-10 text-sm bg-muted/20 border-border/40 hover:border-border/60 focus:border-primary/50 focus:ring-0 rounded-lg transition-all"
+                className="pl-8 h-8 text-xs bg-muted/30 border-transparent hover:bg-muted/50 focus:bg-background focus:border-primary/20 transition-all rounded-lg"
               />
             </div>
           </div>
 
           {/* Content */}
-          <ScrollArea className="flex-1">
-            <div className="px-2 pb-6">
+          <ScrollArea className="h-72 overscroll-contain">
+            <div className="p-2 space-y-1">
               {filteredRegistry.map((category) => (
-                <div key={category.id} className="mb-2">
+                <div key={category.id} className="rounded-lg overflow-hidden border border-border/5 bg-white/[0.02]">
                   <button
                     onClick={() => toggleCategory(category.id)}
-                    className="w-full flex items-center justify-between p-4 px-5 hover:bg-white/5 rounded-xl transition-all duration-200 group"
+                    className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/30 transition-colors group"
                   >
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-primary/80 group-hover:text-primary transition-colors border border-white/5">
-                        {category.id === 'call_data' ? <Microphone size={20} weight="fill" /> : <Code size={20} weight="bold" />}
+                    <div className="flex items-center gap-2.5">
+                      <div className={cn(
+                        "w-5 h-5 rounded-md flex items-center justify-center text-[10px]",
+                        category.id === 'call_data' ? "bg-indigo-500/10 text-indigo-400" :
+                          category.id === 'custom_variables' ? "bg-amber-500/10 text-amber-400" :
+                            "bg-primary/10 text-primary"
+                      )}>
+                        {category.id === 'call_data' ? <Microphone weight="fill" /> :
+                          category.id === 'custom_variables' ? <Code weight="bold" /> :
+                            <Browsers weight="duotone" />}
                       </div>
-                      <span className="text-[15px] font-bold text-foreground/80 tracking-tight">
-                        {category.id === 'call_data' ? `1. End Of Call` : category.label}
+                      <span className="text-xs font-semibold text-foreground/90">
+                        {category.label}
                       </span>
                     </div>
-                    {expandedCategories[category.id] ? <CaretUp size={18} className="text-muted-foreground/40" /> : <CaretDown size={18} className="text-muted-foreground/40" />}
+                    {expandedCategories[category.id] ?
+                      <CaretUp size={12} className="text-muted-foreground/50" /> :
+                      <CaretDown size={12} className="text-muted-foreground/50" />
+                    }
                   </button>
 
                   {expandedCategories[category.id] && (
-                    <div className="mt-1 space-y-1 px-4">
+                    <div className="px-1 py-1 bg-black/20 space-y-0.5">
                       {category.variables.map((variable) => (
-                        <div
+                        <button
                           key={variable.key}
-                          className={cn(
-                            "group flex items-center justify-between px-14 py-4 rounded-xl transition-all duration-200",
-                            "hover:bg-white/5 cursor-pointer border border-transparent hover:border-white/5"
-                          )}
+                          className="w-full text-left group flex items-center justify-between px-2.5 py-1.5 rounded-md hover:bg-primary/10 hover:text-primary transition-all cursor-pointer"
                           onClick={() => handleVariableSelect(variable)}
                         >
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-[14px] font-bold text-foreground/50">{variable.label} :</span>
-                            <span className="text-[14px] font-bold text-blue-500/90 tracking-tight">
+                          <div className="flex flex-col gap-0.5 overflow-hidden">
+                            <span className="text-[11px] font-medium text-foreground/70 group-hover:text-primary truncate">
+                              {variable.label}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground/40 font-mono truncate group-hover:text-primary/60">
                               {variable.example || `{${variable.key}}`}
                             </span>
                           </div>
 
-                          <div className="opacity-0 group-hover:opacity-100 px-4 py-1.5 text-xs font-bold text-primary transition-all bg-primary/10 rounded-lg">
-                            Insert
+                          <div className="opacity-0 group-hover:opacity-100 p-1 text-primary">
+                            <CornersOut size={12} />
                           </div>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -162,9 +172,9 @@ export function VariablePicker({ onSelect, customVariables = [], children }: Var
               ))}
 
               {filteredRegistry.length === 0 && (
-                <div className="text-center py-12">
-                  <p className="text-sm text-muted-foreground/50 italic">
-                    No matching variables found
+                <div className="text-center py-8">
+                  <p className="text-xs text-muted-foreground/40 italic">
+                    No variables found
                   </p>
                 </div>
               )}

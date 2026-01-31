@@ -636,7 +636,7 @@ router.get('/hubspot/auth', (req, res) => {
     return res.status(500).send('HubSpot Client ID is not configured on the server.');
   }
 
-  const scopes = 'crm.objects.contacts.read crm.objects.companies.read crm.objects.deals.read crm.objects.leads.read crm.objects.line_items.read crm.objects.products.read crm.objects.appointments.read crm.lists.read tickets conversations.read oauth';
+  const scopes = 'crm.objects.contacts.read crm.objects.contacts.write crm.objects.companies.read crm.objects.companies.write crm.objects.deals.read crm.objects.deals.write crm.objects.leads.read crm.objects.leads.write crm.objects.line_items.read crm.objects.products.read crm.objects.appointments.read crm.lists.read crm.lists.write tickets conversations.read oauth';
   const redirectUri = `${process.env.BACKEND_URL}/api/v1/connections/hubspot/callback`;
 
   // Note: HubSpot doesn't strictly require state but it's good practice. We can pass userId in state.

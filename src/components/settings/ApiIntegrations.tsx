@@ -644,6 +644,52 @@ export function ApiIntegrations() {
     });
   };
 
+  const handleDisconnect = async (provider: string) => {
+    if (!user?.id) return;
+
+    try {
+      // Find all connections for this provider
+      let connections: any[] = [];
+      if (provider === 'slack') connections = slackConnections;
+      if (provider === 'facebook') connections = facebookConnections;
+      if (provider === 'hubspot') connections = hubspotConnections;
+
+      if (connections.length === 0) {
+        toast({
+          title: "No connection found",
+          description: `No active ${provider} connection to disconnect.`,
+        });
+        return;
+      }
+
+      // Disconnect each connection
+      const deletePromises = connections.map(conn =>
+        fetch(`/api/v1/connections/${conn.id}?userId=${user.id}`, {
+          method: 'DELETE'
+        })
+      );
+
+      await Promise.all(deletePromises);
+
+      // Reload connections
+      if (provider === 'slack') await loadSlackConnections();
+      if (provider === 'facebook') await loadFacebookConnections();
+      if (provider === 'hubspot') await loadHubSpotConnections();
+
+      toast({
+        title: "Disconnected",
+        description: `Successfully disconnected ${provider.charAt(0).toUpperCase() + provider.slice(1)}.`,
+      });
+    } catch (error) {
+      console.error(`Error disconnecting ${provider}:`, error);
+      toast({
+        title: "Disconnection failed",
+        description: `Failed to disconnect ${provider}. Please try again.`,
+        variant: "destructive",
+      });
+    }
+  };
+
   const IntegrationCard = ({ integration }: { integration: typeof integrations[0] }) => {
     const IconComponent = integration.icon;
     const isReactComponent = typeof IconComponent === 'function' && IconComponent.prototype?.isReactComponent === undefined;
@@ -775,34 +821,56 @@ export function ApiIntegrations() {
               </CalendarAuthDialog>
             ) : integration.id === "facebook" && isConnected && facebookNeedsPages ? (
               // Show page connection button if Facebook is connected but pages aren't
-              <Button
-                variant="default"
-                className="w-full text-sm h-8 relative z-10 flex items-center justify-center gap-1.5 bg-primary hover:bg-primary/90"
-                size="sm"
-                onClick={handleFacebookPageConnect}
-              >
-                <Plus className="w-3 h-3" />
-                Connect Pages
-              </Button>
+              <div className="space-y-2">
+                <Button
+                  variant="default"
+                  className="w-full text-sm h-8 relative z-10 flex items-center justify-center gap-1.5 bg-primary hover:bg-primary/90"
+                  size="sm"
+                  onClick={handleFacebookPageConnect}
+                >
+                  <Plus className="w-3 h-3" />
+                  Connect Pages
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full text-xs h-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  size="sm"
+                  onClick={() => handleDisconnect(integration.id)}
+                >
+                  Disconnect
+                </Button>
+              </div>
             ) : (
-              <Button
-                variant={isConnected ? "outline" : "default"}
-                className="w-full text-sm h-8 relative z-10 flex items-center justify-center gap-1.5"
-                size="sm"
-                onClick={() => handleIntegrationClick(integration)}
-              >
-                {isConnected ? (
-                  <>
-                    <CheckCircle2 className="w-3 h-3" />
-                    Manage
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-3 h-3" />
-                    Connect
-                  </>
+              <div className="space-y-2">
+                <Button
+                  variant={isConnected ? "outline" : "default"}
+                  className="w-full text-sm h-8 relative z-10 flex items-center justify-center gap-1.5"
+                  size="sm"
+                  onClick={() => handleIntegrationClick(integration)}
+                >
+                  {isConnected ? (
+                    <>
+                      <CheckCircle2 className="w-3 h-3" />
+                      Manage
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-3 h-3" />
+                      Connect
+                    </>
+                  )}
+                </Button>
+                {isConnected && (integration.id === 'slack' || integration.id === 'hubspot' || integration.id === 'facebook') && (
+                  <Button
+                    variant="ghost"
+                    className="w-full text-xs h-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    size="sm"
+                    onClick={() => handleDisconnect(integration.id)}
+                  >
+                    Disconnect
+                  </Button>
                 )}
-              </Button>
+              </div>
             )}
           </div>
         </div>

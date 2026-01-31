@@ -10,6 +10,7 @@ interface VariableInputProps extends Omit<React.InputHTMLAttributes<HTMLInputEle
   value: string;
   onChange: (value: string) => void;
   customVariables?: string[];
+  triggerType?: string;
   multiline?: boolean;
   className?: string;
 }
@@ -18,6 +19,7 @@ export function VariableInput({
   value,
   onChange,
   customVariables = [],
+  triggerType,
   multiline = false,
   className,
   ...inputProps
@@ -93,7 +95,7 @@ export function VariableInput({
         "absolute right-2 flex items-center",
         multiline ? "top-3" : "top-1/2 -translate-y-1/2"
       )}>
-        <VariablePicker onSelect={handleVariableSelect} customVariables={customVariables}>
+        <VariablePicker onSelect={handleVariableSelect} customVariables={customVariables} triggerType={triggerType}>
           <Button
             type="button"
             variant="ghost"

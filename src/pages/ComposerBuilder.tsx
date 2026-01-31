@@ -287,6 +287,36 @@ export default function ComposerBuilder() {
     }, [isStructuredLayout, layoutNodes.length]);
 
 
+    const getUpstreamVariables = useCallback((targetNodeId: string) => {
+        const upstreamVariables: string[] = [];
+        const visited = new Set<string>();
+        const queue = [targetNodeId];
+
+        while (queue.length > 0) {
+            const currentId = queue.shift()!;
+            if (visited.has(currentId)) continue;
+            visited.add(currentId);
+
+            const currentNode = nodes.find(n => n.id === currentId);
+            if (!currentNode) continue;
+
+            const incomers = getIncomers(currentNode, nodes, edges);
+            for (const incomer of incomers) {
+                // Add trigger variables
+                if (incomer.type === 'trigger' && Array.isArray(incomer.data?.expected_variables)) {
+                    upstreamVariables.push(...incomer.data.expected_variables);
+                }
+                // Add action output variables (Response Mapping)
+                if (Array.isArray(incomer.data?.expected_outputs)) {
+                    upstreamVariables.push(...incomer.data.expected_outputs);
+                }
+
+                queue.push(incomer.id);
+            }
+        }
+        return Array.from(new Set(upstreamVariables));
+    }, [nodes, edges]);
+
     const handleSave = async (statusOverride?: 'active' | 'draft') => {
         if (!id) return;
         setIsSaving(true);
@@ -534,39 +564,9 @@ export default function ComposerBuilder() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-6">
-                        <Tabs defaultValue="editor" className="w-[320px]">
-                            <TabsList className="grid w-full grid-cols-3 h-9 p-1 bg-white/[0.03] border border-white/[0.05] rounded-xl">
-                                <TabsTrigger value="editor" className="text-[10px] uppercase font-bold tracking-wider rounded-lg data-[state=active]:bg-primary shadow-lg data-[state=active]:text-white">Editor</TabsTrigger>
-                                <TabsTrigger value="runs" className="text-[10px] uppercase font-bold tracking-wider rounded-lg data-[state=active]:bg-primary shadow-lg data-[state=active]:text-white">Runs</TabsTrigger>
-                                <TabsTrigger value="overview" className="text-[10px] uppercase font-bold tracking-wider rounded-lg data-[state=active]:bg-primary shadow-lg data-[state=active]:text-white">Overview</TabsTrigger>
-                            </TabsList>
-                        </Tabs>
-                    </div>
+
 
                     <div className="flex items-center gap-2">
-                        <Button
-                            variant={isStructuredLayout ? "default" : "ghost"}
-                            size="sm"
-                            onClick={() => setIsStructuredLayout(!isStructuredLayout)}
-                            title={isStructuredLayout ? "Switch to Free Mode" : "Switch to Structured View"}
-                            className={cn(
-                                "h-8 gap-2 text-xs font-medium",
-                                isStructuredLayout && "shadow-sm shadow-primary/20"
-                            )}
-                        >
-                            {isStructuredLayout ? (
-                                <>
-                                    <GridFour size={14} weight="fill" />
-                                    Structured
-                                </>
-                            ) : (
-                                <>
-                                    <HandGrabbing size={14} weight="fill" />
-                                    Free Mode
-                                </>
-                            )}
-                        </Button>
 
                         <div className="w-px h-4 bg-border/60 mx-1" />
 
@@ -602,14 +602,7 @@ export default function ComposerBuilder() {
                         >
                             <ArrowsOut size={16} />
                         </Button>
-                        <Button variant="ghost" size="sm" className="h-8 gap-2 text-xs font-medium">
-                            <Export size={14} />
-                            Share
-                        </Button>
-                        <Button variant="outline" size="sm" className="h-8 gap-2 text-xs font-semibold border-primary/20 hover:bg-primary/5">
-                            <Flask size={14} className="text-primary" />
-                            Test
-                        </Button>
+
                         <Button
                             size="sm"
                             className="h-8 gap-2 text-xs font-bold shadow-sm shadow-primary/20"
@@ -744,12 +737,8 @@ export default function ComposerBuilder() {
                                                 ));
                                             }}
                                             onDelete={handleDeleteNode}
-                                            customVariables={(() => {
-                                                const triggerNode = nodes.find(n => n.type === 'trigger');
-                                                return Array.isArray(triggerNode?.data?.expected_variables)
-                                                    ? triggerNode.data.expected_variables
-                                                    : [];
-                                            })()}
+                                            triggerType={nodes.find(n => n.type === 'trigger')?.data?.trigger_type as string}
+                                            customVariables={getUpstreamVariables(selectedNode.id)}
                                         />
                                     </ScrollArea>
                                 </div>

@@ -154,6 +154,7 @@ export function NodeSelectionPanel({ onClose, onSelect, context = 'action' }: No
             trigger_type: nodeType === 'trigger' ? action.id : undefined,
             configured: false,
             to_number: selectedIntegration === 'Twilio' ? '{phone_number}' : undefined,
+            method: selectedIntegration === 'HTTP Request' ? action.id.split('_')[0].toUpperCase() : undefined,
         });
         onClose();
     };

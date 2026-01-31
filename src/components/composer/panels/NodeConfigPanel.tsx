@@ -10,7 +10,7 @@ import {
 } from "phosphor-react";
 import { Node } from "@xyflow/react";
 import React from "react";
-import { TwilioIcon, FacebookIcon } from "../nodes/IntegrationIcons";
+import { TwilioIcon, FacebookIcon, HubSpotIcon } from "../nodes/IntegrationIcons";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
@@ -25,6 +25,7 @@ interface NodeConfigPanelProps {
     onUpdate: (nodeId: string, data: any) => void;
     onDelete?: (nodeId: string) => void;
     customVariables?: string[]; // Custom variables from trigger node
+    triggerType?: string; // Type of trigger (e.g., 'hubspot_contact_created')
     workflowAssistantId?: string | null;
 }
 
@@ -57,11 +58,12 @@ function getNodeIconFixed(type: string, integration?: string) {
     return getNodeIcon(type);
 }
 
-export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = [], workflowAssistantId }: NodeConfigPanelProps) {
+export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = [], triggerType, workflowAssistantId }: NodeConfigPanelProps) {
     const { user } = useAuth();
     const data = node.data;
     const integration = data.integration;
     const [slackConnections, setSlackConnections] = useState<any[]>([]);
+    const [hubspotConnections, setHubspotConnections] = useState<any[]>([]);
     const [isLoadingConnections, setIsLoadingConnections] = useState(false);
     const [assistants, setAssistants] = useState<Assistant[]>([]);
     const [isLoadingAssistants, setIsLoadingAssistants] = useState(false);
@@ -69,6 +71,9 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
     useEffect(() => {
         if (integration === 'Slack' && user?.id) {
             loadSlackConnections();
+        }
+        if (integration === 'HubSpot' && user?.id) {
+            loadHubspotConnections();
         }
         if (node.type === 'call_lead') {
             loadAssistants();
@@ -96,6 +101,26 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
             setSlackConnections(data.connections || []);
         } catch (error) {
             console.error("Error loading Slack connections:", error);
+        } finally {
+            setIsLoadingConnections(false);
+        }
+    };
+
+    const loadHubspotConnections = async () => {
+        if (!user?.id) return;
+        setIsLoadingConnections(true);
+        try {
+            const res = await fetch(`/api/v1/connections?provider=hubspot&userId=${user.id}`);
+            const fetchedData = await res.json();
+            const connections = fetchedData.connections || [];
+            setHubspotConnections(connections);
+
+            // Auto-select if none selected and connections available
+            if (!data.connectionId && connections.length > 0) {
+                handleFieldChange('connectionId', connections[0].id);
+            }
+        } catch (error) {
+            console.error("Error loading HubSpot connections:", error);
         } finally {
             setIsLoadingConnections(false);
         }
@@ -174,6 +199,7 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
                                     onChange={(value) => handleFieldChange('message', value)}
                                     placeholder="Message content..."
                                     customVariables={customVariables}
+                                    triggerType={triggerType}
                                 />
                                 <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1">
                                     <Info size={10} />
@@ -241,6 +267,7 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
                                     onChange={(value) => handleFieldChange('channel', value)}
                                     placeholder="#general or @username"
                                     customVariables={customVariables}
+                                    triggerType={triggerType}
                                 />
                                 <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1">
                                     <Info size={10} />
@@ -256,11 +283,385 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
                                     onChange={(value) => handleFieldChange('message', value)}
                                     placeholder="Message content..."
                                     customVariables={customVariables}
+                                    triggerType={triggerType}
                                 />
                                 <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1">
                                     <Info size={10} />
                                     Use {"{variable}"} to inject call data or results from previous nodes
                                 </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* HubSpot Specific Fields */}
+                    {integration === 'HubSpot' && (
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">HubSpot Connection</Label>
+                                {hubspotConnections.length > 0 ? (
+                                    <div className="group relative overflow-hidden rounded-2xl p-[1px] transition-all duration-300 hover:shadow-[0_0_20px_rgba(255,165,0,0.15)] animate-in fade-in slide-in-from-top-2">
+                                        <div className="absolute inset-0 bg-gradient-to-br from-orange-500/20 via-transparent to-transparent opacity-50" />
+                                        <div className="relative flex items-center justify-between p-3 rounded-[15px] bg-muted/20 border border-white/5 backdrop-blur-sm">
+                                            <div className="flex items-center gap-3">
+                                                <div className="relative">
+                                                    <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+                                                        <HubSpotIcon size={24} />
+                                                    </div>
+                                                    <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-background flex items-center justify-center border border-border/50">
+                                                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-[11px] font-bold text-foreground tracking-tight">Active Connection</h4>
+                                                    <p className="text-[10px] text-muted-foreground/70 font-medium">
+                                                        Portal: <span className="text-orange-500/80 font-bold">{hubspotConnections.find(c => c.id === data.connectionId)?.label || hubspotConnections[0].label}</span>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <Badge variant="outline" className="text-[8px] h-4 bg-emerald-500/10 border-emerald-500/20 text-emerald-500 font-bold uppercase tracking-widest px-1.5">Connected</Badge>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full h-10 text-[10px] font-bold uppercase tracking-widest border-dashed border-orange-500/30 bg-orange-500/5 hover:bg-orange-500/10 text-orange-500 transition-all rounded-xl"
+                                            onClick={() => window.open('/settings?tab=integrations&connect=hubspot', '_blank')}
+                                        >
+                                            <Plus size={14} className="mr-2" />
+                                            Connect HubSpot
+                                        </Button>
+                                        <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1">
+                                            <Info size={10} weight="fill" />
+                                            No active HubSpot connection found.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Action Specific Fields */}
+                            {data.actionId === 'create_contact' && (
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Email</Label>
+                                        <VariableInput
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                            value={data.email || ''}
+                                            onChange={(val) => handleFieldChange('email', val)}
+                                            placeholder="{email}"
+                                            customVariables={customVariables}
+                                            triggerType={triggerType}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">First Name</Label>
+                                        <VariableInput
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                            value={data.firstname || ''}
+                                            onChange={(val) => handleFieldChange('firstname', val)}
+                                            placeholder="{name}"
+                                            customVariables={customVariables}
+                                            triggerType={triggerType}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Phone</Label>
+                                        <VariableInput
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                            value={data.phone || ''}
+                                            onChange={(val) => handleFieldChange('phone', val)}
+                                            placeholder="{phone}"
+                                            customVariables={customVariables}
+                                            triggerType={triggerType}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {data.actionId === 'update_contact' && (
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Contact ID or Email</Label>
+                                        <VariableInput
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                            value={data.contact_identifier || ''}
+                                            onChange={(val) => handleFieldChange('contact_identifier', val)}
+                                            placeholder="{email} or 12345"
+                                            customVariables={customVariables}
+                                            triggerType={triggerType}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Properties to Update (JSON)</Label>
+                                        <VariableInput
+                                            multiline={true}
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm min-h-[100px] pt-2"
+                                            value={data.properties_json || ''}
+                                            onChange={(val) => handleFieldChange('properties_json', val)}
+                                            placeholder='{ "firstname": "{name}" }'
+                                            customVariables={customVariables}
+                                            triggerType={triggerType}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {data.actionId === 'create_company' && (
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Company Name</Label>
+                                        <VariableInput
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                            value={data.company_name || ''}
+                                            onChange={(val) => handleFieldChange('company_name', val)}
+                                            placeholder="Acme Corp"
+                                            customVariables={customVariables}
+                                            triggerType={triggerType}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Domain</Label>
+                                        <VariableInput
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                            value={data.domain || ''}
+                                            onChange={(val) => handleFieldChange('domain', val)}
+                                            placeholder="acme.com"
+                                            customVariables={customVariables}
+                                            triggerType={triggerType}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {data.actionId === 'create_deal' && (
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Deal Name</Label>
+                                        <VariableInput
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                            value={data.dealname || ''}
+                                            onChange={(val) => handleFieldChange('dealname', val)}
+                                            placeholder="New Deal"
+                                            customVariables={customVariables}
+                                            triggerType={triggerType}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Amount</Label>
+                                        <VariableInput
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                            value={data.amount || ''}
+                                            onChange={(val) => handleFieldChange('amount', val)}
+                                            placeholder="1000"
+                                            customVariables={customVariables}
+                                            triggerType={triggerType}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {data.actionId === 'create_associations' && (
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">From Object ID</Label>
+                                        <VariableInput
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                            value={data.from_id || ''}
+                                            onChange={(val) => handleFieldChange('from_id', val)}
+                                            placeholder="Contact ID"
+                                            customVariables={customVariables}
+                                            triggerType={triggerType}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">To Object ID</Label>
+                                        <VariableInput
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                            value={data.to_id || ''}
+                                            onChange={(val) => handleFieldChange('to_id', val)}
+                                            placeholder="Company ID"
+                                            customVariables={customVariables}
+                                            triggerType={triggerType}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Association Type</Label>
+                                        <Input
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                            value={data.association_type || 'contact_to_company'}
+                                            onChange={(e) => handleFieldChange('association_type', e.target.value)}
+                                            placeholder="contact_to_company"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* HTTP Request Specific Fields */}
+                    {integration === 'HTTP Request' && (
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">API URL</Label>
+                                <VariableInput
+                                    className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                    value={data.url || ''}
+                                    onChange={(value) => handleFieldChange('url', value)}
+                                    placeholder="https://api.example.com/data"
+                                    customVariables={customVariables}
+                                    triggerType={triggerType}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Method</Label>
+                                <Select
+                                    value={data.method || 'POST'}
+                                    onValueChange={(val) => handleFieldChange('method', val)}
+                                >
+                                    <SelectTrigger className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9">
+                                        <SelectValue placeholder="Select method" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="GET">GET</SelectItem>
+                                        <SelectItem value="POST">POST</SelectItem>
+                                        <SelectItem value="PUT">PUT</SelectItem>
+                                        <SelectItem value="PATCH">PATCH</SelectItem>
+                                        <SelectItem value="DELETE">DELETE</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Headers</Label>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 px-2 text-[10px] font-bold uppercase"
+                                        onClick={() => {
+                                            const headers = [...(data.headers || [])];
+                                            headers.push({ key: '', value: '' });
+                                            handleFieldChange('headers', headers);
+                                        }}
+                                    >
+                                        <Plus size={10} className="mr-1" /> Add Header
+                                    </Button>
+                                </div>
+                                <div className="space-y-2">
+                                    {(data.headers || []).map((header: { key: string, value: string }, idx: number) => (
+                                        <div key={idx} className="flex gap-2 items-start group">
+                                            <div className="flex-1 space-y-1">
+                                                <Input
+                                                    className="bg-muted/20 border-border/30 text-xs h-7"
+                                                    value={header.key}
+                                                    onChange={(e) => {
+                                                        const headers = [...data.headers];
+                                                        headers[idx] = { ...headers[idx], key: e.target.value };
+                                                        handleFieldChange('headers', headers);
+                                                    }}
+                                                    placeholder="Key (e.g. Authorization)"
+                                                />
+                                            </div>
+                                            <div className="flex-[2] space-y-1">
+                                                <VariableInput
+                                                    className="bg-muted/20 border-border/30 text-xs h-7"
+                                                    value={header.value}
+                                                    onChange={(val) => {
+                                                        const headers = [...data.headers];
+                                                        headers[idx] = { ...headers[idx], value: val };
+                                                        handleFieldChange('headers', headers);
+                                                    }}
+                                                    placeholder="Value"
+                                                    customVariables={customVariables}
+                                                    triggerType={triggerType}
+                                                />
+                                            </div>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                onClick={() => {
+                                                    const headers = data.headers.filter((_: any, i: number) => i !== idx);
+                                                    handleFieldChange('headers', headers);
+                                                }}
+                                            >
+                                                <Trash size={12} />
+                                            </Button>
+                                        </div>
+                                    ))}
+                                    {(!data.headers || data.headers.length === 0) && (
+                                        <p className="text-[10px] text-muted-foreground/40 italic">No custom headers defined.</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">JSON Body</Label>
+                                <VariableInput
+                                    multiline={true}
+                                    className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm min-h-[120px] pt-2 font-mono"
+                                    value={data.body || ''}
+                                    onChange={(value) => handleFieldChange('body', value)}
+                                    placeholder='{ "key": "{variable}" }'
+                                    customVariables={customVariables}
+                                    triggerType={triggerType}
+                                />
+                                <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1">
+                                    <Info size={10} />
+                                    Standard JSON format. Use {"{variable}"} to inject data.
+                                </p>
+                            </div>
+
+                            <div className="h-px bg-border/20 my-2" />
+
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Response Mapping</Label>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 px-2 text-[10px] font-bold uppercase"
+                                        onClick={() => {
+                                            const outputs = [...(data.expected_outputs || [])];
+                                            outputs.push('');
+                                            handleFieldChange('expected_outputs', outputs);
+                                        }}
+                                    >
+                                        <Plus size={10} className="mr-1" /> Add Variable
+                                    </Button>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground/50">Define variables you expect in the JSON response to use them in later nodes.</p>
+                                <div className="space-y-2">
+                                    {(data.expected_outputs || []).map((key: string, idx: number) => (
+                                        <div key={idx} className="flex gap-2 items-center group">
+                                            <Input
+                                                className="bg-muted/30 border-border/50 text-xs h-8"
+                                                value={key}
+                                                onChange={(e) => {
+                                                    const outputs = [...data.expected_outputs];
+                                                    outputs[idx] = e.target.value;
+                                                    handleFieldChange('expected_outputs', outputs);
+                                                }}
+                                                placeholder="e.g. user_id"
+                                            />
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                onClick={() => {
+                                                    const outputs = data.expected_outputs.filter((_: any, i: number) => i !== idx);
+                                                    handleFieldChange('expected_outputs', outputs);
+                                                }}
+                                            >
+                                                <Trash size={12} />
+                                            </Button>
+                                        </div>
+                                    ))}
+                                    {(!data.expected_outputs || data.expected_outputs.length === 0) && (
+                                        <p className="text-[10px] text-muted-foreground/40 italic">No response variables defined.</p>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     )}
@@ -276,6 +677,7 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
                                     onChange={(value) => handleFieldChange('url', value)}
                                     placeholder="https://api.example.com/webhook"
                                     customVariables={customVariables}
+                                    triggerType={triggerType}
                                 />
                                 <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1">
                                     <Info size={10} />
@@ -358,6 +760,7 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
                                                 }}
                                                 placeholder="{variable}"
                                                 customVariables={customVariables}
+                                                triggerType={triggerType}
                                             />
                                         </div>
                                         <div className="grid grid-cols-2 gap-2">
@@ -484,6 +887,7 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
                                                 }}
                                                 placeholder="{outcome}"
                                                 customVariables={customVariables}
+                                                triggerType={triggerType}
                                             />
                                         </div>
 

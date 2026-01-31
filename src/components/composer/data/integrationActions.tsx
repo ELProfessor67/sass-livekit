@@ -112,14 +112,11 @@ export const integrationActions: Record<string, IntegrationAction[]> = {
         { id: 'remove_tag', label: 'Remove Tag', description: 'Remove a tag from a contact' },
     ],
     'HubSpot': [
-        { id: 'add_to_list', label: 'Add Contact to List', description: 'Add contact to list' },
-        { id: 'add_to_workflow', label: 'Add Contact to Workflow', description: 'Adds a contact to a specified workflow in your HubSpot account' },
-        { id: 'create_associations', label: 'Create Associations', description: 'Creates associations between objects' },
         { id: 'create_company', label: 'Create Company', description: 'Creates a company in HubSpot' },
         { id: 'create_contact', label: 'Create Contact', description: 'Creates a contact in HubSpot' },
         { id: 'create_deal', label: 'Create Deal', description: 'Create a new deal in HubSpot' },
         { id: 'update_contact', label: 'Update Contact', description: 'Updates an existing contact' },
-        { id: 'find_contact', label: 'Find Contact', description: 'Find a contact by email or property' },
+        { id: 'create_associations', label: 'Create Associations', description: 'Creates associations between objects' },
     ],
     'Shopify': [
         { id: 'create_order', label: 'Create Order', description: 'Create a new order in Shopify' },
@@ -222,16 +219,12 @@ export const triggerCategories: IntegrationCategory[] = [
         name: 'Common Triggers',
         nodes: [
             { type: 'trigger', label: 'Webhook', description: 'Trigger after a call ends' },
-            { type: 'trigger', label: 'Schedule', description: 'Trigger at a specific time' },
-            { type: 'trigger', label: 'Manual', description: 'Trigger manually from dashboard' },
         ],
     },
     {
         name: 'Integrations',
         nodes: [
-            { type: 'trigger', label: 'Facebook', description: 'Trigger from Facebook Leads' },
             { type: 'trigger', label: 'HubSpot', description: 'Trigger from HubSpot events' },
-            { type: 'trigger', label: 'GoHighLevel', description: 'Trigger from GHL events' },
         ],
     },
 ];
@@ -240,54 +233,26 @@ export const actionCategories: IntegrationCategory[] = [
     {
         name: 'Logic',
         nodes: [
-            { type: 'condition', label: 'Condition', description: 'Split workflow based on rules' },
             { type: 'router', label: 'Router', description: 'Route workflow to multiple branches' },
         ],
     },
     {
         name: 'CRM',
         nodes: [
-            { type: 'action', label: 'GoHighLevel', description: 'Manage leads and contacts' },
             { type: 'action', label: 'HubSpot', description: 'Sync contacts and deals' },
-        ],
-    },
-    {
-        name: 'E-commerce',
-        nodes: [
-            { type: 'action', label: 'Shopify', description: 'Manage orders and products' },
         ],
     },
     {
         name: 'Communication',
         nodes: [
-            { type: 'action', label: 'Slack', description: 'Send Slack messages' },
-            { type: 'action', label: 'Gmail', description: 'Send and manage emails' },
             { type: 'action', label: 'Twilio', description: 'Send SMS messages' },
-            { type: 'action', label: 'Klaviyo', description: 'Email & SMS marketing' },
             { type: 'call_lead', label: 'Call Lead', description: 'Initiate AI outbound call' },
-        ],
-    },
-    {
-        name: 'Productivity',
-        nodes: [
-            { type: 'action', label: 'Google Sheets', description: 'Read and write spreadsheets' },
-            { type: 'action', label: 'Airtable', description: 'Manage database records' },
-            { type: 'action', label: 'Notion', description: 'Update pages and databases' },
         ],
     },
     {
         name: 'Connections',
         nodes: [
-            { type: 'action', label: 'Webhooks', description: 'Trigger external webhooks' },
             { type: 'action', label: 'HTTP Request', description: 'Make API calls' },
-        ],
-    },
-    {
-        name: 'AI',
-        nodes: [
-            { type: 'action', label: 'OpenAI', description: 'GPT models and completions' },
-            { type: 'action', label: 'Gemini', description: 'Google AI models' },
-            { type: 'action', label: 'Claude', description: 'Anthropic AI assistant' },
         ],
     },
 ];

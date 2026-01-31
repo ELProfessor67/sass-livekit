@@ -337,7 +337,10 @@ class WorkflowService {
                     // 2. Match on trigger_type (used for GHL, Facebook, etc.)
                     if (n.data?.trigger_type === event) return true;
 
-                    // 3. Legacy fallback: if no event is defined on the node, treat it as call_ended
+                    // 3. Special mapping: 'webhook' trigger type matches 'call_ended' event
+                    if (n.data?.trigger_type === 'webhook' && event === 'call_ended') return true;
+
+                    // 4. Legacy fallback: if no event is defined on the node, treat it as call_ended
                     if (!nodeEvent && !n.data?.trigger_type && event === 'call_ended') return true;
                 }
 
@@ -374,6 +377,10 @@ class WorkflowService {
                 shouldContinue = this.handleConditionNode(node, context);
             } else if (node.type === 'action' && node.data?.integration === 'Slack') {
                 await this.handleSlackNode(node, context, workflow);
+            } else if (node.type === 'action' && node.data?.integration === 'HubSpot') {
+                await this.handleHubspotNode(node, context, workflow);
+            } else if (node.type === 'action' && node.data?.integration === 'HTTP Request') {
+                await this.handleHttpRequestNode(node, context);
             } else if (node.type === 'call_lead') {
                 await this.handleCallLeadNode(node, context, workflow);
             }
@@ -616,6 +623,255 @@ class WorkflowService {
             body: JSON.stringify(context)
         });
     }
+
+    /**
+     * HTTP Request Node Handler (Advanced)
+     */
+    async handleHttpRequestNode(node, context) {
+        const { url, method = 'GET', headers = [], body } = node.data || {};
+        if (!url) {
+            console.warn('[WorkflowService] HTTP Request skipped: No URL provided');
+            return;
+        }
+
+        const flatContext = this.flattenContext(context);
+        const interpolatedUrl = this.interpolate(url, flatContext, context);
+
+        // Prepare headers
+        const requestHeaders = {};
+        if (Array.isArray(headers)) {
+            headers.forEach(h => {
+                if (h.key) {
+                    requestHeaders[h.key] = this.interpolate(h.value || '', flatContext, context);
+                }
+            });
+        }
+
+        // Prepare body
+        let requestBody = null;
+        if (['POST', 'PUT', 'PATCH'].includes(method.toUpperCase()) && body) {
+            requestBody = this.interpolate(body, flatContext, context);
+
+            // If Content-Type is application/json or missing, ensure it's set if not provided
+            if (requestBody && !requestHeaders['Content-Type'] && !requestHeaders['content-type']) {
+                requestHeaders['Content-Type'] = 'application/json';
+            }
+        }
+
+        console.log(`[WorkflowService] Making HTTP ${method} request to ${interpolatedUrl}`);
+
+        try {
+            const fetchOptions = {
+                method: method.toUpperCase(),
+                headers: requestHeaders
+            };
+
+            if (requestBody) {
+                fetchOptions.body = requestBody;
+            }
+
+            const response = await fetch(interpolatedUrl, fetchOptions);
+            const responseText = await response.text();
+
+            console.log(`[WorkflowService] HTTP Request to ${interpolatedUrl} returned status ${response.status}`);
+
+            // Try to parse JSON for logging/usage
+            let responseData;
+            try {
+                responseData = JSON.parse(responseText);
+            } catch (e) {
+                responseData = responseText;
+            }
+
+            // Store the result in the context for downstream nodes
+            context.last_response = responseData;
+
+            // If response is an object, merge it into context so variables can be resolved directly
+            if (responseData && typeof responseData === 'object' && !Array.isArray(responseData)) {
+                Object.assign(context, responseData);
+                console.log(`[WorkflowService] Merged HTTP response object into context`);
+            } else {
+                console.log(`[WorkflowService] Stored response data in context.last_response`);
+            }
+
+        } catch (err) {
+            console.error(`[WorkflowService] HTTP Request to ${interpolatedUrl} failed:`, err.message);
+            throw err;
+        }
+    }
+
+    async refreshHubspotToken(connection) {
+        const HUBSPOT_CLIENT_ID = process.env.HUBSPOT_CLIENT_ID || process.env.HUBSPOT_APP_ID;
+        const HUBSPOT_CLIENT_SECRET = process.env.HUBSPOT_CLIENT_SECRET || process.env.HUBSPOT_APP_SECRET;
+
+        if (!HUBSPOT_CLIENT_ID || !HUBSPOT_CLIENT_SECRET) {
+            console.error('[WorkflowService] HubSpot credentials not configured');
+            return null;
+        }
+
+        try {
+            const response = await fetch('https://api.hubapi.com/oauth/v1/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    grant_type: 'refresh_token',
+                    client_id: HUBSPOT_CLIENT_ID,
+                    client_secret: HUBSPOT_CLIENT_SECRET,
+                    refresh_token: connection.refresh_token
+                })
+            });
+
+            const data = await response.json();
+            if (data.status === 'error' || !data.access_token) {
+                console.error('[WorkflowService] HubSpot refresh failed:', data.message);
+                return null;
+            }
+
+            // Update connection in database
+            const { data: updated, error } = await supabase
+                .from('connections')
+                .update({
+                    access_token: data.access_token,
+                    refresh_token: data.refresh_token || connection.refresh_token,
+                    token_expires_at: new Date(Date.now() + data.expires_in * 1000).toISOString()
+                })
+                .eq('id', connection.id)
+                .select()
+                .single();
+
+            if (error) {
+                console.error('[WorkflowService] Database update failed:', error);
+                return data.access_token;
+            }
+
+            return updated.access_token;
+        } catch (err) {
+            console.error('[WorkflowService] HubSpot refresh error:', err);
+            return null;
+        }
+    }
+
+    async handleHubspotNode(node, context, workflow) {
+        const data = node.data || {};
+        const actionType = data.actionId; // Use actionId for action nodes
+        const connectionId = data.connectionId;
+
+        if (!connectionId) {
+            console.warn('[WorkflowService] No connection ID for HubSpot node');
+            return;
+        }
+
+        // Fetch connection
+        const { data: connection, error: connError } = await supabase
+            .from('connections')
+            .select('*')
+            .eq('id', connectionId)
+            .single();
+
+        if (connError || !connection) {
+            console.error('[WorkflowService] HubSpot connection not found:', connError);
+            return;
+        }
+
+        let accessToken = connection.access_token;
+
+        // Refresh token if needed (expires in < 5 mins)
+        const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at) : null;
+        if (!expiresAt || expiresAt.getTime() - Date.now() < 5 * 60 * 1000) {
+            console.log('[WorkflowService] HubSpot token expired or near expiry, refreshing...');
+            const newToken = await this.refreshHubspotToken(connection);
+            if (newToken) accessToken = newToken;
+        }
+
+        const flatContext = this.flattenContext(context);
+        let endpoint = '';
+        let method = 'POST';
+        let body = {};
+
+        try {
+            if (actionType === 'create_contact') {
+                endpoint = 'https://api.hubapi.com/crm/v3/objects/contacts';
+                body = {
+                    properties: {
+                        email: this.interpolate(data.email, flatContext, context),
+                        firstname: this.interpolate(data.firstname, flatContext, context),
+                        phone: this.interpolate(data.phone, flatContext, context)
+                    }
+                };
+            } else if (actionType === 'update_contact') {
+                const identifier = this.interpolate(data.contact_identifier, flatContext, context);
+                endpoint = `https://api.hubapi.com/crm/v3/objects/contacts/${identifier}`;
+                method = 'PATCH';
+                const propertiesStr = this.interpolate(data.properties_json || '{}', flatContext, context) || '{}';
+                let properties = {};
+                try {
+                    properties = JSON.parse(propertiesStr);
+                } catch (e) {
+                    console.error('[WorkflowService] Failed to parse HubSpot properties JSON:', e);
+                }
+                body = { properties };
+            } else if (actionType === 'create_company') {
+                endpoint = 'https://api.hubapi.com/crm/v3/objects/companies';
+                body = {
+                    properties: {
+                        name: this.interpolate(data.company_name, flatContext, context),
+                        domain: this.interpolate(data.domain, flatContext, context)
+                    }
+                };
+            } else if (actionType === 'create_deal') {
+                endpoint = 'https://api.hubapi.com/crm/v3/objects/deals';
+                body = {
+                    properties: {
+                        dealname: this.interpolate(data.dealname, flatContext, context),
+                        amount: this.interpolate(data.amount, flatContext, context)
+                    }
+                };
+            } else if (actionType === 'create_associations') {
+                const fromId = this.interpolate(data.from_id, flatContext, context);
+                const toId = this.interpolate(data.to_id, flatContext, context);
+                const assocType = data.association_type || 'contact_to_company';
+
+                const fromType = assocType.split('_to_')[0];
+                const toType = assocType.split('_to_')[1];
+
+                const fromPlural = fromType === 'company' ? 'companies' : `${fromType}s`;
+                const toPlural = toType === 'company' ? 'companies' : `${toType}s`;
+
+                // HubSpot associations v4 API
+                endpoint = `https://api.hubapi.com/crm/v4/objects/${fromPlural}/${fromId}/associations/default/${toPlural}/${toId}`;
+                method = 'PUT';
+                body = null; // PUT to this endpoint doesn't need body for default association
+            }
+
+            if (!endpoint) return;
+
+            console.log(`[WorkflowService] HubSpot API call: ${method} ${endpoint}`);
+
+            const response = await fetch(endpoint, {
+                method,
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: body ? JSON.stringify(body) : undefined
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error(`[WorkflowService] HubSpot API error (${response.status}):`, errorData);
+                throw new Error(`HubSpot API error: ${response.statusText}`);
+            }
+
+            const responseData = await response.json().catch(() => ({ success: true }));
+            context.last_hubspot_response = responseData;
+            console.log('[WorkflowService] HubSpot action successful');
+
+        } catch (err) {
+            console.error('[WorkflowService] HubSpot action failed:', err);
+            throw err;
+        }
+    }
+
 
     /**
      * Slack Node Handler - Uses connections table
@@ -931,6 +1187,7 @@ class WorkflowService {
      * Supports both flattened context (for backward compatibility) and original context (for dot notation)
      */
     interpolate(str, flatContext, originalContext = null) {
+        if (!str || typeof str !== 'string') return str || '';
         return str.replace(/{([^}]+)}/g, (match, key) => {
             // First try flattened context (backward compatibility)
             if (flatContext[key] !== undefined) {

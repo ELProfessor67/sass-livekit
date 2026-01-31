@@ -18,10 +18,24 @@ export interface VariableCategory {
 }
 
 /**
- * Get all available variables organized by category
+ * Mapping of trigger types to allowed variable category IDs
  */
-export function getVariableRegistry(): VariableCategory[] {
-  return [
+const TRIGGER_MAPPING: Record<string, string[]> = {
+  'webhook': ['call_data', 'appointment_data', 'custom_variables'],
+  'hubspot_contact_created': ['hubspot_contact', 'custom_variables'],
+  'hubspot_contact_updated': ['hubspot_contact', 'custom_variables'],
+  'hubspot_contact_in_list': ['hubspot_contact', 'custom_variables'],
+  'hubspot_contact_property_change': ['hubspot_contact', 'custom_variables'],
+  'facebook_leads': ['facebook_lead', 'custom_variables'],
+  'default': ['call_data', 'appointment_data', 'custom_variables']
+};
+
+/**
+ * Get all available variables organized by category
+ * @param triggerType Optional trigger type to filter variables
+ */
+export function getVariableRegistry(triggerType?: string): VariableCategory[] {
+  const allCategories: VariableCategory[] = [
     {
       id: 'call_data',
       label: 'Call Data',
@@ -94,18 +108,6 @@ export function getVariableRegistry(): VariableCategory[] {
           example: 'CA1234567890'
         },
         {
-          key: 'call_duration',
-          label: 'Call Duration (seconds)',
-          description: 'Internal duration value in seconds',
-          example: '180'
-        },
-        {
-          key: 'transcription',
-          label: 'Full Transcript (JSON)',
-          description: 'Complete conversation transcript in JSON array format',
-          example: '[{"role": "agent", "content": "Hello..."}]'
-        },
-        {
           key: 'start_time',
           label: 'Start Time',
           description: 'Call start time (ISO format)',
@@ -163,12 +165,45 @@ export function getVariableRegistry(): VariableCategory[] {
       ]
     },
     {
+      id: 'hubspot_contact',
+      label: 'HubSpot Contact',
+      description: 'Contact data from HubSpot trigger',
+      variables: [
+        { key: 'firstname', label: 'First Name', example: 'John' },
+        { key: 'lastname', label: 'Last Name', example: 'Doe' },
+        { key: 'email', label: 'Email', example: 'john@example.com' },
+        { key: 'phone', label: 'Phone Number', example: '+1234567890' },
+        { key: 'company', label: 'Company', example: 'Acme Corp' },
+        { key: 'jobtitle', label: 'Job Title', example: 'CEO' },
+        { key: 'city', label: 'City', example: 'New York' },
+        { key: 'state', label: 'State', example: 'NY' },
+        { key: 'zip', label: 'Zip Code', example: '10001' },
+        { key: 'country', label: 'Country', example: 'USA' },
+        { key: 'lifecyclestage', label: 'Lifecycle Stage', example: 'Lead' },
+      ]
+    },
+    {
+      id: 'facebook_lead',
+      label: 'Facebook Lead',
+      description: 'Lead data from Facebook Ads',
+      variables: [
+        { key: 'full_name', label: 'Full Name', example: 'John Doe' },
+        { key: 'email', label: 'Email', example: 'john@example.com' },
+        { key: 'phone_number', label: 'Phone Number', example: '+1234567890' },
+        { key: 'city', label: 'City', example: 'Los Angeles' },
+        { key: 'created_time', label: 'Created Time', example: '2024-01-15T10:00:00' },
+        { key: 'ad_id', label: 'Ad ID', example: '123456789' },
+        { key: 'ad_name', label: 'Ad Name', example: 'Summer Promo' },
+        { key: 'adset_name', label: 'Ad Set Name', example: 'Retargeting' },
+        { key: 'campaign_name', label: 'Campaign Name', example: 'Lead Generation' },
+        { key: 'form_id', label: 'Form ID', example: '987654321' },
+      ]
+    },
+    {
       id: 'custom_variables',
       label: 'Custom Variables',
       description: 'User-defined variables from trigger node configuration',
       variables: [
-        // These will be populated dynamically from the trigger node's expected_variables
-        // For now, we show a placeholder
         {
           key: 'custom_variable',
           label: 'Custom Variable',
@@ -178,6 +213,11 @@ export function getVariableRegistry(): VariableCategory[] {
       ]
     }
   ];
+
+  if (!triggerType) return allCategories;
+
+  const allowedIds = TRIGGER_MAPPING[triggerType] || TRIGGER_MAPPING['default'];
+  return allCategories.filter(category => allowedIds.includes(category.id));
 }
 
 /**
