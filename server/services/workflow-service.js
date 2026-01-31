@@ -82,50 +82,74 @@ class WorkflowService {
                 }
             }
 
-            // 1. Fetch active workflows linked to this assistant
-            const { data: activeWorkflows, error: workflowError } = await supabase
+            // 1. Fetch active workflows linked to this assistant from both sources
+            // Source A: Junction table (many-to-many)
+            const { data: junctionWorkflows, error: junctionError } = await supabase
                 .from('assistant_workflows')
                 .select(`
-          workflow_id,
-          workflow:workflows!workflow_id(*)
-        `)
+                  workflow_id,
+                  workflow:workflows!workflow_id(*)
+                `)
                 .eq('assistant_id', assistantId);
 
-            if (workflowError) {
-                console.error('[WorkflowService] Error fetching assistant workflows:', workflowError);
-                return;
+            // Source B: Direct reference in workflows table (assigned in workflow config)
+            const { data: directWorkflows, error: directError } = await supabase
+                .from('workflows')
+                .select('*')
+                .eq('assistant_id', assistantId)
+                .eq('is_active', true);
+
+            if (junctionError) {
+                console.error('[WorkflowService] Error fetching junction workflows:', junctionError);
+            }
+            if (directError) {
+                console.error('[WorkflowService] Error fetching direct workflows:', directError);
             }
 
-            if (!activeWorkflows || activeWorkflows.length === 0) {
+            // 2. Combine and deduplicate workflows
+            const workflowsToExecute = new Map();
+
+            // Process junction workflows (only if active)
+            if (junctionWorkflows) {
+                for (const entry of junctionWorkflows) {
+                    const workflow = entry.workflow;
+                    if (workflow && workflow.is_active) {
+                        workflowsToExecute.set(workflow.id, workflow);
+                    }
+                }
+            }
+
+            // Process direct workflows (already filtered by is_active in query)
+            if (directWorkflows) {
+                for (const workflow of directWorkflows) {
+                    if (!workflowsToExecute.has(workflow.id)) {
+                        workflowsToExecute.set(workflow.id, workflow);
+                    }
+                }
+            }
+
+            if (workflowsToExecute.size === 0) {
                 console.log('[WorkflowService] No active workflows linked to assistant');
                 return;
             }
 
-            // 2. Filter workflows and start execution
-            for (const entry of activeWorkflows) {
-                const workflow = entry.workflow;
-                if (workflow && workflow.is_active) {
-                    // Pass full context including the event
-                    // Extract outcome from various possible locations
-                    const outcome = enhancedCallData?.outcome || enhancedCallData?.call_outcome || null;
-                    const context = {
-                        event,
-                        userId,
-                        assistantId,
-                        ...enhancedCallData,
-                        // Explicitly set outcome at top level for condition node evaluation
-                        outcome: outcome
-                    };
+            // 3. Start execution for each unique workflow
+            for (const workflow of workflowsToExecute.values()) {
+                // Pass full context including the event
+                // Extract outcome from various possible locations
+                const outcome = enhancedCallData?.outcome || enhancedCallData?.call_outcome || null;
+                const context = {
+                    event,
+                    userId,
+                    assistantId,
+                    ...enhancedCallData,
+                    // Explicitly set outcome at top level for condition node evaluation
+                    outcome: outcome
+                };
 
-                    console.log(`[WorkflowService] Executing workflow ${workflow.id} with context:`, JSON.stringify({
-                        event: context.event,
-                        outcome: context.outcome,
-                        hasCallData: !!context.callData,
-                        extractedName: context.contact_name || context.name
-                    }, null, 2));
+                console.log(`[WorkflowService] Executing workflow ${workflow.id} (${workflow.name}) with event ${event}`);
 
-                    this.executeWorkflow(workflow, context);
-                }
+                this.executeWorkflow(workflow, context);
             }
         } catch (err) {
             console.error('[WorkflowService] Trigger failed:', err);
