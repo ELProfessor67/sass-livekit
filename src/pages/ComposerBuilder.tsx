@@ -166,42 +166,52 @@ export default function ComposerBuilder() {
 
     // Auto-fit view when switching modes or when layout changes
     // Lock viewport in structured mode and align to top
+    // Use a ref to track if we've already aligned for the current state to prevent jumping on clicks
+    const hasAlignedForRef = useRef<string | null>(null);
+
     useEffect(() => {
-        if (reactFlowInstance.current && layoutNodes.length > 0) {
-            // Use requestAnimationFrame to ensure DOM is ready
-            requestAnimationFrame(() => {
-                if (isStructuredLayout) {
-                    // In structured mode, calculate viewport to align nodes to top
-                    const nodesBounds = reactFlowInstance.current?.getNodesBounds(layoutNodes);
+        if (reactFlowInstance.current && layoutNodes.length > 0 && id) {
+            const alignmentKey = `${id}-${isStructuredLayout}-${layoutNodes.length > 0}`;
 
-                    if (nodesBounds && reactFlowInstance.current) {
-                        const topPadding = 50; // Padding from top
-                        const maxZoom = 0.8;
-                        const padding = 0.1;
+            // Only align if the mode changed or it's the first time nodes are loaded for this workflow
+            if (hasAlignedForRef.current !== alignmentKey) {
+                // Use requestAnimationFrame to ensure DOM is ready
+                requestAnimationFrame(() => {
+                    if (isStructuredLayout) {
+                        // In structured mode, calculate viewport to align nodes to top
+                        const nodesBounds = reactFlowInstance.current?.getNodesBounds(layoutNodes);
 
-                        // Get the actual DOM element dimensions
-                        const flowElement = document.querySelector('.react-flow') as HTMLElement;
-                        const viewportWidth = flowElement?.clientWidth || 1200;
+                        if (nodesBounds && reactFlowInstance.current) {
+                            const topPadding = 50; // Padding from top
+                            const maxZoom = 0.8;
+                            const padding = 0.1;
 
-                        // Calculate zoom to fit nodes horizontally with padding
-                        // Don't constrain by height - allow vertical scrolling if needed
-                        const widthZoom = (viewportWidth * (1 - padding * 2)) / nodesBounds.width;
-                        const zoom = Math.min(maxZoom, widthZoom);
+                            // Get the actual DOM element dimensions
+                            const flowElement = document.querySelector('.react-flow') as HTMLElement;
+                            const viewportWidth = flowElement?.clientWidth || 1200;
 
-                        // Calculate position to center horizontally and align top
-                        const x = (viewportWidth / 2) - (nodesBounds.x + nodesBounds.width / 2) * zoom;
-                        const y = topPadding - nodesBounds.y * zoom;
+                            // Calculate zoom to fit nodes horizontally with padding
+                            // Don't constrain by height - allow vertical scrolling if needed
+                            const widthZoom = (viewportWidth * (1 - padding * 2)) / nodesBounds.width;
+                            const zoom = Math.min(maxZoom, widthZoom);
 
-                        // Set viewport in one smooth operation (no duration to avoid glitch)
-                        reactFlowInstance.current.setViewport({ x, y, zoom }, { duration: 0 });
+                            // Calculate position to center horizontally and align top
+                            const x = (viewportWidth / 2) - (nodesBounds.x + nodesBounds.width / 2) * zoom;
+                            const y = topPadding - nodesBounds.y * zoom;
+
+                            // Set viewport in one smooth operation (no duration to avoid glitch)
+                            reactFlowInstance.current.setViewport({ x, y, zoom }, { duration: 0 });
+                        }
+                    } else {
+                        // In free mode, just fit view
+                        reactFlowInstance.current?.fitView({ padding: 0.1, maxZoom: 0.8, duration: 300 });
                     }
-                } else {
-                    // In free mode, just fit view
-                    reactFlowInstance.current?.fitView({ padding: 0.1, maxZoom: 0.8, duration: 300 });
-                }
-            });
+
+                    hasAlignedForRef.current = alignmentKey;
+                });
+            }
         }
-    }, [isStructuredLayout, layoutNodes.length, layoutNodes]);
+    }, [isStructuredLayout, id, layoutNodes.length > 0, layoutNodes]);
 
     // Custom handler to prevent position updates in structured mode
     const handleNodesChange = useCallback(

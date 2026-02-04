@@ -21,13 +21,13 @@ export interface VariableCategory {
  * Mapping of trigger types to allowed variable category IDs
  */
 const TRIGGER_MAPPING: Record<string, string[]> = {
-  'webhook': ['call_data', 'appointment_data', 'custom_variables'],
+  'webhook': ['contact_info', 'call_data', 'appointment_data', 'custom_variables'],
   'hubspot_contact_created': ['hubspot_contact', 'custom_variables'],
   'hubspot_contact_updated': ['hubspot_contact', 'custom_variables'],
   'hubspot_contact_in_list': ['hubspot_contact', 'custom_variables'],
   'hubspot_contact_property_change': ['hubspot_contact', 'custom_variables'],
   'facebook_leads': ['facebook_lead', 'custom_variables'],
-  'default': ['call_data', 'appointment_data', 'custom_variables']
+  'default': ['contact_info', 'call_data', 'appointment_data', 'custom_variables']
 };
 
 /**
@@ -37,16 +37,35 @@ const TRIGGER_MAPPING: Record<string, string[]> = {
 export function getVariableRegistry(triggerType?: string): VariableCategory[] {
   const allCategories: VariableCategory[] = [
     {
-      id: 'call_data',
-      label: 'Call Data',
-      description: 'Core call information captured during the call',
+      id: 'contact_info',
+      label: 'Contact Info',
+      description: 'Common contact information from calls or appointments',
       variables: [
         {
           key: 'name',
           label: 'Contact Name',
-          description: 'Name of the contact from the call report',
+          description: 'Name of the contact',
           example: 'John Doe'
         },
+        {
+          key: 'phone_number',
+          label: 'Contact Phone',
+          description: 'Phone number of the contact',
+          example: '+1234567890'
+        },
+        {
+          key: 'email',
+          label: 'Contact Email',
+          description: 'Email address of the contact',
+          example: 'john@example.com'
+        }
+      ]
+    },
+    {
+      id: 'call_data',
+      label: 'Call Data',
+      description: 'Core call information captured during the call',
+      variables: [
         {
           key: 'summary',
           label: 'AI Summary',
@@ -82,12 +101,6 @@ export function getVariableRegistry(triggerType?: string): VariableCategory[] {
           label: 'Full Transcript',
           description: 'Complete conversation transcript',
           example: 'Agent: Hello, Customer: Hi...'
-        },
-        {
-          key: 'phone_number',
-          label: 'Phone Number',
-          description: 'Caller\'s phone number',
-          example: '+1234567890'
         },
         {
           key: 'agent_phone_number',
@@ -143,24 +156,6 @@ export function getVariableRegistry(triggerType?: string): VariableCategory[] {
           label: 'Calendar',
           description: 'Calendar service name (e.g., "Cal.com")',
           example: 'Cal.com'
-        },
-        {
-          key: 'appointment.contact.name',
-          label: 'Contact Name',
-          description: 'Name of the person who booked',
-          example: 'John Doe'
-        },
-        {
-          key: 'appointment.contact.email',
-          label: 'Contact Email',
-          description: 'Email of the person who booked',
-          example: 'john@example.com'
-        },
-        {
-          key: 'appointment.contact.phone',
-          label: 'Contact Phone',
-          description: 'Phone number of the person who booked',
-          example: '+1234567890'
         }
       ]
     },

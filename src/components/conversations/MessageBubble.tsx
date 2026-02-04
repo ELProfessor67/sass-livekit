@@ -15,6 +15,8 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { ExternalLink } from "lucide-react";
 import { formatSummaryForDisplay } from "@/utils/summaryUtils";
+import { useRecording } from "@/hooks/useRecording";
+import { RecordingLoader } from "./RecordingLoader";
 
 interface MessageBubbleProps {
   message: {
@@ -27,6 +29,7 @@ interface MessageBubbleProps {
     resolution?: string;
     summary?: string;
     recording?: string;
+    call_sid?: string;
     transcript?: any;
     date: string;
     time: string;
@@ -45,6 +48,12 @@ interface MessageBubbleProps {
 }
 
 export function MessageBubble({ message, conversation, showAvatar = true, onRetryMessage }: MessageBubbleProps) {
+  // Fetch recording on-demand when call_sid exists but pre-fetched recording URL is empty
+  const callSidForRecording = message.type === 'call' ? message.call_sid : undefined;
+  const { recording: fetchedRecording, loading: recordingLoading, hasRecording: hasFetchedRecording } = useRecording(callSidForRecording);
+
+  const recordingUrl = message.recording || (hasFetchedRecording && fetchedRecording?.recordingUrl ? fetchedRecording.recordingUrl : null);
+
   const getInitials = (name: string) => {
     return name
       .split(' ')
@@ -370,12 +379,17 @@ export function MessageBubble({ message, conversation, showAvatar = true, onRetr
             </div>
           )}
 
-          {/* Recording */}
-          {message.recording && (
+          {/* Recording - use pre-fetched URL or fetch on-demand via call_sid */}
+          {recordingLoading && !recordingUrl && message.call_sid && (
+            <div className="mt-2">
+              <RecordingLoader callSid={message.call_sid} />
+            </div>
+          )}
+          {recordingUrl && (
             <div className="mt-2">
               <CompactAudioPlayer
-                src={message.recording}
-                title={`Call with ${conversation.displayName}`}
+                src={recordingUrl}
+                title={``}
               />
             </div>
           )}

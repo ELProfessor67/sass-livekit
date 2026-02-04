@@ -1070,28 +1070,24 @@ class CallHandler:
                 elif hasattr(agent, '_booking_data'):
                     booking_data = agent._booking_data
                 
-                # Get timezone from calendar or agent
+                # Get timezone: call/session timezone (caller) if set, else calendar/agent timezone. Store as IANA string only; never persist caller timezone on assistant.
                 timezone_str = "UTC"
                 calendar_name = None
                 booking_link = None
                 
-                if hasattr(agent, 'calendar') and agent.calendar:
-                    # Get timezone from calendar
+                if getattr(agent, "_call_timezone", None) is not None:
+                    timezone_str = agent._call_timezone.key
+                elif hasattr(agent, 'calendar') and agent.calendar:
                     if hasattr(agent.calendar, 'tz'):
                         tz_obj = agent.calendar.tz
                         if tz_obj:
-                            timezone_str = str(tz_obj)
-                    
-                    # Get calendar name/type
+                            timezone_str = tz_obj.key if hasattr(tz_obj, "key") else str(tz_obj)
+                if hasattr(agent, 'calendar') and agent.calendar:
                     calendar_name = type(agent.calendar).__name__.replace('Calendar', '').replace('Cal', 'Cal.com')
-                    
-                    # Construct booking link if we have booking_uid
                     if booking_data.booking_uid:
-                        # Try to get username/org from calendar config
                         username = getattr(agent.calendar, '_username', None)
                         org_slug = getattr(agent.calendar, '_org_slug', None)
                         event_slug = getattr(agent.calendar, '_event_type_slug', None)
-                        
                         if username and event_slug:
                             booking_link = f"https://cal.com/{username}/{event_slug}/{booking_data.booking_uid}"
                         elif org_slug and event_slug:
@@ -1280,7 +1276,8 @@ class CallHandler:
                 "start_time", "end_time", "call_duration", "call_status",
                 "transcription", "call_summary", "success_evaluation", "structured_data",
                 "outcome_confidence", "outcome_reasoning", "outcome_key_points",
-                "outcome_sentiment", "follow_up_required", "follow_up_notes"
+                "outcome_sentiment", "follow_up_required", "follow_up_notes",
+                "call_sid",  "outcome",
             }
             
             db_payload = {k: v for k, v in call_data.items() if k in VALID_DB_COLUMNS}

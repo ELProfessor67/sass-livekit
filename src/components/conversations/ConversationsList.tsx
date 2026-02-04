@@ -8,7 +8,7 @@ import { Search, MessageSquare, Phone } from "lucide-react";
 import { Conversation } from "./types";
 import { normalizeResolution } from "@/components/dashboard/call-outcomes/utils";
 import { cn } from "@/lib/utils";
-import { formatPhoneNumber } from "@/utils/formatUtils";
+import { formatPhoneNumber, formatConversationDate } from "@/utils/formatUtils";
 
 interface ConversationsListProps {
   conversations: Conversation[];
@@ -46,12 +46,12 @@ export function ConversationsList({
     // Check if conversation has calls with structured data
     if (conversation.calls && conversation.calls.length > 0) {
       // Sort calls by date to get the most recent one
-      const sortedCalls = [...conversation.calls].sort((a, b) => 
+      const sortedCalls = [...conversation.calls].sort((a, b) =>
         new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime()
       );
-      
+
       const latestCall = sortedCalls[0];
-      
+
       // Check if the call has structured_data (analysis results)
       let structuredData = null;
       if (latestCall.analysis && typeof latestCall.analysis === 'object') {
@@ -81,7 +81,7 @@ export function ConversationsList({
         }
       }
     }
-    
+
     // Fallback to formatted phone number if no name found
     return formatPhoneNumber(conversation.phoneNumber);
   };
@@ -99,12 +99,12 @@ export function ConversationsList({
     }
 
     if (conversation.calls && conversation.calls.length > 0) {
-      const sortedCalls = [...conversation.calls].sort((a, b) => 
+      const sortedCalls = [...conversation.calls].sort((a, b) =>
         new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime()
       );
-      
+
       const latestCall = sortedCalls[0];
-      
+
       let structuredData = null;
       if (latestCall.analysis && typeof latestCall.analysis === 'object') {
         structuredData = latestCall.analysis;
@@ -135,7 +135,7 @@ export function ConversationsList({
   const getOutcomeBadgeColor = (outcome?: string) => {
     if (!outcome) return "secondary";
     const normalized = normalizeResolution(outcome).toLowerCase();
-    
+
     if (normalized.includes('appointment') || normalized.includes('booked')) {
       return "default";
     } else if (normalized.includes('qualified') && !normalized.includes('not')) {
@@ -153,12 +153,12 @@ export function ConversationsList({
     // Use mock data for UI enhancement - determine channel based on phone number or random
     const phoneNumber = conversation.phoneNumber;
     const lastDigit = parseInt(phoneNumber.slice(-1));
-    
+
     // Mock channel assignment based on phone number for UI variety
     let channel: 'sms' | 'whatsapp' | 'imessage' = 'sms';
     if (lastDigit % 3 === 0) channel = 'whatsapp';
     else if (lastDigit % 3 === 1) channel = 'imessage';
-    
+
     switch (channel) {
       case 'whatsapp':
         return <MessageSquare className="w-3 h-3 text-green-500" />;
@@ -189,8 +189,8 @@ export function ConversationsList({
                 onClick={() => onSelectConversation(conversation)}
                 className={cn(
                   "p-3 rounded-[var(--radius-md)] cursor-pointer transition-all duration-200 border",
-                  selectedConversationId === conversation.id 
-                    ? "bg-accent/80 text-accent-foreground border-accent/30" 
+                  selectedConversationId === conversation.id
+                    ? "bg-accent/80 text-accent-foreground border-accent/30"
                     : "hover:bg-muted/30 border-transparent hover:border-border/20",
                   conversation.hasNewMessages && selectedConversationId !== conversation.id && "bg-blue-50/10 border-blue-200/20"
                 )}
@@ -201,7 +201,7 @@ export function ConversationsList({
                       {getInitials(getDisplayName(conversation))}
                     </AvatarFallback>
                   </Avatar>
-                  
+
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center space-x-1.5">
@@ -211,10 +211,10 @@ export function ConversationsList({
                         </h3>
                       </div>
                       <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2">
-                        {conversation.lastActivityTime}
+                        {formatConversationDate(conversation.lastActivityTimestamp)}
                       </span>
                     </div>
-                    
+
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1">
                         {/* New message indicators */}
@@ -224,7 +224,7 @@ export function ConversationsList({
                         {conversation.hasNewCalls && (
                           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" title="New call activity" />
                         )}
-                        
+
                         {/* Call outcome indicator */}
                         {conversation.lastCallOutcome && (
                           <div className={cn(
@@ -237,7 +237,7 @@ export function ConversationsList({
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-[10px] text-muted-foreground">
                         {conversation.totalCalls} calls • {conversation.totalDuration}
@@ -246,7 +246,7 @@ export function ConversationsList({
                   </div>
                 </div>
               </div>
-              
+
               {/* Add separator between items (not after the last one) */}
               {index < conversations.length - 1 && (
                 <div className="my-2 px-3">
@@ -256,7 +256,7 @@ export function ConversationsList({
             </React.Fragment>
           ))}
         </div>
-        
+
         {conversations.length === 0 && (
           <div className="p-[var(--space-xl)] text-center text-muted-foreground">
             <div className="text-sm font-medium mb-1">No conversations found</div>

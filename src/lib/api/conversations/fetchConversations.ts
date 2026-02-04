@@ -1,7 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { format } from 'date-fns';
 import { Conversation } from "@/components/conversations/types";
-import { fetchRecordingUrlCached, RecordingInfo } from "../recordings/fetchRecordingUrl";
 import { SMSMessage } from "@/lib/api/sms/smsService";
 import { formatPhoneNumber } from "@/utils/formatUtils";
 import { getCurrentUserIdAsync } from "@/lib/user-context";
@@ -15,12 +14,12 @@ async function getUserAssistantIds(): Promise<string[]> {
     .from('assistant')
     .select('id')
     .eq('user_id', userId);
-  
+
   if (error) {
     console.error('Error fetching user assistants:', error);
     return [];
   }
-  
+
   return assistants?.map(a => a.id) || [];
 }
 
@@ -108,7 +107,7 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
     const userId = await getCurrentUserIdAsync();
     const assistantIds = await getUserAssistantIds();
     console.log('Fetching conversations for user ID:', userId, 'with assistants:', assistantIds);
-    
+
     if (assistantIds.length === 0) {
       console.log('No assistants found for user, returning empty conversations');
       return {
@@ -116,7 +115,7 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
         total: 0
       };
     }
-    
+
     const { data: callHistory, error } = await supabase
       .from('call_history')
       .select('*')
@@ -151,7 +150,7 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
 
     // Fetch ALL SMS messages first (not just for existing call numbers)
     const smsMessagesMap = new Map<string, SMSMessage[]>();
-    
+
     try {
       console.log('📱 Fetching SMS messages for user ID:', userId);
       const { data: smsMessages, error: smsError } = await supabase
@@ -237,17 +236,15 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
             };
           }) || [];
 
-          // Fetch recording info if call_sid exists
-          // Note: call_sid field may not exist in current schema
-          const recordingInfo = (call as any).call_sid ? await fetchRecordingUrlCached((call as any).call_sid) : null;
+          // Recording is fetched on-demand in MessageBubble via useRecording (like voiceagents)
 
           // Extract contact name from structured data if available, otherwise use formatted phone
           let contactName = participantName; // Default to formatted phone number
           let hasStructuredName = false;
-          
+
           if (call.structured_data && typeof call.structured_data === 'object') {
             const structuredData = call.structured_data;
-            
+
             // Helper function to extract value from structured data field
             const extractValue = (field: any): string | undefined => {
               if (typeof field === 'string') {
@@ -268,7 +265,7 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
               }
             }
           }
-          
+
           // If no structured name found, use only formatted phone number
           if (!hasStructuredName) {
             contactName = participantName; // Just formatted phone number
@@ -287,7 +284,7 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
             tags: [],
             status: call.call_status,
             resolution: determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence),
-            call_recording: recordingInfo?.recordingUrl || '',
+            call_recording: '',
             summary: call.call_summary,
             transcript: processedTranscript,
             analysis: call.structured_data || null,
@@ -297,7 +294,7 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
             call_outcome: determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence),
             created_at: call.start_time,
             call_sid: (call as any).call_sid,
-            recording_info: recordingInfo,
+            recording_info: null,
             assistant_id: call.assistant_id,
             structured_data: call.structured_data
           };
@@ -399,8 +396,8 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
       if (!conversationsMap.has(phoneNumber)) {
         // Create conversation from SMS messages only
         const firstSms = smsMessages[0]; // Most recent SMS
-        const displayName = firstSms.direction === 'inbound' ? 
-          `Contact ${phoneNumber}` : 
+        const displayName = firstSms.direction === 'inbound' ?
+          `Contact ${phoneNumber}` :
           `Contact ${phoneNumber}`;
 
         console.log(`📱 Creating SMS-only conversation for ${phoneNumber} with ${smsMessages.length} messages`);
@@ -434,7 +431,7 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
 
     // Convert map to array and conditionally sort by last activity
     const conversations = Array.from(conversationsMap.values());
-    
+
     if (shouldSort) {
       conversations.sort((a, b) => b.lastActivityTimestamp.getTime() - a.lastActivityTimestamp.getTime());
     }
@@ -487,16 +484,16 @@ export const fetchContactList = async (limit: number = 50): Promise<ContactSumma
     const userId = await getCurrentUserIdAsync();
     const assistantIds = await getUserAssistantIds();
     console.log('📋 Fetching contact list for user ID:', userId, 'with assistants:', assistantIds);
-    
+
     if (assistantIds.length === 0) {
       console.log('No assistants found for user, returning empty contact list');
       return [];
     }
-    
+
     // Check if the required tables exist by trying to access them
     let callHistory: any[] = [];
     let smsCounts: any[] = [];
-    
+
     try {
       // Try to get call history
       const { data: callData, error: callError } = await supabase
@@ -550,14 +547,14 @@ export const fetchContactList = async (limit: number = 50): Promise<ContactSumma
       callHistory.forEach(call => {
         const phoneNumber = call.phone_number;
         const callTime = new Date(call.start_time);
-        
+
         // Extract contact name from structured data if available, otherwise use formatted phone
         let contactName = formatPhoneNumber(call.phone_number); // Default to formatted phone number
         let hasStructuredName = false;
-        
+
         if (call.structured_data && typeof call.structured_data === 'object') {
           const structuredData = call.structured_data;
-          
+
           // Helper function to extract value from structured data field
           const extractValue = (field: any): string | undefined => {
             if (typeof field === 'string') {
@@ -578,12 +575,12 @@ export const fetchContactList = async (limit: number = 50): Promise<ContactSumma
             }
           }
         }
-        
+
         // If no structured name found, use only formatted phone number
         if (!hasStructuredName) {
           contactName = formatPhoneNumber(call.phone_number); // Just formatted phone number
         }
-        
+
         if (!contactsMap.has(phoneNumber)) {
           contactsMap.set(phoneNumber, {
             phoneNumber,
@@ -598,7 +595,7 @@ export const fetchContactList = async (limit: number = 50): Promise<ContactSumma
         const contact = contactsMap.get(phoneNumber)!;
         contact.calls.push(call);
         contact.totalDuration += call.call_duration || 0;
-        
+
         if (callTime > contact.lastActivity) {
           contact.lastActivity = callTime;
           contact.lastCallOutcome = determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence);
@@ -622,7 +619,7 @@ export const fetchContactList = async (limit: number = 50): Promise<ContactSumma
       .map(contact => {
         const displayName = contact.participantIdentity;
         const nameParts = displayName.split(' ');
-        
+
         return {
           id: `contact_${contact.phoneNumber}`,
           phoneNumber: contact.phoneNumber,
@@ -747,14 +744,14 @@ export const fetchContactList = async (limit: number = 50): Promise<ContactSumma
  * Fetch conversation details for a specific contact (loads all history by default)
  */
 export const fetchConversationDetails = async (
-  phoneNumber: string, 
+  phoneNumber: string,
   days: number | null = null // null means load all history
 ): Promise<ConversationDetailsResponse> => {
   try {
     const userId = await getCurrentUserIdAsync();
     const assistantIds = await getUserAssistantIds();
     console.log(`📞 Fetching conversation details for ${phoneNumber} ${days !== null ? `(last ${days} days)` : '(all history)'} for user ID: ${userId} with assistants:`, assistantIds);
-    
+
     if (assistantIds.length === 0) {
       console.log('No assistants found for user, returning empty conversation details');
       return {
@@ -763,14 +760,14 @@ export const fetchConversationDetails = async (
         hasMoreHistory: false
       };
     }
-    
+
     // Build query - if days is null, load all history; otherwise filter by date
     let callQuery = supabase
       .from('call_history')
       .select('*')
       .eq('phone_number', phoneNumber)
       .in('assistant_id', assistantIds);
-    
+
     // Only apply date filter if days is specified
     if (days !== null) {
       const cutoffDate = new Date();
@@ -778,7 +775,7 @@ export const fetchConversationDetails = async (
       const cutoffISO = cutoffDate.toISOString();
       callQuery = callQuery.gte('start_time', cutoffISO);
     }
-    
+
     callQuery = callQuery.order('start_time', { ascending: false });
 
     // Try to fetch recent calls
@@ -791,7 +788,7 @@ export const fetchConversationDetails = async (
         recentCalls = [];
       } else {
         recentCalls = callData || [];
-        
+
         // Debug logging for conversation details
         console.log('Conversation Details Debug - Raw call data:', {
           phoneNumber,
@@ -817,7 +814,7 @@ export const fetchConversationDetails = async (
         .select('*')
         .or(`from_number.eq.${phoneNumber},to_number.eq.${phoneNumber}`)
         .eq('user_id', userId);
-      
+
       // Only apply date filter if days is specified
       if (days !== null) {
         const cutoffDate = new Date();
@@ -825,9 +822,9 @@ export const fetchConversationDetails = async (
         const cutoffISO = cutoffDate.toISOString();
         smsQuery = smsQuery.gte('date_created', cutoffISO);
       }
-      
+
       smsQuery = smsQuery.order('date_created', { ascending: false });
-      
+
       const { data: smsData, error: smsError } = await smsQuery;
 
       if (smsError) {
@@ -847,7 +844,7 @@ export const fetchConversationDetails = async (
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - days);
       const cutoffISO = cutoffDate.toISOString();
-      
+
       const { data: olderCalls, error: olderCallError } = await supabase
         .from('call_history')
         .select('id')
@@ -891,17 +888,15 @@ export const fetchConversationDetails = async (
             };
           }) || [];
 
-          // Fetch recording info if call_sid exists
-          // Note: call_sid field may not exist in current schema
-          const recordingInfo = (call as any).call_sid ? await fetchRecordingUrlCached((call as any).call_sid) : null;
+          // Recording is fetched on-demand in MessageBubble via useRecording (like voiceagents)
 
           // Extract contact name from structured data if available, otherwise use formatted phone
           let contactName = participantName; // Default to formatted phone number
           let hasStructuredName = false;
-          
+
           if (call.structured_data && typeof call.structured_data === 'object') {
             const structuredData = call.structured_data;
-            
+
             // Helper function to extract value from structured data field
             const extractValue = (field: any): string | undefined => {
               if (typeof field === 'string') {
@@ -922,7 +917,7 @@ export const fetchConversationDetails = async (
               }
             }
           }
-          
+
           // If no structured name found, use only formatted phone number
           if (!hasStructuredName) {
             contactName = participantName; // Just formatted phone number
@@ -949,7 +944,7 @@ export const fetchConversationDetails = async (
             tags: [],
             status: call.call_status,
             resolution: determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence),
-            call_recording: recordingInfo?.recordingUrl || '',
+            call_recording: '',
             summary: call.call_summary,
             transcript: processedTranscript,
             analysis: call.structured_data || null,
@@ -959,7 +954,7 @@ export const fetchConversationDetails = async (
             call_outcome: determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence),
             created_at: call.start_time,
             call_sid: (call as any).call_sid,
-            recording_info: recordingInfo,
+            recording_info: null,
             assistant_id: call.assistant_id,
             structured_data: call.structured_data
           };
@@ -1040,7 +1035,7 @@ export const fetchConversationDetails = async (
     // If no data found from database, provide fallback conversation details
     if (validCalls.length === 0 && processedSMS.length === 0) {
       console.log(`📞 No conversation data found for ${phoneNumber}, providing fallback data`);
-      
+
       // Create fallback conversation with sample data
       const fallbackConversation: Conversation = {
         id: `conv_${phoneNumber}`,
@@ -1146,7 +1141,7 @@ export const loadConversationHistory = async (
     const userId = await getCurrentUserIdAsync();
     const assistantIds = await getUserAssistantIds();
     console.log(`📜 Loading more history for ${phoneNumber} (offset: ${offset}, limit: ${limit}) for user ID: ${userId} with assistants:`, assistantIds);
-    
+
     if (assistantIds.length === 0) {
       console.log('No assistants found for user, returning empty history');
       return {
@@ -1171,8 +1166,8 @@ export const loadConversationHistory = async (
       throw recentCallError;
     }
 
-    const cutoffDate = recentCall && recentCall.length > 0 
-      ? recentCall[0].start_time 
+    const cutoffDate = recentCall && recentCall.length > 0
+      ? recentCall[0].start_time
       : new Date().toISOString();
 
     // Fetch older calls
@@ -1226,7 +1221,7 @@ export const loadConversationHistory = async (
             };
           }) || [];
 
-          const recordingInfo = call.call_sid ? await fetchRecordingUrlCached(call.call_sid) : null;
+          // Recording is fetched on-demand in MessageBubble via useRecording (like voiceagents)
 
           return {
             id: call.id,
@@ -1240,7 +1235,7 @@ export const loadConversationHistory = async (
             tags: [],
             status: call.call_status,
             resolution: determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence),
-            call_recording: recordingInfo?.recordingUrl || '',
+            call_recording: '',
             summary: call.call_summary,
             transcript: processedTranscript,
             analysis: null,
@@ -1250,7 +1245,7 @@ export const loadConversationHistory = async (
             call_outcome: determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence),
             created_at: call.start_time,
             call_sid: (call as any).call_sid,
-            recording_info: recordingInfo,
+            recording_info: null,
             assistant_id: call.assistant_id
           };
         } catch (error) {
@@ -1314,7 +1309,7 @@ export const fetchNewMessagesSince = async (
     const userId = await getCurrentUserIdAsync();
     const assistantIds = await getUserAssistantIds();
     console.log(`🔄 Fetching new messages for ${phoneNumber} since ${sinceTimestamp} for user ID: ${userId} with assistants:`, assistantIds);
-    
+
     if (assistantIds.length === 0) {
       console.log('No assistants found for user, returning empty new messages');
       return {
@@ -1323,7 +1318,7 @@ export const fetchNewMessagesSince = async (
         hasNewData: false
       };
     }
-    
+
     // Fetch new SMS messages
     let newSMSMessages: SMSMessage[] = [];
     try {
@@ -1396,8 +1391,7 @@ export const fetchNewMessagesSince = async (
                 };
               }) || [];
 
-              // Fetch recording info if call_sid exists
-              const recordingInfo = (call as any).call_sid ? await fetchRecordingUrlCached((call as any).call_sid) : null;
+              // Recording is fetched on-demand in MessageBubble via useRecording (like voiceagents)
 
               return {
                 id: call.id,
@@ -1411,7 +1405,7 @@ export const fetchNewMessagesSince = async (
                 tags: [],
                 status: call.call_status,
                 resolution: determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence),
-                call_recording: recordingInfo?.recordingUrl || '',
+                call_recording: '',
                 summary: call.call_summary,
                 transcript: processedTranscript,
                 analysis: null,
@@ -1421,7 +1415,7 @@ export const fetchNewMessagesSince = async (
                 call_outcome: determineCallResolution(call.transcription, call.call_status, call.call_outcome, call.outcome_confidence),
                 created_at: call.start_time,
                 call_sid: (call as any).call_sid,
-                recording_info: recordingInfo,
+                recording_info: null,
                 assistant_id: call.assistant_id
               };
             } catch (error) {
@@ -1440,7 +1434,7 @@ export const fetchNewMessagesSince = async (
     }
 
     const hasNewData = newSMSMessages.length > 0 || newCalls.length > 0;
-    
+
     console.log(`🔄 Found ${newSMSMessages.length} new SMS messages and ${newCalls.length} new calls for ${phoneNumber}`);
 
     return {
@@ -1475,10 +1469,10 @@ export const getConversationsProgressive = async (): Promise<{
 }> => {
   try {
     console.log('🚀 Using progressive loading approach for conversations');
-    
+
     // Fetch contact list first
     const contacts = await fetchContactList();
-    
+
     return {
       contacts,
       getConversationDetails: fetchConversationDetails,
@@ -1516,7 +1510,7 @@ function calculateTotalDuration(calls: any[]): string {
  * Determine call resolution - just return whatever is in the database
  */
 function determineCallResolution(
-  transcription: Array<{ role: string; content: any }>, 
+  transcription: Array<{ role: string; content: any }>,
   status: string,
   aiOutcome?: string,
   aiConfidence?: number

@@ -1,5 +1,54 @@
 
-import { format, parseISO } from "date-fns";
+import { format, parseISO, isSameDay, isYesterday } from "date-fns";
+
+/**
+ * Parse a timestamp (ISO string or Date) into a Date object.
+ * Ensures UTC ISO strings (with Z) are parsed correctly for users in any timezone.
+ */
+export function parseTimestamp(input: string | Date): Date {
+  if (input instanceof Date) return input;
+  if (!input) return new Date(NaN);
+  return parseISO(input);
+}
+
+/**
+ * Format a date for conversation list display - always in the user's local timezone.
+ * Shows: "2:34 AM" for today, "Yesterday" for yesterday, "Feb 4" for other dates.
+ */
+export function formatConversationDate(timestamp: Date | string): string {
+  const date = parseTimestamp(timestamp);
+  if (isNaN(date.getTime())) return "Invalid date";
+  const now = new Date();
+  if (isSameDay(date, now)) {
+    return format(date, "h:mm a");
+  }
+  if (isYesterday(date)) {
+    return "Yesterday";
+  }
+  return format(date, "MMM d");
+}
+
+/**
+ * Format a date for message thread date separators - always in user's local timezone.
+ * Shows: "TODAY", "Yesterday", or "MMM d, yyyy".
+ */
+export function formatMessageDateSeparator(timestamp: Date | string): string {
+  const date = parseTimestamp(timestamp);
+  if (isNaN(date.getTime())) return "Invalid date";
+  const now = new Date();
+  if (isSameDay(date, now)) return "TODAY";
+  if (isYesterday(date)) return "Yesterday";
+  return format(date, "MMM d, yyyy");
+}
+
+/**
+ * Format time only in user's local timezone (e.g., "2:34 AM").
+ */
+export function formatConversationTime(timestamp: Date | string): string {
+  const date = parseTimestamp(timestamp);
+  if (isNaN(date.getTime())) return "Invalid time";
+  return format(date, "h:mm a");
+}
 
 export const formatPhoneNumber = (phone?: string): string => {
   // Handle undefined, null or empty phone numbers

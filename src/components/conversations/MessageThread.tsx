@@ -4,14 +4,14 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Phone, Clock, Mic, MicOff, MessageSquare, Users } from "lucide-react";
-import { format, isSameDay } from "date-fns";
+import { format } from "date-fns";
 import { Conversation } from "./types";
 import { MessageBubble } from "./MessageBubble";
 import { ModernMessageInput } from "./ModernMessageInput";
 import { SMSMessage } from "@/lib/api/sms/smsService";
 import { fetchAssistants, Assistant } from "@/lib/api/assistants/fetchAssistants";
 import { fetchPhoneNumberMappings, PhoneNumberMapping } from "@/lib/api/phoneNumbers/fetchPhoneNumberMappings";
-import { formatPhoneNumber } from "@/utils/formatUtils";
+import { formatPhoneNumber, formatMessageDateSeparator } from "@/utils/formatUtils";
 import {
   Select,
   SelectContent,
@@ -27,7 +27,7 @@ interface MessageThreadProps {
 }
 
 export function MessageThread({ conversation, messageFilter, onMessageFilterChange }: MessageThreadProps) {
-  
+
   // Debug: Log when conversation prop changes
   useEffect(() => {
     console.log('📱 MessageThread received conversation update:', {
@@ -109,7 +109,7 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
           wasAtBottom: wasAtBottomRef.current,
           lastScrollPosition: lastScrollPositionRef.current
         });
-        
+
         if (wasAtBottomRef.current && scrollAreaRef.current) {
           const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
           if (scrollContainer) {
@@ -135,7 +135,7 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
       if (scrollContainer) {
         scrollContainer.scrollTop = scrollContainer.scrollHeight;
         console.log('📱 Scrolled to bottom');
-        
+
         // Update scroll tracking state
         wasAtBottomRef.current = true;
         lastScrollPositionRef.current = scrollContainer.scrollHeight;
@@ -169,11 +169,11 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
         const currentScrollTop = scrollContainer.scrollTop;
         const { scrollHeight, clientHeight } = scrollContainer;
         const isAtBottom = scrollHeight - currentScrollTop - clientHeight < 100;
-        
+
         setScrollPosition(currentScrollTop);
         lastScrollPositionRef.current = currentScrollTop;
         wasAtBottomRef.current = isAtBottom;
-        
+
         console.log('📱 Scroll position updated:', {
           scrollTop: currentScrollTop,
           isAtBottom,
@@ -207,12 +207,12 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
 
     // Check if conversation has calls with structured data
     if (conversation.calls && conversation.calls.length > 0) {
-      const sortedCalls = [...conversation.calls].sort((a, b) => 
+      const sortedCalls = [...conversation.calls].sort((a, b) =>
         new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime()
       );
-      
+
       const latestCall = sortedCalls[0];
-      
+
       let structuredData = null;
       if (latestCall.analysis && typeof latestCall.analysis === 'object') {
         structuredData = latestCall.analysis;
@@ -239,7 +239,7 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
         }
       }
     }
-    
+
     // Fallback to formatted phone number if no name found
     return formatPhoneNumber(conversation.phoneNumber);
   };
@@ -271,6 +271,7 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
     resolution: call.resolution,
     summary: call.summary,
     recording: call.call_recording,
+    call_sid: (call as { call_sid?: string }).call_sid,
     transcript: call.transcript,
     date: call.date,
     time: call.time
@@ -380,7 +381,7 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
     });
   }, [conversation.totalCalls, conversation.totalSMS, messageFilter]);
 
-  // Group messages by date
+  // Group messages by date (using user's local timezone for grouping)
   const groupedMessages = allMessages.reduce((groups, message) => {
     const dateKey = format(message.timestamp, 'yyyy-MM-dd');
     if (!groups[dateKey]) {
@@ -392,7 +393,7 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
 
   // Sort date groups in ascending order (WhatsApp style - oldest dates first, newest at bottom)
   const sortedDateGroups = Object.entries(groupedMessages)
-    .sort(([dateA], [dateB]) => new Date(dateA).getTime() - new Date(dateB).getTime());
+    .sort(([dateA], [dateB]) => dateA.localeCompare(dateB));
 
   return (
     <div
@@ -427,8 +428,8 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
               </h2>
             </div>
             <div className="flex items-center space-x-2 relative">
-              
-          
+
+
               {messageFilter !== 'all' && (
                 <button
                   type="button"
@@ -489,7 +490,7 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
               </div>
             )}
 
-           
+
           </div>
         </div>
       </div>
@@ -516,10 +517,10 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
               {sortedDateGroups.length > 0 ? (
                 sortedDateGroups.map(([dateKey, dayMessages]) => (
                   <div key={dateKey} className="space-y-2">
-                    {/* Date Separator */}
+                    {/* Date Separator - use first message's timestamp for correct user-local date */}
                     <div className="flex items-center justify-center">
-                      <div className="px-2 py-0.5 bg-muted/50 rounded-full text-[11px] text-muted-foreground">
-                        {format(new Date(dateKey), 'MMM d, yyyy')}
+                      <div className="px-2 py-0.5 bg-muted/50 rounded-full text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">
+                        {formatMessageDateSeparator(dayMessages[0].timestamp)}
                       </div>
                     </div>
 
@@ -544,7 +545,7 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
                       {selectedAgentId === "all" ? "No messages found" : "No messages for this agent"}
                     </div>
                     <div className="text-xs">
-                      {selectedAgentId === "all" 
+                      {selectedAgentId === "all"
                         ? "This conversation doesn't have any messages yet."
                         : `No calls or SMS messages are associated with the selected agent.`
                       }

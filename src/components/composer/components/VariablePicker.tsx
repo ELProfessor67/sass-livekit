@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { getVariableRegistry, formatVariableKey, type VariableCategory, type Variable } from '../utils/variableRegistry';
-import { MagnifyingGlass, Code, CornersOut, Browsers, Minus, Microphone, CaretUp, CaretDown } from 'phosphor-react';
+import { MagnifyingGlass, Code, CornersOut, Browsers, Minus, Microphone, IdentificationCard, CaretUp, CaretDown } from 'phosphor-react';
 import { cn } from '@/lib/utils';
 
 interface VariablePickerProps {
@@ -17,7 +17,12 @@ interface VariablePickerProps {
 export function VariablePicker({ onSelect, customVariables = [], triggerType, children }: VariablePickerProps) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({ 'call_data': true, 'hubspot_contact': true, 'facebook_lead': true });
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
+    'contact_info': true,
+    'call_data': true,
+    'hubspot_contact': true,
+    'facebook_lead': true
+  });
 
   const registry = getVariableRegistry(triggerType);
 
@@ -127,12 +132,14 @@ export function VariablePicker({ onSelect, customVariables = [], triggerType, ch
                       <div className={cn(
                         "w-5 h-5 rounded-md flex items-center justify-center text-[10px]",
                         category.id === 'call_data' ? "bg-indigo-500/10 text-indigo-400" :
-                          category.id === 'custom_variables' ? "bg-amber-500/10 text-amber-400" :
-                            "bg-primary/10 text-primary"
+                          category.id === 'contact_info' ? "bg-emerald-500/10 text-emerald-400" :
+                            category.id === 'custom_variables' ? "bg-amber-500/10 text-amber-400" :
+                              "bg-primary/10 text-primary"
                       )}>
                         {category.id === 'call_data' ? <Microphone weight="fill" /> :
-                          category.id === 'custom_variables' ? <Code weight="bold" /> :
-                            <Browsers weight="duotone" />}
+                          category.id === 'contact_info' ? <IdentificationCard weight="bold" /> :
+                            category.id === 'custom_variables' ? <Code weight="bold" /> :
+                              <Browsers weight="duotone" />}
                       </div>
                       <span className="text-xs font-semibold text-foreground/90">
                         {category.label}

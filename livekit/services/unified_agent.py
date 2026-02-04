@@ -19,6 +19,7 @@ from services.rag_service import get_rag_service
 from integrations.calendar_api import Calendar, SlotUnavailableError
 from integrations.supabase_client import SupabaseClient
 from utils.latency_logger import measure_latency_context
+from utils.timezone_utils import normalize_caller_timezone
 
 
 @dataclass
@@ -213,6 +214,8 @@ class UnifiedAgent(Agent):
         self._finalized_booking_data: Optional[BookingData] = None
         self._slots_map: dict[str, object] = {}
         self._webhook_data: dict[str, dict] = {}
+        # Call/session timezone for booking (resolved before slot listing; never persisted on assistant)
+        self._call_timezone: Optional[ZoneInfo] = None
         
         # Analysis data collection
         self._analysis_data: dict[str, str] = {}
@@ -269,6 +272,7 @@ class UnifiedAgent(Agent):
         self._webhook_data.clear()
         self._transfer_requested = False
         self._booking_inflight = False
+        self._call_timezone = None
         logging.info("STATE_RESET | All conversation state cleared")
 
     def _on_metrics_collected(self, event: MetricsCollectedEvent):
@@ -297,8 +301,19 @@ class UnifiedAgent(Agent):
             logging.error(f"METRICS_COLLECTION_ERROR | error={str(e)}")
 
     def _tz(self) -> ZoneInfo:
-        """Get timezone from calendar or default to UTC."""
+        """Get timezone for this call: call_timezone if set (booking flow), else calendar/agent timezone. Used for date parsing, slot listing, and confirmation. Convert to UTC only at API boundary (Cal.com)."""
+        if self._call_timezone is not None:
+            return self._call_timezone
         return getattr(self.calendar, "tz", None) or ZoneInfo("UTC")
+
+    def _require_call_timezone(self) -> Optional[str]:
+        """Require call timezone before any slot listing or scheduling. If missing, return message to prompt user; do not assume UTC."""
+        if self._call_timezone is not None:
+            return None
+        return (
+            "I need your time zone before I can show available slots or schedule. "
+            "What time zone are you in? You can say a city (e.g. New York), a region (e.g. Eastern time), or an IANA timezone (e.g. America/New_York)."
+        )
 
     def _require_calendar(self) -> Optional[str]:
         """Check if calendar is available for booking."""
@@ -524,15 +539,31 @@ class UnifiedAgent(Agent):
             return notice + "I encountered an issue retrieving detailed information."
 
     # ========== BOOKING TOOLS ==========
+
+    @function_tool(name="set_call_timezone")
+    async def set_call_timezone(self, ctx: RunContext, user_input: str) -> str:
+        """Set the caller's time zone for this booking session. Call this with the caller's response (e.g. 'Eastern time', 'New York', 'America/New_York') before listing slots or scheduling. Do not assume UTC. If the abbreviation is ambiguous (e.g. CST, IST), ask for clarification and do not proceed until resolved."""
+        if not user_input or not user_input.strip():
+            return "I need your time zone. What time zone are you in? You can say a city (e.g. New York), a region (e.g. Eastern time), or an IANA timezone (e.g. America/New_York)."
+        zone, message = normalize_caller_timezone(user_input)
+        if zone is not None:
+            self._call_timezone = zone
+            iana_str = zone.key
+            logging.info("CALL_TIMEZONE_SET | iana=%s", iana_str)
+            return f"Got it—I'll use {iana_str} for your times. What day would you like to see available slots?"
+        return message or "I couldn't recognize that timezone. Please say a city (e.g. New York), a region (e.g. Eastern time), or an IANA timezone (e.g. America/New_York)."
     
     @function_tool(name="list_slots_on_day")
     async def list_slots_on_day(self, ctx: RunContext, day: str, max_options: int = 10) -> str:
-        """List available appointment slots for a specific day. Shows up to 10 slots by default, or use max_options to show more."""
+        """List available appointment slots for a specific day. Shows up to 10 slots by default, or use max_options to show more. Requires caller timezone to be set first (use set_call_timezone)."""
         msg = self._require_calendar()
         if msg:
             return msg
+        tz_msg = self._require_call_timezone()
+        if tz_msg:
+            return tz_msg
         
-        logging.info("list_slots_on_day START | day=%s | calendar=%s", day, self.calendar is not None)
+        logging.info("list_slots_on_day START | day=%s | calendar=%s | call_tz=%s", day, self.calendar is not None, self._call_timezone.key if self._call_timezone else None)
         
         call_id = f"calendar_{ctx.room.name if hasattr(ctx, 'room') else 'unknown'}"
         
@@ -600,7 +631,13 @@ class UnifiedAgent(Agent):
 
     @function_tool(name="choose_slot")
     async def choose_slot(self, ctx: RunContext, option_id: str) -> str:
-        """Select a time slot for the appointment."""
+        """Select a time slot for the appointment. Requires caller timezone to be set (use set_call_timezone first)."""
+        msg = self._require_calendar()
+        if msg:
+            return msg
+        tz_msg = self._require_call_timezone()
+        if tz_msg:
+            return tz_msg
         # Allow either index from last list or iso key
         slot = None
         if option_id in self._slots_map:
@@ -640,11 +677,14 @@ class UnifiedAgent(Agent):
 
     @function_tool(name="auto_book_appointment")
     async def auto_book_appointment(self, ctx: RunContext, confirm: bool = True) -> str:
-        """Automatically book the appointment when all information is available.
+        """Automatically book the appointment when all information is available. Requires caller timezone to be set (use set_call_timezone first).
 
         Args:
             confirm: Optional flag allowing the LLM to explicitly signal confirmation.
         """
+        tz_msg = self._require_call_timezone()
+        if tz_msg:
+            return tz_msg
         # Check if we have all required information
         if not (self._booking_data.selected_slot and self._booking_data.name and 
                 self._booking_data.email and self._booking_data.phone):
@@ -728,11 +768,14 @@ class UnifiedAgent(Agent):
 
     @function_tool(name="confirm_details")
     async def confirm_details(self, ctx: RunContext, dummy: Optional[str] = None) -> str:
-        """Confirm the appointment details and book it. Only call this when ALL required information is collected.
+        """Confirm the appointment details and book it. Only call this when ALL required information is collected. Requires caller timezone to be set (use set_call_timezone first).
         
         Args:
             dummy: Optional parameter (not used, required for schema compatibility).
         """
+        tz_msg = self._require_call_timezone()
+        if tz_msg:
+            return tz_msg
         # Prevent infinite loops by checking if already confirmed
         if self._booking_data.confirmed:
             if self._booking_data.booked:
@@ -772,11 +815,14 @@ class UnifiedAgent(Agent):
 
     @function_tool(name="finalize_booking")
     async def finalize_booking(self, ctx: RunContext, dummy: Optional[str] = None) -> str:
-        """Finalize and complete the booking process. Only call this when ALL required information is collected (time slot, name, email, phone).
+        """Finalize and complete the booking process. Only call this when ALL required information is collected (time slot, name, email, phone). Requires caller timezone to be set (use set_call_timezone first).
         
         Args:
             dummy: Optional parameter (not used, required for schema compatibility).
         """
+        tz_msg = self._require_call_timezone()
+        if tz_msg:
+            return tz_msg
         # Check if booking is already completed
         if self._booking_data.booked:
             return "Your appointment has already been successfully booked! Is there anything else I can help you with?"
@@ -1021,6 +1067,7 @@ class UnifiedAgent(Agent):
                                 attendee_email=self._booking_data.email or "",
                                 attendee_phone=self._booking_data.phone or "",
                                 notes=self._booking_data.notes or "",
+                                attendee_timezone=self._tz().key,
                             ),
                             timeout=15.0  # Increased from 3 to 15 seconds
                         )
@@ -1043,6 +1090,14 @@ class UnifiedAgent(Agent):
                             raise e
                 logging.info("BOOKING_SUCCESS | appointment scheduled successfully")
                 
+                # Mark as booked BEFORE potential DB/logging delays to ensure subsequent retries are caught
+                self._booking_data.booked = True
+                
+                # Format confirmation message with details
+                tz = self._tz()
+                local_time = self._booking_data.selected_slot.start_time.astimezone(tz)
+                formatted_time = local_time.strftime('%A, %B %d at %I:%M %p')
+                
                 # Save to bookings table if supabase client is available
                 if self.supabase and self.user_id:
                     try:
@@ -1061,52 +1116,25 @@ class UnifiedAgent(Agent):
                             "event_type_id": str(self.calendar.event_type_id) if self.calendar else None
                         }
                         
-                        # Use _safe_db_insert if it exists on supabase client or similar
-                        # For now, use the common pattern found in the codebase
                         insert_res = await asyncio.to_thread(
                             lambda: self.supabase.client.table("bookings").insert(booking_record).execute()
                         )
                         booking_id = insert_res.data[0].get("id") if insert_res.data else None
-                        logging.info("BOOKING_DB_SAVE_SUCCESS | saved to bookings table")
-                        
-                        # Store booking data for inclusion in call_ended workflow
-                        # This will be picked up by the post-call processing
                         self._booking_data.appointment_id = booking_id
+                        logging.info("BOOKING_DB_SAVE_SUCCESS | saved to bookings table | ID=%s", booking_id)
                         
-                        # Store calendar response data for appointment object
-                        if isinstance(resp, dict):
-                            self._booking_data.calendar_response = resp
-                            # Extract booking UID if available (for booking link)
-                            # Cal.com returns booking data directly, which includes uid
-                            if resp.get("uid"):
-                                self._booking_data.booking_uid = resp.get("uid")
-                            # Also check if it's nested in a data field
-                            elif resp.get("data") and isinstance(resp.get("data"), dict):
-                                if resp.get("data").get("uid"):
-                                    self._booking_data.booking_uid = resp.get("data").get("uid")
-                        
-                        # Store calendar response data for appointment object
-                        if isinstance(resp, dict):
-                            self._booking_data.calendar_response = resp
-                            # Extract booking link if available
-                            if resp.get("uid"):
-                                # Cal.com booking link format: https://cal.com/{username}/{event-slug}/{uid}
-                                # We'll construct it if we have the necessary info
-                                self._booking_data.booking_uid = resp.get("uid")
-
-
                     except Exception as db_err:
                         logging.error("BOOKING_DB_SAVE_FAILED | error=%s", str(db_err))
 
-                # Format confirmation message with details
-                tz = self._tz()
-                local_time = self._booking_data.selected_slot.start_time.astimezone(tz)
-                formatted_time = local_time.strftime('%A, %B %d at %I:%M %p')
+                # Store calendar response data for inclusion in call_ended workflow
+                if isinstance(resp, dict):
+                    self._booking_data.calendar_response = resp
+                    # Extract booking UID/link if available
+                    data = resp.get("data", {}) if "data" in resp else resp
+                    if isinstance(data, dict):
+                        self._booking_data.booking_uid = data.get("uid") or data.get("id")
                 
-                self._booking_data.booked = True
-                
-                # Preserve finalized booking data before reset for post-call processing
-                # Create a copy of the booking data with all finalized information
+                # Preserve finalized booking data
                 self._finalized_booking_data = BookingData(
                     name=self._booking_data.name,
                     email=self._booking_data.email,
@@ -1119,12 +1147,9 @@ class UnifiedAgent(Agent):
                     calendar_response=self._booking_data.calendar_response,
                     booking_uid=self._booking_data.booking_uid
                 )
-                logging.info(f"FINALIZED_BOOKING_DATA_PRESERVED | appointment_id={self._finalized_booking_data.appointment_id} | booking_uid={self._finalized_booking_data.booking_uid}")
                 
-                # Reset state after successful booking to allow follow-on bookings
-                prev_email = self._booking_data.email
-                self._reset_state()
-                return f"Perfect! Booked for {formatted_time}. A confirmation will go to {prev_email}. Need another time?"
+                logging.info("BOOKING_COMPLETED_SUCCESSFULLY | slot=%s", formatted_time)
+                return f"Perfect! Booked for {formatted_time}. A confirmation will go to {self._booking_data.email}. Is there anything else I can help you with?"
             
             except asyncio.TimeoutError:
                 logging.error("BOOKING_TIMEOUT | calendar operation timed out after 15 seconds")

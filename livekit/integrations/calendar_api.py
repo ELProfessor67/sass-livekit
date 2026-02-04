@@ -103,6 +103,7 @@ class Calendar(Protocol):
         attendee_email: str,
         attendee_phone: Optional[str] = None,
         notes: Optional[str] = None,
+        attendee_timezone: Optional[str] = None,
     ) -> None: ...
     async def list_available_slots(
         self, *, start_time: datetime.datetime, end_time: datetime.datetime
@@ -294,10 +295,13 @@ class CalComCalendar(Calendar):
                 )
             )
 
+        # Use request timezone (caller's when agent passes it) for slot window and API; convert to UTC only at API boundary.
+        request_tz = start_time.tzinfo if start_time.tzinfo is not None else self.tz
+        if not hasattr(request_tz, "key"):
+            request_tz = self.tz  # fallback if plain tzinfo
         # Cal v1 requires string<date-time> for startTime/endTime. Send local-tz ISO with seconds.
-        # Make endTime inclusive by pushing to 23:59:59 of the local end day.
-        start_local = start_time.astimezone(self.tz)
-        end_local = end_time.astimezone(self.tz).replace(hour=23, minute=59, second=59, microsecond=0)
+        start_local = start_time.astimezone(request_tz)
+        end_local = end_time.astimezone(request_tz).replace(hour=23, minute=59, second=59, microsecond=0)
 
         start_param = start_local.isoformat(timespec="seconds")
         end_param = end_local.isoformat(timespec="seconds")
@@ -310,20 +314,15 @@ class CalComCalendar(Calendar):
                 self._log.info("CALENDAR_CACHE_HIT | saved_time=1.5s | slots=%d", len(cached_result.slots))
                 return cached_result
             else:
-                # Remove expired entry
                 del _calendar_cache[cache_key]
         
-        # Clean cache periodically
         if len(_calendar_cache) > _cache_max_size * 0.8:
             _clean_calendar_cache()
 
-        # Try v1 first with retries
-        slots = await self._fetch_slots_v1_with_retry(start_param, end_param)
-        
-        # If v1 fails completely, try v2 fallback
+        slots = await self._fetch_slots_v1_with_retry(start_param, end_param, request_tz)
         if slots is None:
             self._log.info("Cal.com: v1 failed, trying v2 fallback")
-            slots = await self._fetch_slots_v2(start_param, end_param)
+            slots = await self._fetch_slots_v2(start_param, end_param, request_tz)
         
         if slots is None:
             # Both v1 and v2 failed
@@ -355,15 +354,15 @@ class CalComCalendar(Calendar):
         
         return result
 
-    async def _fetch_slots_v1_with_retry(self, start_param: str, end_param: str) -> list[AvailableSlot] | None:
-        """Try v1 /slots with exponential backoff retries."""
+    async def _fetch_slots_v1_with_retry(self, start_param: str, end_param: str, request_tz: ZoneInfo) -> list[AvailableSlot] | None:
+        """Try v1 /slots with exponential backoff retries. request_tz is used for API timeZone and parsing (caller's tz when set)."""
         import asyncio
         
         params: dict[str, str | int | bool] = {
-            "apiKey": self._api_key,  # v1 API requires apiKey as query parameter
+            "apiKey": self._api_key,
             "startTime": start_param,
             "endTime": end_param,
-            "timeZone": str(self.tz),
+            "timeZone": request_tz.key if hasattr(request_tz, "key") else str(request_tz),
         }
 
         # Prefer eventTypeId if provided; otherwise fall back to username/slug mode
@@ -395,7 +394,7 @@ class CalComCalendar(Calendar):
                     if resp.status == 200:
                         try:
                             payload = await resp.json()
-                            return self._parse_slots_response(payload)
+                            return self._parse_slots_response(payload, request_tz)
                         except Exception as e:
                             self._log.error("Cal.com V1 /slots non-JSON response: %s", txt)
                             return []
@@ -432,12 +431,12 @@ class CalComCalendar(Calendar):
         
         return None
 
-    async def _fetch_slots_v2(self, start_param: str, end_param: str) -> list[AvailableSlot] | None:
-        """Fallback to v2 /slots using GET with query parameters."""
+    async def _fetch_slots_v2(self, start_param: str, end_param: str, request_tz: ZoneInfo) -> list[AvailableSlot] | None:
+        """Fallback to v2 /slots using GET with query parameters. request_tz used for API and parsing."""
         params: dict[str, str] = {
             "start": start_param,
             "end": end_param,
-            "timeZone": str(self.tz),
+            "timeZone": request_tz.key if hasattr(request_tz, "key") else str(request_tz),
         }
         
         # Add event type identification
@@ -462,7 +461,7 @@ class CalComCalendar(Calendar):
                 if resp.status == 200:
                     try:
                         payload = await resp.json()
-                        return self._parse_slots_response_v2(payload)
+                        return self._parse_slots_response_v2(payload, request_tz)
                     except Exception as e:
                         self._log.error("Cal.com V2 /slots non-JSON response: %s", txt)
                         return []
@@ -474,13 +473,11 @@ class CalComCalendar(Calendar):
             self._log.error("Cal.com V2 /slots unexpected error: %s", str(e))
             return []
 
-    def _parse_slots_response(self, payload: dict) -> list[AvailableSlot]:
-        """Parse v1 slots response."""
+    def _parse_slots_response(self, payload: dict, request_tz: ZoneInfo) -> list[AvailableSlot]:
+        """Parse v1 slots response. request_tz is the timezone for slot display (caller's when set)."""
         slots_map = payload.get("slots", {}) or {}
         slots: list[AvailableSlot] = []
-
-        # Response shape:
-        # { "slots": { "YYYY-MM-DD": [ { "time": "2024-04-13T11:00:00+04:00" }, ... ] } }
+        tz = request_tz
         for _date, day_slots in slots_map.items():
             if not isinstance(day_slots, list):
                 continue
@@ -490,50 +487,41 @@ class CalComCalendar(Calendar):
                     continue
                 try:
                     dt = datetime.datetime.fromisoformat(time_iso.replace("Z", "+00:00"))
-                    local_dt = dt.astimezone(self.tz)
+                    local_dt = dt.astimezone(tz)
                     slots.append(AvailableSlot(start_time=local_dt, duration_min=self._event_length))
                 except Exception as e:
                     self._log.warning("Cal.com: failed to parse slot time %r: %s", time_iso, e)
                     continue
-
         self._log.info("Cal.com: Parsed %d available slots", len(slots))
         return slots
 
-    def _parse_slots_response_v2(self, payload: dict) -> list[AvailableSlot]:
-        """Parse v2 slots response according to actual API specification."""
+    def _parse_slots_response_v2(self, payload: dict, request_tz: ZoneInfo) -> list[AvailableSlot]:
+        """Parse v2 slots response. request_tz is the timezone for slot display (caller's when set)."""
         slots: list[AvailableSlot] = []
-        
-        # v2 response format: { "status": "success", "data": { "YYYY-MM-DD": [ { "start": "..." } ] } }
+        tz = request_tz
         if payload.get("status") != "success":
             self._log.warning("Cal.com v2: Non-success status in response: %s", payload.get("status"))
             return slots
-            
         data = payload.get("data", {})
         if not isinstance(data, dict):
             self._log.warning("Cal.com v2: Invalid data format in response")
             return slots
-        
         for date_str, day_slots in data.items():
             if not isinstance(day_slots, list):
                 continue
-                
             for item in day_slots:
                 if not isinstance(item, dict):
                     continue
-                    
-                # v2 uses "start" field
                 time_iso = item.get("start")
                 if not time_iso:
                     continue
-                    
                 try:
                     dt = datetime.datetime.fromisoformat(time_iso.replace("Z", "+00:00"))
-                    local_dt = dt.astimezone(self.tz)
+                    local_dt = dt.astimezone(tz)
                     slots.append(AvailableSlot(start_time=local_dt, duration_min=self._event_length))
                 except Exception as e:
                     self._log.warning("Cal.com v2: failed to parse slot time %r: %s", time_iso, e)
                     continue
-        
         self._log.info("Cal.com v2: Parsed %d available slots", len(slots))
         return slots
 
@@ -547,10 +535,11 @@ class CalComCalendar(Calendar):
         attendee_email: str,
         attendee_phone: Optional[str] = None,
         notes: Optional[str] = None,
+        attendee_timezone: Optional[str] = None,
     ) -> None:
         """
         Create a booking via v2 /bookings. Send start in UTC with trailing 'Z'.
-        Include lengthInMinutes and phoneNumber for best compatibility.
+        Use attendee_timezone (IANA string) when provided (caller's tz); else calendar tz.
         """
         if not self._event_type_id and not (self._username and self._event_type_slug):
             raise Exception("Cal.com: need event_type_id or (username + event_type_slug) to book")
@@ -558,12 +547,13 @@ class CalComCalendar(Calendar):
         start_utc = start_time.astimezone(datetime.timezone.utc)
         start_str = start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")  # '...Z' form
 
+        tz_str = attendee_timezone if attendee_timezone else (self.tz.key if hasattr(self.tz, "key") else str(self.tz))
         body: dict = {
             "start": start_str,
             "attendee": {
                 "name": attendee_name,
                 "email": attendee_email,
-                "timeZone": str(self.tz),
+                "timeZone": tz_str,
                 "language": "en",
             },
             "metadata": {

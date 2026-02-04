@@ -29,6 +29,7 @@ import userRouter from './routes/user.js';
 import workflowsRouter from './routes/workflows.js';
 import workflowExecutionRouter from './routes/workflow-execution.js';
 import { tenantMiddleware } from './middleware/tenantMiddleware.js';
+import { authenticateToken } from './utils/auth.js';
 import './workers/supportAccessCleanup.js';
 import { smsSchedulingWorker } from './workers/sms-scheduling-worker.js';
 import facebookIntegrationsRouter from './routes/facebook-integrations.js';
@@ -485,9 +486,89 @@ console.log('Admin routes registered at /api/v1/admin');
 console.log('White label routes registered at /api/v1/whitelabel');
 console.log('User routes registered at /api/v1/user');
 
-// Recording routes (matching voiceagents pattern exactly)
+// Recording routes (matching voiceagents: Bearer auth, credentials from DB)
 
-// Get recording information for a call
+// Bearer-authenticated: get recording info for a call (credentials from user_twilio_credentials)
+app.get('/api/v1/calls/:callSid/recordings', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { callSid } = req.params;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Access token required' });
+    }
+    if (!callSid) {
+      return res.status(400).json({ success: false, message: 'callSid is required' });
+    }
+    const { data: credentials, error: credError } = await supabaseAdmin
+      .from('user_twilio_credentials')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .single();
+    if (credError || !credentials) {
+      return res.status(400).json({ success: false, message: 'No Twilio credentials found' });
+    }
+    const result = await getCallRecordingInfo({
+      accountSid: credentials.account_sid,
+      authToken: credentials.auth_token,
+      callSid
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error getting call recording info:', error);
+    res.status(500).json({ success: false, message: error?.message || 'Failed to get call recording info' });
+  }
+});
+
+// Bearer-authenticated: proxy recording audio (credentials from user_twilio_credentials)
+app.get('/api/v1/calls/recording/:recordingSid/audio', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { recordingSid } = req.params;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Access token required' });
+    }
+    if (!recordingSid) {
+      return res.status(400).json({ success: false, message: 'recordingSid is required' });
+    }
+    const { data: credentials, error: credError } = await supabaseAdmin
+      .from('user_twilio_credentials')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .single();
+    if (credError || !credentials) {
+      return res.status(400).json({ success: false, message: 'No Twilio credentials found' });
+    }
+    const accountSid = credentials.account_sid;
+    const authToken = credentials.auth_token;
+    const recordingUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Recordings/${recordingSid}`;
+    const response = await fetch(recordingUrl, {
+      headers: {
+        'Authorization': `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+        'Accept': 'audio/wav'
+      }
+    });
+    if (!response.ok) {
+      console.error('Failed to fetch recording from Twilio:', response.status, response.statusText);
+      return res.status(response.status).json({
+        success: false,
+        message: `Failed to fetch recording: ${response.statusText}`
+      });
+    }
+    const audioBuffer = await response.arrayBuffer();
+    res.setHeader('Content-Type', 'audio/wav');
+    res.setHeader('Content-Length', audioBuffer.byteLength);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(Buffer.from(audioBuffer));
+  } catch (error) {
+    console.error('Error proxying recording audio:', error);
+    res.status(500).json({ success: false, message: error?.message || 'Internal server error' });
+  }
+});
+
+// Legacy: Get recording information for a call (query params accountSid, authToken)
 app.get('/api/v1/call/:callSid/recordings', async (req, res) => {
   try {
     const { callSid } = req.params;
@@ -528,8 +609,9 @@ app.get('/api/v1/call/recording/:recordingSid/audio', async (req, res) => {
       });
     }
 
-    // Construct the Twilio recording URL
-    const recordingUrl = `https://api.twilio.com/2010-04-01/Accounts/${decodedAccountSid}/Recordings/${recordingSid}.wav`;
+    // Twilio REST API: use /Recordings/{sid} (no .wav suffix) and negotiate format via Accept header.
+    // /Recordings/{sid}.wav returns 404 (Error 16101) — the .wav suffix is not supported.
+    const recordingUrl = `https://api.twilio.com/2010-04-01/Accounts/${decodedAccountSid}/Recordings/${recordingSid}`;
 
     // Debug: Log credential info
     console.log('Audio request debug:', {
@@ -541,10 +623,11 @@ app.get('/api/v1/call/recording/:recordingSid/audio', async (req, res) => {
       recordingUrl
     });
 
-    // Make authenticated request to Twilio
+    // Make authenticated request to Twilio — request WAV via Accept header, not URL suffix
     const response = await fetch(recordingUrl, {
       headers: {
-        'Authorization': `Basic ${Buffer.from(`${decodedAccountSid}:${decodedAuthToken}`).toString('base64')}`
+        'Authorization': `Basic ${Buffer.from(`${decodedAccountSid}:${decodedAuthToken}`).toString('base64')}`,
+        'Accept': 'audio/wav'
       }
     });
 

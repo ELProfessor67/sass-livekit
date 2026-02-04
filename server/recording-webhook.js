@@ -50,7 +50,7 @@ recordingWebhookRouter.post('/status', async (req, res) => {
       });
     }
 
-    // Prepare recording data for database update
+    // Prepare recording data for database update (include call_sid for backfill)
     const recordingData = {
       recording_sid: RecordingSid,
       recording_url: RecordingUrl || null,
@@ -63,8 +63,8 @@ recordingWebhookRouter.post('/status', async (req, res) => {
       updated_at: new Date().toISOString()
     };
 
-    // Update the call_history table with recording information
-    const { data, error } = await supa
+    // 1) Update row that already has this call_sid
+    let { data, error } = await supa
       .from('call_history')
       .update(recordingData)
       .eq('call_sid', CallSid)
@@ -72,18 +72,45 @@ recordingWebhookRouter.post('/status', async (req, res) => {
 
     if (error) {
       console.error('Failed to update call history with recording data:', error);
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to update call history' 
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to update call history'
       });
     }
 
+    // 2) Backfill: if no row had call_sid, the agent may have saved without it (e.g. inbound before LiveKit had Twilio SID).
+    //    Attach this CallSid and recording to the most recent call_history row with call_sid null (recent window).
     if (!data || data.length === 0) {
-      console.warn('No call history found for CallSid:', CallSid);
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Call not found' 
-      });
+      const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString(); // last 15 min
+      const { data: recentNullSid, error: findError } = await supa
+        .from('call_history')
+        .select('id')
+        .is('call_sid', null)
+        .gte('start_time', cutoff)
+        .order('start_time', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!findError && recentNullSid?.id) {
+        const { data: backfillData, error: backfillError } = await supa
+          .from('call_history')
+          .update({ ...recordingData, call_sid: CallSid })
+          .eq('id', recentNullSid.id)
+          .select();
+
+        if (!backfillError && backfillData?.length) {
+          data = backfillData;
+          console.log('RECORDING_BACKFILL_CALL_SID', { CallSid, rowId: recentNullSid.id, RecordingSid });
+        }
+      }
+
+      if (!data || data.length === 0) {
+        console.warn('No call history found for CallSid (and no recent row to backfill):', CallSid);
+        return res.status(404).json({
+          success: false,
+          message: 'Call not found'
+        });
+      }
     }
 
     console.log('RECORDING_STATUS_UPDATED', {

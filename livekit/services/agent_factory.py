@@ -50,16 +50,18 @@ class AgentFactory:
         cal_api_key = config.get('cal_api_key')
         cal_event_type_id = config.get('cal_event_type_id')
         if cal_api_key and cal_event_type_id:
-            tz_name = (config.get("cal_timezone") or "Asia/Karachi")
+            # Use assistant timezone if available, otherwise fallback to UTC
+            tz_name = (config.get("cal_timezone") or config.get("timezone") or "UTC")
             try:
                 now_local = datetime.datetime.now(ZoneInfo(tz_name))
             except Exception as e:
                 logger.warning(f"Invalid timezone '{tz_name}': {str(e)}, falling back to UTC")
                 tz_name = "UTC"
                 now_local = datetime.datetime.now(ZoneInfo(tz_name))
+            
             instructions += (
                 f"\n\nCONTEXT:\n"
-                f"- Current local time: {now_local.isoformat()}\n"
+                f"- Current local time: {now_local.strftime('%Y-%m-%d %H:%M:%S')} ({tz_name})\n"
                 f"- Timezone: {tz_name}\n"
                 f"- When the user says a date like '7th October', always interpret it as the next FUTURE occurrence in {tz_name}. "
                 f"Never call tools with past dates; if a parsed date is in the past year, bump it to the next year."
@@ -101,8 +103,22 @@ class AgentFactory:
 
         # Add booking instructions only if calendar is available
         if calendar:
-            instructions += "\n\nBOOKING CAPABILITIES:\nYou can help users book appointments. You have access to the following booking tools:\n- list_slots_on_day: Show available appointment slots for a specific day (shows 10 slots by default - use max_options=20 to show more)\n- choose_slot: Select a time slot for the appointment (can use time like '7:00pm' or slot number from list)\n- set_name: Set the customer's name\n- set_email: Set the customer's email\n- set_phone: Set the customer's phone number\n- finalize_booking: Complete the booking when ALL information is collected (time slot, name, email, phone)\n\nCRITICAL BOOKING RULES:\n- ONLY start booking if the user explicitly requests it (e.g., 'I want to book', 'schedule an appointment', 'book a time')\n- Do NOT automatically start booking just because you have contact information (phone, email, name)\n- Do NOT call list_slots_on_day or any booking tools unless the user explicitly asks to book or schedule an appointment\n- Do NOT call finalize_booking or confirm_details until you have: 1) selected time slot, 2) customer name, 3) email, and 4) phone number. Only call ONE of these functions, not both."
-            logger.info("BOOKING_TOOLS | Calendar booking tools added to instructions")
+            instructions += (
+                "\n\nBOOKING CAPABILITIES:\nYou can help users book appointments. You have access to the following booking tools:\n"
+                "- set_call_timezone: Set the caller's time zone for this booking session (REQUIRED before listing slots or scheduling). Call with the caller's response (e.g. 'Eastern time', 'New York', 'America/New_York'). Do NOT assume UTC. If the caller says an ambiguous abbreviation (e.g. CST, IST), the tool will return a clarification—ask the caller and call set_call_timezone again with their answer. Do NOT proceed to list slots or schedule until set_call_timezone has been called successfully.\n"
+                "- list_slots_on_day: Show available appointment slots for a specific day (shows 10 slots by default - use max_options=20 to show more). Requires caller timezone to be set first.\n"
+                "- choose_slot: Select a time slot for the appointment (can use time like '7:00pm' or slot number from list). Requires caller timezone to be set.\n"
+                "- set_name: Set the customer's name\n"
+                "- set_email: Set the customer's email\n"
+                "- set_phone: Set the customer's phone number\n"
+                "- finalize_booking: Complete the booking when ALL information is collected (time slot, name, email, phone). Requires caller timezone to be set.\n\n"
+                "CRITICAL BOOKING RULES:\n"
+                "- TIMEZONE: If the user initiates a booking flow, you MUST resolve their timezone before any slot listing or scheduling. Check if call timezone is set; if not, ask: 'What time zone are you in?' Then call set_call_timezone with their answer. If the tool returns a clarification (e.g. for CST or IST), ask the user that question and do NOT call list_slots_on_day or schedule until resolved. Do NOT assume UTC. Do NOT guess ambiguous abbreviations.\n"
+                "- ONLY start booking if the user explicitly requests it (e.g., 'I want to book', 'schedule an appointment', 'book a time').\n"
+                "- Do NOT call list_slots_on_day, choose_slot, or finalize_booking/confirm_details until set_call_timezone has been called successfully for this call.\n"
+                "- Do NOT call finalize_booking or confirm_details until you have: 1) caller timezone set, 2) selected time slot, 3) customer name, 4) email, and 5) phone number. Only call ONE of finalize_booking/confirm_details, not both."
+            )
+            logger.info("BOOKING_TOOLS | Calendar booking tools added to instructions (timezone required before slot listing)")
 
         # Create unified agent with both RAG and booking capabilities
         # Use pre-warmed components if available
@@ -204,8 +220,8 @@ class AgentFactory:
                 event_type_id = None
             
             if event_type_id:
-                # Get timezone from config, default to Asia/Karachi for Pakistan
-                cal_timezone = config.get("cal_timezone") or "Asia/Karachi"
+                # Use assistant timezone if available, otherwise fallback to UTC
+                cal_timezone = config.get("cal_timezone") or config.get("timezone") or "UTC"
                 logger.info(f"CALENDAR_CONFIG | api_key={'*' * 10} | event_type_id={event_type_id} | timezone={cal_timezone}")
                 calendar = CalComCalendar(
                     api_key=config.get("cal_api_key"),

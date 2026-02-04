@@ -97,7 +97,7 @@ class WorkflowService {
                 .from('workflows')
                 .select('*')
                 .eq('assistant_id', assistantId)
-                .eq('is_active', true);
+                .or('status.eq.active,is_active.eq.true');
 
             if (junctionError) {
                 console.error('[WorkflowService] Error fetching junction workflows:', junctionError);
@@ -113,7 +113,9 @@ class WorkflowService {
             if (junctionWorkflows) {
                 for (const entry of junctionWorkflows) {
                     const workflow = entry.workflow;
-                    if (workflow && workflow.is_active) {
+                    // Check both is_active and status for activity
+                    const isActive = workflow && (workflow.is_active === true || workflow.status === 'active');
+                    if (isActive) {
                         workflowsToExecute.set(workflow.id, workflow);
                     }
                 }
@@ -336,6 +338,13 @@ class WorkflowService {
      * Root execution method for a workflow
      */
     async executeWorkflow(workflow, context, startNodeId = null) {
+        // SAFETY CHECK: Only trigger if workflow is active
+        const isActive = workflow && (workflow.is_active === true || workflow.status === 'active');
+        if (!isActive) {
+            console.log(`[WorkflowService] Skipping execution of workflow ${workflow?.id} (${workflow?.name}): Workflow is not active.`);
+            return;
+        }
+
         // Convert router nodes to condition nodes before execution
         const convertedWorkflow = this.convertRouterNodesToConditions(workflow);
         const nodes = convertedWorkflow.nodes || [];
