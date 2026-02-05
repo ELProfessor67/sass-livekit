@@ -100,7 +100,16 @@ def normalize_caller_timezone(user_input: str) -> Tuple[Optional[ZoneInfo], Opti
         return (None, "I need your time zone to show available times. What time zone are you in? You can say a city (e.g. New York), a region (e.g. Eastern time), or an IANA timezone (e.g. America/New_York).")
 
     raw = user_input.strip()
-    normalized = raw.upper().replace(" ", "_")
+    
+    # Pre-normalization for conversational input
+    clean_raw = raw.lower()
+    for suffix in [" time zone", " timezone", " time"]:
+        if clean_raw.endswith(suffix):
+            clean_raw = clean_raw[:-len(suffix)].strip()
+            break
+    
+    normalized = clean_raw.upper().replace(" ", "_").strip()
+    
     # Check ambiguous first (exact match on abbreviation)
     for abbr, clarification in AMBIGUOUS.items():
         if normalized == abbr:
@@ -108,9 +117,11 @@ def normalize_caller_timezone(user_input: str) -> Tuple[Optional[ZoneInfo], Opti
             return (None, clarification)
 
     # Try unambiguous map (case-insensitive key)
-    key_upper = raw.upper().strip()
+    # Check against clean_raw first (conversational names)
+    clean_raw_upper = clean_raw.upper()
     for k, iana in UNAMBIGUOUS_MAP.items():
-        if k.upper() == key_upper or k.replace(" ", "_").upper() == key_upper:
+        k_upper = k.upper().strip()
+        if k_upper == clean_raw_upper or k_upper.replace(" ", "_") == normalized:
             try:
                 z = ZoneInfo(iana)
                 _log.info("TIMEZONE_RESOLVED | input=%s | iana=%s", raw, iana)
@@ -119,10 +130,22 @@ def normalize_caller_timezone(user_input: str) -> Tuple[Optional[ZoneInfo], Opti
                 _log.warning("TIMEZONE_MAP_INVALID | iana=%s | error=%s", iana, e)
                 return (None, "I couldn't use that timezone. Please try a city (e.g. New York) or IANA timezone (e.g. America/New_York).")
 
+    # Try original raw input as well (legacy path)
+    key_upper = raw.upper().strip()
+    for k, iana in UNAMBIGUOUS_MAP.items():
+        if k.upper() == key_upper or k.replace(" ", "_").upper() == key_upper:
+            try:
+                z = ZoneInfo(iana)
+                _log.info("TIMEZONE_RESOLVED_LEGACY | input=%s | iana=%s", raw, iana)
+                return (z, None)
+            except Exception as e:
+                _log.warning("TIMEZONE_MAP_INVALID | iana=%s | error=%s", iana, e)
+                return (None, "I couldn't use that timezone. Please try a city (e.g. New York) or IANA timezone (e.g. America/New_York).")
+
     # Try as IANA identifier (e.g. America/New_York, Asia/Karachi)
     try:
         # Restore slashes if user said "America New York"
-        candidate = raw.replace(" ", "/")
+        candidate = clean_raw.replace(" ", "/")
         z = ZoneInfo(candidate)
         _log.info("TIMEZONE_RESOLVED_IANA | input=%s | iana=%s", raw, candidate)
         return (z, None)
@@ -131,8 +154,8 @@ def normalize_caller_timezone(user_input: str) -> Tuple[Optional[ZoneInfo], Opti
 
     # Try without replacing space (exact IANA)
     try:
-        z = ZoneInfo(raw)
-        _log.info("TIMEZONE_RESOLVED_IANA | input=%s", raw)
+        z = ZoneInfo(clean_raw)
+        _log.info("TIMEZONE_RESOLVED_IANA_RAW | input=%s", raw)
         return (z, None)
     except Exception:
         pass

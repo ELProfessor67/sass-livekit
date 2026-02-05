@@ -24,11 +24,9 @@ const UNIVERSAL_EXTRACTION_SCHEMA = {
     urgent: "Boolean: true if the matter requires immediate attention, false otherwise",
     appointment: {
         status: "Booking status: 'booked' or 'not_booked'",
-        start_time: "Appointment start time in ISO format (or descriptive like 'Tomorrow at 2pm')",
-
+        start_time: "Appointment start time in format 'Tuesday 17 February 2026 at 13:00'",
+        appointment_date: "Appointment date and time in format 'Tuesday 17 February 2026 at 13:00'",
         timezone: "Timezone for the appointment",
-
-
         contact: {
             name: "Name of the person who booked (often same as caller)",
             email: "Email of the person who booked",
@@ -182,6 +180,7 @@ class WorkflowService {
                         4. For 'sentiment', use one of: positive, neutral, negative, frustrated.
                         5. For 'urgent', return a boolean.
                         6. For 'appointment.status', use 'booked' if a specific time was agreed upon, otherwise 'not_booked'.
+                        7. For 'appointment.appointment_date' and 'appointment.start_time', always use the format: 'Day DD Month YYYY at HH:mm' (e.g., 'Tuesday 17 February 2026 at 13:00'). Use the call metadata to resolve relative dates like 'tomorrow' or 'next Tuesday'.
                         
                         Transcript follows below.`
                     },
@@ -632,6 +631,31 @@ class WorkflowService {
                 body: body
             });
             console.log(`[WorkflowService] SMS sent successfully: ${msgResponse.sid}`);
+
+            // Persist the sent message to sms_messages table for conversation history context
+            try {
+                const { error: insertError } = await supabase
+                    .from('sms_messages')
+                    .insert({
+                        message_sid: msgResponse.sid,
+                        user_id: workflow.user_id,
+                        to_number: targetNumber,
+                        from_number: fromNumber,
+                        body: body,
+                        direction: 'outbound',
+                        status: msgResponse.status,
+                        date_created: new Date().toISOString(),
+                        date_updated: new Date().toISOString()
+                    });
+
+                if (insertError) {
+                    console.error('[WorkflowService] Error storing SMS message in database:', insertError);
+                } else {
+                    console.log(`[WorkflowService] Successfully stored outbound SMS in database: ${msgResponse.sid}`);
+                }
+            } catch (dbErr) {
+                console.error('[WorkflowService] Database exception storing SMS:', dbErr);
+            }
         } catch (smsErr) {
             console.error('[WorkflowService] Twilio SMS API error:', smsErr.message);
             throw smsErr;
@@ -1140,6 +1164,7 @@ class WorkflowService {
                 // Add appointment fields at top level with appointment_ prefix
                 flat.appointment_status = context.callData.appointment.status || '';
                 flat.appointment_start_time = context.callData.appointment.start_time || '';
+                flat.appointment_date = context.callData.appointment.appointment_date || '';
                 flat.appointment_end_time = context.callData.appointment.end_time || '';
                 flat.appointment_timezone = context.callData.appointment.timezone || '';
                 flat.appointment_calendar = context.callData.appointment.calendar || '';
@@ -1158,6 +1183,7 @@ class WorkflowService {
             // Add appointment fields at top level with appointment_ prefix
             flat.appointment_status = context.appointment.status || flat.appointment_status || '';
             flat.appointment_start_time = context.appointment.start_time || flat.appointment_start_time || '';
+            flat.appointment_date = context.appointment.appointment_date || flat.appointment_date || '';
             flat.appointment_end_time = context.appointment.end_time || flat.appointment_end_time || '';
             flat.appointment_timezone = context.appointment.timezone || flat.appointment_timezone || '';
             flat.appointment_calendar = context.appointment.calendar || flat.appointment_calendar || '';

@@ -126,7 +126,7 @@ export function useWorkflows(filters?: WorkflowFilters) {
 
     const stats = {
         total: workflows?.length || 0,
-        active: workflows?.filter((w) => w.status === 'active').length || 0,
+        active: workflows?.filter((w) => w.is_active || w.status === 'active').length || 0,
         draft: workflows?.filter((w) => w.status === 'draft').length || 0,
         paused: workflows?.filter((w) => w.status === 'paused').length || 0,
         starter: workflows?.filter((w) => w.is_starter).length || 0,

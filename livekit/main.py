@@ -1108,6 +1108,7 @@ class CallHandler:
                 appointment = {
                     "status": "booked",
                     "start_time": start_time_iso,
+                    "appointment_date": booking_data.selected_slot.start_time.strftime('%A %d %B %Y at %H:%M') if hasattr(booking_data.selected_slot, 'start_time') else "",
                     "end_time": end_time_iso,
                     "timezone": timezone_str,
                     "calendar": calendar_name or "Unknown",
@@ -1125,6 +1126,7 @@ class CallHandler:
                 appointment = {
                     "status": "not_booked",
                     "start_time": "",
+                    "appointment_date": "",
                     "end_time": "",
                     "timezone": "",
                     "calendar": "",
@@ -1184,7 +1186,7 @@ class CallHandler:
                     # Also add formatted date/time
                     tz = booking_data.selected_slot.start_time.tzinfo
                     local_time = booking_data.selected_slot.start_time.astimezone(tz) if tz else booking_data.selected_slot.start_time
-                    structured_data["appointment_date"] = local_time.strftime('%Y-%m-%d')
+                    structured_data["appointment_date"] = local_time.strftime('%A %d %B %Y at %H:%M')
                     structured_data["appointment_time"] = local_time.strftime('%I:%M %p')
                 if booking_data.name:
                     structured_data["booking_name"] = booking_data.name

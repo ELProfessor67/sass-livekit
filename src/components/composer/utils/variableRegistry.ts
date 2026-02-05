@@ -141,9 +141,15 @@ export function getVariableRegistry(triggerType?: string): VariableCategory[] {
         },
         {
           key: 'appointment.start_time',
-          label: 'Start Time',
+          label: 'Start Time (ISO)',
           description: 'Appointment start time in ISO format',
           example: '2024-01-15T10:00:00+00:00'
+        },
+        {
+          key: 'appointment.appointment_date',
+          label: 'Appointment Date',
+          description: 'Formatted appointment date and time',
+          example: 'Tuesday 17 February 2026 at 13:00'
         },
         {
           key: 'appointment.timezone',

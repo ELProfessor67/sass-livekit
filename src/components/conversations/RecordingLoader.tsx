@@ -20,9 +20,6 @@ export function RecordingLoader({ callSid }: RecordingLoaderProps) {
           Loading...
         </Badge>
       </div>
-      <div className="text-xs text-muted-foreground">
-        Fetching recording from Twilio for call: {callSid}
-      </div>
     </div>
   );
 }

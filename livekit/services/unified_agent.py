@@ -550,12 +550,18 @@ class UnifiedAgent(Agent):
             self._call_timezone = zone
             iana_str = zone.key
             logging.info("CALL_TIMEZONE_SET | iana=%s", iana_str)
-            return f"Got it—I'll use {iana_str} for your times. What day would you like to see available slots?"
+            return f"Got it—I'll use {iana_str} for your times. How can I help you from here?"
         return message or "I couldn't recognize that timezone. Please say a city (e.g. New York), a region (e.g. Eastern time), or an IANA timezone (e.g. America/New_York)."
     
     @function_tool(name="list_slots_on_day")
-    async def list_slots_on_day(self, ctx: RunContext, day: str, max_options: int = 10) -> str:
-        """List available appointment slots for a specific day. Shows up to 10 slots by default, or use max_options to show more. Requires caller timezone to be set first (use set_call_timezone)."""
+    async def list_slots_on_day(self, ctx: RunContext, day: str, max_options: int = 10, timeframe: Optional[str] = None) -> str:
+        """List available appointment slots for a specific day. Shows up to 10 slots by default.
+        
+        Args:
+            day: The day to check (e.g. 'tomorrow', 'Friday').
+            max_options: Maximum number of slots to show.
+            timeframe: Optional preference: 'morning' (before 12pm), 'afternoon' (12pm-5pm), or 'evening' (after 5pm).
+        """
         msg = self._require_calendar()
         if msg:
             return msg
@@ -563,26 +569,30 @@ class UnifiedAgent(Agent):
         if tz_msg:
             return tz_msg
         
-        logging.info("list_slots_on_day START | day=%s | calendar=%s | call_tz=%s", day, self.calendar is not None, self._call_timezone.key if self._call_timezone else None)
+        logging.info("list_slots_on_day START | day=%s | timeframe=%s | call_tz=%s", day, timeframe, self._call_timezone.key if self._call_timezone else None)
         
         call_id = f"calendar_{ctx.room.name if hasattr(ctx, 'room') else 'unknown'}"
         
         async with measure_latency_context("calendar_list_slots", call_id, {
             "day": day,
-            "max_options": max_options
+            "max_options": max_options,
+            "timeframe": timeframe
         }):
             try:
                 # Parse the day
                 parsed_date = self._parse_day(day)
                 if not parsed_date:
                    return "Please say the day like 'today', 'tomorrow', 'Friday', or '2025-09-05'."
-                start_time = datetime.datetime.combine(parsed_date, datetime.time(0,0,tzinfo=self._tz()))
+                
+                # Start time for the search
+                search_tz = self._tz()
+                start_time = datetime.datetime.combine(parsed_date, datetime.time(0, 0, tzinfo=search_tz))
+                end_time = start_time + datetime.timedelta(days=1)
 
                 # Get slots for the day with timeout
-                end_time = start_time + datetime.timedelta(days=1)
                 result = await asyncio.wait_for(
                     self.calendar.list_available_slots(start_time=start_time, end_time=end_time),
-                    timeout=2.5  # 2.5 second timeout for calendar operations
+                    timeout=2.5
                 )
                 
                 if not result.is_success:
@@ -597,29 +607,41 @@ class UnifiedAgent(Agent):
                 if not all_slots:
                     return f"No available slots for {day}."
                 
+                # Filter by timeframe if provided
+                filtered_slots = all_slots
+                if timeframe:
+                    tf = timeframe.lower()
+                    if 'morning' in tf:
+                        filtered_slots = [s for s in all_slots if s.start_time.astimezone(search_tz).hour < 12]
+                    elif 'afternoon' in tf:
+                        filtered_slots = [s for s in all_slots if 12 <= s.start_time.astimezone(search_tz).hour < 17]
+                    elif 'evening' in tf:
+                        filtered_slots = [s for s in all_slots if s.start_time.astimezone(search_tz).hour >= 17]
+
+                if not filtered_slots and timeframe:
+                    return f"I don't see any available slots in the {timeframe} for {day}. Would you like to hear all available slots instead?"
+
                 # Clear previous slots and use stable keys
-                # IMPORTANT: Store ALL slots in _slots_map for availability checking
                 self._slots_map.clear()
-                for slot in all_slots:
-                    key = slot.start_time.isoformat()  # Stable key based on ISO time
+                for slot in all_slots: # Keep all slots in map for direct selection
+                    key = slot.start_time.isoformat()
                     self._slots_map[key] = slot
                 
-                # Only show first max_options to user for brevity, but let them know if there are more
-                display_slots = all_slots[:max_options]
+                # Display only the filtered subset
+                display_slots = filtered_slots[:max_options]
                 lines = []
                 for i, slot in enumerate(display_slots, 1):
-                    local_time = slot.start_time.astimezone(self._tz())
+                    local_time = slot.start_time.astimezone(search_tz)
                     formatted_time = local_time.strftime('%I:%M %p')
                     lines.append(f"{i}. {formatted_time}")
                 
-                # Build response with total count information
-                response_parts = [f"Available slots for {day}:\n" + "\n".join(lines)]
+                timeframe_str = f" in the {timeframe}" if timeframe else ""
+                response_parts = [f"Available slots for {day}{timeframe_str}:\n" + "\n".join(lines)]
                 
-                # Inform user if there are more slots available
-                if len(all_slots) > max_options:
-                    response_parts.append(f"\nI'm showing you {len(display_slots)} of {len(all_slots)} total available slots. You can choose any time slot from the list above, or ask me to show more options.")
+                if len(filtered_slots) > max_options:
+                    response_parts.append(f"\nI'm showing you {len(display_slots)} of {len(filtered_slots)} available slots. You can pick one or ask to see more.")
                 
-                logging.info("SLOTS_LISTED | total=%d | displayed=%d | day=%s", len(all_slots), len(display_slots), day)
+                logging.info("SLOTS_LISTED | filtered=%d | displayed=%d | timeframe=%s", len(filtered_slots), len(display_slots), timeframe)
                 return "".join(response_parts)
                 
             except asyncio.TimeoutError:
@@ -638,24 +660,21 @@ class UnifiedAgent(Agent):
         tz_msg = self._require_call_timezone()
         if tz_msg:
             return tz_msg
-        # Allow either index from last list or iso key
+        
         slot = None
         if option_id in self._slots_map:
             slot = self._slots_map[option_id]
         else:
-            # try resolving index seen last render
             if option_id.isdigit():
                 idx = int(option_id) - 1
                 keys = list(self._slots_map.keys())
                 if 0 <= idx < len(keys):
                     slot = self._slots_map[keys[idx]]
             else:
-                # Try parsing as time string (e.g., "8am", "3:30pm", "10:00am")
-                # Match against all available slots
                 slot = self._find_slot_by_time_string(option_id)
         
         if not slot:
-            return f"Option {option_id} isn't available. Say 'list slots' to refresh."
+            return f"Option {option_id} doesn't seem to be available. Would you like to hear the slots again?"
         
         self._booking_data.selected_slot = slot
         logging.info("SLOT_SELECTED | option_id=%s", option_id)
@@ -669,10 +688,9 @@ class UnifiedAgent(Agent):
         if not self._booking_data.phone: missing_fields.append("phone")
 
         if missing_fields:
-            return f"Great—{formatted_time}. I still need your {', '.join(missing_fields)}."
-        # auto-book now to remove an extra LLM turn
-        logging.info("AUTO_BOOKING_TRIGGERED | all fields available")
-        return await self._do_schedule()
+            return f"Great, I've noted down {formatted_time}. To finish booking, I just need your {', '.join(missing_fields)}."
+        
+        return f"Perfect, you've selected {formatted_time}. Shall I go ahead and confirm this appointment for you?"
 
 
     @function_tool(name="auto_book_appointment")
@@ -1149,7 +1167,19 @@ class UnifiedAgent(Agent):
                 )
                 
                 logging.info("BOOKING_COMPLETED_SUCCESSFULLY | slot=%s", formatted_time)
-                return f"Perfect! Booked for {formatted_time}. A confirmation will go to {self._booking_data.email}. Is there anything else I can help you with?"
+                
+                # Build a warm, comprehensive closing summary
+                closing_summary = (
+                    f"Perfect! I've successfully booked your appointment for {formatted_time} ({tz.key}). "
+                    f"A confirmation email has been sent to {self._booking_data.email}. "
+                )
+                
+                if self._booking_data.phone:
+                    closing_summary += "You should also receive a text message shortly. "
+                
+                closing_summary += "Is there anything else I can help you with today?"
+                
+                return closing_summary
             
             except asyncio.TimeoutError:
                 logging.error("BOOKING_TIMEOUT | calendar operation timed out after 15 seconds")

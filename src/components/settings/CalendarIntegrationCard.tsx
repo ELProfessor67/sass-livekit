@@ -14,11 +14,11 @@ interface CalendarIntegrationCardProps {
   onRefresh: (id: string) => void;
 }
 
-export function CalendarIntegrationCard({ 
-  integrations, 
-  onSuccess, 
-  onRemove, 
-  onRefresh 
+export function CalendarIntegrationCard({
+  integrations,
+  onSuccess,
+  onRemove,
+  onRefresh
 }: CalendarIntegrationCardProps) {
   const { toast } = useToast();
 
@@ -26,10 +26,10 @@ export function CalendarIntegrationCard({
     const date = new Date(dateString);
     const now = new Date();
     const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
-    
+
     if (diffInHours < 1) return "Just now";
     if (diffInHours < 24) return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
-    
+
     const diffInDays = Math.floor(diffInHours / 24);
     return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
   };
@@ -53,7 +53,12 @@ export function CalendarIntegrationCard({
           <p className="text-muted-foreground mb-4">
             Connect your calendar to enable scheduling features for your assistants.
           </p>
-          <CalendarAuthDialog onSuccess={onSuccess}>
+          <CalendarAuthDialog
+            onSuccess={onSuccess}
+            integrations={integrations}
+            onRemove={onRemove}
+            onRefresh={onRefresh}
+          >
             <Button>
               <Calendar className="mr-2 h-4 w-4" />
               Connect Calendar
@@ -68,7 +73,7 @@ export function CalendarIntegrationCard({
     <div className="space-y-4">
       {integrations.map((integration) => {
         const providerInfo = getProviderInfo(integration.provider);
-        
+
         return (
           <Card key={integration.id} className="border-border/60 bg-card/50 backdrop-blur-sm">
             <CardHeader className="pb-3">
@@ -92,7 +97,7 @@ export function CalendarIntegrationCard({
                 </div>
               </div>
             </CardHeader>
-            
+
             <CardContent className="pt-0">
               <div className="space-y-3">
                 {/* Integration Details */}
@@ -117,13 +122,18 @@ export function CalendarIntegrationCard({
 
                 {/* Actions */}
                 <div className="flex gap-2 pt-2">
-                  <CalendarAuthDialog onSuccess={onSuccess}>
+                  <CalendarAuthDialog
+                    onSuccess={onSuccess}
+                    integrations={integrations}
+                    onRemove={onRemove}
+                    onRefresh={onRefresh}
+                  >
                     <Button variant="outline" size="sm" className="flex-1">
                       <Calendar className="mr-2 h-3 w-3" />
                       Add Another
                     </Button>
                   </CalendarAuthDialog>
-                  
+
                   {!integration.is_active && (
                     <Button
                       variant="outline"
@@ -133,7 +143,7 @@ export function CalendarIntegrationCard({
                       <RefreshCw className="h-3 w-3" />
                     </Button>
                   )}
-                  
+
                   <Button
                     variant="outline"
                     size="sm"

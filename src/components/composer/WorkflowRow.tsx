@@ -129,11 +129,12 @@ export function WorkflowRow({ workflow, onClick }: WorkflowRowProps) {
             {/* Status - toggle switch */}
             <TableCell className="py-4 text-center" onClick={(e) => e.stopPropagation()}>
                 <Switch
-                    checked={workflow.status === 'active'}
+                    checked={workflow.is_active}
                     className="scale-75 data-[state=checked]:bg-green-500"
                     onCheckedChange={(checked) => {
                         updateWorkflow.mutate({
                             id: workflow.id,
+                            is_active: checked,
                             status: checked ? 'active' : 'paused'
                         });
                     }}

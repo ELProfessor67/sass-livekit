@@ -114,9 +114,11 @@ class AgentFactory:
                 "- finalize_booking: Complete the booking when ALL information is collected (time slot, name, email, phone). Requires caller timezone to be set.\n\n"
                 "CRITICAL BOOKING RULES:\n"
                 "- TIMEZONE: If the user initiates a booking flow, you MUST resolve their timezone before any slot listing or scheduling. Check if call timezone is set; if not, ask: 'What time zone are you in?' Then call set_call_timezone with their answer. If the tool returns a clarification (e.g. for CST or IST), ask the user that question and do NOT call list_slots_on_day or schedule until resolved. Do NOT assume UTC. Do NOT guess ambiguous abbreviations.\n"
+                "- SLOT LISTING: When a user wants to see available slots, do NOT list 10+ options immediately. Instead, FIRST ask if they prefer morning, afternoon, or evening. Then, show only 3-5 relevant options. If they have no preference, show a small set of varied times.\n"
                 "- ONLY start booking if the user explicitly requests it (e.g., 'I want to book', 'schedule an appointment', 'book a time').\n"
                 "- Do NOT call list_slots_on_day, choose_slot, or finalize_booking/confirm_details until set_call_timezone has been called successfully for this call.\n"
-                "- Do NOT call finalize_booking or confirm_details until you have: 1) caller timezone set, 2) selected time slot, 3) customer name, 4) email, and 5) phone number. Only call ONE of finalize_booking/confirm_details, not both."
+                "- Do NOT call finalize_booking or confirm_details until you have: 1) caller timezone set, 2) selected time slot, 3) customer name, 4) email, and 5) phone number. Only call ONE of finalize_booking/confirm_details, not both.\n"
+                "- GRACEFUL EXIT: After a successful booking, provide a warm, clear closing summary. Confirm the date, time, and timezone. Mention that a confirmation message has been sent. Do NOT end the call abruptly with just 'Thank you'."
             )
             logger.info("BOOKING_TOOLS | Calendar booking tools added to instructions (timezone required before slot listing)")
 

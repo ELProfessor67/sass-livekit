@@ -809,7 +809,12 @@ export function ApiIntegrations() {
                 </Button>
               </TwilioAuthDialog>
             ) : integration.id === "calcom" ? (
-              <CalendarAuthDialog onSuccess={handleCalendarConnect}>
+              <CalendarAuthDialog
+                onSuccess={handleCalendarConnect}
+                integrations={calendarIntegrations}
+                onRemove={handleRemoveCalendarIntegration}
+                onRefresh={handleRefreshCalendarIntegration}
+              >
                 <Button
                   variant="outline"
                   className="w-full text-sm h-8 relative z-10 flex items-center justify-center gap-1.5"
