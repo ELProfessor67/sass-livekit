@@ -21,6 +21,7 @@ export interface ModelData {
   calEventTypeId?: string;
   calEventTypeSlug?: string;
   calTimezone?: string;
+  timezoneFormat: 'US-based' | 'International';
 }
 
 export interface VoiceData {

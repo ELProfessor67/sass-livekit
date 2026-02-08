@@ -135,6 +135,7 @@ export function ApiIntegrations() {
   const [slackConnections, setSlackConnections] = useState<any[]>([]);
   const [facebookConnections, setFacebookConnections] = useState<any[]>([]);
   const [hubspotConnections, setHubSpotConnections] = useState<any[]>([]);
+  const [ghlConnections, setGhlConnections] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showTwilioDetails, setShowTwilioDetails] = useState(false);
   const [showCalendarDetails, setShowCalendarDetails] = useState(false);
@@ -153,6 +154,7 @@ export function ApiIntegrations() {
     loadSlackConnections();
     loadFacebookConnections();
     loadHubSpotConnections();
+    loadGHLConnections();
   }, [user]);
 
   // Handle OAuth callback parameters
@@ -229,6 +231,26 @@ export function ApiIntegrations() {
       searchParams.delete('provider');
       searchParams.delete('message');
       setSearchParams(searchParams, { replace: true });
+    } else if (status === 'connected' && provider === 'gohighlevel') {
+      toast({
+        title: "GoHighLevel connected",
+        description: "Your GoHighLevel account has been connected successfully.",
+      });
+      loadGHLConnections();
+      searchParams.delete('status');
+      searchParams.delete('provider');
+      setSearchParams(searchParams, { replace: true });
+    } else if (status === 'error' && provider === 'gohighlevel') {
+      const message = searchParams.get('message');
+      toast({
+        title: "Connection failed",
+        description: message ? decodeURIComponent(message) : "Failed to connect GoHighLevel. Please try again.",
+        variant: "destructive",
+      });
+      searchParams.delete('status');
+      searchParams.delete('provider');
+      searchParams.delete('message');
+      setSearchParams(searchParams, { replace: true });
     }
   }, [searchParams, setSearchParams, toast]);
 
@@ -262,6 +284,17 @@ export function ApiIntegrations() {
       setHubSpotConnections(data.connections || []);
     } catch (error) {
       console.error("Error loading HubSpot connections:", error);
+    }
+  };
+
+  const loadGHLConnections = async () => {
+    if (!user?.id) return;
+    try {
+      const res = await fetch(`/api/v1/connections?provider=gohighlevel&userId=${user.id}`);
+      const data = await res.json();
+      setGhlConnections(data.connections || []);
+    } catch (error) {
+      console.error("Error loading GHL connections:", error);
     }
   };
 
@@ -398,6 +431,12 @@ export function ApiIntegrations() {
       return {
         ...integration,
         status: hubspotConnections.length > 0 ? "connected" : "available"
+      };
+    }
+    if (integration.id === "gohighlevel") {
+      return {
+        ...integration,
+        status: ghlConnections.length > 0 ? "connected" : "available"
       };
     }
     return integration;
@@ -653,6 +692,7 @@ export function ApiIntegrations() {
       if (provider === 'slack') connections = slackConnections;
       if (provider === 'facebook') connections = facebookConnections;
       if (provider === 'hubspot') connections = hubspotConnections;
+      if (provider === 'gohighlevel') connections = ghlConnections;
 
       if (connections.length === 0) {
         toast({
@@ -865,7 +905,7 @@ export function ApiIntegrations() {
                     </>
                   )}
                 </Button>
-                {isConnected && (integration.id === 'slack' || integration.id === 'hubspot' || integration.id === 'facebook') && (
+                {isConnected && (integration.id === 'slack' || integration.id === 'hubspot' || integration.id === 'facebook' || integration.id === 'gohighlevel') && (
                   <Button
                     variant="ghost"
                     className="w-full text-xs h-7 text-destructive hover:text-destructive hover:bg-destructive/10"

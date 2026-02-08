@@ -10,7 +10,7 @@ import {
 } from "phosphor-react";
 import { Node } from "@xyflow/react";
 import React from "react";
-import { TwilioIcon, FacebookIcon, HubSpotIcon } from "../nodes/IntegrationIcons";
+import { TwilioIcon, FacebookIcon, HubSpotIcon, GoHighLevelIcon } from "../nodes/IntegrationIcons";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
@@ -45,6 +45,8 @@ function getNodeIcon(type: string) {
             return <FacebookIcon size={20} />;
         case 'call_lead':
             return <PhoneCall size={20} weight="duotone" className="text-emerald-500" />;
+        case 'wait':
+            return <Clock size={20} weight="duotone" className="text-amber-500" />;
         case 'action':
         default:
             return <Lightning size={20} weight="duotone" className="text-muted-foreground" />;
@@ -55,6 +57,9 @@ function getNodeIconFixed(type: string, integration?: string) {
     if (integration === 'Call Lead' || type === 'call_lead') {
         return <PhoneCall size={20} weight="duotone" className="text-emerald-500" />;
     }
+    if (integration === 'GoHighLevel') {
+        return <GoHighLevelIcon size={20} />;
+    }
     return getNodeIcon(type);
 }
 
@@ -64,6 +69,7 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
     const integration = data.integration;
     const [slackConnections, setSlackConnections] = useState<any[]>([]);
     const [hubspotConnections, setHubspotConnections] = useState<any[]>([]);
+    const [ghlConnections, setGhlConnections] = useState<any[]>([]);
     const [isLoadingConnections, setIsLoadingConnections] = useState(false);
     const [assistants, setAssistants] = useState<Assistant[]>([]);
     const [isLoadingAssistants, setIsLoadingAssistants] = useState(false);
@@ -74,6 +80,9 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
         }
         if (integration === 'HubSpot' && user?.id) {
             loadHubspotConnections();
+        }
+        if (integration === 'GoHighLevel' && user?.id) {
+            loadGhlConnections();
         }
         if (node.type === 'call_lead') {
             loadAssistants();
@@ -121,6 +130,26 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
             }
         } catch (error) {
             console.error("Error loading HubSpot connections:", error);
+        } finally {
+            setIsLoadingConnections(false);
+        }
+    };
+
+    const loadGhlConnections = async () => {
+        if (!user?.id) return;
+        setIsLoadingConnections(true);
+        try {
+            const res = await fetch(`/api/v1/connections?provider=gohighlevel&userId=${user.id}`);
+            const fetchedData = await res.json();
+            const connections = fetchedData.connections || [];
+            setGhlConnections(connections);
+
+            // Auto-select if none selected and connections available
+            if (!data.connectionId && connections.length > 0) {
+                handleFieldChange('connectionId', connections[0].id);
+            }
+        } catch (error) {
+            console.error("Error loading GHL connections:", error);
         } finally {
             setIsLoadingConnections(false);
         }
@@ -290,6 +319,174 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
                                     Use {"{variable}"} to inject call data or results from previous nodes
                                 </p>
                             </div>
+                        </div>
+                    )}
+
+                    {/* GoHighLevel Specific Fields */}
+                    {integration === 'GoHighLevel' && (
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">GoHighLevel Connection</Label>
+                                {ghlConnections.length > 0 ? (
+                                    <div className="group relative overflow-hidden rounded-2xl p-[1px] transition-all duration-300 hover:shadow-[0_0_20px_rgba(124,58,237,0.15)] animate-in fade-in slide-in-from-top-2">
+                                        <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 via-transparent to-transparent opacity-50" />
+                                        <div className="relative flex items-center justify-between p-3 rounded-[15px] bg-muted/20 border border-white/5 backdrop-blur-sm">
+                                            <div className="flex items-center gap-3">
+                                                <div className="relative">
+                                                    <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center border border-purple-500/20">
+                                                        <GoHighLevelIcon size={24} />
+                                                    </div>
+                                                    <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-background flex items-center justify-center border border-border/50">
+                                                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-[11px] font-bold text-foreground tracking-tight">Active Connection</h4>
+                                                    <p className="text-[10px] text-muted-foreground/70 font-medium">
+                                                        Location: <span className="text-purple-500/80 font-bold">{ghlConnections.find(c => c.id === data.connectionId)?.label || ghlConnections[0].label}</span>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <Badge variant="outline" className="text-[8px] h-4 bg-emerald-500/10 border-emerald-500/20 text-emerald-500 font-bold uppercase tracking-widest px-1.5">Connected</Badge>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full h-10 text-[10px] font-bold uppercase tracking-widest border-dashed border-purple-500/30 bg-purple-500/5 hover:bg-purple-500/10 text-purple-500 transition-all rounded-xl"
+                                            onClick={() => window.open('/settings?tab=integrations&connect=gohighlevel', '_blank')}
+                                        >
+                                            <Plus size={14} className="mr-2" />
+                                            Connect GoHighLevel
+                                        </Button>
+                                        <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1">
+                                            <Info size={10} weight="fill" />
+                                            No active GoHighLevel connection found.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* GHL Action Specific Fields */}
+                            {(data.actionId === 'create_contact' || data.actionId === 'update_contact') && (
+                                <div className="space-y-4">
+                                    {data.actionId === 'update_contact' && (
+                                        <div className="space-y-2">
+                                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Contact ID (optional for update)</Label>
+                                            <VariableInput
+                                                className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                                value={data.contact_id || ''}
+                                                onChange={(val) => handleFieldChange('contact_id', val)}
+                                                placeholder="{ghl_contact_id}"
+                                                customVariables={customVariables}
+                                                triggerType={triggerType}
+                                            />
+                                        </div>
+                                    )}
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Email</Label>
+                                        <VariableInput
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                            value={data.email || ''}
+                                            onChange={(val) => handleFieldChange('email', val)}
+                                            placeholder="{email}"
+                                            customVariables={customVariables}
+                                            triggerType={triggerType}
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-2">
+                                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">First Name</Label>
+                                            <VariableInput
+                                                className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                                value={data.firstName || ''}
+                                                onChange={(val) => handleFieldChange('firstName', val)}
+                                                placeholder="{first_name}"
+                                                customVariables={customVariables}
+                                                triggerType={triggerType}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Last Name</Label>
+                                            <VariableInput
+                                                className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                                value={data.lastName || ''}
+                                                onChange={(val) => handleFieldChange('lastName', val)}
+                                                placeholder="{last_name}"
+                                                customVariables={customVariables}
+                                                triggerType={triggerType}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Phone</Label>
+                                        <VariableInput
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                            value={data.phone || ''}
+                                            onChange={(val) => handleFieldChange('phone', val)}
+                                            placeholder="{phone}"
+                                            customVariables={customVariables}
+                                            triggerType={triggerType}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {data.actionId === 'add_tag' && (
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Contact ID or Email</Label>
+                                        <VariableInput
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                            value={data.contact_identifier || ''}
+                                            onChange={(val) => handleFieldChange('contact_identifier', val)}
+                                            placeholder="{email} or contact_id"
+                                            customVariables={customVariables}
+                                            triggerType={triggerType}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Tag Name</Label>
+                                        <VariableInput
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                            value={data.tag || ''}
+                                            onChange={(val) => handleFieldChange('tag', val)}
+                                            placeholder="Lead, Interested, etc."
+                                            customVariables={customVariables}
+                                            triggerType={triggerType}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {data.actionId === 'add_to_campaign' && (
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Contact ID or Email</Label>
+                                        <VariableInput
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                            value={data.contact_identifier || ''}
+                                            onChange={(val) => handleFieldChange('contact_identifier', val)}
+                                            placeholder="{email} or contact_id"
+                                            customVariables={customVariables}
+                                            triggerType={triggerType}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Campaign ID</Label>
+                                        <VariableInput
+                                            className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                            value={data.campaignId || ''}
+                                            onChange={(val) => handleFieldChange('campaignId', val)}
+                                            placeholder="GHL Campaign ID"
+                                            customVariables={customVariables}
+                                            triggerType={triggerType}
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -1039,6 +1236,42 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
                         </div>
                     )}
 
+                    {/* Wait Specific Fields */}
+                    {node.type === 'wait' && (
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Wait Duration</Label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Input
+                                        type="number"
+                                        className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9"
+                                        value={data.wait_amount || 0}
+                                        onChange={(e) => handleFieldChange('wait_amount', e.target.value)}
+                                        placeholder="Amount"
+                                    />
+                                    <Select
+                                        value={data.wait_unit || 'minutes'}
+                                        onValueChange={(val) => handleFieldChange('wait_unit', val)}
+                                    >
+                                        <SelectTrigger className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9">
+                                            <SelectValue placeholder="Unit" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="seconds">Seconds</SelectItem>
+                                            <SelectItem value="minutes">Minutes</SelectItem>
+                                            <SelectItem value="hours">Hours</SelectItem>
+                                            <SelectItem value="days">Days</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1">
+                                    <Info size={10} />
+                                    The workflow will pause for this duration before continuing to the next node.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
 
                     {node.type === 'trigger' && (
                         <div className="space-y-6">
@@ -1066,6 +1299,13 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
                                     <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1 mt-2">
                                         <Info size={10} />
                                         Workflows will trigger when a contact is created in HubSpot.
+                                        Variables: {"{contact_name}"}, {"{contact_email}"}, {"{contact_phone}"}
+                                    </p>
+                                )}
+                                {data.trigger_type === 'ghl_contact_created' && (
+                                    <p className="text-[10px] text-muted-foreground/40 italic flex items-center gap-1 mt-2">
+                                        <Info size={10} />
+                                        Workflows will trigger when a contact is created in GoHighLevel.
                                         Variables: {"{contact_name}"}, {"{contact_email}"}, {"{contact_phone}"}
                                     </p>
                                 )}

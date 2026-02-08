@@ -225,6 +225,7 @@ export const triggerCategories: IntegrationCategory[] = [
         name: 'Integrations',
         nodes: [
             { type: 'trigger', label: 'HubSpot', description: 'Trigger from HubSpot events' },
+            { type: 'trigger', label: 'GoHighLevel', description: 'Trigger from GoHighLevel events' },
         ],
     },
 ];
@@ -234,12 +235,14 @@ export const actionCategories: IntegrationCategory[] = [
         name: 'Logic',
         nodes: [
             { type: 'router', label: 'Router', description: 'Route workflow to multiple branches' },
+            { type: 'wait', label: 'Wait', description: 'Pause workflow for a specific duration' },
         ],
     },
     {
         name: 'CRM',
         nodes: [
             { type: 'action', label: 'HubSpot', description: 'Sync contacts and deals' },
+            { type: 'action', label: 'GoHighLevel', description: 'Sync contacts and automations' },
         ],
     },
     {
@@ -285,6 +288,7 @@ export const getIntegrationIcon = (label: string, size: number = 24): React.Reac
         case 'Facebook':
         case 'Facebook Leads': return <FacebookIcon size={size} />;
         case 'Webhook': return <WebhookIcon size={size} />;
+        case 'Wait': return <Clock size={size} weight="duotone" className="text-amber-500" />;
         case 'Schedule': return <Clock size={size} weight="duotone" className="text-purple-500" />;
         case 'Manual': return <Plus size={size} weight="bold" className="text-purple-500" />;
         default: return null;

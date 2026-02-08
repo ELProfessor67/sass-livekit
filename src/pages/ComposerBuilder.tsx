@@ -57,6 +57,7 @@ import { ConditionNode } from '@/components/composer/nodes/ConditionNode';
 import { TwilioNode } from '@/components/composer/nodes/TwilioNode';
 import { RouterNode } from '@/components/composer/nodes/RouterNode';
 import { CallLeadNode } from '@/components/composer/nodes/CallLeadNode';
+import { WaitNode } from '@/components/composer/nodes/WaitNode';
 import { SmartEdge } from '@/components/composer/edges/SmartEdge';
 import { useLinearLayout } from '@/components/composer/hooks/useLinearLayout';
 import { NodeSelectionPanel } from '@/components/composer/panels/NodeSelectionPanel';
@@ -73,6 +74,7 @@ const nodeTypes = {
     router: RouterNode,
     twilio_sms: TwilioNode,
     call_lead: CallLeadNode,
+    wait: WaitNode,
 } as any;
 
 const edgeTypes = {

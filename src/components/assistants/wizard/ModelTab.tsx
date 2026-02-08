@@ -89,10 +89,10 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
   const handleCalendarChange = async (calendarIntegrationId: string) => {
     console.log("Calendar change triggered:", calendarIntegrationId);
     console.log("Available calendar credentials:", calendarCredentials);
-    
+
     if (calendarIntegrationId === "None") {
       // Clear calendar credentials and event types
-      onChange({ 
+      onChange({
         calendar: "None",
         calApiKey: "",
         calEventTypeId: "",
@@ -107,7 +107,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
     // Find the selected calendar integration
     const selectedIntegration = calendarCredentials.find(cred => cred.id === calendarIntegrationId);
     console.log("Selected integration:", selectedIntegration);
-    
+
     if (selectedIntegration) {
       // Populate calendar credentials from the integration
       const updateData = {
@@ -197,7 +197,12 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
 
     fetchKnowledgeBases();
     fetchCalendarCredentials();
-  }, [toast]);
+
+    // Fetch event types if calendar is already selected
+    if (data.calendar && data.calendar !== "None") {
+      fetchEventTypesForCalendar(data.calendar);
+    }
+  }, [toast, data.calendar]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[540px]">
@@ -355,8 +360,8 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                   </button>
                 )}
               </div>
-              <Select 
-                value={data.knowledgeBase} 
+              <Select
+                value={data.knowledgeBase}
                 onValueChange={(value) => onChange({ knowledgeBase: value })}
                 disabled={loadingKnowledgeBases}
               >
@@ -402,9 +407,9 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
               {!loadingKnowledgeBases && knowledgeBases.length === 0 && !knowledgeBaseError && (
                 <p className="text-xs text-muted-foreground mt-2">
                   No knowledge bases found. Create one{" "}
-                  <a 
-                    href="/knowledge-base" 
-                    target="_blank" 
+                  <a
+                    href="/knowledge-base"
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="text-primary hover:text-primary/80 underline"
                   >
@@ -419,7 +424,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
               <Label className="block text-sm font-medium mb-2">Calendar Integration</Label>
               <Select value={data.calendar || "None"} onValueChange={(value) => handleCalendarChange(value)}>
                 <SelectTrigger className="h-10">
-                  <SelectValue />
+                  <SelectValue placeholder="Select calendar" />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
                   <SelectItem value="None">None</SelectItem>
@@ -436,6 +441,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                   ))}
                 </SelectContent>
               </Select>
+
               {loadingCalendarCredentials && (
                 <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -445,9 +451,9 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
               {!loadingCalendarCredentials && calendarCredentials.length === 0 && (
                 <p className="text-xs text-muted-foreground mt-2">
                   Calendar not connected. Configure{" "}
-                  <a 
-                    href="/settings" 
-                    target="_blank" 
+                  <a
+                    href="/settings"
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="text-primary hover:text-primary/80 underline"
                   >
@@ -461,14 +467,19 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
             {data.calendar && data.calendar !== "None" && (
               <div>
                 <Label className="block text-sm font-medium mb-2">Event Type</Label>
-                <Select 
-                  value={data.calEventTypeId || "none"} 
+                <Select
+                  value={data.calEventTypeId || "none"}
                   onValueChange={(value) => {
                     if (value === "none") {
                       handleEventTypeChange(null);
                     } else {
                       const selectedEventType = eventTypes.find(et => et.id.toString() === value);
                       handleEventTypeChange(selectedEventType || null);
+                    }
+                  }}
+                  onOpenChange={(open) => {
+                    if (open && data.calendar && data.calendar !== "None") {
+                      fetchEventTypesForCalendar(data.calendar);
                     }
                   }}
                   disabled={loadingEventTypes}
@@ -507,6 +518,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                     )}
                   </SelectContent>
                 </Select>
+
                 {eventTypesError && (
                   <p className="text-xs text-destructive mt-1">{eventTypesError}</p>
                 )}
@@ -575,6 +587,23 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Timezone Format */}
+            <div>
+              <Label className="block text-sm font-medium mb-2">Timezone Format</Label>
+              <Select
+                value={data.timezoneFormat || "US-based"}
+                onValueChange={(value: "US-based" | "International") => onChange({ timezoneFormat: value })}
+              >
+                <SelectTrigger className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-60">
+                  <SelectItem value="US-based">US-based (Tuesday, Feb 17, 2026 at 1pm)</SelectItem>
+                  <SelectItem value="International">International (Tuesday 17 Feb 2026 at 13:00)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </div>
@@ -604,7 +633,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                 </div>
               </CardHeader>
             </CollapsibleTrigger>
-            
+
             <CollapsibleContent>
               <CardContent className="pt-0 pb-[var(--space-lg)] px-[var(--space-lg)]">
                 <div className="space-y-[var(--space-xl)]">
@@ -628,7 +657,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                     <p className="text-xs text-muted-foreground">
                       Select predefined messages that the assistant will use when the user hasn't responded
                     </p>
-                    
+
                     {/* Message Pills */}
                     {data.idleMessages.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-3">
@@ -650,7 +679,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                         ))}
                       </div>
                     )}
-                    
+
                     {/* Dropdown Selector */}
                     <Popover open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
                       <PopoverTrigger asChild>
@@ -660,14 +689,14 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                           aria-expanded={isDropdownOpen}
                           className="w-full justify-between text-left font-normal"
                         >
-                          {data.idleMessages.length > 0 
+                          {data.idleMessages.length > 0
                             ? `${data.idleMessages.length} message${data.idleMessages.length > 1 ? 's' : ''} selected`
                             : "Select idle messages..."
                           }
                           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </PopoverTrigger>
-                      
+
                       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
                         <div className="max-h-80 overflow-hidden rounded-md">
                           {/* Search */}
@@ -680,7 +709,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                               className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent h-6 px-0 text-sm placeholder:text-muted-foreground"
                             />
                           </div>
-                          
+
                           {/* Select All / Clear All */}
                           <div className="flex justify-between items-center p-3 bg-muted/30 border-b border-border">
                             <Button
@@ -700,7 +729,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                               Clear All
                             </Button>
                           </div>
-                          
+
                           {/* Options List */}
                           <div className="max-h-48 overflow-auto">
                             {filteredIdleOptions.length > 0 ? (
@@ -712,7 +741,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                                 >
                                   <Checkbox
                                     checked={data.idleMessages.includes(option)}
-                                    onChange={() => {}}
+                                    onChange={() => { }}
                                     className="pointer-events-none"
                                   />
                                   <span className="flex-1 text-sm text-foreground">{option}</span>

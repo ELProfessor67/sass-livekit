@@ -122,7 +122,7 @@ export function NodeSelectionPanel({ onClose, onSelect, context = 'action' }: No
     const [selectedIntegration, setSelectedIntegration] = useState<string | null>(null);
 
     const handleIntegrationClick = (node: any) => {
-        if (node.type === 'condition' || node.type === 'router' || node.type === 'call_lead') {
+        if (node.type === 'condition' || node.type === 'router' || node.type === 'call_lead' || node.type === 'wait') {
             onSelect(node.type, {
                 label: node.label,
                 type: node.type,

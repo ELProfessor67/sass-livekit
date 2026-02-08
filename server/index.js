@@ -32,6 +32,7 @@ import { tenantMiddleware } from './middleware/tenantMiddleware.js';
 import { authenticateToken } from './utils/auth.js';
 import './workers/supportAccessCleanup.js';
 import { smsSchedulingWorker } from './workers/sms-scheduling-worker.js';
+import { workflowDelayWorker } from './workers/workflow-delay-worker.js';
 import facebookIntegrationsRouter from './routes/facebook-integrations.js';
 import facebookWebhookRouter from './routes/facebook-webhook.js';
 import connectionsRouter from './routes/connections.js';
@@ -431,9 +432,11 @@ console.log('[Server] ✅ Stripe webhook handler mounted at /api/v1/stripe/webho
 
 // Start workers
 smsSchedulingWorker.start();
+workflowDelayWorker.start();
 
 console.log('[Server] ✅ Workers started');
 console.log('[Server] ✅ SMS scheduling worker started');
+console.log('[Server] ✅ Workflow delay worker started');
 
 // Now apply global middleware AFTER Stripe webhook
 app.use(cors());

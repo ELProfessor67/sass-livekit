@@ -27,6 +27,7 @@ import { AssistantFormData } from "@/components/assistants/wizard/types";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { ensureUserExists } from '@/lib/supabase-retry';
+import { CalendarCredentialsService } from "@/lib/calendar-credentials";
 
 const tabVariants = {
   initial: { opacity: 0, y: 10 },
@@ -69,7 +70,6 @@ const CreateAssistant = () => {
 
   const [formData, setFormData] = useState<AssistantFormData>({
     name: isEditing ? "john" : (providedName && providedName.trim() ? providedName : "Untitled Assistant"),
-    name: isEditing ? "john" : (providedName && providedName.trim() ? providedName : "Untitled Assistant"),
     id: isEditing ? "asst_abcd1234efgh5678" : "asst_" + Math.random().toString(36).substr(2, 16),
     inboundWorkflowId: providedWorkflowId || "",
     model: {
@@ -93,7 +93,8 @@ const CreateAssistant = () => {
       maxCallDuration: 1800,
       idleMessages: [],
       idleMessageMaxSpokenCount: 3,
-      silenceTimeoutSeconds: 10
+      silenceTimeoutSeconds: 10,
+      timezoneFormat: 'US-based'
     },
     voice: {
       provider: "ElevenLabs",
@@ -244,6 +245,20 @@ const CreateAssistant = () => {
         }
 
         if (data) {
+          // Resolve calendar from cal_api_key when calendar reference is missing (e.g. legacy or sync issue)
+          let calendarValue: string = data.calendar || "None";
+          if ((!data.calendar || data.calendar === "None") && data.cal_api_key) {
+            try {
+              const credentials = await CalendarCredentialsService.getAllCredentials();
+              const matching = credentials.find((c) => c.api_key === data.cal_api_key);
+              if (matching) {
+                calendarValue = matching.id;
+              }
+            } catch (e) {
+              console.warn("Could not resolve calendar from cal_api_key:", e);
+            }
+          }
+
           // Map database data to form data
           setFormData({
             name: data.name || "Untitled Assistant",
@@ -253,7 +268,7 @@ const CreateAssistant = () => {
               provider: data.llm_provider_setting || "OpenAI",
               model: data.llm_model_setting || "GPT-4.1 Mini",
               knowledgeBase: data.knowledge_base_id || "None",
-              calendar: data.calendar || "None",
+              calendar: calendarValue,
               conversationStart: "assistant-first",
               voice: "rachel-elevenlabs",
               temperature: data.temperature_setting || 0.3,
@@ -275,7 +290,8 @@ const CreateAssistant = () => {
               calApiKey: data.cal_api_key || "",
               calEventTypeId: data.cal_event_type_id || "",
               calEventTypeSlug: data.cal_event_type_slug || "",
-              calTimezone: data.cal_timezone || "UTC"
+              calTimezone: data.cal_timezone || "UTC",
+              timezoneFormat: data.timezone_format || "US-based"
             },
             voice: {
               provider: data.voice_provider_setting || "ElevenLabs",
@@ -308,7 +324,7 @@ const CreateAssistant = () => {
             sms: {
               provider: "Twilio",
               knowledgeBase: data.knowledge_base_id || "None",
-              calendar: data.calendar || "None",
+              calendar: calendarValue,
               calendarBookingEnabled: data.sms_calendar_booking_enabled || false,
               systemPrompt: data.sms_prompt || "",
               firstMessage: data.first_sms || "",
@@ -510,6 +526,7 @@ const CreateAssistant = () => {
       cal_event_type_id: calEventTypeId,
       cal_event_type_slug: calEventTypeSlug,
       cal_timezone: formData.model.calTimezone || null,
+      timezone_format: formData.model.timezoneFormat || 'US-based',
 
       // n8n Integration
       n8n_webhook_url: formData.n8n.webhookUrl || null,

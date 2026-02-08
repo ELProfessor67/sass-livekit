@@ -47,7 +47,25 @@ class WorkflowService {
         try {
             console.log(`[WorkflowService] Triggering workflows for user ${userId}, assistant ${assistantId}, event ${event}`);
 
-            let enhancedCallData = { ...callData };
+            // Fetch assistant settings if not already provided
+            let timezoneFormat = callData?.timezone_format || callData?.timezoneFormat;
+
+            if (!timezoneFormat && assistantId) {
+                const { data: assistant } = await supabase
+                    .from('assistant')
+                    .select('timezone_format')
+                    .eq('id', assistantId)
+                    .single();
+
+                if (assistant) {
+                    timezoneFormat = assistant.timezone_format;
+                }
+            }
+
+            let enhancedCallData = {
+                timezone_format: timezoneFormat || 'US-based',
+                ...callData
+            };
 
             // For call_ended events, perform universal AI extraction
             if (event === 'call_ended' && (callData?.transcript || callData?.transcription)) {
@@ -163,6 +181,17 @@ class WorkflowService {
         try {
             console.log('[WorkflowService] Calling OpenAI for universal extraction...');
 
+            const isUS = (metadata.timezoneFormat || metadata.timezone_format) === 'US-based';
+
+            const dateFormat = isUS
+                ? "Tuesday, February 17, 2026 at 1pm"
+                : "Tuesday 17 February 2026 at 13:00";
+
+            // Adjust schema comments for the prompt
+            const schemaClone = JSON.parse(JSON.stringify(UNIVERSAL_EXTRACTION_SCHEMA));
+            schemaClone.appointment.start_time = `Appointment start time in format '${dateFormat}'`;
+            schemaClone.appointment.appointment_date = `Appointment date and time in format '${dateFormat}'`;
+
             const response = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 messages: [
@@ -171,7 +200,7 @@ class WorkflowService {
                         content: `You are an expert data extractor. Your task is to extract all available information from the provided call transcript and metadata.
                         
                         Return a JSON object matching this schema:
-                        ${JSON.stringify(UNIVERSAL_EXTRACTION_SCHEMA, null, 2)}
+                        ${JSON.stringify(schemaClone, null, 2)}
                         
                         Rules:
                         1. Only include fields where you find clear information.
@@ -180,7 +209,7 @@ class WorkflowService {
                         4. For 'sentiment', use one of: positive, neutral, negative, frustrated.
                         5. For 'urgent', return a boolean.
                         6. For 'appointment.status', use 'booked' if a specific time was agreed upon, otherwise 'not_booked'.
-                        7. For 'appointment.appointment_date' and 'appointment.start_time', always use the format: 'Day DD Month YYYY at HH:mm' (e.g., 'Tuesday 17 February 2026 at 13:00'). Use the call metadata to resolve relative dates like 'tomorrow' or 'next Tuesday'.
+                        7. For 'appointment.appointment_date' and 'appointment.start_time', always use the format: '${dateFormat}'. Use the call metadata to resolve relative dates like 'tomorrow' or 'next Tuesday'.
                         
                         Transcript follows below.`
                     },
@@ -411,15 +440,19 @@ class WorkflowService {
                 await this.handleSlackNode(node, context, workflow);
             } else if (node.type === 'action' && node.data?.integration === 'HubSpot') {
                 await this.handleHubspotNode(node, context, workflow);
+            } else if (node.type === 'action' && node.data?.integration === 'GoHighLevel') {
+                await this.handleGhlNode(node, context, workflow);
             } else if (node.type === 'action' && node.data?.integration === 'HTTP Request') {
                 await this.handleHttpRequestNode(node, context);
             } else if (node.type === 'call_lead') {
                 await this.handleCallLeadNode(node, context, workflow);
+            } else if (node.type === 'wait') {
+                shouldContinue = await this.handleWaitNode(node, context, workflow);
             }
         } catch (err) {
             console.error(`[WorkflowService] Node ${nodeId} execution failed:`, err);
-            // We might want to stop this branch on failure
-            return;
+            console.log(`[WorkflowService] Continuing workflow execution after node ${nodeId} failure.`);
+            // We continue to downstream nodes even on failure
         }
 
         // For condition nodes in router context, handle TRUE/FALSE paths differently
@@ -458,6 +491,8 @@ class WorkflowService {
         }
 
         // For non-condition nodes, proceed normally
+        if (!shouldContinue) return;
+
         // Find downstream edges
         const downstreamEdges = edges.filter(e => e.source === nodeId);
         for (const edge of downstreamEdges) {
@@ -929,6 +964,156 @@ class WorkflowService {
         }
     }
 
+    async refreshGhlToken(connection) {
+        const GHL_CLIENT_ID = process.env.GOHIGHLEVEL_APP_ID;
+        const GHL_CLIENT_SECRET = process.env.GOHIGHLEVEL_APP_SECRET;
+
+        if (!GHL_CLIENT_ID || !GHL_CLIENT_SECRET) {
+            console.error('[WorkflowService] GoHighLevel credentials not configured');
+            return null;
+        }
+
+        try {
+            const response = await fetch('https://services.gohighlevel.com/oauth/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    grant_type: 'refresh_token',
+                    client_id: GHL_CLIENT_ID,
+                    client_secret: GHL_CLIENT_SECRET,
+                    refresh_token: connection.refresh_token,
+                    user_type: 'Location'
+                })
+            });
+
+            const data = await response.json();
+            if (data.error || !data.access_token) {
+                console.error('[WorkflowService] GoHighLevel refresh failed:', data.error_description || data.error);
+                return null;
+            }
+
+            // Update connection in database
+            const { data: updated, error } = await supabase
+                .from('connections')
+                .update({
+                    access_token: data.access_token,
+                    refresh_token: data.refresh_token || connection.refresh_token,
+                    token_expires_at: new Date(Date.now() + data.expires_in * 1000).toISOString()
+                })
+                .eq('id', connection.id)
+                .select()
+                .single();
+
+            if (error) {
+                console.error('[WorkflowService] Database update failed:', error);
+                return data.access_token;
+            }
+
+            return updated.access_token;
+        } catch (err) {
+            console.error('[WorkflowService] GoHighLevel refresh error:', err);
+            return null;
+        }
+    }
+
+    async handleGhlNode(node, context, workflow) {
+        const data = node.data || {};
+        const actionType = data.actionId;
+        const connectionId = data.connectionId;
+
+        if (!connectionId) {
+            console.warn('[WorkflowService] No connection ID for GoHighLevel node');
+            return;
+        }
+
+        // Fetch connection
+        const { data: connection, error: connError } = await supabase
+            .from('connections')
+            .select('*')
+            .eq('id', connectionId)
+            .single();
+
+        if (connError || !connection) {
+            console.error('[WorkflowService] GoHighLevel connection not found:', connError);
+            return;
+        }
+
+        let accessToken = connection.access_token;
+        const locationId = connection.workspace_id;
+
+        // Refresh token if needed
+        const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at) : null;
+        if (!expiresAt || expiresAt.getTime() - Date.now() < 5 * 60 * 1000) {
+            console.log('[WorkflowService] GoHighLevel token expired or near expiry, refreshing...');
+            const newToken = await this.refreshGhlToken(connection);
+            if (newToken) accessToken = newToken;
+        }
+
+        const flatContext = this.flattenContext(context);
+        let endpoint = '';
+        let method = 'POST';
+        let body = {};
+        const version = '2021-07-28';
+
+        try {
+            if (actionType === 'create_contact') {
+                endpoint = 'https://services.gohighlevel.com/contacts/';
+                body = {
+                    locationId,
+                    email: this.interpolate(data.email, flatContext, context),
+                    firstName: this.interpolate(data.firstName, flatContext, context),
+                    lastName: this.interpolate(data.lastName, flatContext, context),
+                    phone: this.interpolate(data.phone, flatContext, context)
+                };
+            } else if (actionType === 'update_contact') {
+                const identifier = this.interpolate(data.contact_id, flatContext, context);
+                endpoint = `https://services.gohighlevel.com/contacts/${identifier}`;
+                method = 'PUT';
+                body = {
+                    email: this.interpolate(data.email, flatContext, context),
+                    firstName: this.interpolate(data.firstName, flatContext, context),
+                    lastName: this.interpolate(data.lastName, flatContext, context),
+                    phone: this.interpolate(data.phone, flatContext, context)
+                };
+            } else if (actionType === 'add_tag') {
+                const contactId = this.interpolate(data.contact_identifier, flatContext, context);
+                endpoint = `https://services.gohighlevel.com/contacts/${contactId}/tags`;
+                body = {
+                    tags: [this.interpolate(data.tag, flatContext, context)]
+                };
+            } else if (actionType === 'add_to_campaign') {
+                const contactId = this.interpolate(data.contact_identifier, flatContext, context);
+                endpoint = `https://services.gohighlevel.com/contacts/${contactId}/campaigns/${data.campaignId}`;
+                body = {};
+            }
+
+            if (!endpoint) return;
+
+            const response = await fetch(endpoint, {
+                method,
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                    'Version': version
+                },
+                body: method !== 'GET' ? JSON.stringify(body) : undefined
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error(`[WorkflowService] GoHighLevel API error (${response.status}):`, errorData);
+                throw new Error(`GoHighLevel API error: ${errorData.message || response.statusText}`);
+            }
+
+            context.last_ghl_response = await response.json().catch(() => ({ success: true }));
+            console.log('[WorkflowService] GoHighLevel action successful');
+
+        } catch (err) {
+            console.error('[WorkflowService] GoHighLevel action failed:', err);
+            throw err;
+        }
+    }
+
 
     /**
      * Slack Node Handler - Uses connections table
@@ -1377,6 +1562,105 @@ class WorkflowService {
             // Return original if not found
             return match;
         });
+    }
+
+    /**
+     * Wait Node Handler - Schedules execution for later
+     */
+    async handleWaitNode(node, context, workflow) {
+        const amount = parseInt(node.data?.wait_amount) || 0;
+        const unit = node.data?.wait_unit || 'minutes';
+
+        let delayMs = 0;
+        switch (unit.toLowerCase()) {
+            case 'seconds': delayMs = amount * 1000; break;
+            case 'minutes': delayMs = amount * 60 * 1000; break;
+            case 'hours': delayMs = amount * 60 * 60 * 1000; break;
+            case 'days': delayMs = amount * 24 * 60 * 60 * 1000; break;
+            default: delayMs = amount * 60 * 1000;
+        }
+
+        const scheduledFor = new Date(Date.now() + delayMs).toISOString();
+
+        console.log(`[WorkflowService] Node ${node.id} is a WAIT node. Scheduling for ${scheduledFor} (${amount} ${unit})`);
+
+        const { error } = await supabase
+            .from('workflow_delayed_executions')
+            .insert({
+                user_id: workflow.user_id,
+                workflow_id: workflow.id,
+                current_node_id: node.id,
+                context: context,
+                scheduled_for: scheduledFor,
+                status: 'pending'
+            });
+
+        if (error) {
+            console.error('[WorkflowService] Failed to schedule delayed execution:', error);
+            throw error;
+        }
+
+        return false; // Stop current branch execution
+    }
+
+    /**
+     * Resume a previously delayed workflow execution
+     */
+    async resumeWorkflow(delayedExecutionId) {
+        const { data: execution, error: fetchError } = await supabase
+            .from('workflow_delayed_executions')
+            .select('*, workflow:workflows(*)')
+            .eq('id', delayedExecutionId)
+            .single();
+
+        if (fetchError || !execution) {
+            console.error('[WorkflowService] Failed to fetch delayed execution:', fetchError);
+            return;
+        }
+
+        // Update status to processing
+        await supabase
+            .from('workflow_delayed_executions')
+            .update({ status: 'processing', updated_at: new Date().toISOString() })
+            .eq('id', delayedExecutionId);
+
+        try {
+            const workflow = execution.workflow;
+            const context = execution.context;
+            const waitNodeId = execution.current_node_id;
+
+            // Convert router nodes (re-apply UI conversion logic)
+            const convertedWorkflow = this.convertRouterNodesToConditions(workflow);
+            const nodes = convertedWorkflow.nodes || [];
+            const edges = convertedWorkflow.edges || [];
+
+            console.log(`[WorkflowService] Resuming workflow ${workflow.id} from WAIT node ${waitNodeId}`);
+
+            // Find downstream edges from the WAIT node
+            const downstreamEdges = edges.filter(e => e.source === waitNodeId);
+            for (const edge of downstreamEdges) {
+                if (this.evaluateEdgeCondition(edge, context)) {
+                    await this.processNode(edge.target, nodes, edges, context, workflow);
+                }
+            }
+
+            // Update status to completed
+            await supabase
+                .from('workflow_delayed_executions')
+                .update({ status: 'completed', updated_at: new Date().toISOString() })
+                .eq('id', delayedExecutionId);
+
+        } catch (err) {
+            console.error('[WorkflowService] Resume failed:', err);
+            await supabase
+                .from('workflow_delayed_executions')
+                .update({
+                    status: 'failed',
+                    error_message: err.message,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', delayedExecutionId);
+        }
     }
 }
 
