@@ -44,6 +44,7 @@ import hubspotWebhookRouter from './routes/hubspot-webhook.js';
 
 
 const app = express();
+app.set('trust proxy', true);
 
 // CRITICAL: Stripe webhook MUST be mounted FIRST, before ANY middleware
 // This ensures it bypasses CORS, tenant middleware, and JSON parsing

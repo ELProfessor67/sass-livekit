@@ -496,7 +496,8 @@ router.get('/gohighlevel/auth', async (req, res) => {
     .insert({
       nonce,
       user_id: userId,
-      provider: 'gohighlevel'
+      provider: 'gohighlevel',
+      ip_address: req.ip // Store IP as fallback
     });
 
   if (stateError) {
@@ -574,8 +575,28 @@ router.get('/gogo/callback', async (req, res) => {
       }
     }
 
+    // Final fallback: Use IP address if both nonce and state are missing
     if (!userId) {
-      console.error('[GHL Callback] Missing userId (both nonce and state lookup failed)');
+      console.log('[GHL Callback] No nonce or state found, attempting IP-based lookup for:', req.ip);
+      const { data: ipStateData, error: ipFetchError } = await supabase
+        .from('oauth_states')
+        .select('user_id')
+        .eq('ip_address', req.ip)
+        .eq('provider', 'gohighlevel')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (ipStateData) {
+        userId = ipStateData.user_id;
+        console.log('[GHL Callback] Successfully retrieved userId from IP lookup:', userId);
+      } else {
+        console.warn('[GHL Callback] IP-based lookup failed for:', req.ip, ipFetchError?.message);
+      }
+    }
+
+    if (!userId) {
+      console.error('[GHL Callback] Missing userId (nonce, state, and IP lookup failed)');
       throw new Error('Authentication session expired or invalid. Please try again.');
     }
 
