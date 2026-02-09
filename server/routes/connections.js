@@ -174,7 +174,7 @@ router.get('/slack/callback', async (req, res) => {
           authed_user: tokenData.authed_user
         }
       }, {
-        onConflict: 'connections_user_provider_workspace_unique',
+        onConflict: 'user_id,provider,workspace_id',
         ignoreDuplicates: false
       });
 
@@ -708,7 +708,7 @@ router.get('/gogo/callback', async (req, res) => {
           token_info: tokenData
         }
       }, {
-        onConflict: 'connections_user_provider_workspace_unique',
+        onConflict: 'user_id,provider,workspace_id',
         ignoreDuplicates: false
       })
       .select()
