@@ -491,7 +491,7 @@ router.get('/gohighlevel/auth', (req, res) => {
   const scopes = 'contacts.readonly contacts.write locations.readonly webhooks.write webhooks.readonly';
   const redirectUri = `${process.env.BACKEND_URL}/api/v1/connections/gogo/callback`;
 
-  const authUrl = `https://marketplace.gohighlevel.com/oauth/chooselocation?response_type=code&client_id=${GHL_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&state=${state}`;
+  const authUrl = `https://marketplace.gohighlevel.com/oauth/chooselocation?response_type=code&client_id=${GHL_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&state=${encodeURIComponent(state)}`;
 
   console.log('[GHL Auth] Redirecting to GoHighLevel OAuth');
   res.redirect(authUrl);
@@ -499,7 +499,21 @@ router.get('/gohighlevel/auth', (req, res) => {
 
 // GoHighLevel OAuth callback
 router.get('/gogo/callback', async (req, res) => {
-  const { code, state } = req.query;
+  const { code, state, error, error_description } = req.query;
+
+  console.log('[GHL Callback] Received callback:', {
+    hasCode: !!code,
+    hasState: !!state,
+    error,
+    error_description,
+    queryKeys: Object.keys(req.query)
+  });
+
+  if (error) {
+    console.error('[GHL Callback] OAuth Error:', error, error_description);
+    const frontendUrl = getFrontendUrl();
+    return res.redirect(`${frontendUrl}/settings?tab=integrations&status=error&provider=gohighlevel&message=${encodeURIComponent(error_description || error)}`);
+  }
 
   if (!code) {
     return res.status(400).send('No code provided');
