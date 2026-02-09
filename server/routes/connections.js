@@ -644,18 +644,29 @@ router.get('/gogo/callback', async (req, res) => {
     }
 
     // Exchange code for token
-    const tokenRes = await fetch('https://services.gohighlevel.com/oauth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: GHL_CLIENT_ID,
-        client_secret: GHL_CLIENT_SECRET,
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: redirectUri,
-        user_type: 'Location'
-      })
-    });
+    let tokenRes;
+    try {
+      tokenRes = await fetch('https://services.gohighlevel.com/oauth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: GHL_CLIENT_ID,
+          client_secret: GHL_CLIENT_SECRET,
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: redirectUri,
+          user_type: 'Location'
+        })
+      });
+    } catch (fetchErr) {
+      const cause = fetchErr?.cause?.code || fetchErr?.code || '';
+      const isNetwork = cause === 'ENOTFOUND' || cause === 'ECONNREFUSED' || cause === 'ETIMEDOUT' || (fetchErr?.message && fetchErr.message.includes('fetch failed'));
+      if (isNetwork) {
+        console.error('[GHL Callback] Cannot reach GoHighLevel (DNS/network):', fetchErr?.cause || fetchErr?.message);
+        throw new Error('Server cannot reach GoHighLevel. Check server DNS and outbound internet (e.g. nslookup services.gohighlevel.com).');
+      }
+      throw fetchErr;
+    }
 
     const tokenData = await tokenRes.json();
 
