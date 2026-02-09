@@ -8,6 +8,13 @@ const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// Normalize client IP so initiation and callback match (IPv6-mapped IPv4, x-forwarded-for)
+function getClientIp(req) {
+  const raw = (req.headers['x-forwarded-for'] && req.headers['x-forwarded-for'].split(',')[0].trim()) || req.ip || '';
+  const normalized = raw.replace(/^::ffff:/i, '');
+  return normalized || raw;
+}
+
 // Helper function to get frontend URL with proper fallbacks
 const getFrontendUrl = () => {
   const url = process.env.FRONTEND_URL || process.env.VITE_BACKEND_URL;
@@ -490,14 +497,15 @@ router.get('/gohighlevel/auth', async (req, res) => {
   // Generate a nonce to track this session since GHL drops the state parameter
   const nonce = crypto.randomUUID();
 
-  // Store the userId keyed by nonce
+  // Store the userId keyed by nonce (use normalized IP so callback can match)
+  const clientIp = getClientIp(req);
   const { error: stateError } = await supabase
     .from('oauth_states')
     .insert({
       nonce,
       user_id: userId,
       provider: 'gohighlevel',
-      ip_address: req.ip // Store IP as fallback
+      ip_address: clientIp
     });
 
   if (stateError) {
@@ -575,13 +583,14 @@ router.get('/gogo/callback', async (req, res) => {
       }
     }
 
-    // Final fallback: Use IP address if both nonce and state are missing
+    // Final fallback: Use IP address if both nonce and state are missing (same normalization as at initiation)
     if (!userId) {
-      console.log('[GHL Callback] No nonce or state found, attempting IP-based lookup for:', req.ip);
+      const clientIp = getClientIp(req);
+      console.log('[GHL Callback] No nonce or state found, attempting IP-based lookup for:', clientIp, '(raw:', req.ip, ')');
       const { data: ipStateData, error: ipFetchError } = await supabase
         .from('oauth_states')
         .select('user_id')
-        .eq('ip_address', req.ip)
+        .eq('ip_address', clientIp)
         .eq('provider', 'gohighlevel')
         .order('created_at', { ascending: false })
         .limit(1)
@@ -591,7 +600,21 @@ router.get('/gogo/callback', async (req, res) => {
         userId = ipStateData.user_id;
         console.log('[GHL Callback] Successfully retrieved userId from IP lookup:', userId);
       } else {
-        console.warn('[GHL Callback] IP-based lookup failed for:', req.ip, ipFetchError?.message);
+        // Try raw req.ip in case DB has legacy value
+        const { data: ipStateData2 } = await supabase
+          .from('oauth_states')
+          .select('user_id')
+          .eq('ip_address', req.ip)
+          .eq('provider', 'gohighlevel')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (ipStateData2) {
+          userId = ipStateData2.user_id;
+          console.log('[GHL Callback] Retrieved userId from IP lookup (raw ip):', userId);
+        } else {
+          console.warn('[GHL Callback] IP-based lookup failed for:', clientIp, ipFetchError?.message);
+        }
       }
     }
 
