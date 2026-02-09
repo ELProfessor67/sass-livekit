@@ -1,5 +1,6 @@
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
+import crypto from 'crypto';
 
 const router = express.Router();
 
@@ -473,7 +474,7 @@ router.get('/facebook/pages/callback', async (req, res) => {
 });
 
 // GoHighLevel OAuth initiation
-router.get('/gohighlevel/auth', (req, res) => {
+router.get('/gohighlevel/auth', async (req, res) => {
   const { userId } = req.query;
 
   if (!userId) {
@@ -486,24 +487,43 @@ router.get('/gohighlevel/auth', (req, res) => {
     return res.status(500).send('GoHighLevel Client ID is not configured on the server.');
   }
 
+  // Generate a nonce to track this session since GHL drops the state parameter
+  const nonce = crypto.randomUUID();
+
+  // Store the userId keyed by nonce
+  const { error: stateError } = await supabase
+    .from('oauth_states')
+    .insert({
+      nonce,
+      user_id: userId,
+      provider: 'gohighlevel'
+    });
+
+  if (stateError) {
+    console.error('[GHL Auth] Error saving oauth state:', stateError);
+    // Continue anyway as fallback, though it might fail if state is dropped
+  }
+
   const state = Buffer.from(JSON.stringify({ userId })).toString('base64');
   // Scopes needed for contacts and webhooks
   const scopes = 'contacts.readonly contacts.write locations.readonly webhooks.write webhooks.readonly';
   const redirectUri = `${process.env.BACKEND_URL}/api/v1/connections/gogo/callback`;
 
-  const authUrl = `https://marketplace.gohighlevel.com/oauth/chooselocation?response_type=code&client_id=${GHL_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&state=${encodeURIComponent(state)}`;
+  // We add nonce to the URL. GHL often keeps custom params while dropping state.
+  const authUrl = `https://marketplace.gohighlevel.com/oauth/chooselocation?response_type=code&client_id=${GHL_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&state=${encodeURIComponent(state)}&nonce=${nonce}`;
 
-  console.log('[GHL Auth] Redirecting to GoHighLevel OAuth');
+  console.log('[GHL Auth] Redirecting to GoHighLevel OAuth with nonce:', nonce);
   res.redirect(authUrl);
 });
 
 // GoHighLevel OAuth callback
 router.get('/gogo/callback', async (req, res) => {
-  const { code, state, error, error_description } = req.query;
+  const { code, state, nonce, error, error_description } = req.query;
 
   console.log('[GHL Callback] Received callback:', {
     hasCode: !!code,
     hasState: !!state,
+    hasNonce: !!nonce,
     error,
     error_description,
     queryKeys: Object.keys(req.query)
@@ -520,15 +540,43 @@ router.get('/gogo/callback', async (req, res) => {
   }
 
   try {
-    // Decode state
-    if (!state) {
-      console.error('[GHL Callback] Missing state parameter');
-      throw new Error('Missing state parameter from OAuth provider');
+    let userId;
+
+    if (nonce) {
+      console.log('[GHL Callback] Attempting to retrieve userId using nonce:', nonce);
+      // Try to get userId from oauth_states using nonce (GHL often drops state)
+      const { data: stateData, error: stateFetchError } = await supabase
+        .from('oauth_states')
+        .select('user_id')
+        .eq('nonce', nonce)
+        .eq('provider', 'gohighlevel')
+        .single();
+
+      if (stateData) {
+        userId = stateData.user_id;
+        console.log('[GHL Callback] Successfully retrieved userId from nonce:', userId);
+
+        // Clean up the nonce
+        supabase.from('oauth_states').delete().eq('nonce', nonce).eq('provider', 'gohighlevel');
+      } else {
+        console.warn('[GHL Callback] No valid state found for nonce:', nonce, stateFetchError?.message);
+      }
     }
-    const { userId } = JSON.parse(Buffer.from(state, 'base64').toString());
+
+    // Fallback to state if nonce lookup failed or wasn't present
+    if (!userId && state) {
+      console.log('[GHL Callback] Falling back to state parameter');
+      try {
+        const decodedState = JSON.parse(Buffer.from(state, 'base64').toString());
+        userId = decodedState.userId;
+      } catch (e) {
+        console.error('[GHL Callback] Error decoding state:', e);
+      }
+    }
 
     if (!userId) {
-      throw new Error('Missing userId in state');
+      console.error('[GHL Callback] Missing userId (both nonce and state lookup failed)');
+      throw new Error('Authentication session expired or invalid. Please try again.');
     }
 
     const GHL_CLIENT_ID = process.env.GOHIGHLEVEL_CLIENT_ID || process.env.GOHIGHLEVEL_APP_ID;
