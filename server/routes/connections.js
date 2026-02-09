@@ -15,6 +15,14 @@ function getClientIp(req) {
   return normalized || raw;
 }
 
+// Parse a single cookie value from Cookie header (no cookie-parser dependency)
+function getCookie(req, name) {
+  const header = req.headers.cookie;
+  if (!header) return null;
+  const match = header.match(new RegExp('(?:^|;\\s*)' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '=([^;]*)'));
+  return match ? decodeURIComponent(match[1].trim()) : null;
+}
+
 // Helper function to get frontend URL with proper fallbacks
 const getFrontendUrl = () => {
   const url = process.env.FRONTEND_URL || process.env.VITE_BACKEND_URL;
@@ -521,6 +529,9 @@ router.get('/gohighlevel/auth', async (req, res) => {
   // We add nonce to the URL. GHL often keeps custom params while dropping state.
   const authUrl = `https://marketplace.gohighlevel.com/oauth/chooselocation?response_type=code&client_id=${GHL_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&state=${encodeURIComponent(state)}&nonce=${nonce}`;
 
+  // Cookie fallback: when GHL strips query params we can still identify the user via this cookie
+  res.setHeader('Set-Cookie', `ghl_oauth_nonce=${nonce}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`);
+
   console.log('[GHL Auth] Redirecting to GoHighLevel OAuth with nonce:', nonce);
   res.redirect(authUrl);
 });
@@ -550,14 +561,14 @@ router.get('/gogo/callback', async (req, res) => {
 
   try {
     let userId;
-
-    if (nonce) {
-      console.log('[GHL Callback] Attempting to retrieve userId using nonce:', nonce);
-      // Try to get userId from oauth_states using nonce (GHL often drops state)
+    // Use nonce from query (if GHL returned it) or from cookie (when GHL strips query params)
+    const nonceToUse = nonce || getCookie(req, 'ghl_oauth_nonce');
+    if (nonceToUse) {
+      console.log('[GHL Callback] Attempting to retrieve userId using nonce (query or cookie):', nonceToUse ? 'present' : 'missing');
       const { data: stateData, error: stateFetchError } = await supabase
         .from('oauth_states')
         .select('user_id')
-        .eq('nonce', nonce)
+        .eq('nonce', nonceToUse)
         .eq('provider', 'gohighlevel')
         .single();
 
@@ -566,9 +577,9 @@ router.get('/gogo/callback', async (req, res) => {
         console.log('[GHL Callback] Successfully retrieved userId from nonce:', userId);
 
         // Clean up the nonce
-        supabase.from('oauth_states').delete().eq('nonce', nonce).eq('provider', 'gohighlevel');
+        supabase.from('oauth_states').delete().eq('nonce', nonceToUse).eq('provider', 'gohighlevel');
       } else {
-        console.warn('[GHL Callback] No valid state found for nonce:', nonce, stateFetchError?.message);
+        console.warn('[GHL Callback] No valid state found for nonce:', nonceToUse, stateFetchError?.message);
       }
     }
 
@@ -722,12 +733,14 @@ router.get('/gogo/callback', async (req, res) => {
     console.log('[GHL Callback] Successfully saved GHL connection');
     const frontendUrl = getFrontendUrl();
     const redirectUrl = `${frontendUrl}/settings?tab=integrations&status=connected&provider=gohighlevel`;
+    res.clearCookie('ghl_oauth_nonce', { path: '/' });
     res.redirect(redirectUrl);
 
   } catch (err) {
     console.error('[GHL Callback] Error:', err);
     const frontendUrl = getFrontendUrl();
     const errorRedirect = `${frontendUrl}/settings?tab=integrations&status=error&provider=gohighlevel&message=${encodeURIComponent(err.message)}`;
+    res.clearCookie('ghl_oauth_nonce', { path: '/' });
     res.redirect(errorRedirect);
   }
 });
