@@ -11,6 +11,9 @@ const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// GoHighLevel API base (services.gohighlevel.com deprecated; use leadconnectorhq.com)
+const GHL_API_BASE = process.env.GOHIGHLEVEL_API_BASE || 'https://services.leadconnectorhq.com';
+
 const UNIVERSAL_EXTRACTION_SCHEMA = {
     name: "The contact's full name",
     summary: "Brief overview of the call conversation",
@@ -974,7 +977,7 @@ class WorkflowService {
         }
 
         try {
-            const response = await fetch('https://services.gohighlevel.com/oauth/token', {
+            const response = await fetch(`${GHL_API_BASE}/oauth/token`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({
@@ -1057,7 +1060,7 @@ class WorkflowService {
 
         try {
             if (actionType === 'create_contact') {
-                endpoint = 'https://services.gohighlevel.com/contacts/';
+                endpoint = `${GHL_API_BASE}/contacts/`;
                 body = {
                     locationId,
                     email: this.interpolate(data.email, flatContext, context),
@@ -1067,7 +1070,7 @@ class WorkflowService {
                 };
             } else if (actionType === 'update_contact') {
                 const identifier = this.interpolate(data.contact_id, flatContext, context);
-                endpoint = `https://services.gohighlevel.com/contacts/${identifier}`;
+                endpoint = `${GHL_API_BASE}/contacts/${identifier}`;
                 method = 'PUT';
                 body = {
                     email: this.interpolate(data.email, flatContext, context),
@@ -1077,13 +1080,13 @@ class WorkflowService {
                 };
             } else if (actionType === 'add_tag') {
                 const contactId = this.interpolate(data.contact_identifier, flatContext, context);
-                endpoint = `https://services.gohighlevel.com/contacts/${contactId}/tags`;
+                endpoint = `${GHL_API_BASE}/contacts/${contactId}/tags`;
                 body = {
                     tags: [this.interpolate(data.tag, flatContext, context)]
                 };
             } else if (actionType === 'add_to_campaign') {
                 const contactId = this.interpolate(data.contact_identifier, flatContext, context);
-                endpoint = `https://services.gohighlevel.com/contacts/${contactId}/campaigns/${data.campaignId}`;
+                endpoint = `${GHL_API_BASE}/contacts/${contactId}/campaigns/${data.campaignId}`;
                 body = {};
             }
 

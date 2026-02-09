@@ -8,6 +8,9 @@ const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// GoHighLevel API base URL (services.gohighlevel.com is deprecated/NXDOMAIN; use current host)
+const GHL_API_BASE = process.env.GOHIGHLEVEL_API_BASE || 'https://services.leadconnectorhq.com';
+
 // Normalize client IP so initiation and callback match (IPv6-mapped IPv4, x-forwarded-for)
 function getClientIp(req) {
   const raw = (req.headers['x-forwarded-for'] && req.headers['x-forwarded-for'].split(',')[0].trim()) || req.ip || '';
@@ -646,7 +649,7 @@ router.get('/gogo/callback', async (req, res) => {
     // Exchange code for token
     let tokenRes;
     try {
-      tokenRes = await fetch('https://services.gohighlevel.com/oauth/token', {
+      tokenRes = await fetch(`${GHL_API_BASE}/oauth/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
@@ -663,7 +666,7 @@ router.get('/gogo/callback', async (req, res) => {
       const isNetwork = cause === 'ENOTFOUND' || cause === 'ECONNREFUSED' || cause === 'ETIMEDOUT' || (fetchErr?.message && fetchErr.message.includes('fetch failed'));
       if (isNetwork) {
         console.error('[GHL Callback] Cannot reach GoHighLevel (DNS/network):', fetchErr?.cause || fetchErr?.message);
-        throw new Error('Server cannot reach GoHighLevel. Check server DNS and outbound internet (e.g. nslookup services.gohighlevel.com).');
+        throw new Error('Server cannot reach GoHighLevel. Check server DNS and outbound internet.');
       }
       throw fetchErr;
     }
@@ -677,7 +680,7 @@ router.get('/gogo/callback', async (req, res) => {
     const { access_token, refresh_token, locationId, expires_in } = tokenData;
 
     // Get location info to use as label
-    const locationRes = await fetch(`https://services.gohighlevel.com/locations/${locationId}`, {
+    const locationRes = await fetch(`${GHL_API_BASE}/locations/${locationId}`, {
       headers: {
         'Authorization': `Bearer ${access_token}`,
         'Version': '2021-07-28'
@@ -721,7 +724,7 @@ router.get('/gogo/callback', async (req, res) => {
       const webhookUrl = `${process.env.BACKEND_URL}/api/v1/webhooks/gohighlevel`;
       console.log(`[GHL Webhook] Registering webhook for location ${locationId}: ${webhookUrl}`);
 
-      const webhookRes = await fetch('https://services.gohighlevel.com/webhooks/', {
+      const webhookRes = await fetch(`${GHL_API_BASE}/webhooks/`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${access_token}`,
