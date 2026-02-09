@@ -480,9 +480,9 @@ router.get('/gohighlevel/auth', (req, res) => {
     return res.status(400).send('userId is required');
   }
 
-  const GHL_CLIENT_ID = process.env.GOHIGHLEVEL_APP_ID;
+  const GHL_CLIENT_ID = process.env.GOHIGHLEVEL_CLIENT_ID || process.env.GOHIGHLEVEL_APP_ID;
   if (!GHL_CLIENT_ID) {
-    console.error('[GHL Auth] GOHIGHLEVEL_APP_ID is not configured');
+    console.error('[GHL Auth] GOHIGHLEVEL_CLIENT_ID / GOHIGHLEVEL_APP_ID is not configured');
     return res.status(500).send('GoHighLevel Client ID is not configured on the server.');
   }
 
@@ -507,14 +507,18 @@ router.get('/gogo/callback', async (req, res) => {
 
   try {
     // Decode state
+    if (!state) {
+      console.error('[GHL Callback] Missing state parameter');
+      throw new Error('Missing state parameter from OAuth provider');
+    }
     const { userId } = JSON.parse(Buffer.from(state, 'base64').toString());
 
     if (!userId) {
       throw new Error('Missing userId in state');
     }
 
-    const GHL_CLIENT_ID = process.env.GOHIGHLEVEL_APP_ID;
-    const GHL_CLIENT_SECRET = process.env.GOHIGHLEVEL_APP_SECRET;
+    const GHL_CLIENT_ID = process.env.GOHIGHLEVEL_CLIENT_ID || process.env.GOHIGHLEVEL_APP_ID;
+    const GHL_CLIENT_SECRET = process.env.GOHIGHLEVEL_CLIENT_SECRET || process.env.GOHIGHLEVEL_APP_SECRET;
     const redirectUri = `${process.env.BACKEND_URL}/api/v1/connections/gogo/callback`;
 
     if (!GHL_CLIENT_ID || !GHL_CLIENT_SECRET) {

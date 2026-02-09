@@ -965,8 +965,8 @@ class WorkflowService {
     }
 
     async refreshGhlToken(connection) {
-        const GHL_CLIENT_ID = process.env.GOHIGHLEVEL_APP_ID;
-        const GHL_CLIENT_SECRET = process.env.GOHIGHLEVEL_APP_SECRET;
+        const GHL_CLIENT_ID = process.env.GOHIGHLEVEL_CLIENT_ID || process.env.GOHIGHLEVEL_APP_ID;
+        const GHL_CLIENT_SECRET = process.env.GOHIGHLEVEL_CLIENT_SECRET || process.env.GOHIGHLEVEL_APP_SECRET;
 
         if (!GHL_CLIENT_ID || !GHL_CLIENT_SECRET) {
             console.error('[WorkflowService] GoHighLevel credentials not configured');
