@@ -105,11 +105,8 @@ export const integrationActions: Record<string, IntegrationAction[]> = {
     'GoHighLevel': [
         { id: 'create_contact', label: 'Create Contact', description: 'Create a new contact in GoHighLevel' },
         { id: 'update_contact', label: 'Update Contact', description: 'Update an existing contact' },
-        { id: 'find_contact', label: 'Find Contact', description: 'Search for a contact by field' },
         { id: 'add_to_campaign', label: 'Add to Campaign', description: 'Add contact to a campaign' },
-        { id: 'create_opportunity', label: 'Create Opportunity', description: 'Create a new sales opportunity' },
         { id: 'add_tag', label: 'Add Tag', description: 'Add a tag to a contact' },
-        { id: 'remove_tag', label: 'Remove Tag', description: 'Remove a tag from a contact' },
     ],
     'HubSpot': [
         { id: 'create_company', label: 'Create Company', description: 'Creates a company in HubSpot' },

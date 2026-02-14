@@ -627,20 +627,21 @@ class UnifiedAgent(Agent):
                     key = slot.start_time.isoformat()
                     self._slots_map[key] = slot
                 
-                # Display only the filtered subset
-                display_slots = filtered_slots[:max_options]
+                # Guidelines require exactly 3 options for presentation
+                display_slots = filtered_slots[:3]
                 lines = []
                 for i, slot in enumerate(display_slots, 1):
                     local_time = slot.start_time.astimezone(search_tz)
-                    formatted_time = local_time.strftime('%I:%M %p')
-                    lines.append(f"{i}. {formatted_time}")
+                    # Format as Day at Time for the LLM to follow the guideline
+                    formatted_time = local_time.strftime('%A at %I:%M %p')
+                    lines.append(f"- {formatted_time}")
                 
                 timeframe_str = f" in the {timeframe}" if timeframe else ""
-                response_parts = [f"Available slots for {day}{timeframe_str}:\n" + "\n".join(lines)]
+                response_parts = [f"Available slots for {day}{timeframe_str} (Offered exactly 3 as per guidelines):\n" + "\n".join(lines)]
                 
-                if len(filtered_slots) > max_options:
-                    response_parts.append(f"\nI'm showing you {len(display_slots)} of {len(filtered_slots)} available slots. You can pick one or ask to see more.")
-                
+                if not display_slots:
+                    return f"No slots found for {day}{timeframe_str}. Remember to offer checking another day or checking other times that day."
+
                 logging.info("SLOTS_LISTED | filtered=%d | displayed=%d | timeframe=%s", len(filtered_slots), len(display_slots), timeframe)
                 return "".join(response_parts)
                 
@@ -1168,18 +1169,8 @@ class UnifiedAgent(Agent):
                 
                 logging.info("BOOKING_COMPLETED_SUCCESSFULLY | slot=%s", formatted_time)
                 
-                # Build a warm, comprehensive closing summary
-                closing_summary = (
-                    f"Perfect! I've successfully booked your appointment for {formatted_time} ({tz.key}). "
-                    f"A confirmation email has been sent to {self._booking_data.email}. "
-                )
-                
-                if self._booking_data.phone:
-                    closing_summary += "You should also receive a text message shortly. "
-                
-                closing_summary += "Is there anything else I can help you with today?"
-                
-                return closing_summary
+                # One short, confident confirmation sentence as per guidelines
+                return f"You’re all set for {local_time.strftime('%A')} at {local_time.strftime('%I:%M %p')}. You’ll get a confirmation text shortly."
             
             except asyncio.TimeoutError:
                 logging.error("BOOKING_TIMEOUT | calendar operation timed out after 15 seconds")
