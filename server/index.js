@@ -479,6 +479,10 @@ app.use('/api/v1/workflows/execution', workflowExecutionRouter);
 app.use('/api/v1/workflows', workflowsRouter);
 app.use('/api/v1/integrations/facebook', facebookIntegrationsRouter);
 app.use('/api/v1/webhooks/facebook', facebookWebhookRouter);
+app.get('/api/vi/gogo/callback', (req, res, next) => {
+  req.url = '/gogo/callback';
+  connectionsRouter(req, res, next);
+});
 app.use('/api/v1/connections', connectionsRouter);
 app.use('/api/v1/webhooks/gohighlevel', ghlWebhookRouter);
 app.use('/api/v1/webhooks/hubspot', hubspotWebhookRouter);

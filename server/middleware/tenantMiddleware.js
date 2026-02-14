@@ -39,7 +39,7 @@ const ignoreRoutes = [
   '/api/v1/connections/facebook/callback', // OAuth callbacks don't have tenant context (called by external providers)
   '/api/v1/connections/facebook/pages/callback', // OAuth callbacks don't have tenant context (called by external providers)
   '/api/v1/connections/hubspot/callback', // OAuth callbacks don't have tenant context (called by external providers)
-  '/api/v1/connections/gogo/callback', // GHL OAuth callback
+  '/api/vi/gogo/callback', // GHL OAuth callback (updated path)
   '/api/v1/webhooks/facebook', // Facebook webhooks don't have tenant context
   '/api/v1/webhooks/hubspot', // HubSpot webhooks don't have tenant context
   '/api/v1/webhooks/gohighlevel' // GoHighLevel webhooks don't have tenant context

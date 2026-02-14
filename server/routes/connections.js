@@ -528,7 +528,7 @@ router.get('/gohighlevel/auth', async (req, res) => {
   // Scopes needed for contacts and webhooks
   // Scopes must match what's configured in GHL app marketplace (invalid: locations.readonly, webhooks.write, webhooks.readonly)
   const scopes = 'contacts.readonly contacts.write oauth.readonly oauth.write users.readonly opportunities.readonly opportunities.write forms.readonly forms.write';
-  const redirectUri = `${process.env.BACKEND_URL}/api/v1/connections/gogo/callback`;
+  const redirectUri = `${process.env.BACKEND_URL}/api/vi/gogo/callback`;
 
   // We add nonce to the URL. GHL often keeps custom params while dropping state.
   const authUrl = `https://marketplace.gohighlevel.com/oauth/chooselocation?response_type=code&client_id=${GHL_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&state=${encodeURIComponent(state)}&nonce=${nonce}`;
@@ -640,7 +640,7 @@ router.get('/gogo/callback', async (req, res) => {
 
     const GHL_CLIENT_ID = process.env.GOHIGHLEVEL_CLIENT_ID || process.env.GOHIGHLEVEL_APP_ID;
     const GHL_CLIENT_SECRET = process.env.GOHIGHLEVEL_CLIENT_SECRET || process.env.GOHIGHLEVEL_APP_SECRET;
-    const redirectUri = `${process.env.BACKEND_URL}/api/v1/connections/gogo/callback`;
+    const redirectUri = `${process.env.BACKEND_URL}/api/vi/gogo/callback`;
 
     if (!GHL_CLIENT_ID || !GHL_CLIENT_SECRET) {
       throw new Error('GoHighLevel credentials not configured');

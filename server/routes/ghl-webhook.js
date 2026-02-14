@@ -50,6 +50,10 @@ router.post('/', async (req, res) => {
                 name: `${contactData.firstName || ''} ${contactData.lastName || ''}`.trim() || contactData.name || 'Unknown',
                 email: contactData.email || '',
                 phone: contactData.phone || '',
+                // Also populate flattened fields that UI documentation expects
+                contact_name: `${contactData.firstName || ''} ${contactData.lastName || ''}`.trim() || contactData.name || 'Unknown',
+                contact_email: contactData.email || '',
+                contact_phone: contactData.phone || '',
                 raw_data: payload
             };
 
