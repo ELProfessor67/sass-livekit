@@ -738,8 +738,14 @@ router.get('/gogo/callback', async (req, res) => {
         })
       });
 
-      const webhookData = await webhookRes.json();
-      console.log('[GHL Webhook] Registration result:', webhookData);
+      if (webhookRes.ok) {
+        const text = await webhookRes.text();
+        const webhookData = text ? JSON.parse(text) : { success: true };
+        console.log('[GHL Webhook] Registration result:', webhookData);
+      } else {
+        const errorText = await webhookRes.text();
+        console.error('[GHL Webhook] Registration failed:', webhookRes.status, errorText);
+      }
     } catch (whError) {
       console.error('[GHL Webhook] Error registering webhook:', whError);
       // Don't fail the whole auth if webhook registration fails, but log it

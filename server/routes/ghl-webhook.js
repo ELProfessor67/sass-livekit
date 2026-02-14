@@ -19,8 +19,8 @@ router.post('/', async (req, res) => {
     console.log(`[GHL Webhook] Received event: ${type} for location: ${locationId}`);
 
     // HighLevel sends a few event types, we specifically care about contact-created
-    // Note: The event type in the payload might be 'contact-created' or 'ContactCreated' depending on API version
-    if (type === 'contact-created' || type === 'ContactCreated' || payload.event === 'contact_created') {
+    // Note: The event type in the payload might be 'contact-created', 'ContactCreated', or 'ContactCreate'
+    if (type === 'contact-created' || type === 'ContactCreated' || type === 'ContactCreate' || payload.event === 'contact_created') {
         try {
             // 1. Find the connection to get the userId and connection details
             const { data: connection, error: connError } = await supabase

@@ -21,8 +21,8 @@ const hardcodedMainHosts = [
   'frontend.ultratalkai.com'
 ];
 
-// Routes that should be ignored (don't require tenant validation)
 const ignoreRoutes = [
+  '/', // Root path for health checks
   '/api/health',
   '/api/v1/livekit/create-token',
   '/api/v1/livekit/dispatch',
@@ -46,7 +46,10 @@ const ignoreRoutes = [
 ];
 
 function isIgnoredRoute(uri) {
-  const isIgnored = ignoreRoutes.some(route => uri.startsWith(route));
+  const isIgnored = ignoreRoutes.some(route => {
+    if (route === '/') return uri === '/';
+    return uri.startsWith(route);
+  });
   if (isIgnored && process.env.NODE_ENV === 'development') {
     console.log(`[TenantMiddleware] Ignoring route: ${uri} (matches ignored route)`);
   }
