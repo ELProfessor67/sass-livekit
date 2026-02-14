@@ -527,7 +527,7 @@ router.get('/gohighlevel/auth', async (req, res) => {
   const state = Buffer.from(JSON.stringify({ userId })).toString('base64');
   // Scopes needed for contacts and webhooks
   // Scopes must match what's configured in GHL app marketplace (invalid: locations.readonly, webhooks.write, webhooks.readonly)
-  const scopes = 'contacts.readonly contacts.write oauth.readonly oauth.write users.readonly opportunities.readonly opportunities.write forms.readonly forms.write';
+  const scopes = 'contacts.readonly oauth.readonly users.readonly opportunities.readonly opportunities.write contacts.write oauth.write forms.readonly calendars.readonly calendars/groups.readonly calendars/events.readonly calendars/resources.readonly calendars/events.write calendars/resources.write';
   const redirectUri = `${process.env.BACKEND_URL}/api/vi/gogo/callback`;
 
   // We add nonce to the URL. GHL often keeps custom params while dropping state.
