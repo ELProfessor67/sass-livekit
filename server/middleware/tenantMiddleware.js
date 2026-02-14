@@ -27,6 +27,7 @@ const ignoreRoutes = [
   '/api/v1/livekit/create-token',
   '/api/v1/livekit/dispatch',
   '/api/v1/recording',
+  '/api/v1/livekit/outbound-calls/initiate', // Internal call from workflow service
   '/api/v1/sms/webhook',
   '/api/v1/twilio/sms/send',
   '/api/v1/twilio/sms/test',
