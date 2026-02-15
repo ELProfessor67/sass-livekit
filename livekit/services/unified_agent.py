@@ -213,6 +213,7 @@ class UnifiedAgent(Agent):
         # Persistent booking data - preserved across resets for post-call processing
         self._finalized_booking_data: Optional[BookingData] = None
         self._slots_map: dict[str, object] = {}
+        self._presented_slot_keys: list[str] = [] # Track what user actually heard (Fix)
         self._webhook_data: dict[str, dict] = {}
         # Call/session timezone for booking (resolved before slot listing; never persisted on assistant)
         self._call_timezone: Optional[ZoneInfo] = None
@@ -268,6 +269,7 @@ class UnifiedAgent(Agent):
         """Reset all state for a new conversation/run."""
         self._booking_data = BookingData()
         self._slots_map.clear()
+        self._presented_slot_keys.clear()
         self._analysis_data.clear()
         self._webhook_data.clear()
         self._transfer_requested = False
@@ -629,6 +631,10 @@ class UnifiedAgent(Agent):
                 
                 # Guidelines require exactly 3 options for presentation
                 display_slots = filtered_slots[:3]
+                
+                # Track exactly what we are presenting (Fix)
+                self._presented_slot_keys = [s.start_time.isoformat() for s in display_slots]
+                
                 lines = []
                 for i, slot in enumerate(display_slots, 1):
                     local_time = slot.start_time.astimezone(search_tz)
@@ -668,9 +674,9 @@ class UnifiedAgent(Agent):
         else:
             if option_id.isdigit():
                 idx = int(option_id) - 1
-                keys = list(self._slots_map.keys())
-                if 0 <= idx < len(keys):
-                    slot = self._slots_map[keys[idx]]
+                if 0 <= idx < len(self._presented_slot_keys):
+                    key = self._presented_slot_keys[idx]
+                    slot = self._slots_map.get(key)
             else:
                 slot = self._find_slot_by_time_string(option_id)
         
