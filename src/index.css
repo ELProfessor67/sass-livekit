@@ -665,3 +665,17 @@ html body div[data-radix-dialog-content].sm\\:max-w-4xl textarea {
 .animate-dash {
   animation: dash 2s linear infinite;
 }
+
+/* Glassy cards for dialogs to prevent "too dark" look */
+[data-radix-dialog-content] .card-glass,
+[data-radix-dialog-content] .card-glass-light {
+  background: rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark [data-radix-dialog-content] .card-glass,
+.dark [data-radix-dialog-content] .card-glass-light {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}

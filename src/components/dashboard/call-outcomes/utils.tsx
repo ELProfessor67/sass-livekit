@@ -8,12 +8,12 @@ import { OutcomeBadge } from "@/components/ui/outcome-badge";
 const outcomePriorities: Record<string, number> = {
   'booked appointment': 5,
   'appointment': 5,
-  'not qualified': 4,
-  'not eligible': 4,
-  'spam': 3,
-  'escalated': 2,
-  'message to franchisee': 2,
-  'call dropped': 1
+  'escalated': 4,
+  'qualified': 3,
+  'not qualified': 2,
+  'not eligible': 2,
+  'spam': 1,
+  'call dropped': 0,
 };
 
 // Function to normalize resolution strings - just return whatever is in the database
@@ -42,7 +42,7 @@ export const prepareChartData = (callOutcomes: Record<string, number>, dynamicMa
       color: "#64748b",
       icon: <AlertCircle size={16} className="text-white" />
     };
-    
+
     return {
       name: mappedOutcome.name,
       value: Math.round((count / total) * 100),
@@ -51,7 +51,11 @@ export const prepareChartData = (callOutcomes: Record<string, number>, dynamicMa
       originalOutcome: outcome,
       priority: outcomePriorities[outcomeKey] || 0
     };
-  }).filter(item => item.value > 0);
+  }).filter(item => {
+    const name = item.name.toLowerCase();
+    return item.value > 0 &&
+      name !== 'calling';
+  });
 
   // Sort by priority (highest to lowest)
   chartData.sort((a, b) => b.priority - a.priority);
@@ -62,17 +66,17 @@ export const prepareChartData = (callOutcomes: Record<string, number>, dynamicMa
 // Function to get the outcome badge with proper styling
 export const getOutcomeBadge = (outcome?: string | null) => {
   if (!outcome) return null;
-  
-  const normalizedOutcome = normalizeResolution(outcome);
-  const mappedOutcome = outcomeMapping[normalizedOutcome] || 
-                        outcomeMapping['completed']; // Fallback to completed
-  
+
+  const normalizedOutcome = normalizeResolution(outcome).toLowerCase();
+  const mappedOutcome = (outcomeMapping as any)[normalizedOutcome] ||
+    (outcomeMapping as any)['spam']; // Fallback to spam
+
   if (!mappedOutcome) {
     return null;
   }
-  
+
   return (
-    <OutcomeBadge 
+    <OutcomeBadge
       outcome={mappedOutcome.name}
       icon={mappedOutcome.icon}
       color={mappedOutcome.color}

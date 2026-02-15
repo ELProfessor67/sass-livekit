@@ -17,7 +17,7 @@ interface CallOutcomesProps {
 export default function CallOutcomes({ callOutcomes = {}, isLoading = false }: CallOutcomesProps) {
   const { config } = useBusinessUseCase();
   const outcomeMapping = useDynamicOutcomeMapping();
-  const chartData = prepareChartData(callOutcomes);
+  const chartData = prepareChartData(callOutcomes, outcomeMapping);
   const noData = chartData.length === 0 && !isLoading;
 
   return (
@@ -70,9 +70,9 @@ export default function CallOutcomes({ callOutcomes = {}, isLoading = false }: C
                     stroke="none"
                   >
                     {chartData.map((entry, index) => (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={entry.color} 
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={entry.color}
                         strokeWidth={0}
                       />
                     ))}
@@ -81,13 +81,13 @@ export default function CallOutcomes({ callOutcomes = {}, isLoading = false }: C
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            
+
             {/* Legend */}
             <div className="flex-1 space-y-4">
               {chartData.map((item, index) => (
                 <div key={index} className="flex items-center justify-between group">
                   <div className="flex items-center gap-3">
-                    <div 
+                    <div
                       className="flex items-center justify-center w-9 h-9 rounded-full text-white flex-shrink-0"
                       style={{ backgroundColor: item.color }}
                     >

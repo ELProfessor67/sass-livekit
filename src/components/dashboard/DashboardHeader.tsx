@@ -1,5 +1,5 @@
 
-import { BarChart3 } from "lucide-react";
+import { ChartBar } from "phosphor-react";
 import { SubHeading, SecondaryText } from "@/components/ui/typography";
 
 interface DashboardHeaderProps {
@@ -7,10 +7,10 @@ interface DashboardHeaderProps {
     from: Date;
     to: Date;
   };
-  onRangeChange?: (range: { 
-    from: Date; 
-    to: Date; 
-    compareWith?: { from: Date; to: Date } 
+  onRangeChange?: (range: {
+    from: Date;
+    to: Date;
+    compareWith?: { from: Date; to: Date }
   }) => void;
 }
 
@@ -19,14 +19,14 @@ export default function DashboardHeader({ dateRange, onRangeChange }: DashboardH
     <>
       <div className="flex items-center justify-between mb-6">
         <SubHeading className="flex items-center gap-2">
-          <BarChart3 className="text-primary" size={18} />
+          <ChartBar className="text-primary" size={18} weight="bold" />
           <span>Key Performance Metrics</span>
         </SubHeading>
-        
+
         <div className="text-right hidden md:block">
           <SecondaryText>
-            {dateRange.from && dateRange.to ? 
-              `Data shown for ${dateRange.from.toLocaleDateString()} - ${dateRange.to.toLocaleDateString()}` : 
+            {dateRange.from && dateRange.to ?
+              `Data shown for ${dateRange.from.toLocaleDateString()} - ${dateRange.to.toLocaleDateString()}` :
               'Select a date range to view data'
             }
           </SecondaryText>

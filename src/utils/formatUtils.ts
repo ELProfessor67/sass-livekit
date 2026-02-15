@@ -53,20 +53,20 @@ export function formatConversationTime(timestamp: Date | string): string {
 export const formatPhoneNumber = (phone?: string): string => {
   // Handle undefined, null or empty phone numbers
   if (!phone) return 'Unknown';
-  
+
   // Remove any non-digit characters except + at the beginning
   const cleaned = phone.replace(/[^\d+]/g, '');
-  
+
   // If it starts with +, return as international format
   if (cleaned.startsWith('+')) {
     return cleaned;
   }
-  
+
   // If it's 10 digits, format as US number
   if (cleaned.length === 10) {
     return cleaned.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3');
   }
-  
+
   // For other lengths, return as is
   return phone;
 };
@@ -93,12 +93,12 @@ export const formatCallDuration = (duration: string): string => {
   if (duration.includes(':')) {
     return duration;
   }
-  
+
   // Handle 's' suffix for seconds format (e.g. "45s")
   const seconds = parseInt(duration.replace(/[^0-9]/g, ''));
-  
+
   if (isNaN(seconds)) return '00:00';
-  
+
   // Format as MM:SS
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
@@ -106,13 +106,45 @@ export const formatCallDuration = (duration: string): string => {
 };
 
 export const getCustomerName = (call: any): string => {
+  const analysis = call.analysis || call.structured_data;
+
+  // Try to get name from analysis first as it's often more accurate for "Unknown" callers
+  if (analysis) {
+    const customerNameField = analysis['Customer Name'] || analysis['name'] || analysis['fullName'] || analysis['booking_name'];
+
+    if (customerNameField) {
+      if (typeof customerNameField === 'string' && customerNameField.trim() !== '' && customerNameField !== 'Unknown') {
+        return customerNameField;
+      } else if (typeof customerNameField === 'object' && customerNameField.value && customerNameField.value !== 'Unknown') {
+        return customerNameField.value;
+      }
+    }
+  }
+
+  // Check explicit first/last name columns
   const firstName = call.first_name || '';
   const lastName = call.last_name || '';
-  if ((firstName && firstName !== 'NA') || (lastName && lastName !== 'NA')) {
+  if ((firstName && firstName !== 'NA' && firstName !== 'Unknown' && !firstName.startsWith('+')) ||
+    (lastName && lastName !== 'NA' && lastName !== 'Unknown' && !lastName.startsWith('+'))) {
     return [firstName, lastName].filter(Boolean).join(" ");
   }
-  if (call.contact_name) {
+
+  // Check display name - but skip if it looks like a phone number
+  const isPhoneNumber = (val: string) => /^\+?[\d\s-()]+$/.test(val);
+  if (call.name && call.name !== 'Unknown' && !isPhoneNumber(call.name)) {
+    return call.name;
+  }
+
+  // Check contact_name
+  if (call.contact_name && call.contact_name !== 'Unknown') {
     return call.contact_name;
   }
+
+  // If we only have a phone number, return it formatted or 'Unknown'
+  const number = call.phoneNumber || call.phone_number || call.participant_identity;
+  if (number && number !== 'Unknown') {
+    return number;
+  }
+
   return 'Unknown';
 };

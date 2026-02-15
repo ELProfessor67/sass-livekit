@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { useRouteChangeData } from "@/hooks/useRouteChange";
 import { getCurrentUserIdAsync } from "@/lib/user-context";
+import { getCustomerName } from "@/utils/formatUtils";
 
 interface CallHistory {
   id: string;
@@ -20,6 +21,9 @@ interface CallHistory {
   call_duration: number;
   call_status: string;
   transcription: Array<{ role: string; content: any }>;
+  call_summary?: string;
+  success_evaluation?: string;
+  structured_data?: any;
   created_at: string;
   updated_at: string;
 }
@@ -33,19 +37,19 @@ async function getUserAssistantIds(): Promise<string[]> {
     .from('assistant')
     .select('id')
     .eq('user_id', userId);
-  
+
   if (error) {
     console.error('Error fetching user assistants:', error);
     return [];
   }
-  
+
   return assistants?.map(a => a.id) || [];
 }
 
 export default function Index() {
   const { config } = useBusinessUseCase();
   const { user, loading: isAuthLoading } = useAuth();
-  
+
   // Set data-page attribute for dashboard page
   useEffect(() => {
     document.body.setAttribute('data-page', 'dashboard');
@@ -91,11 +95,11 @@ export default function Index() {
 
     try {
       setIsLoadingRealData(true);
-      
+
       // Get user's assistant IDs to filter call history
       const assistantIds = await getUserAssistantIds();
       console.log('Fetching call history for user assistants:', assistantIds);
-      
+
       if (assistantIds.length === 0) {
         console.log('No assistants found for user, returning empty call history');
         setRealCallHistory([]);
@@ -167,7 +171,7 @@ export default function Index() {
 
       return {
         id: call.id,
-        name: call.participant_identity || call.phone_number || 'Unknown',
+        name: getCustomerName({ ...call, analysis: call.structured_data }),
         phoneNumber: call.phone_number || '',
         date: new Date(call.start_time).toLocaleDateString('en-US'),
         time: new Date(call.start_time).toLocaleTimeString('en-US', {
@@ -180,15 +184,15 @@ export default function Index() {
         channel: 'voice',
         tags: [],
         status: call.call_status || 'completed',
-        resolution: getCallOutcome(call.transcription),
+        resolution: call.call_status || getCallOutcome(call.transcription),
         call_recording: '',
-        summary: '',
+        summary: call.call_summary || '',
         transcript: processedTranscript,
-        analysis: null,
+        analysis: call.structured_data,
         address: '',
         messages: [],
         phone_number: call.phone_number || '',
-        call_outcome: getCallOutcome(call.transcription),
+        call_outcome: call.call_status || getCallOutcome(call.transcription),
         call_duration: call.call_duration || 0,
         created_at: call.start_time
       };
@@ -215,8 +219,8 @@ export default function Index() {
       // Handle different duration formats from real data
       let duration = 0;
       if (call.call_duration) {
-        duration = typeof call.call_duration === 'string' 
-          ? parseInt(call.call_duration) 
+        duration = typeof call.call_duration === 'string'
+          ? parseInt(call.call_duration)
           : call.call_duration;
       } else if (call.duration) {
         if (typeof call.duration === 'string') {
@@ -230,14 +234,15 @@ export default function Index() {
       return sum + duration;
     }, 0);
     const avgDuration = totalCalls > 0 ? Math.round(totalDuration / totalCalls) : 0;
-    
-    const appointments = callLogs.filter(call => 
-      call.call_outcome?.toLowerCase().includes('appointment') || 
+
+    const appointments = callLogs.filter(call =>
+      call.call_outcome === 'Booked Appointment' ||
+      call.call_outcome?.toLowerCase().includes('appointment') ||
       call.resolution?.toLowerCase().includes('appointment') ||
       call.call_outcome?.toLowerCase().includes('booked') ||
       call.resolution?.toLowerCase().includes('booked')
     ).length;
-    
+
     const bookingRate = totalCalls > 0 ? Math.round((appointments / totalCalls) * 100) : 0;
     const successfulTransfers = Math.floor(appointments * 0.3);
 

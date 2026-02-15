@@ -12,7 +12,7 @@ from livekit.agents.utils import http_context
 
 # Global cache for calendar slots
 _calendar_cache = {}
-_cache_ttl = 300  # 5 minutes cache TTL
+_cache_ttl = 20  # Reduced for near real-time availability (Fix #2)
 _cache_max_size = 100  # Maximum cache entries
 
 def _get_calendar_cache_key(event_type_id: str, start_time: str, end_time: str) -> str:
@@ -397,7 +397,7 @@ class CalComCalendar(Calendar):
                             return self._parse_slots_response(payload, request_tz)
                         except Exception as e:
                             self._log.error("Cal.com V1 /slots non-JSON response: %s", txt)
-                            return []
+                            return None # Return None to signal failure, not empty slots (Fix #6)
                     
                     elif resp.status >= 500:
                         # Server error - retry with backoff
@@ -464,14 +464,14 @@ class CalComCalendar(Calendar):
                         return self._parse_slots_response_v2(payload, request_tz)
                     except Exception as e:
                         self._log.error("Cal.com V2 /slots non-JSON response: %s", txt)
-                        return []
+                        return None # Return None to signal failure (Fix #6)
                 else:
                     self._log.error("Cal.com V2 /slots error %s: %s", resp.status, txt)
-                    return []
+                    return None # Return None to signal failure (Fix #6)
                     
         except Exception as e:
             self._log.error("Cal.com V2 /slots unexpected error: %s", str(e))
-            return []
+            return None # Return None to signal failure (Fix #6)
 
     def _parse_slots_response(self, payload: dict, request_tz: ZoneInfo) -> list[AvailableSlot]:
         """Parse v1 slots response. request_tz is the timezone for slot display (caller's when set)."""
@@ -584,38 +584,49 @@ class CalComCalendar(Calendar):
         url = f"{BASE_URL_V2}bookings"
         self._log.info("Cal.com: Creating booking %s body=%s", url, body)
 
-        async with self._http.post(url, headers=self._headers_v2(CAL_BOOKINGS_VERSION), json=body) as resp:
-            txt = await resp.text()
-            
-            if resp.status >= 400:
-                self._log.error("Cal.com booking failed %s: %s", resp.status, txt)
-                if "not available" in txt.lower() or "already has booking" in txt.lower():
-                    raise SlotUnavailableError(txt)
-                elif resp.status == 429:
-                    # Rate limiting - retry after delay
-                    raise Exception(f"Cal.com rate limited. Please try again in a moment.")
-                elif resp.status >= 500:
-                    # Server error - retry might work
-                    raise Exception(f"Cal.com server error {resp.status}. Please try again.")
-                else:
-                    raise Exception(f"Cal.com API error {resp.status}: {txt}")
+        start = time.time()  # Start timing (Fix #5)
+        try:
+            async with self._http.post(url, headers=self._headers_v2(CAL_BOOKINGS_VERSION), json=body, timeout=20) as resp: # Added timeout (Fix #3)
+                duration = time.time() - start
+                self._log.info(f"BOOKING_DURATION={duration:.2f}s") # Log duration (Fix #5)
+                
+                txt = await resp.text()
+                
+                if resp.status >= 400:
+                    self._log.error("Cal.com booking failed %s: %s", resp.status, txt)
+                    if "not available" in txt.lower() or "already has booking" in txt.lower():
+                        raise SlotUnavailableError(txt)
+                    elif resp.status == 429:
+                        raise Exception(f"Cal.com rate limited. Please try again in a moment.")
+                    elif resp.status >= 500:
+                        raise Exception(f"Cal.com server error {resp.status}. Please try again.")
+                    else:
+                        raise Exception(f"Cal.com API error {resp.status}: {txt}")
 
-            # Parse v2 bookings response according to official API spec
-            try:
-                response_data = await resp.json()
-                if response_data.get("status") == "success":
-                    booking_data = response_data.get("data", {})
-                    booking_id = booking_data.get("id")
-                    booking_uid = booking_data.get("uid")
-                    self._log.info("Cal.com booking success: ID=%s, UID=%s", booking_id, booking_uid)
-                    return booking_data
-                else:
-                    self._log.warning("Cal.com booking response status: %s", response_data.get("status"))
-                    return response_data
-            except Exception as e:
-                self._log.warning("Cal.com booking response parsing failed: %s", str(e))
-                self._log.info("Cal.com booking success (raw): %s", txt)
-                return {"raw": txt}
+                # Parse v2 bookings response according to official API spec
+                try:
+                    response_data = await resp.json()
+                    if response_data.get("status") == "success":
+                        # Invalidate cache after successful booking (Fix #1)
+                        _calendar_cache.clear()
+                        self._log.info("CALENDAR_CACHE_INVALIDATED | reason=successful_booking")
+                        
+                        booking_data = response_data.get("data", {})
+                        booking_id = booking_data.get("id")
+                        booking_uid = booking_data.get("uid")
+                        self._log.info("Cal.com booking success: ID=%s, UID=%s", booking_id, booking_uid)
+                        return booking_data
+                    else:
+                        self._log.warning("Cal.com booking response status: %s", response_data.get("status"))
+                        return response_data
+                except Exception as e:
+                    self._log.warning("Cal.com booking response parsing failed: %s", str(e))
+                    self._log.info("Cal.com booking success (raw): %s", txt)
+                    return {"raw": txt}
+        except asyncio.TimeoutError:
+            duration = time.time() - start
+            self._log.error(f"BOOKING_TIMEOUT | duration={duration:.2f}s")
+            raise Exception("Booking request timed out after 20 seconds")
 
     async def close(self) -> None:
         if getattr(self, "_http", None):

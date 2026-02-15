@@ -48,23 +48,24 @@ const ThemedDialogTrigger = ({ children, asChild = true }: ThemedDialogTriggerPr
   );
 };
 
-const ThemedDialogContent = ({ 
-  children, 
+const ThemedDialogContent = ({
+  children,
   className,
-  ...props 
+  ...props
 }: ThemedDialogContentProps) => {
   const { uiStyle } = useTheme();
-  
+
   const getDialogClasses = () => {
     if (uiStyle === "glass") {
       return cn(
-        // Glass effect with backdrop blur
-        "backdrop-blur-xl border transition-all duration-300",
-        "shadow-2xl border sm:max-w-2xl rounded-xl",
-        // Light mode - more opaque for better text legibility
-        "bg-white/[0.85] border-border/60 shadow-black/[0.1]",
-        // Dark mode overrides
-        "dark:bg-white/[0.08] dark:border-white/[0.15] dark:shadow-black/[0.3]"
+        // Super-Premium Liquid Glass
+        "backdrop-blur-3xl saturate-[1.2] transition-all duration-700",
+        "shadow-[0_32px_128px_-30px_rgba(0,0,0,0.7),inset_0_1px_1px_rgba(255,255,255,0.1)]",
+        "border sm:max-w-3xl rounded-[2.5rem]",
+        // Light mode - Super clean
+        "bg-white/90 border-white/60",
+        // Dark mode - Airy and translucent (not dark)
+        "dark:bg-white/[0.05] dark:border-white/[0.15]"
       );
     } else {
       return cn(
@@ -76,7 +77,7 @@ const ThemedDialogContent = ({
   };
 
   return (
-    <DialogContent 
+    <DialogContent
       className={cn(getDialogClasses(), className)}
       style={{ zIndex: 9999 }}
       {...props}
@@ -86,16 +87,16 @@ const ThemedDialogContent = ({
   );
 };
 
-const ThemedDialogHeader = ({ 
-  title, 
-  description, 
-  className 
+const ThemedDialogHeader = ({
+  title,
+  description,
+  className
 }: ThemedDialogHeaderProps) => {
   return (
     <DialogHeader className={cn("space-y-3", className)}>
-      <div 
+      <div
         className="text-lg font-light text-white"
-        style={{ 
+        style={{
           color: '#ffffff !important',
           fontSize: '18px',
           fontWeight: '300'
@@ -104,9 +105,9 @@ const ThemedDialogHeader = ({
         {title}
       </div>
       {description && (
-        <div 
+        <div
           className="text-sm leading-relaxed text-white/80"
-          style={{ 
+          style={{
             color: 'rgba(255, 255, 255, 0.8) !important',
             fontSize: '14px'
           }}

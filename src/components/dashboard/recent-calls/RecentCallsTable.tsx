@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { ThemedDialog, ThemedDialogTrigger } from "@/components/ui/themed-dialog";
 import { FileText } from "lucide-react";
 import { CallDialogContent } from "../calls/CallDialogContent";
+import { getOutcomeBadge } from "../call-outcomes/utils";
+import { getCustomerName } from "@/utils/formatUtils";
 
 interface RecentCallsTableProps {
   currentCalls: any[];
@@ -29,27 +31,7 @@ export function RecentCallsTable({ currentCalls }: RecentCallsTableProps) {
   };
 
   const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      completed: { color: 'bg-green-100 text-green-800', label: 'Completed' },
-      failed: { color: 'bg-red-100 text-red-800', label: 'Failed' },
-      dropped: { color: 'bg-yellow-100 text-yellow-800', label: 'Dropped' },
-      spam: { color: 'bg-orange-100 text-orange-800', label: 'Spam' },
-      no_response: { color: 'bg-gray-100 text-gray-800', label: 'No Response' },
-      qualified: { color: 'bg-blue-100 text-blue-800', label: 'Qualified' },
-      not_qualified: { color: 'bg-red-100 text-red-800', label: 'Not Qualified' },
-      booked_appointment: { color: 'bg-green-100 text-green-800', label: 'Booked Appointment' },
-      call_dropped: { color: 'bg-yellow-100 text-yellow-800', label: 'Call Dropped' },
-      message_to_franchise: { color: 'bg-purple-100 text-purple-800', label: 'Message to Franchise' }
-    };
-
-    const config = statusConfig[status as keyof typeof statusConfig] ||
-      { color: 'bg-blue-100 text-blue-800', label: status };
-
-    return (
-      <Badge className={config.color}>
-        {config.label}
-      </Badge>
-    );
+    return getOutcomeBadge(status);
   };
 
   return (
@@ -79,7 +61,7 @@ export function RecentCallsTable({ currentCalls }: RecentCallsTableProps) {
                     <ThemedDialogTrigger asChild>
                       <div className="cursor-pointer hover:text-primary transition-colors">
                         <div className="font-medium">
-                          {call.participant_identity || call.phoneNumber || 'Unknown'}
+                          {getCustomerName(call)}
                         </div>
                         <div className="text-sm text-muted-foreground">
                           {call.phone_number || call.phoneNumber || 'No number'}

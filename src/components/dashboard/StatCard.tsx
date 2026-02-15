@@ -23,32 +23,32 @@ export default function StatCard({
   className,
 }: StatCardProps) {
   const { uiStyle } = useTheme();
-  
+
   // Use appropriate card variant based on theme
   const cardVariant = uiStyle === "glass" ? "glass" : "default";
-  
+
   return (
-    <Card 
+    <Card
       variant={cardVariant}
       className={cn(
-        "p-6 transition-all duration-300",
+        "p-4 transition-all duration-300 h-full flex flex-col justify-between",
         "hover:scale-105 hover:shadow-xl",
         className
       )}
     >
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-start justify-between">
         {/* Title */}
-        <div className="flex">
+        <div className="flex flex-1 mr-2 min-h-[2.5rem] items-start">
           {title}
         </div>
-        
+
         {/* Trend indicator */}
         {trend && (
           <span className={cn(
-            "flex items-center space-x-1 text-xs px-2 py-1 rounded-xl",
+            "flex items-center space-x-1 text-xs px-2 py-1 rounded-xl flex-shrink-0",
             "bg-muted/30 transition-all duration-300",
-            trend.positive 
-              ? "text-success hover:bg-success/10" 
+            trend.positive
+              ? "text-success hover:bg-success/10"
               : "text-destructive hover:bg-destructive/10"
           )}>
             {trend.positive ? (
@@ -63,22 +63,22 @@ export default function StatCard({
           </span>
         )}
       </div>
-      
+
       {/* Main content area */}
-      <div className="flex items-center justify-between mt-4">
+      <div className="flex items-end justify-between mt-auto pt-2">
         <div className="flex">
           {value}
         </div>
-        
+
         {/* Icon container */}
         <div className={cn(
-          "w-12 h-12 flex items-center justify-center flex-shrink-0",
+          "w-10 h-10 flex items-center justify-center flex-shrink-0",
           "rounded-xl transition-all duration-300",
           "bg-primary text-primary-foreground",
           "hover:scale-105 hover:shadow-lg",
           "shadow-md"
         )}>
-          <div className="flex items-center justify-center w-6 h-6">
+          <div className="flex items-center justify-center w-5 h-5">
             {icon}
           </div>
         </div>

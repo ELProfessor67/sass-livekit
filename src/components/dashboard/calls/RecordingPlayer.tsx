@@ -29,8 +29,8 @@ export function RecordingPlayer({ recording, duration }: RecordingPlayerProps) {
 
   return (
     <div className="w-full">
-      <ModernAudioPlayer 
-        src={recording} 
+      <ModernAudioPlayer
+        src={recording}
         duration={duration}
         onDownload={handleDownload}
         className="w-full rounded-xl"

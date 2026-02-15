@@ -15,7 +15,7 @@ export function OutcomeBadge({ outcome, icon, color, className }: OutcomeBadgePr
       "inline-flex items-center gap-2 px-2 py-1 rounded-md text-sm font-medium transition-colors font-feature-settings tracking-tight antialiased",
       className
     )}>
-      <div 
+      <div
         className="p-1 rounded-full flex items-center justify-center"
         style={{ backgroundColor: color }}
       >

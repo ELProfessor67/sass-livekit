@@ -811,7 +811,7 @@ class UnifiedAgent(Agent):
         if msg:
             return msg
         
-        return await self._do_schedule()
+        return await self._do_schedule(ctx)
 
     @function_tool(name="confirm_details_yes")
     async def confirm_details_yes(self, ctx: RunContext, dummy: Optional[str] = None) -> str:
@@ -874,7 +874,7 @@ class UnifiedAgent(Agent):
             return msg
         
         logging.info("FINALIZE_BOOKING_CALLED | attempting to book appointment")
-        return await self._do_schedule()
+        return await self._do_schedule(ctx)
 
     @function_tool(name="transfer_required")
     async def transfer_required(self, ctx: RunContext, reason: Optional[str] = None) -> str:
@@ -1047,7 +1047,7 @@ class UnifiedAgent(Agent):
             self._transfer_requested = False  # Reset on error so user can try again
             return f"I encountered an error while transferring your call. Please try again or contact support."
 
-    async def _do_schedule(self) -> str:
+    async def _do_schedule(self, ctx: RunContext) -> str:
         """Actually schedule the appointment."""
         if getattr(self, "_booking_inflight", False):
             return "I'm processing your booking…"
@@ -1056,6 +1056,18 @@ class UnifiedAgent(Agent):
         if self._booking_data.booked:
             logging.info("BOOKING_ALREADY_COMPLETED | preventing duplicate booking attempt")
             return "Your appointment is already booked! Is there anything else I can help you with?"
+        
+        # Proactively say processing message to remove dead air (Fix #4)
+        try:
+            # Use play or say depending on implementation; returning text is standard but 
+            # we want to speak immediately to cover the API latency.
+            if hasattr(self, "say"):
+                await self.say("Perfect, one moment while I secure that time for you.", allow_interruptions=False)
+            elif hasattr(ctx, "agent") and hasattr(ctx.agent, "say"):
+                await ctx.agent.say("Perfect, one moment while I secure that time for you.", allow_interruptions=False)
+            logging.info("PROCESSING_SPEECH_TRIGGERED")
+        except Exception as e:
+            logging.debug("PROCESSING_SPEECH_FAILED | tool will continue | error=%s", str(e))
         
         self._booking_inflight = True
         call_id = f"booking_{self._booking_data.name or 'unknown'}"

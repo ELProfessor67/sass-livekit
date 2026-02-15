@@ -1752,6 +1752,12 @@ class CallHandler:
         }
         deepgram_language = language_mapping.get(language_setting, "en")
         
+        # Select Deepgram model based on language
+        # Flux only works in English (excluding bilingual English+Spanish)
+        stt_model = "nova-3"
+        if language_setting == "en":
+            stt_model = "flux"
+        
         # Try Deepgram STT first if available and API key is set
         stt = None
         deepgram_api_key = os.getenv("DEEPGRAM_API_KEY")
@@ -1759,12 +1765,12 @@ class CallHandler:
         if DEEPGRAM_AVAILABLE and deepgram_api_key:
             try:
                 stt = lk_deepgram.STT(
-                    model="nova-3",
+                    model=stt_model,
                     language=deepgram_language
                 )
-                logger.info(f"DEEPGRAM_STT_CONFIGURED | model=nova-3 | language={deepgram_language}")
+                logger.info(f"DEEPGRAM_STT_CONFIGURED | model={stt_model} | language={deepgram_language}")
             except Exception as e:
-                logger.warning(f"DEEPGRAM_STT_FAILED | error={str(e)} | falling back to OpenAI Whisper")
+                logger.warning(f"DEEPGRAM_STT_FAILED | model={stt_model} | error={str(e)} | falling back to OpenAI Whisper")
                 stt = None
         
         # Fallback to OpenAI Whisper STT if Deepgram is not available or failed

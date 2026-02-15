@@ -49,11 +49,11 @@ export const BUSINESS_USE_CASE_TEMPLATES: Record<BusinessUseCase, BusinessUseCas
       { key: "successfulTransfers", label: "Successful Transfers", icon: "ArrowRight", format: "number" }
     ],
     outcomes: [
-      { key: "booked appointment", label: "Booked Appointment", color: "hsl(142 76% 36%)", icon: "Calendar", priority: 1 },
-      { key: "not qualified", label: "Not Qualified", color: "hsl(45 93% 47%)", icon: "AlertCircle", priority: 3 },
-      { key: "spam", label: "Spam", color: "hsl(0 72% 51%)", icon: "AlertCircle", priority: 5 },
-      { key: "escalated", label: "Escalated", color: "hsl(217 91% 60%)", icon: "MessageSquare", priority: 4 },
-      { key: "call dropped", label: "Call Dropped", color: "hsl(215 28% 17%)", icon: "PhoneOff", priority: 6 }
+      { key: "booked appointment", label: "Booked Appointment", color: "#10B981", icon: "Calendar", priority: 1 },
+      { key: "escalated", label: "Escalated", color: "#0EA5E9", icon: "MessageSquare", priority: 2 },
+      { key: "not qualified", label: "Not Qualified", color: "#F59E0B", icon: "AlertCircle", priority: 3 },
+      { key: "spam", label: "Spam", color: "#EF4444", icon: "AlertCircle", priority: 4 },
+      { key: "call dropped", label: "Call Dropped", color: "#818CF8", icon: "PhoneOff", priority: 5 }
     ],
     chartTitles: {
       callVolume: "Call Volume",

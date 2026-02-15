@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { useTheme } from "@/components/ThemeProvider";
 import { useAccountMinutes } from "@/hooks/useAccountMinutes";
-import { BarChart3, Phone, Bot, Search, Bell, MessageSquare, Users, Megaphone, User, Settings, CreditCard, Zap, LogOut, Shield, Workflow } from "lucide-react";
+import { ChartBar, Phone, Robot, ChatCircle, Users, Megaphone, User, Gear, CreditCard, Lightning, SignOut, Shield, TreeStructure, MagnifyingGlass, Bell } from "phosphor-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggleMinimal } from "@/components/ThemeToggle";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -25,39 +25,39 @@ export default function TopNavigation() {
   const { websiteSettings } = useWebsiteSettings();
 
   const navItems = [{
-    icon: <BarChart3 size={16} />,
+    icon: <ChartBar size={18} weight="bold" />,
     label: "Dashboard",
     to: "/dashboard"
   }, {
-    icon: <Bot size={16} />,
+    icon: <Robot size={18} weight="bold" />,
     label: "Assistants",
     to: "/assistants"
   }, {
-    icon: <MessageSquare size={16} />,
+    icon: <ChatCircle size={18} weight="bold" />,
     label: "Conversations",
     to: "/conversations"
   }, {
-    icon: <Users size={16} />,
+    icon: <Users size={18} weight="bold" />,
     label: "Contacts",
     to: "/contacts"
   }, {
-    icon: <Megaphone size={16} />,
+    icon: <Megaphone size={18} weight="bold" />,
     label: "Campaigns",
     to: "/campaigns"
   }, {
-    icon: <Workflow size={16} />,
-    label: "Workflows",
-    to: "/workflows"
-  }, {
-    icon: <Phone size={16} />,
+    icon: <Phone size={18} weight="bold" />,
     label: "Calls",
     to: "/calls"
+  }, {
+    icon: <TreeStructure size={18} weight="bold" />,
+    label: "Composer",
+    to: "/workflows"
   }];
 
   // Add admin panel to nav items if user is admin
   if (isAdmin) {
     navItems.push({
-      icon: <Shield size={16} />,
+      icon: <Shield size={18} weight="bold" />,
       label: "Admin",
       to: "/admin"
     });
@@ -89,7 +89,7 @@ export default function TopNavigation() {
             {/* Impersonation Indicator */}
             {isImpersonating && originalUser && (
               <div className="flex items-center gap-2 px-3 py-1 bg-orange-500/20 border border-orange-500/30 rounded-full">
-                <Shield className="h-4 w-4 text-orange-500" />
+                <Shield className="h-4 w-4 text-orange-500" weight="bold" />
                 <span className="text-sm text-orange-500 font-medium">
                   Impersonating: {user?.fullName || user?.email}
                 </span>
@@ -102,7 +102,7 @@ export default function TopNavigation() {
                   }}
                   className="h-6 w-6 p-0 hover:bg-orange-500/20"
                 >
-                  <LogOut className="h-3 w-3 text-orange-500" />
+                  <SignOut className="h-4 w-4 text-orange-500" weight="bold" />
                 </Button>
               </div>
             )}
@@ -185,25 +185,25 @@ export default function TopNavigation() {
                     <div className="p-2">
                       <DropdownMenuItem asChild className="cursor-pointer text-muted-foreground hover:text-foreground rounded-xl">
                         <Link to="/settings?tab=account&subtab=profile" className="flex items-center gap-3">
-                          <User className="h-4 w-4" />
+                          <User className="h-4 w-4" weight="bold" />
                           <span>Profile</span>
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild className="cursor-pointer text-muted-foreground hover:text-foreground rounded-xl">
                         <Link to="/settings?tab=workspace" className="flex items-center gap-3">
-                          <Settings className="h-4 w-4" />
+                          <Gear className="h-4 w-4" weight="bold" />
                           <span>Settings</span>
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild className="cursor-pointer text-muted-foreground hover:text-foreground rounded-xl">
                         <Link to="/settings?tab=integrations" className="flex items-center gap-3">
-                          <Zap className="h-4 w-4" />
+                          <Lightning className="h-4 w-4" weight="bold" />
                           <span>Integrations</span>
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild className="cursor-pointer text-muted-foreground hover:text-foreground rounded-xl">
                         <Link to="/billing" className="flex items-center gap-3">
-                          <CreditCard className="h-4 w-4" />
+                          <CreditCard className="h-4 w-4" weight="bold" />
                           <span>Billing</span>
                         </Link>
                       </DropdownMenuItem>
@@ -217,7 +217,7 @@ export default function TopNavigation() {
                           navigate('/');
                         }}
                       >
-                        <LogOut className="h-4 w-4" />
+                        <SignOut className="h-4 w-4" weight="bold" />
                         <span>Log out</span>
                       </DropdownMenuItem>
                     </div>

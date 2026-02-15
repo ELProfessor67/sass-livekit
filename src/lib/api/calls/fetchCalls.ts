@@ -4,15 +4,16 @@ import { format } from 'date-fns';
 import { Call, CallAnalysis } from "@/components/calls/types";
 import { getMockCalls } from "../mockData/mockCallCache";
 import { fetchRecordingUrlCached } from "../recordings/fetchRecordingUrl";
+import { getCustomerName } from "@/utils/formatUtils";
 
 // Fetch calls from Supabase with fallback to our mock data generator
 export const fetchCalls = async () => {
   try {
     // Try to fetch from Supabase first
     const { data: calls, error } = await supabase
-      .from('call_logs')
+      .from('call_history')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('start_time', { ascending: false });
 
     if (error) {
       console.error('Error fetching calls:', error);
@@ -23,31 +24,28 @@ export const fetchCalls = async () => {
       // Transform data for UI with proper type handling
       const transformedCalls = await Promise.all(calls.map(async call => {
         // Fetch recording info if call_sid exists
-        const recordingInfo = call.call_sid ? await fetchRecordingUrlCached(call.call_sid) : null;
-        
+        const recordingInfo = (call as any).call_sid ? await fetchRecordingUrlCached((call as any).call_sid) : null;
+
         return {
           id: call.id,
-          first_name: call.first_name,
-          last_name: call.last_name,
-          name:
-            (call.first_name && call.first_name !== "NA") || (call.last_name && call.last_name !== "NA")
-              ? [call.first_name, call.last_name].filter(Boolean).join(" ")
-              : "Unknown",
+          first_name: (call as any).first_name || 'Unknown',
+          last_name: (call as any).last_name || '',
+          name: getCustomerName({ ...call, analysis: call.structured_data }),
           phoneNumber: call.phone_number || '',
-          date: call.created_at ? format(new Date(call.created_at), 'yyyy-MM-dd') : '',
-          time: call.created_at ? format(new Date(call.created_at), 'HH:mm') : '',
-          duration: call.duration || '00:00',
-          direction: call.type || 'Inbound',
+          date: call.start_time ? format(new Date(call.start_time), 'yyyy-MM-dd') : '',
+          time: call.start_time ? format(new Date(call.start_time), 'HH:mm') : '',
+          duration: call.call_duration ? format(new Date(call.call_duration * 1000), 'mm:ss') : '00:00',
+          direction: 'Inbound',
           channel: 'Phone',
-          address: call.address || null,
-          analysis: call.analysis as CallAnalysis || null,
-          tags: [], // If you want to add tags later
-          status: call.status || 'Completed',
-          resolution: call.call_outcome,
-          summary: call.summary,
-          transcript: call.transcript,
-          call_recording: recordingInfo?.recordingUrl || call.call_recording || '',
-          call_sid: call.call_sid,
+          address: (call as any).address || null,
+          analysis: (call.structured_data as unknown as CallAnalysis) || null,
+          tags: [],
+          status: call.call_status || 'Completed',
+          resolution: call.call_outcome || call.call_status,
+          summary: call.call_summary || '',
+          transcript: call.transcription,
+          call_recording: (recordingInfo as any)?.recordingUrl || '',
+          call_sid: (call as any).call_sid,
           recording_info: recordingInfo
         };
       }));
@@ -57,7 +55,7 @@ export const fetchCalls = async () => {
         total: transformedCalls.length,
       };
     }
-    
+
     // Fallback to mock data if no Supabase data or empty results
     console.log("No data from Supabase, falling back to mock data");
     return getMockCalls();
