@@ -1754,9 +1754,10 @@ class CallHandler:
         
         # Select Deepgram model based on language
         # Flux only works in English (excluding bilingual English+Spanish)
-        stt_model = "nova-3"
+        # However, Flux requires the /v2/listen endpoint which may not be supported by the current plugin version
+        stt_model = "nova-2"
         if language_setting == "en":
-            stt_model = "flux"
+            stt_model = "nova-2"
         
         # Try Deepgram STT first if available and API key is set
         stt = None
