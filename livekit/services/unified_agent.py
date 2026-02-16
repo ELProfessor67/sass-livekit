@@ -213,6 +213,7 @@ class UnifiedAgent(Agent):
         # Persistent booking data - preserved across resets for post-call processing
         self._finalized_booking_data: Optional[BookingData] = None
         self._slots_map: dict[str, object] = {}
+        self._display_map: dict[str, str] = {} # display_text (lower) -> ISO key
         self._presented_slot_keys: list[str] = [] # Track what user actually heard (Fix)
         self._webhook_data: dict[str, dict] = {}
         # Call/session timezone for booking (resolved before slot listing; never persisted on assistant)
@@ -269,6 +270,7 @@ class UnifiedAgent(Agent):
         """Reset all state for a new conversation/run."""
         self._booking_data = BookingData()
         self._slots_map.clear()
+        self._display_map.clear()
         self._presented_slot_keys.clear()
         self._analysis_data.clear()
         self._webhook_data.clear()
@@ -556,13 +558,14 @@ class UnifiedAgent(Agent):
         return message or "I couldn't recognize that timezone. Please say a city (e.g. New York), a region (e.g. Eastern time), or an IANA timezone (e.g. America/New_York)."
     
     @function_tool(name="list_slots_on_day")
-    async def list_slots_on_day(self, ctx: RunContext, day: str, max_options: int = 10, timeframe: Optional[str] = None) -> str:
-        """List available appointment slots for a specific day. Shows up to 10 slots by default.
+    async def list_slots_on_day(self, ctx: RunContext, day: str, max_options: int = 10, timeframe: Optional[str] = None, show_more: bool = False) -> str:
+        """List available appointment slots for a specific day.
         
         Args:
             day: The day to check (e.g. 'tomorrow', 'Friday').
-            max_options: Maximum number of slots to show.
-            timeframe: Optional preference: 'morning' (before 12pm), 'afternoon' (12pm-5pm), or 'evening' (after 5pm).
+            max_options: Maximum number of slots to show when showing more.
+            timeframe: Optional preference: 'morning', 'afternoon', or 'evening'.
+            show_more: Set to True if the user asks for "more options", "other times", "different slots", or anything similar. If True, it skips the first 3 and shows up to max_options.
         """
         msg = self._require_calendar()
         if msg:
@@ -571,14 +574,15 @@ class UnifiedAgent(Agent):
         if tz_msg:
             return tz_msg
         
-        logging.info("list_slots_on_day START | day=%s | timeframe=%s | call_tz=%s", day, timeframe, self._call_timezone.key if self._call_timezone else None)
+        logging.info("list_slots_on_day START | day=%s | timeframe=%s | show_more=%s", day, timeframe, show_more)
         
         call_id = f"calendar_{ctx.room.name if hasattr(ctx, 'room') else 'unknown'}"
         
         async with measure_latency_context("calendar_list_slots", call_id, {
             "day": day,
             "max_options": max_options,
-            "timeframe": timeframe
+            "timeframe": timeframe,
+            "show_more": show_more
         }):
             try:
                 # Parse the day
@@ -623,14 +627,28 @@ class UnifiedAgent(Agent):
                 if not filtered_slots and timeframe:
                     return f"I don't see any available slots in the {timeframe} for {day}. Would you like to hear all available slots instead?"
 
-                # Clear previous slots and use stable keys
+                # Build ISO map for all slots
                 self._slots_map.clear()
-                for slot in all_slots: # Keep all slots in map for direct selection
-                    key = slot.start_time.isoformat()
-                    self._slots_map[key] = slot
+                for slot in all_slots:
+                    self._slots_map[slot.start_time.isoformat()] = slot
                 
-                # Guidelines require exactly 3 options for presentation
-                display_slots = filtered_slots[:3]
+                # Determine which slice of slots to show
+                if show_more:
+                    # Skip first 3, show a larger set (default 10) regardless of max_options if it's too small
+                    limit = max(max_options, 10)
+                    display_slots = filtered_slots[3:3+limit]
+                    reason_str = f"following {len(display_slots)} different options as requested"
+                else:
+                    # Initial view: exactly 3
+                    display_slots = filtered_slots[:3]
+                    reason_str = "exactly 3 as per guidelines"
+
+                # Build display map for the slots being presented
+                self._display_map.clear()
+                for slot in display_slots:
+                    local_time = slot.start_time.astimezone(search_tz)
+                    display_text = local_time.strftime('%A at %I:%M %p').lower()
+                    self._display_map[display_text] = slot.start_time.isoformat()
                 
                 # Track exactly what we are presenting (Fix)
                 self._presented_slot_keys = [s.start_time.isoformat() for s in display_slots]
@@ -643,12 +661,14 @@ class UnifiedAgent(Agent):
                     lines.append(f"- {formatted_time}")
                 
                 timeframe_str = f" in the {timeframe}" if timeframe else ""
-                response_parts = [f"Available slots for {day}{timeframe_str} (Offered exactly 3 as per guidelines):\n" + "\n".join(lines)]
+                response_parts = [f"Available slots for {day}{timeframe_str} (Offered {reason_str}):\n" + "\n".join(lines)]
                 
                 if not display_slots:
+                    if show_more:
+                        return f"I don't see any more slots for {day}{timeframe_str} beyond what I already shared."
                     return f"No slots found for {day}{timeframe_str}. Remember to offer checking another day or checking other times that day."
 
-                logging.info("SLOTS_LISTED | filtered=%d | displayed=%d | timeframe=%s", len(filtered_slots), len(display_slots), timeframe)
+                logging.info("SLOTS_LISTED | filtered=%d | displayed=%d | show_more=%s", len(filtered_slots), len(display_slots), show_more)
                 return "".join(response_parts)
                 
             except asyncio.TimeoutError:
@@ -658,58 +678,89 @@ class UnifiedAgent(Agent):
                 logging.error(f"list_slots_on_day ERROR | day={day} | error={str(e)}")
                 return "I encountered an issue retrieving available slots."
 
+    def _resolve_slot(self, option_id: str) -> Optional[object]:
+        """Helper to resolve a slot from display text, ISO string, or numeric index."""
+        option = option_id.lower().strip()
+        
+        # 1. Try exact display match
+        if option in self._display_map:
+            iso_key = self._display_map[option]
+            return self._slots_map.get(iso_key)
+        
+        # 2. Try exact ISO match
+        if option_id in self._slots_map:
+            return self._slots_map[option_id]
+        
+        # 3. Try numeric index
+        if option.isdigit():
+            idx = int(option) - 1
+            if 0 <= idx < len(self._presented_slot_keys):
+                key = self._presented_slot_keys[idx]
+                return self._slots_map.get(key)
+        
+        # 4. Fallback: fuzzy time match
+        return self._find_slot_by_time_string(option)
+    
     @function_tool(name="choose_slot")
     async def choose_slot(self, ctx: RunContext, option_id: str) -> str:
-        """Select a time slot for the appointment. Requires caller timezone to be set (use set_call_timezone first)."""
-        msg = self._require_calendar()
-        if msg:
-            return msg
-        tz_msg = self._require_call_timezone()
-        if tz_msg:
-            return tz_msg
+        """Select a specific time slot from the list of available options. Requires caller timezone to be set (use set_call_timezone first).
         
-        slot = None
-        if option_id in self._slots_map:
-            slot = self._slots_map[option_id]
-        else:
-            if option_id.isdigit():
-                idx = int(option_id) - 1
-                if 0 <= idx < len(self._presented_slot_keys):
-                    key = self._presented_slot_keys[idx]
-                    slot = self._slots_map.get(key)
-            else:
-                slot = self._find_slot_by_time_string(option_id)
-        
-        if not slot:
-            return f"Option {option_id} doesn't seem to be available. Would you like to hear the slots again?"
-        
-        self._booking_data.selected_slot = slot
-        logging.info("SLOT_SELECTED | option_id=%s", option_id)
-
-        local_time = self._booking_data.selected_slot.start_time.astimezone(self._tz())
-        formatted_time = local_time.strftime('%A, %B %d at %I:%M %p')
-
-        missing_fields = []
-        if not self._booking_data.name:  missing_fields.append("name")
-        if not self._booking_data.email: missing_fields.append("email")
-        if not self._booking_data.phone: missing_fields.append("phone")
-
-        if missing_fields:
-            return f"Great, I've noted down {formatted_time}. To finish booking, I just need your {', '.join(missing_fields)}."
-        
-        return f"Perfect, you've selected {formatted_time}. Shall I go ahead and confirm this appointment for you?"
-
-
-    @function_tool(name="auto_book_appointment")
-    async def auto_book_appointment(self, ctx: RunContext, confirm: bool = True) -> str:
-        """Automatically book the appointment when all information is available. Requires caller timezone to be set (use set_call_timezone first).
-
         Args:
-            confirm: Optional flag allowing the LLM to explicitly signal confirmation.
+            option_id: The identifier or time of the slot to choose (e.g. '1', '2:00 PM', or ISO string).
         """
         tz_msg = self._require_call_timezone()
         if tz_msg:
             return tz_msg
+        
+        slot = self._resolve_slot(option_id)
+        
+        if not slot:
+            logging.info("SLOT_CHOOSE_FAILED | option_id=%s | available_iso=%s | available_display=%s", option_id, list(self._slots_map.keys()), list(self._display_map.keys()))
+            return f"Option {option_id} doesn't seem to be available. Would you like to hear the slots again?"
+        
+        self._booking_data.selected_slot = slot
+        logging.info("SLOT_CHOOSE_SUCCESS | option_id=%s | slot_key=%s", option_id, slot.start_time.isoformat() if hasattr(slot, 'start_time') else 'unknown')
+
+        local_time = self._booking_data.selected_slot.start_time.astimezone(self._tz())
+        formatted_time = local_time.strftime('%A, %B %d at %I:%M %p')
+        
+        # Guide the LLM to be compact
+        res = [f"Okay, I've selected {formatted_time} for you."]
+        if not (self._booking_data.name and self._booking_data.email and self._booking_data.phone):
+            res.append("I still need your details to finalize. What's your name, email, and phone number?")
+        else:
+            res.append(f"I have your details (Name: {self._booking_data.name}, Email: {self._booking_data.email}). Shall I go ahead and book this for you?")
+        
+        return " ".join(res)
+
+    @function_tool(name="auto_book_appointment")
+    async def auto_book_appointment(self, ctx: RunContext, slot_id: Optional[str] = None, name: Optional[str] = None, email: Optional[str] = None, phone: Optional[str] = None) -> str:
+        """Automatically book the appointment. You can provide missing details inline for a compact flow.
+        
+        Args:
+            slot_id: Optional. The time slot to book (e.g. 'Monday at 11:30 AM').
+            name: Optional. Participant's name.
+            email: Optional. Participant's email.
+            phone: Optional. Participant's phone number.
+        """
+        tz_msg = self._require_call_timezone()
+        if tz_msg:
+            return tz_msg
+            
+        # Update details if provided
+        if slot_id:
+            slot = self._resolve_slot(slot_id)
+            if slot:
+                self._booking_data.selected_slot = slot
+        if name:
+            self._booking_data.name = name.strip()
+        if email:
+            err = await self.set_email(ctx, email)
+            if "invalid" in err.lower(): return err
+        if phone:
+            err = await self.set_phone(ctx, phone)
+            if "invalid" in err.lower(): return err
+
         # Check if we have all required information
         if not (self._booking_data.selected_slot and self._booking_data.name and 
                 self._booking_data.email and self._booking_data.phone):
@@ -723,11 +774,11 @@ class UnifiedAgent(Agent):
             if not self._booking_data.phone:
                 missing_fields.append("phone")
             
-            return f"I need to collect some information first: {', '.join(missing_fields)}."
+            return f"I need to collect some information first: {', '.join(missing_fields)}. You can provide these at once!"
         
         # All information is available, proceed to book
         logging.info("AUTO_BOOKING_INITIATED | all fields available")
-        return await self._do_schedule()
+        return await self._do_schedule(ctx)
 
     @function_tool(name="collect_missing_info")
     async def collect_missing_info(self, ctx: RunContext, dummy: Optional[str] = None) -> str:
@@ -754,7 +805,7 @@ class UnifiedAgent(Agent):
     
     @function_tool(name="set_name")
     async def set_name(self, ctx: RunContext, name: str) -> str:
-        """Set the customer's name for the appointment."""
+        """Set the customer's name for the appointment. (Note: Redundant if already provided via collect_analysis_data or finalized_booking)."""
         if not name or len(name.strip()) < 2:
             return "Please provide a valid name."
         
@@ -764,7 +815,7 @@ class UnifiedAgent(Agent):
 
     @function_tool(name="set_email")
     async def set_email(self, ctx: RunContext, email: str) -> str:
-        """Set the customer's email for the appointment."""
+        """Set the customer's email for the appointment. (Note: Redundant if already provided via collect_analysis_data or finalized_booking)."""
         formatted_email = self._format_email(email)
         if not self._email_ok(formatted_email):
             return "Please provide a valid email address."
@@ -775,7 +826,7 @@ class UnifiedAgent(Agent):
 
     @function_tool(name="set_phone")
     async def set_phone(self, ctx: RunContext, phone: str) -> str:
-        """Set the customer's phone number for the appointment."""
+        """Set the customer's phone number for the appointment. (Note: Redundant if already provided via collect_analysis_data or finalized_booking)."""
         formatted_phone = self._format_phone(phone)
         if not self._phone_ok(formatted_phone):
             return "Please provide a valid phone number."
@@ -839,15 +890,34 @@ class UnifiedAgent(Agent):
         return "No problem. What would you like to change—name, email, phone, or time?"
 
     @function_tool(name="finalize_booking")
-    async def finalize_booking(self, ctx: RunContext, dummy: Optional[str] = None) -> str:
-        """Finalize and complete the booking process. Only call this when ALL required information is collected (time slot, name, email, phone). Requires caller timezone to be set (use set_call_timezone first).
+    async def finalize_booking(self, ctx: RunContext, slot_id: Optional[str] = None, name: Optional[str] = None, email: Optional[str] = None, phone: Optional[str] = None) -> str:
+        """Finalize and complete the booking process. You can provide missing details inline for a compact flow.
         
         Args:
-            dummy: Optional parameter (not used, required for schema compatibility).
+            slot_id: Optional. The time slot to book (e.g. 'Monday at 11:30 AM').
+            name: Optional. Participant's name.
+            email: Optional. Participant's email.
+            phone: Optional. Participant's phone number.
         """
         tz_msg = self._require_call_timezone()
         if tz_msg:
             return tz_msg
+            
+        # Update details if provided (Fix: Compact Flow)
+        if slot_id:
+            slot = self._resolve_slot(slot_id)
+            if slot:
+                self._booking_data.selected_slot = slot
+                logging.info("FINALIZE_BOOKING | Resolved slot_id=%s", slot_id)
+        if name:
+            self._booking_data.name = name.strip()
+        if email:
+            err = await self.set_email(ctx, email)
+            if "invalid" in err.lower(): return err
+        if phone:
+            err = await self.set_phone(ctx, phone)
+            if "invalid" in err.lower(): return err
+
         # Check if booking is already completed
         if self._booking_data.booked:
             return "Your appointment has already been successfully booked! Is there anything else I can help you with?"
@@ -872,7 +942,7 @@ class UnifiedAgent(Agent):
                 missing_fields.append("phone")
             
             logging.warning("FINALIZE_BOOKING_MISSING_FIELDS | missing=%s", missing_fields)
-            return f"We need to collect all the details first. We're missing: {', '.join(missing_fields)}. Let me help you with that."
+            return f"We need a few more details to finalize: {', '.join(missing_fields)}. Feel free to provide them all at once!"
         
         self._booking_data.confirmed = True
         msg = self._require_calendar()
@@ -1196,9 +1266,13 @@ class UnifiedAgent(Agent):
                 # Return a message that allows verification
                 return "The booking is taking longer than expected. I can verify if it went through - just say 'verify booking' or I can try booking again."
             except SlotUnavailableError as e:
-                logging.error("SLOT_UNAVAILABLE | error=%s", str(e))
+                logging.error("SLOT_UNAVAILABLE | error=%s | slot=%s", str(e), self._booking_data.selected_slot.start_time if self._booking_data.selected_slot else None)
                 self._booking_data.selected_slot = None
                 self._booking_data.confirmed = False
+                # If it's a "slot taken" error, we should clear the cache to get fresh slots
+                if self.calendar:
+                    _calendar_cache.clear()
+                    logging.info("CALENDAR_CACHE_INVALIDATED | reason=slot_unavailable_error")
                 return "That time was just taken. Let's pick another option."
             except Exception as e:
                 logging.error("BOOKING_ERROR | error=%s | error_type=%s", str(e), type(e).__name__)
@@ -1256,7 +1330,7 @@ class UnifiedAgent(Agent):
     
     @function_tool(name="collect_analysis_data")
     async def collect_analysis_data(self, ctx: RunContext, field_name: str, field_value: str, field_type: str = "string") -> str:
-        """Collect structured data for analysis during conversation"""
+        """Collect structured data for analysis. PROACTIVE: Also populates booking fields (Name, Email, Phone) if provided here."""
         logging.info("COLLECT_ANALYSIS_DATA_CALLED | field_name=%s | field_value=%s | type=%s", 
                     field_name, field_value, field_type)
         

@@ -26,6 +26,9 @@ interface CallHistory {
   structured_data?: any;
   created_at: string;
   updated_at: string;
+  call_sid?: string;
+  recording_sid?: string;
+  recording_url?: string;
 }
 
 /**
@@ -185,7 +188,7 @@ export default function Index() {
         tags: [],
         status: call.call_status || 'completed',
         resolution: call.call_status || getCallOutcome(call.transcription),
-        call_recording: '',
+        call_recording: call.recording_url || '',
         summary: call.call_summary || '',
         transcript: processedTranscript,
         analysis: call.structured_data,
@@ -194,7 +197,8 @@ export default function Index() {
         phone_number: call.phone_number || '',
         call_outcome: call.call_status || getCallOutcome(call.transcription),
         call_duration: call.call_duration || 0,
-        created_at: call.start_time
+        created_at: call.start_time,
+        call_sid: call.call_sid
       };
     });
   }, [realCallHistory]);

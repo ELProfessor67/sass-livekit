@@ -52,7 +52,8 @@ export const BUSINESS_USE_CASE_TEMPLATES: Record<BusinessUseCase, BusinessUseCas
       { key: "booked appointment", label: "Booked Appointment", color: "#10B981", icon: "Calendar", priority: 1 },
       { key: "escalated", label: "Escalated", color: "#0EA5E9", icon: "MessageSquare", priority: 2 },
       { key: "not qualified", label: "Not Qualified", color: "#F59E0B", icon: "AlertCircle", priority: 3 },
-      { key: "spam", label: "Spam", color: "#EF4444", icon: "AlertCircle", priority: 4 },
+      { key: "scam", label: "Scam", color: "#EF4444", icon: "AlertCircle", priority: 4 },
+      { key: "completed", label: "Scam", color: "#EF4444", icon: "AlertCircle", priority: 4 },
       { key: "call dropped", label: "Call Dropped", color: "#818CF8", icon: "PhoneOff", priority: 5 }
     ],
     chartTitles: {
@@ -81,7 +82,8 @@ export const BUSINESS_USE_CASE_TEMPLATES: Record<BusinessUseCase, BusinessUseCas
       { key: "resolved", label: "Resolved", color: "hsl(142 76% 36%)", icon: "CheckCircle", priority: 1 },
       { key: "escalated", label: "Escalated", color: "hsl(45 93% 47%)", icon: "ArrowUp", priority: 2 },
       { key: "pending", label: "Pending", color: "hsl(217 91% 60%)", icon: "Clock", priority: 3 },
-      { key: "spam", label: "Spam", color: "hsl(0 72% 51%)", icon: "AlertCircle", priority: 5 },
+      { key: "scam", label: "Scam", color: "hsl(0 72% 51%)", icon: "AlertCircle", priority: 5 },
+      { key: "completed", label: "Scam", color: "hsl(0 72% 51%)", icon: "AlertCircle", priority: 5 },
       { key: "call dropped", label: "Call Dropped", color: "hsl(215 28% 17%)", icon: "PhoneOff", priority: 4 }
     ],
     chartTitles: {
@@ -169,6 +171,8 @@ export const BUSINESS_USE_CASE_TEMPLATES: Record<BusinessUseCase, BusinessUseCas
       { key: "successful", label: "Successful", color: "hsl(142 76% 36%)", icon: "CheckCircle", priority: 1 },
       { key: "follow-up", label: "Follow-up Required", color: "hsl(45 93% 47%)", icon: "Clock", priority: 2 },
       { key: "escalated", label: "Escalated", color: "hsl(217 91% 60%)", icon: "ArrowUp", priority: 3 },
+      { key: "scam", label: "Scam", color: "hsl(0 72% 51%)", icon: "AlertCircle", priority: 4 },
+      { key: "completed", label: "Scam", color: "hsl(0 72% 51%)", icon: "AlertCircle", priority: 4 },
       { key: "unsuccessful", label: "Unsuccessful", color: "hsl(0 72% 51%)", icon: "XCircle", priority: 4 },
       { key: "call dropped", label: "Call Dropped", color: "hsl(215 28% 17%)", icon: "PhoneOff", priority: 5 }
     ],

@@ -189,10 +189,10 @@ export function ConversationsList({
                 onClick={() => onSelectConversation(conversation)}
                 className={cn(
                   "p-3 rounded-[var(--radius-md)] cursor-pointer transition-all duration-200 border",
-                  selectedConversationId === conversation.id
-                    ? "bg-accent/80 text-accent-foreground border-accent/30"
-                    : "hover:bg-muted/30 border-transparent hover:border-border/20",
-                  conversation.hasNewMessages && selectedConversationId !== conversation.id && "bg-blue-50/10 border-blue-200/20"
+                  (selectedConversationId === conversation.id || (selectedConversationId && selectedConversationId === conversation.phoneNumber))
+                    ? "bg-white/[0.12] border-white/20 shadow-[0_4px_12px_rgba(0,0,0,0.1)]"
+                    : "hover:bg-white/10 border-transparent hover:border-white/20",
+                  conversation.hasNewMessages && (selectedConversationId !== conversation.id && selectedConversationId !== conversation.phoneNumber) && "bg-blue-50/10 border-blue-200/20"
                 )}
               >
                 <div className="flex items-start gap-1">

@@ -129,7 +129,7 @@ export default function TimeRangeSelector({ onRangeChange, initialRange }: TimeR
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" className="btn-glass-light h-12 px-4 text-foreground">
+        <Button variant="outline" className="h-10 px-3 bg-white/5 border-white/10 hover:bg-white/10 transition-all rounded-xl text-foreground">
           <div className="flex items-center gap-2">
             <CalendarIcon className="h-4 w-4 text-foreground/70" />
             <span className="text-sm font-medium">{formatDateDisplay()}</span>

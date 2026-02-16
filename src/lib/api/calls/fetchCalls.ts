@@ -40,7 +40,7 @@ export const fetchCalls = async () => {
           address: (call as any).address || null,
           analysis: (call.structured_data as unknown as CallAnalysis) || null,
           tags: [],
-          status: call.call_status || 'Completed',
+          status: call.call_status || 'Scam',
           resolution: call.call_outcome || call.call_status,
           summary: call.call_summary || '',
           transcript: call.transcription,

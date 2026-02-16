@@ -172,9 +172,11 @@ export const FullScreenSignup = () => {
                     className="h-10 w-auto object-contain"
                   />
                 ) : (
-                  <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary/80 rounded-lg flex items-center justify-center">
-                    <div className="w-5 h-5 bg-white rounded-sm"></div>
-                  </div>
+                  <img
+                    src="/logo.png"
+                    alt=""
+                    className="h-10 w-auto object-contain"
+                  />
                 )}
               </div>
               <h2 className="text-3xl font-medium mb-2 tracking-tight">

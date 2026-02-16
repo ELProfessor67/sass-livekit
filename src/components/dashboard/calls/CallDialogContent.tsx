@@ -14,12 +14,19 @@ import { getOutcomeBadge } from "../call-outcomes/utils";
 import { formatCallDuration, getCustomerName } from "@/utils/formatUtils";
 import { ThemeCard } from "@/components/theme/ThemeCard";
 import { formatSummaryForDisplay } from "@/utils/summaryUtils";
+import { useRecording } from "@/hooks/useRecording";
 
 interface CallDialogContentProps {
   call: any;
 }
 
 export function CallDialogContent({ call }: CallDialogContentProps) {
+  const { recording: fetchedRecording, loading: isRecordingLoading } = useRecording(
+    !call.call_recording ? call.call_sid : undefined
+  );
+
+  const recordingUrl = call.call_recording || fetchedRecording?.recordingUrl;
+
   return (
     <ThemedDialogContent className="max-w-2xl">
       <ThemedDialogHeader
@@ -98,7 +105,13 @@ export function CallDialogContent({ call }: CallDialogContentProps) {
         <TabsContent value="recording" className="mt-4">
           <ThemeCard variant="glass">
             <CardContent className="p-6">
-              <RecordingPlayer recording={call.call_recording} duration={call.duration} />
+              {isRecordingLoading ? (
+                <div className="flex items-center justify-center p-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              ) : (
+                <RecordingPlayer recording={recordingUrl} duration={call.duration} />
+              )}
             </CardContent>
           </ThemeCard>
         </TabsContent>

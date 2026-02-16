@@ -13,6 +13,8 @@ const outcomePriorities: Record<string, number> = {
   'not qualified': 2,
   'not eligible': 2,
   'spam': 1,
+  'scam': 1,
+  'completed': 1,
   'call dropped': 0,
 };
 
@@ -39,7 +41,7 @@ export const prepareChartData = (callOutcomes: Record<string, number>, dynamicMa
     const outcomeKey = outcome.toLowerCase();
     const mappedOutcome = mapping[outcomeKey] || mapping[outcome.toLowerCase()] || {
       name: outcome.charAt(0).toUpperCase() + outcome.slice(1),
-      color: "#64748b",
+      color: outcomeKey === 'completed' || outcomeKey === 'scam' ? '#EF4444' : "#64748b",
       icon: <AlertCircle size={16} className="text-white" />
     };
 

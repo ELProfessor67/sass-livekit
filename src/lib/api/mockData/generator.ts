@@ -7,13 +7,13 @@ import { MockCall, CallTag, ResolutionType } from '../types';
 
 // Generate call data for window replacement company
 export const generateCalls = (count = 94, dateRange?: { from: Date; to: Date }): MockCall[] => {
-  
+
   const endDate = dateRange?.to || new Date();
   const startDate = dateRange?.from || subDays(endDate, 30);
-  
+
   // Calculate days in the range
   const daysInRange = differenceInDays(endDate, startDate) + 1;
-  
+
   // Scale call count based on time range
   let targetCallCount = count;
   if (dateRange && daysInRange !== 30) {
@@ -28,17 +28,17 @@ export const generateCalls = (count = 94, dateRange?: { from: Date; to: Date }):
     // Create pattern: more calls on weekdays, peak on Tuesday/Wednesday
     const randomFactor = Math.random();
     let date;
-    
+
     if (randomFactor < 0.7) {
       // 70% of calls on weekdays (Mon-Fri)
       date = new Date(startDate);
       date.setDate(date.getDate() + Math.floor(Math.random() * daysInRange));
-      
+
       // Adjust to the closest weekday
       const currentDay = date.getDay();
       if (currentDay === 0) date.setDate(date.getDate() + 1); // If Sunday, move to Monday
       if (currentDay === 6) date.setDate(date.getDate() - 1); // If Saturday, move to Friday
-      
+
       // Create peak days (Tue-Wed)
       if (Math.random() < 0.4) {
         date.setDate(date.getDate() - currentDay + 2 + Math.floor(Math.random() * 2)); // Tue or Wed
@@ -47,22 +47,22 @@ export const generateCalls = (count = 94, dateRange?: { from: Date; to: Date }):
       // 30% randomly distributed
       date = randomDate(startDate, endDate);
     }
-    
+
     return date;
   }).sort((a, b) => a.getTime() - b.getTime()); // Sort dates chronologically
 
   // Using a deterministic seeding method based on the date range
   // This ensures same ranges will generate same data
   let seedValue = startDate.getTime() + endDate.getTime();
-  
+
   const random = () => {
     seedValue = (seedValue * 9301 + 49297) % 233280;
     return seedValue / 233280;
   };
-  
+
   // Calculate how many appointments to generate (39% of total)
   const appointmentCount = Math.floor(targetCallCount * 0.39);
-  
+
   // Generate the calls
   const calls = Array.from({ length: targetCallCount }).map((_, index) => {
     const callDate = dates[index] || randomDate(startDate, endDate);
@@ -70,14 +70,14 @@ export const generateCalls = (count = 94, dateRange?: { from: Date; to: Date }):
     const { firstName, lastName } = generateRandomName();
     const direction = random() > 0.3 ? 'Inbound' : 'Outbound';
     const channel = random() > 0.2 ? 'Phone' : 'VoIP';
-    const statuses = ['Completed', 'Missed', 'Voicemail'];
+    const statuses = ['Scam', 'Missed', 'Voicemail'];
     const status = statuses[Math.floor(random() * statuses.length)];
-    
+
     // Assign 1-2 random tags specific to window types/styles
     const numTags = Math.floor(random() * 2) + 1;
     const shuffledTags = [...callTags].sort(() => 0.5 - random());
     const tags = shuffledTags.slice(0, numTags);
-    
+
     // Ensure exactly 39% of calls are appointments
     let resolution: ResolutionType;
     if (index < appointmentCount) {
@@ -87,7 +87,7 @@ export const generateCalls = (count = 94, dateRange?: { from: Date; to: Date }):
     } else if (index < targetCallCount * 0.80) {
       resolution = 'Not Eligible';
     } else if (index < targetCallCount * 0.95) {
-      resolution = 'Spam';
+      resolution = 'Scam';
     } else {
       resolution = 'Call Dropped';
     }
@@ -101,7 +101,7 @@ export const generateCalls = (count = 94, dateRange?: { from: Date; to: Date }):
 
     // Generate analysis based on call resolution
     let analysis;
-    
+
     if (resolution === 'Appointment') {
       analysis = {
         property_type: propertyTypes[Math.floor(random() * propertyTypes.length)],
@@ -120,7 +120,7 @@ export const generateCalls = (count = 94, dateRange?: { from: Date; to: Date }):
         product_interest: 'Custom Windows',
         budget_range: 'Unknown'
       };
-    } else if (resolution === 'Spam') {
+    } else if (resolution === 'Scam') {
       analysis = {
         property_type: 'Unknown',
         spam_likelihood: 'High'
@@ -135,7 +135,7 @@ export const generateCalls = (count = 94, dateRange?: { from: Date; to: Date }):
     const summary = generateSummary(resolution, firstName, lastName, location, windowType, windowStyle, mainConcern);
 
     // Ensure all calls have recordings for consistency
-    const hasRecording = true; 
+    const hasRecording = true;
     const callRecording = hasRecording ? `https://storage.example.com/call-recordings/call-${index + 1}.wav` : null;
 
     // Generate transcript for call
@@ -168,8 +168,8 @@ export const generateCalls = (count = 94, dateRange?: { from: Date; to: Date }):
       call_recording: callRecording
     };
   });
-  
-  
+
+
   return calls;
 };
 

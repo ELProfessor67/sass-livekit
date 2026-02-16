@@ -28,8 +28,13 @@ export const outcomeMapping = {
     color: "#F59E0B",
     icon: <AlertCircle className="w-4 h-4" />
   },
-  'spam': {
-    name: "Spam",
+  'scam': {
+    name: "Scam",
+    color: "#EF4444",
+    icon: <AlertCircle className="w-4 h-4" />
+  },
+  'completed': {
+    name: "Scam",
     color: "#EF4444",
     icon: <AlertCircle className="w-4 h-4" />
   },

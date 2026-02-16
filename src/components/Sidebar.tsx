@@ -92,9 +92,11 @@ export function Sidebar() {
                 className="h-8 w-auto object-contain max-w-[120px]"
               />
             ) : (
-              <span className="font-extralight text-liquid-premium text-lg tracking-wider truncate">
-                {websiteSettings?.website_name || "AI Call Center"}
-              </span>
+              <img
+                src="/logo.png"
+
+                className="h-8 w-auto object-contain max-w-[120px]"
+              />
             )}
           </div>
         )}

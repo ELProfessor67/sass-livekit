@@ -1753,11 +1753,10 @@ class CallHandler:
         deepgram_language = language_mapping.get(language_setting, "en")
         
         # Select Deepgram model based on language
-        # Flux only works in English (excluding bilingual English+Spanish)
-        # However, Flux requires the /v2/listen endpoint which may not be supported by the current plugin version
-        stt_model = "nova-2"
-        if language_setting == "en":
-            stt_model = "nova-2"
+        # Use Flux for English to get superior conversational performance and turn-taking
+        # For all other languages, use Deepgram's Nova-3 model
+        use_flux = language_setting == "en"
+        stt_model = "nova-3"
         
         # Try Deepgram STT first if available and API key is set
         stt = None
@@ -1765,13 +1764,22 @@ class CallHandler:
         
         if DEEPGRAM_AVAILABLE and deepgram_api_key:
             try:
-                stt = lk_deepgram.STT(
-                    model=stt_model,
-                    language=deepgram_language
-                )
-                logger.info(f"DEEPGRAM_STT_CONFIGURED | model={stt_model} | language={deepgram_language}")
+                if use_flux:
+                    # Flux is Deepgram's first conversational speech recognition model
+                    # It requires STTv2 which uses the /v2/listen endpoint
+                    stt = lk_deepgram.STTv2(
+                        model="flux-general-en",
+                        eot_threshold=0.7
+                    )
+                    logger.info("DEEPGRAM_FLUX_STT_CONFIGURED | model=flux-general-en | turn_detection=stt")
+                else:
+                    stt = lk_deepgram.STT(
+                        model=stt_model,
+                        language=deepgram_language
+                    )
+                    logger.info(f"DEEPGRAM_STT_CONFIGURED | model={stt_model} | language={deepgram_language}")
             except Exception as e:
-                logger.warning(f"DEEPGRAM_STT_FAILED | model={stt_model} | error={str(e)} | falling back to OpenAI Whisper")
+                logger.warning(f"DEEPGRAM_STT_FAILED | flux={use_flux} | error={str(e)} | falling back to OpenAI Whisper")
                 stt = None
         
         # Fallback to OpenAI Whisper STT if Deepgram is not available or failed
@@ -1820,6 +1828,7 @@ class CallHandler:
             stt=stt,
             llm=llm,
             tts=tts,
+            turn_detection="stt" if use_flux else "vad",
             allow_interruptions=True,
             preemptive_generation=True,  # Enable preemptive generation for reduced latency
             min_endpointing_delay=voice_on_punctuation_seconds,   # From assistant DB

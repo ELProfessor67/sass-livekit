@@ -30,7 +30,7 @@ export default function Conversations() {
   const hasInitiallySelectedRef = useRef(false);
   const hasManualSelectionRef = useRef(false);
   const [messageFilter, setMessageFilter] = useState<'all' | 'calls' | 'sms'>('all');
-  
+
   // Progressive loading functions
   const [progressiveFunctions, setProgressiveFunctions] = useState<{
     getConversationDetails: (phoneNumber: string, days?: number) => Promise<any>;
@@ -51,14 +51,14 @@ export default function Conversations() {
     try {
       setIsLoadingContacts(true);
       setError(null);
-      
+
       console.log('📋 Loading contacts list...');
       const { contacts: contactList, getConversationDetails, loadMoreHistory, fetchNewMessagesSince } = await getConversationsProgressive();
-      
+
       console.log(`📋 Loaded ${contactList.length} contacts`);
       setContacts(contactList);
       setProgressiveFunctions({ getConversationDetails, loadMoreHistory, fetchNewMessagesSince });
-      
+
     } catch (err) {
       console.error('Error loading contacts:', err);
       setError('Failed to load contacts - showing sample data');
@@ -107,21 +107,21 @@ export default function Conversations() {
     try {
       console.log(`🔄 Checking for new messages for ${phoneNumber} since ${lastTimestamp}`);
       const { newSMSMessages, newCalls, hasNewData } = await progressiveFunctions.fetchNewMessagesSince(phoneNumber, lastTimestamp);
-      
+
       if (hasNewData) {
         console.log(`📨 Found ${newSMSMessages.length} new SMS and ${newCalls.length} new calls for ${phoneNumber}`);
-        
+
         // Update the conversation with new messages
-        setConversations(prevConversations => 
+        setConversations(prevConversations =>
           prevConversations.map(conv => {
             if (conv.phoneNumber === phoneNumber) {
               const updatedConv = { ...conv };
-              
+
               // Add new SMS messages
               if (newSMSMessages.length > 0) {
                 updatedConv.smsMessages = [...(conv.smsMessages || []), ...newSMSMessages];
                 updatedConv.totalSMS = updatedConv.smsMessages.length;
-                
+
                 // Update last activity if SMS is newer
                 const latestSMS = newSMSMessages[newSMSMessages.length - 1];
                 const smsTime = new Date(latestSMS.dateCreated);
@@ -131,12 +131,12 @@ export default function Conversations() {
                   updatedConv.lastActivityTimestamp = smsTime;
                 }
               }
-              
+
               // Add new calls
               if (newCalls.length > 0) {
                 updatedConv.calls = [...conv.calls, ...newCalls];
                 updatedConv.totalCalls = updatedConv.calls.length;
-                
+
                 // Update last activity if call is newer
                 const latestCall = newCalls[newCalls.length - 1];
                 const callTime = new Date(latestCall.created_at);
@@ -147,7 +147,7 @@ export default function Conversations() {
                   updatedConv.lastCallOutcome = latestCall.resolution;
                 }
               }
-              
+
               return updatedConv;
             }
             return conv;
@@ -158,34 +158,34 @@ export default function Conversations() {
         if (selectedConversation?.phoneNumber === phoneNumber) {
           setSelectedConversation(prev => {
             if (!prev) return prev;
-            
+
             const updatedConv = { ...prev };
-            
+
             // Add new SMS messages
             if (newSMSMessages.length > 0) {
               updatedConv.smsMessages = [...(prev.smsMessages || []), ...newSMSMessages];
               updatedConv.totalSMS = updatedConv.smsMessages.length;
             }
-            
+
             // Add new calls
             if (newCalls.length > 0) {
               updatedConv.calls = [...prev.calls, ...newCalls];
               updatedConv.totalCalls = updatedConv.calls.length;
             }
-            
+
             return updatedConv;
           });
         }
 
         // Update the last timestamp
-        const allMessages = [...newSMSMessages.map(sms => ({ timestamp: sms.dateCreated, type: 'sms' })), 
-                            ...newCalls.map(call => ({ timestamp: call.created_at, type: 'call' }))];
-        
+        const allMessages = [...newSMSMessages.map(sms => ({ timestamp: sms.dateCreated, type: 'sms' })),
+        ...newCalls.map(call => ({ timestamp: call.created_at, type: 'call' }))];
+
         if (allMessages.length > 0) {
-          const latestMessage = allMessages.sort((a, b) => 
+          const latestMessage = allMessages.sort((a, b) =>
             new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
           )[allMessages.length - 1];
-          
+
           setLastMessageTimestamps(prev => ({
             ...prev,
             [phoneNumber]: latestMessage.timestamp
@@ -207,14 +207,14 @@ export default function Conversations() {
     try {
       setIsLoadingConversation(true);
       console.log(`📞 Loading conversation details for ${phoneNumber}...`);
-      
+
       // Always load ALL call history, not filtered by date range
       // Passing null explicitly to ensure all calls are loaded
       const response = await progressiveFunctions.getConversationDetails(phoneNumber, null);
       const conversation = response.conversation;
-      
+
       console.log(`📞 Loaded conversation with ${conversation.calls.length} calls and ${conversation.smsMessages.length} SMS messages`);
-      
+
       // Convert to the format expected by the UI
       const conversationWithFlags = {
         ...conversation,
@@ -222,7 +222,7 @@ export default function Conversations() {
         hasNewSMS: false,
         hasNewCalls: false
       };
-      
+
       setConversations(prev => {
         const existing = prev.find(c => c.phoneNumber === phoneNumber);
         if (existing) {
@@ -237,22 +237,22 @@ export default function Conversations() {
         ...(conversation.smsMessages || []).map(sms => ({ timestamp: sms.dateCreated, type: 'sms' })),
         ...conversation.calls.map(call => ({ timestamp: call.created_at, type: 'call' }))
       ];
-      
+
       if (allMessages.length > 0) {
-        const latestMessage = allMessages.sort((a, b) => 
+        const latestMessage = allMessages.sort((a, b) =>
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         )[allMessages.length - 1];
-        
+
         setLastMessageTimestamps(prev => ({
           ...prev,
           [phoneNumber]: latestMessage.timestamp
         }));
-        
+
         console.log(`📅 Set initial timestamp for ${phoneNumber}: ${latestMessage.timestamp}`);
       }
-      
+
       return conversationWithFlags;
-      
+
     } catch (err) {
       console.error('Error loading conversation details:', err);
       toast({
@@ -283,7 +283,7 @@ export default function Conversations() {
     const timer = setTimeout(() => {
       loadConversations();
     }, 100);
-    
+
     return () => clearTimeout(timer);
   }, [isAuthLoading, user?.id]);
 
@@ -300,12 +300,12 @@ export default function Conversations() {
       setIsPolling(true);
       pollingIntervalRef.current = setInterval(async () => {
         console.log('🔄 Polling: Checking for new messages...', new Date().toLocaleTimeString());
-        
+
         // Check for new messages in currently selected conversation
         if (selectedConversation) {
           await checkForNewMessages(selectedConversation.phoneNumber);
         }
-        
+
         // Also refresh contact list (lightweight)
         await loadContacts();
       }, 30000); // Poll every 30 seconds
@@ -368,7 +368,7 @@ export default function Conversations() {
   const displayItems = useMemo(() => {
     const combined = [...contacts, ...conversations];
     // Remove duplicates based on phone number
-    const unique = combined.filter((item, index, self) => 
+    const unique = combined.filter((item, index, self) =>
       index === self.findIndex(t => t.phoneNumber === item.phoneNumber)
     );
     return unique;
@@ -383,17 +383,17 @@ export default function Conversations() {
       hasManualSelection: hasManualSelectionRef.current,
       isLoadingContacts
     });
-    
+
     // Only auto-select if:
     // 1. We have display items
     // 2. No conversation is selected
     // 3. We haven't made any selection yet (initial or manual)
     // 4. We're not loading
-    if (displayItems.length > 0 && 
-        !selectedConversation && 
-        !hasInitiallySelectedRef.current && 
-        !hasManualSelectionRef.current &&
-        !isLoadingContacts) {
+    if (displayItems.length > 0 &&
+      !selectedConversation &&
+      !hasInitiallySelectedRef.current &&
+      !hasManualSelectionRef.current &&
+      !isLoadingContacts) {
       console.log('🎯 Auto-selecting first item:', displayItems[0].id);
       handleSelectConversation(displayItems[0]);
       hasInitiallySelectedRef.current = true;
@@ -421,7 +421,7 @@ export default function Conversations() {
     // If it's a contact summary, load the full conversation details
     const contact = conversation as ContactSummary;
     console.log(`📞 Loading conversation details for contact: ${contact.phoneNumber}`);
-    
+
     const fullConversation = await loadConversationDetails(contact.phoneNumber);
     if (fullConversation) {
       setSelectedConversation(fullConversation);
@@ -511,7 +511,7 @@ export default function Conversations() {
                   <p className="text-muted-foreground text-sm font-medium tracking-[0.1px]">
                     Manage your customer conversations and messages
                   </p>
-                 
+
                 </div>
               </div>
 
@@ -559,7 +559,7 @@ export default function Conversations() {
                   <div className=" border-r border-border/50 overflow-y-auto">
                     <ConversationsList
                       conversations={displayItems}
-                      selectedConversationId={selectedConversation?.id}
+                      selectedConversationId={selectedConversation?.phoneNumber || selectedConversation?.id}
                       onSelectConversation={handleSelectConversation}
                     />
                   </div>

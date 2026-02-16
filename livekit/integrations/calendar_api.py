@@ -603,19 +603,22 @@ class CalComCalendar(Calendar):
                     else:
                         raise Exception(f"Cal.com API error {resp.status}: {txt}")
 
+                # If we got a 2xx, ALWAYS clear the cache (Fix #1 - Robust Invalidation)
+                _calendar_cache.clear()
+                self._log.info("CALENDAR_CACHE_INVALIDATED | reason=successful_api_response | status=%d", resp.status)
+
                 # Parse v2 bookings response according to official API spec
                 try:
                     response_data = await resp.json()
-                    if response_data.get("status") == "success":
-                        # Invalidate cache after successful booking (Fix #1)
-                        _calendar_cache.clear()
-                        self._log.info("CALENDAR_CACHE_INVALIDATED | reason=successful_booking")
-                        
-                        booking_data = response_data.get("data", {})
-                        booking_id = booking_data.get("id")
-                        booking_uid = booking_data.get("uid")
+                    # A booking is successful if status is "success" OR it has an ID/UID (Fix #2 - Flexible Parsing)
+                    data_obj = response_data.get("data", {}) if isinstance(response_data.get("data"), dict) else response_data
+                    is_success = response_data.get("status") == "success" or bool(data_obj.get("id") or data_obj.get("uid"))
+                    
+                    if is_success:
+                        booking_id = data_obj.get("id")
+                        booking_uid = data_obj.get("uid")
                         self._log.info("Cal.com booking success: ID=%s, UID=%s", booking_id, booking_uid)
-                        return booking_data
+                        return data_obj
                     else:
                         self._log.warning("Cal.com booking response status: %s", response_data.get("status"))
                         return response_data

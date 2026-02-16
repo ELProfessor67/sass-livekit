@@ -115,15 +115,13 @@ export default function Login() {
 
       <Card className="w-full max-w-md backdrop-blur-xl bg-white/[0.02] border border-white/[0.08] rounded-2xl shadow-2xl">
         <CardHeader className="text-center space-y-2">
-          {websiteSettings?.logo && (
-            <div className="flex justify-center mb-4">
-              <img
-                src={websiteSettings.logo}
-                alt={websiteSettings.website_name || "Logo"}
-                className="h-12 w-auto object-contain"
-              />
-            </div>
-          )}
+          <div className="flex justify-center mb-4">
+            <img
+              src={websiteSettings?.logo || "/logo.png"}
+              alt={websiteSettings?.website_name || "Logo"}
+              className="h-16 w-auto object-contain"
+            />
+          </div>
           <CardTitle className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/80">
             Welcome back
           </CardTitle>

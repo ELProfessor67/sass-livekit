@@ -30,18 +30,18 @@ export default function ConversationsToolbar({
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-[var(--space-2xl)]">
       <div className="relative">
         <Search className="absolute left-4 top-4 h-4 w-4 text-muted-foreground/70 z-10" />
-        <Input 
-          placeholder="Search conversations, contacts, or outcomes..." 
+        <Input
+          placeholder="Search conversations, contacts, or outcomes..."
           className="pl-12"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
         />
       </div>
-      
+
       <div>
         <TimeRangeSelector onRangeChange={onDateRangeChange} />
       </div>
-      
+
       <div>
         <Select value={resolutionFilter} onValueChange={onResolutionChange}>
           <SelectTrigger className="bg-background/50 border-border/50 text-foreground">
