@@ -21,6 +21,12 @@ export default function Assistants() {
 
 
 
+  // Set data-page attribute for proper theme styling
+  useEffect(() => {
+    document.body.setAttribute('data-page', 'assistants');
+    return () => document.body.removeAttribute('data-page');
+  }, []);
+
   // Handle tab changes
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);

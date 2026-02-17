@@ -39,18 +39,18 @@ export function WorkflowTable({ workflows, isLoading, onWorkflowClick }: Workflo
     }
 
     return (
-        <ThemeCard variant="glass" className="overflow-hidden border-white/[0.05] bg-white/[0.01]">
+        <ThemeCard variant="glass" className="overflow-hidden">
             <Table>
                 <TableHeader>
-                    <TableRow className="hover:bg-transparent border-b border-white/[0.05]">
+                    <TableRow className="hover:bg-transparent border-b border-border/50">
                         <TableHead className="w-12">
                             <Checkbox className="border-muted-foreground/40" />
                         </TableHead>
-                        <TableHead className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.2em]">Name</TableHead>
-                        <TableHead className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.2em]">Steps</TableHead>
-                        <TableHead className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.2em]">Location</TableHead>
-                        <TableHead className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.2em]">Updated</TableHead>
-                        <TableHead className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.2em] w-24 text-center">Status</TableHead>
+                        <TableHead className="text-xs font-medium text-muted-foreground">Name</TableHead>
+                        <TableHead className="text-xs font-medium text-muted-foreground">Steps</TableHead>
+                        <TableHead className="text-xs font-medium text-muted-foreground">Folder</TableHead>
+                        <TableHead className="text-xs font-medium text-muted-foreground">Last modified</TableHead>
+                        <TableHead className="text-xs font-medium text-muted-foreground w-20">Status</TableHead>
                         <TableHead className="w-12"></TableHead>
                     </TableRow>
                 </TableHeader>

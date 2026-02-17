@@ -62,16 +62,27 @@ export function WorkflowSidebar({ activeFilter, onFilterChange, className }: Wor
             <button
                 onClick={() => onFilterChange(id)}
                 className={cn(
-                    "w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all text-sm group",
+                    "w-full flex items-center justify-between p-3 rounded-[var(--radius-md)] transition-all duration-200 border text-left",
                     isActive
-                        ? "bg-primary/20 text-primary font-semibold shadow-[0_4px_12px_rgba(var(--primary),0.2)] border border-primary/20"
-                        : "text-muted-foreground hover:bg-white/5 hover:text-foreground border border-transparent hover:border-white/5",
-                    indent && "pl-8"
+                        ? "bg-accent/80 text-accent-foreground border-accent/30"
+                        : "hover:bg-muted/30 border-transparent hover:border-border/20",
+                    indent && "pl-6"
                 )}
             >
-                <div className="flex items-center gap-2.5">
-                    <Icon size={18} weight={isActive ? "fill" : "regular"} className={isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"} />
-                    <span>{label}</span>
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <Icon
+                        weight="duotone"
+                        className={cn(
+                            "w-3.5 h-3.5 flex-shrink-0",
+                            isActive ? "text-primary" : "text-muted-foreground"
+                        )}
+                    />
+                    <span className={cn(
+                        "text-sm truncate",
+                        isActive ? "text-foreground font-medium" : "text-foreground"
+                    )}>
+                        {label}
+                    </span>
                     {badge && (
                         <Badge variant="outline" className="text-[10px] h-4 px-1 bg-primary/5 text-primary border-primary/20">
                             {badge}
@@ -80,8 +91,10 @@ export function WorkflowSidebar({ activeFilter, onFilterChange, className }: Wor
                 </div>
                 {(count !== undefined && count > 0) && (
                     <span className={cn(
-                        "text-[10px] px-1.5 py-0.5 rounded-full border",
-                        isActive ? "bg-primary/20 border-primary/20 text-primary" : "bg-muted border-border/50 text-muted-foreground"
+                        "text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ml-2",
+                        isActive
+                            ? "bg-primary/10 text-primary"
+                            : "bg-muted/50 text-muted-foreground"
                     )}>
                         {count}
                     </span>
@@ -91,131 +104,129 @@ export function WorkflowSidebar({ activeFilter, onFilterChange, className }: Wor
     };
 
     return (
-        <div className={cn("flex flex-col h-full bg-white/[0.01] backdrop-blur-xl border-r border-white/[0.08]", className)}>
-            <ScrollArea className="flex-1 px-4 py-6">
-                <div className="space-y-8">
+        <div className={cn("flex flex-col h-full bg-transparent border-r border-border/50", className)}>
+            <ScrollArea className="flex-1 p-[var(--space-md)]">
+                <div className="space-y-1">
                     {/* Main Filters */}
-                    <div className="space-y-1">
-                        <NavItem id="all" label="All Workflows" icon={Selection} count={stats.total} />
-                        <NavItem id="active" label="Active" icon={CheckCircle} count={stats.active} />
-                        <NavItem id="paused" label="Paused" icon={Clock} count={stats.paused} />
-                        <NavItem id="starter" label="Getting Started" icon={Star} count={stats.starter} />
+                    <div className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-foreground">
+                        Workflows
+                    </div>
+                    <NavItem id="all" label="All Workflows" icon={Selection} count={stats.total} />
+                    <NavItem id="active" label="Active" icon={CheckCircle} count={stats.active} indent />
+                    <NavItem id="paused" label="Paused" icon={Clock} count={stats.paused} indent />
+                    <NavItem id="starter" label="Getting Started" icon={Star} count={stats.starter} />
+
+                    <div className="my-2 px-3">
+                        <div className="h-px bg-border/60 dark:bg-white/[0.08]" />
                     </div>
 
                     {/* Templates Section - Platform/Agency focused */}
                     {!isClient && (
-                        <div className="space-y-2">
-                            <div className="px-3 flex items-center justify-between">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Library</span>
+                        <>
+                            <div className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-foreground">
+                                Library
                             </div>
-                            <div className="space-y-1">
-                                <NavItem id="templates" label="Templates" icon={Layout} count={isAgency ? agencyCount : platformCount} />
-                                {isAgency && (
-                                    <NavItem id="platform_templates" label="Platform Templates" icon={Globe} count={platformCount} />
-                                )}
+                            <NavItem id="templates" label="Templates" icon={Layout} count={isAgency ? agencyCount : platformCount} />
+                            {isAgency && (
+                                <NavItem id="platform_templates" label="Platform Templates" icon={Globe} count={platformCount} />
+                            )}
+                            <div className="my-2 px-3">
+                                <div className="h-px bg-border/60 dark:bg-white/[0.08]" />
                             </div>
-                        </div>
+                        </>
                     )}
 
                     {/* Agency View: Client Workspaces */}
                     {isAgency && (
-                        <div className="space-y-2">
+                        <>
                             <div
-                                className="px-3 flex items-center justify-between cursor-pointer group"
+                                className="px-3 py-1.5 flex items-center justify-between cursor-pointer group"
                                 onClick={() => setIsClientExpanded(!isClientExpanded)}
                             >
-                                <div className="flex items-center gap-1.5">
-                                    {isClientExpanded ? <CaretDown size={10} /> : <CaretRight size={10} />}
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Client Workspaces</span>
-                                </div>
-                                <Button variant="ghost" size="icon" className="h-4 w-4 opacity-0 group-hover:opacity-100">
-                                    <Plus size={10} />
-                                </Button>
+                                <span className="text-[10px] font-medium uppercase tracking-wider text-foreground">Workspaces</span>
+                                <CaretDown className={cn("w-3 h-3 text-muted-foreground transition-transform", isClientExpanded && "rotate-180")} />
                             </div>
 
                             {isClientExpanded && (
-                                <div className="space-y-0.5 ml-1 border-l border-border/40 pl-1.5">
+                                <div className="space-y-0.5">
                                     {clients?.map(client => (
-                                        <button
+                                        <NavItem
                                             key={client.id}
-                                            onClick={() => onFilterChange(`client-${client.id}`)}
-                                            className={cn(
-                                                "w-full flex items-center justify-between px-2.5 py-1.5 rounded-md transition-all text-[13px]",
-                                                activeFilter === `client-${client.id}`
-                                                    ? "bg-blue-500/10 text-blue-500 font-medium"
-                                                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                                            )}
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <Users size={14} weight={activeFilter === `client-${client.id}` ? "fill" : "regular"} />
-                                                <span className="truncate max-w-[120px]">{client.name}</span>
-                                            </div>
-                                            <span className="text-[10px] opacity-60">{client.workflow_count}</span>
-                                        </button>
+                                            id={`client-${client.id}`}
+                                            label={client.name}
+                                            icon={Users}
+                                            count={client.workflow_count}
+                                            indent
+                                        />
                                     ))}
+                                    <button
+                                        className="w-full flex items-center gap-2 px-6 py-2 text-xs text-foreground hover:text-foreground/80 transition-colors"
+                                    >
+                                        <Plus size={12} weight="bold" />
+                                        Deploy to Client
+                                    </button>
                                 </div>
                             )}
-                        </div>
+                            <div className="my-2 px-3">
+                                <div className="h-px bg-border/60 dark:bg-white/[0.08]" />
+                            </div>
+                        </>
                     )}
 
                     {/* Client View: Folders */}
                     {isClient && (
-                        <div className="space-y-2">
+                        <>
                             <div
-                                className="px-3 flex items-center justify-between cursor-pointer group"
+                                className="px-3 py-1.5 flex items-center justify-between cursor-pointer group"
                                 onClick={() => setIsFolderExpanded(!isFolderExpanded)}
                             >
-                                <div className="flex items-center gap-1.5">
-                                    {isFolderExpanded ? <CaretDown size={10} /> : <CaretRight size={10} />}
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Folders</span>
-                                </div>
-                                <Button variant="ghost" size="icon" className="h-4 w-4 opacity-0 group-hover:opacity-100">
-                                    <Plus size={10} />
-                                </Button>
+                                <span className="text-[10px] font-medium uppercase tracking-wider text-foreground">Folders</span>
+                                <CaretDown className={cn("w-3 h-3 text-muted-foreground transition-transform", isFolderExpanded && "rotate-180")} />
                             </div>
 
                             {isFolderExpanded && (
-                                <div className="space-y-0.5 ml-1 border-l border-border/40 pl-1.5">
+                                <div className="space-y-0.5">
                                     {folders?.map(folder => (
-                                        <button
+                                        <NavItem
                                             key={folder.id}
-                                            onClick={() => onFilterChange(`folder-${folder.id}`)}
-                                            className={cn(
-                                                "w-full flex items-center justify-between px-2.5 py-1.5 rounded-md transition-all text-[13px]",
-                                                activeFilter === `folder-${folder.id}`
-                                                    ? "bg-primary/10 text-primary font-medium"
-                                                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                                            )}
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <FolderSimple size={14} weight={activeFilter === `folder-${folder.id}` ? "fill" : "regular"} />
-                                                <span className="truncate max-w-[120px]">{folder.name}</span>
-                                            </div>
-                                            <span className="text-[10px] opacity-60">{folder.workflow_count}</span>
-                                        </button>
+                                            id={`folder-${folder.id}`}
+                                            label={folder.name}
+                                            icon={FolderSimple}
+                                            count={folder.workflow_count}
+                                            indent
+                                        />
                                     ))}
+                                    <button
+                                        className="w-full flex items-center gap-2 px-6 py-2 text-xs text-primary hover:text-primary/80 transition-colors"
+                                    >
+                                        <Plus size={12} weight="bold" />
+                                        New Folder
+                                    </button>
                                 </div>
                             )}
-                        </div>
+                            <div className="my-2 px-3">
+                                <div className="h-px bg-border/60 dark:bg-white/[0.08]" />
+                            </div>
+                        </>
                     )}
                 </div>
             </ScrollArea>
 
-            {/* Sidebar Footer Actions - Glass UI */}
-            <div className="p-5 border-t border-white/[0.08] bg-white/[0.02] backdrop-blur-xl">
+            {/* Sidebar Footer Actions */}
+            <div className="p-[var(--space-md)] mt-auto border-t border-border/50">
                 {isAgency ? (
-                    <Button className="w-full gap-2 shadow-sm" size="sm">
-                        <Export size={16} />
+                    <Button className="w-full gap-2" size="sm">
+                        <Export size={16} weight="bold" />
                         Deploy to Client
                     </Button>
                 ) : isClient ? (
                     <Button variant="outline" className="w-full gap-2 border-dashed" size="sm">
-                        <Plus size={16} />
+                        <Plus size={16} weight="bold" />
                         New Folder
                     </Button>
                 ) : isPlatformOwner && (
                     <Button className="w-full gap-2" size="sm">
-                        <Lightning size={16} />
+                        <Lightning size={16} weight="bold" />
                         New Starter Flow
                     </Button>
                 )}

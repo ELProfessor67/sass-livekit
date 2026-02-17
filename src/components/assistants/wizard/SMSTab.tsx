@@ -19,16 +19,16 @@ interface SMSTabProps {
 
 export const SMSTab: React.FC<SMSTabProps> = ({ data, onChange }) => {
   const [isComplianceOpen, setIsComplianceOpen] = React.useState(false);
-  
+
   // Knowledge Base state
   const [knowledgeBases, setKnowledgeBases] = useState<any[]>([]);
   const [loadingKnowledgeBases, setLoadingKnowledgeBases] = useState(false);
   const [knowledgeBaseError, setKnowledgeBaseError] = useState<string | null>(null);
-  
+
   // Calendar state
   const [calendarCredentials, setCalendarCredentials] = useState<UserCalendarCredentials[]>([]);
   const [loadingCalendarCredentials, setLoadingCalendarCredentials] = useState(false);
-  
+
   const { toast } = useToast();
 
   // Fetch knowledge bases and calendar credentials on component mount
@@ -117,9 +117,9 @@ export const SMSTab: React.FC<SMSTabProps> = ({ data, onChange }) => {
 
       {/* Right Column - Sidebar */}
       <div className="lg:col-span-4">
-        <div className="bg-background/50 rounded-lg p-5 h-full">
+        <div className="nested-section p-5 h-full">
           <h3 className="text-lg font-medium tracking-tight mb-4">Messaging Settings</h3>
-          
+
           <div className="space-y-4">
             {/* Provider */}
             <div>
@@ -271,7 +271,7 @@ export const SMSTab: React.FC<SMSTabProps> = ({ data, onChange }) => {
               {/* Compliance Settings */}
               <div className="space-y-4">
                 <h4 className="text-sm font-medium">Compliance</h4>
-                
+
                 <div className="flex items-center justify-between">
                   <Label className="text-sm">TCPA Compliant</Label>
                   <Switch
@@ -298,8 +298,8 @@ export const SMSTab: React.FC<SMSTabProps> = ({ data, onChange }) => {
                     placeholder="STOP, UNSUBSCRIBE, QUIT"
                     value={data.complianceSettings.optOutKeywords.join(', ')}
                     onChange={(e) => onChange({
-                      complianceSettings: { 
-                        ...data.complianceSettings, 
+                      complianceSettings: {
+                        ...data.complianceSettings,
                         optOutKeywords: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
                       }
                     })}
@@ -313,8 +313,8 @@ export const SMSTab: React.FC<SMSTabProps> = ({ data, onChange }) => {
                     placeholder="HELP, INFO, SUPPORT"
                     value={data.complianceSettings.helpKeywords.join(', ')}
                     onChange={(e) => onChange({
-                      complianceSettings: { 
-                        ...data.complianceSettings, 
+                      complianceSettings: {
+                        ...data.complianceSettings,
                         helpKeywords: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
                       }
                     })}
@@ -326,7 +326,7 @@ export const SMSTab: React.FC<SMSTabProps> = ({ data, onChange }) => {
               {/* Escalation Rules */}
               <div className="space-y-4">
                 <h4 className="text-sm font-medium">Escalation</h4>
-                
+
                 <div className="flex items-center justify-between">
                   <Label className="text-sm">Enable Escalation</Label>
                   <Switch
@@ -345,8 +345,8 @@ export const SMSTab: React.FC<SMSTabProps> = ({ data, onChange }) => {
                         placeholder="AGENT, HUMAN, REPRESENTATIVE"
                         value={data.escalationRules.humanTransferKeywords.join(', ')}
                         onChange={(e) => onChange({
-                          escalationRules: { 
-                            ...data.escalationRules, 
+                          escalationRules: {
+                            ...data.escalationRules,
                             humanTransferKeywords: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
                           }
                         })}
@@ -360,8 +360,8 @@ export const SMSTab: React.FC<SMSTabProps> = ({ data, onChange }) => {
                         type="number"
                         value={data.escalationRules.maxAutoResponses}
                         onChange={(e) => onChange({
-                          escalationRules: { 
-                            ...data.escalationRules, 
+                          escalationRules: {
+                            ...data.escalationRules,
                             maxAutoResponses: parseInt(e.target.value) || 5
                           }
                         })}

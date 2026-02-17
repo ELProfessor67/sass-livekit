@@ -24,7 +24,7 @@ const defaultValues: UIPreferencesValues = {
 export function UIPreferencesSettings() {
   const { toast } = useToast();
   const { uiStyle, setUIStyle } = useTheme();
-  
+
   const form = useForm<UIPreferencesValues>({
     resolver: zodResolver(uiPreferencesSchema),
     defaultValues: {
@@ -75,80 +75,60 @@ export function UIPreferencesSettings() {
                         </FormDescription>
                       </div>
                     </div>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Glass UI Option */}
-                      <div 
+                      <div
                         className={`
-                          relative p-6 rounded-2xl border-2 cursor-pointer transition-all duration-300
-                          ${field.value === "glass" 
-                            ? 'border-primary bg-primary/5 shadow-lg' 
+                          relative p-8 rounded-xl border-2 cursor-pointer transition-all duration-300
+                          ${field.value === "glass"
+                            ? 'border-primary bg-primary/5 shadow-lg'
                             : 'border-border/50 bg-card/30 hover:border-border hover:bg-card/50'
                           }
                         `}
                         onClick={() => field.onChange("glass")}
                       >
-                        <div className="space-y-4">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 backdrop-blur-xl border border-primary/20 flex items-center justify-center">
-                              <Sparkles className="h-5 w-5 text-primary" />
-                            </div>
-                            <div>
-                              <h3 className="font-semibold text-foreground">Glass UI</h3>
-                              <p className="text-sm text-muted-foreground">Modern glassmorphism design</p>
-                            </div>
+                        <div className="flex items-center gap-4">
+                          <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 backdrop-blur-xl border border-primary/20 flex items-center justify-center flex-shrink-0">
+                            <Sparkles className="h-5 w-5 text-primary" />
                           </div>
-                          
-                          {/* Preview */}
-                          <div className="space-y-2">
-                            <div className="h-8 rounded-lg backdrop-blur-xl bg-card/30 border border-border/50"></div>
-                            <div className="h-6 rounded-md backdrop-blur-xl bg-card/20 border border-border/30 w-3/4"></div>
-                            <div className="h-4 rounded backdrop-blur-xl bg-card/10 border border-border/20 w-1/2"></div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-lg font-medium text-foreground">Glass UI</h3>
+                            <p className="text-base text-muted-foreground">Modern glassmorphism design</p>
                           </div>
+                          {field.value === "glass" && (
+                            <div className="h-5 w-5 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                              <div className="h-2 w-2 rounded-full bg-primary-foreground"></div>
+                            </div>
+                          )}
                         </div>
-                        
-                        {field.value === "glass" && (
-                          <div className="absolute top-3 right-3 h-6 w-6 rounded-full bg-primary flex items-center justify-center">
-                            <div className="h-2 w-2 rounded-full bg-primary-foreground"></div>
-                          </div>
-                        )}
                       </div>
 
                       {/* Minimal Option */}
-                      <div 
+                      <div
                         className={`
-                          relative p-6 rounded-2xl border-2 cursor-pointer transition-all duration-300
-                          ${field.value === "minimal" 
-                            ? 'border-primary bg-primary/5 shadow-lg' 
+                          relative p-8 rounded-xl border-2 cursor-pointer transition-all duration-300
+                          ${field.value === "minimal"
+                            ? 'border-primary bg-primary/5 shadow-lg'
                             : 'border-border/50 bg-card/30 hover:border-border hover:bg-card/50'
                           }
                         `}
                         onClick={() => field.onChange("minimal")}
                       >
-                        <div className="space-y-4">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-xl bg-muted/50 border border-border flex items-center justify-center">
-                              <Monitor className="h-5 w-5 text-muted-foreground" />
-                            </div>
-                            <div>
-                              <h3 className="font-semibold text-foreground">Minimal</h3>
-                              <p className="text-sm text-muted-foreground">Clean and focused interface</p>
-                            </div>
+                        <div className="flex items-center gap-4">
+                          <div className="h-12 w-12 rounded-lg bg-muted/50 border border-border flex items-center justify-center flex-shrink-0">
+                            <Monitor className="h-5 w-5 text-muted-foreground" />
                           </div>
-                          
-                          {/* Preview */}
-                          <div className="space-y-2">
-                            <div className="h-8 rounded-lg bg-card border border-border"></div>
-                            <div className="h-6 rounded-md bg-muted/50 w-3/4"></div>
-                            <div className="h-4 rounded bg-muted/30 w-1/2"></div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-lg font-medium text-foreground">Minimal</h3>
+                            <p className="text-base text-muted-foreground">Clean and focused interface</p>
                           </div>
+                          {field.value === "minimal" && (
+                            <div className="h-5 w-5 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                              <div className="h-2 w-2 rounded-full bg-primary-foreground"></div>
+                            </div>
+                          )}
                         </div>
-                        
-                        {field.value === "minimal" && (
-                          <div className="absolute top-3 right-3 h-6 w-6 rounded-full bg-primary flex items-center justify-center">
-                            <div className="h-2 w-2 rounded-full bg-primary-foreground"></div>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>

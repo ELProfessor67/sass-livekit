@@ -1,173 +1,196 @@
 :root {
-    /* Typography Scale */
-    --text-xs: 0.75rem;      /* 12px */
-    --text-sm: 0.875rem;     /* 14px */
-    --text-base: 1rem;       /* 16px */
-    --text-lg: 1.125rem;     /* 18px */
-    --text-xl: 1.25rem;      /* 20px */
-    --text-2xl: 1.5rem;      /* 24px */
-    --text-3xl: 1.875rem;    /* 30px */
-    --text-4xl: 2.25rem;     /* 36px */
-    
-    /* Font Weight Scale */
-    --font-thin: 100;
-    --font-extralight: 200;
-    --font-light: 300;
-    --font-normal: 400;
-    --font-medium: 500;
-    --font-semibold: 600;
-    --font-bold: 700;
-    
-    /* Line Height Scale */
-    --leading-tight: 1.25;
-    --leading-snug: 1.375;
-    --leading-normal: 1.5;
-    --leading-relaxed: 1.625;
-    --leading-loose: 2;
-    
-    /* Consistent Spacing Scale */
-    --space-xs: 0.25rem;     /* 4px */
-    --space-sm: 0.5rem;      /* 8px */
-    --space-md: 0.75rem;     /* 12px */
-    --space-lg: 1rem;        /* 16px */
-    --space-xl: 1.5rem;      /* 24px */
-    --space-2xl: 2rem;       /* 32px */
-    --space-3xl: 3rem;       /* 48px */
-    --space-4xl: 4rem;       /* 64px */
-    
-    /* Border Radius Scale */
-    --radius-xs: 0.125rem;   /* 2px */
-    --radius-sm: 0.25rem;    /* 4px */
-    --radius-md: 0.375rem;   /* 6px */
-    --radius-lg: 0.5rem;     /* 8px */
-    --radius-xl: 0.75rem;    /* 12px */
-    --radius-2xl: 1rem;      /* 16px */
-    --radius-3xl: 1.5rem;    /* 24px */
-    --radius-full: 9999px;
-    
-    /* Opacity Scale */
-    --opacity-subtle: 0.05;
-    --opacity-light: 0.10;
-    --opacity-medium: 0.20;
-    --opacity-strong: 0.40;
-    --opacity-heavy: 0.60;
-    --opacity-opaque: 0.80;
-    
-    /* Clean Light Mode Glass System */
-    --light-glass-opacity-subtle: 0.05;
-    --light-glass-opacity-light: 0.08;
-    --light-glass-opacity-medium: 0.12;
-    --light-glass-opacity-heavy: 0.16;
-    --light-glass-opacity-premium: 0.20;
-    
-    /* Clean Light Mode Neutral Accent System */
-    --neutral-accent-subtle: 220 15% 92% / 0.40;
-    --neutral-accent-light: 210 20% 88% / 0.50;
-    --neutral-accent-medium: 200 25% 84% / 0.60;
-    --neutral-accent-strong: 190 30% 80% / 0.70;
-    --neutral-glow: 185 25% 85% / 0.25;
-    --neutral-atmosphere: 210 20% 96% / 0.30;
-    
-    /* Enhanced Clean Light Mode Shadow System */
-    --light-shadow-subtle: 0 2px 8px hsl(240 15% 15% / 0.08), 0 1px 2px hsl(240 20% 10% / 0.12);
-    --light-shadow-medium: 0 4px 16px hsl(240 15% 15% / 0.12), 0 2px 4px hsl(240 20% 10% / 0.16);
-    --light-shadow-elevated: 0 8px 32px hsl(240 15% 15% / 0.16), 0 4px 8px hsl(240 20% 10% / 0.20);
-    --light-shadow-floating: 0 16px 64px hsl(240 15% 15% / 0.20), 0 8px 16px hsl(240 20% 10% / 0.25);
-    --light-shadow-premium: 0 24px 80px hsl(240 15% 15% / 0.25), 0 12px 24px hsl(240 20% 10% / 0.30);
-    
-    /* Theme Surface System */
-    --surface-base: var(--background);
-    --surface-elevated: var(--card);
-    --surface-overlay: var(--popover);
-    --surface-glass-light: var(--card) / var(--glass-opacity-light);
-    --surface-glass-medium: var(--card) / var(--glass-opacity-medium);
-    --surface-glass-heavy: var(--card) / var(--glass-opacity-heavy);
-    
-    /* Interactive States */
-    --state-hover-opacity: 0.08;
-    --state-active-opacity: 0.12;
-    --state-focus-opacity: 0.16;
-    --state-disabled-opacity: 0.40;
-    
-    /* Theme Transitions */
-    --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-base: 300ms cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-slow: 500ms cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-spring: 400ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    
-    /* Enhanced Shadow System */
-    --shadow-xs: 0 1px 2px hsl(var(--foreground) / 0.05);
-    --shadow-sm: 0 2px 4px hsl(var(--foreground) / 0.06), 0 1px 2px hsl(var(--foreground) / 0.04);
-    --shadow-md: 0 4px 8px hsl(var(--foreground) / 0.08), 0 2px 4px hsl(var(--foreground) / 0.06);
-    --shadow-lg: 0 8px 16px hsl(var(--foreground) / 0.10), 0 4px 8px hsl(var(--foreground) / 0.08);
-    --shadow-xl: 0 16px 32px hsl(var(--foreground) / 0.12), 0 8px 16px hsl(var(--foreground) / 0.10);
-    --shadow-2xl: 0 24px 48px hsl(var(--foreground) / 0.15), 0 12px 24px hsl(var(--foreground) / 0.12);
-    
-    /* Glass Shadow System */
-    --shadow-glass-sm: var(--shadow-sm), inset 0 1px 0 hsl(var(--foreground) / 0.08);
-    --shadow-glass-md: var(--shadow-md), inset 0 1px 0 hsl(var(--foreground) / 0.10);
-    --shadow-glass-lg: var(--shadow-lg), inset 0 2px 0 hsl(var(--foreground) / 0.12);
-    --shadow-glass-xl: var(--shadow-xl), inset 0 2px 0 hsl(var(--foreground) / 0.15);
-    
-    /* Glass Input System */
-    --glass-input-bg: var(--card) / 0.50;
-    --glass-input-border: var(--border) / 0.50;
-    --glass-input-hover-bg: var(--card) / 0.60;
-    --glass-input-hover-border: var(--border) / 0.70;
-    --glass-input-focus-bg: var(--card) / 0.70;
-    --glass-input-focus-border: var(--primary) / 0.40;
-    
-    /* Glass Dropdown System - Light Mode */
-    --glass-dropdown-bg: hsl(var(--card) / 0.85);
-    --glass-dropdown-border: hsl(var(--border) / 0.40);
-    --glass-dropdown-shadow: var(--light-shadow-floating);
-    
-    /* Primary Button System */
-    --btn-primary-bg: hsl(var(--primary));
-    --btn-primary-hover: hsl(var(--primary) / 0.90);
-    --btn-primary-text: hsl(var(--primary-foreground));
-    --btn-primary-shadow: 0 4px 16px hsl(var(--primary) / 0.25);
-    --btn-primary-hover-shadow: 0 8px 24px hsl(var(--primary) / 0.35);
-    
-    /* Multi-Channel Glass Colors */
-    
-    /* SMS - Brand Periwinkle (keeping current brand color) */
-    --sms-glass-bg: 224 100% 76% / 0.12;
-    --sms-glass-border: 224 100% 76% / 0.25;
-    --sms-glass-hover: 224 100% 76% / 0.16;
-    
-    /* WhatsApp - Glass Green */
-    --whatsapp-glass-bg: 142 76% 36% / 0.12;
-    --whatsapp-glass-border: 142 76% 36% / 0.25;
-    --whatsapp-glass-hover: 142 76% 36% / 0.16;
-    --whatsapp-checkmark: 142 76% 36%;
-    
-    /* iMessage - Glass Blue */
-    --imessage-glass-bg: 212 100% 50% / 0.12;
-    --imessage-glass-border: 212 100% 50% / 0.25;
-    --imessage-glass-hover: 212 100% 50% / 0.16;
-    --imessage-delivered: 212 100% 50%;
+  /* Typography Scale */
+  --text-xs: 0.75rem;
+  /* 12px */
+  --text-sm: 0.875rem;
+  /* 14px */
+  --text-base: 1rem;
+  /* 16px */
+  --text-lg: 1.125rem;
+  /* 18px */
+  --text-xl: 1.25rem;
+  /* 20px */
+  --text-2xl: 1.5rem;
+  /* 24px */
+  --text-3xl: 1.875rem;
+  /* 30px */
+  --text-4xl: 2.25rem;
+  /* 36px */
+
+  /* Font Weight Scale */
+  --font-thin: 100;
+  --font-extralight: 200;
+  --font-light: 300;
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  /* Line Height Scale */
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  --leading-loose: 2;
+
+  /* Consistent Spacing Scale */
+  --space-xs: 0.25rem;
+  /* 4px */
+  --space-sm: 0.5rem;
+  /* 8px */
+  --space-md: 0.75rem;
+  /* 12px */
+  --space-lg: 1rem;
+  /* 16px */
+  --space-xl: 1.5rem;
+  /* 24px */
+  --space-2xl: 2rem;
+  /* 32px */
+  --space-3xl: 3rem;
+  /* 48px */
+  --space-4xl: 4rem;
+  /* 64px */
+
+  /* Border Radius Scale */
+  --radius-xs: 0.125rem;
+  /* 2px */
+  --radius-sm: 0.25rem;
+  /* 4px */
+  --radius-md: 0.375rem;
+  /* 6px */
+  --radius-lg: 0.5rem;
+  /* 8px */
+  --radius-xl: 0.75rem;
+  /* 12px */
+  --radius-2xl: 1rem;
+  /* 16px */
+  --radius-3xl: 1.5rem;
+  /* 24px */
+  --radius-full: 9999px;
+
+  /* Opacity Scale */
+  --opacity-subtle: 0.05;
+  --opacity-light: 0.10;
+  --opacity-medium: 0.20;
+  --opacity-strong: 0.40;
+  --opacity-heavy: 0.60;
+  --opacity-opaque: 0.80;
+
+  /* Clean Light Mode Glass System */
+  --light-glass-opacity-subtle: 0.05;
+  --light-glass-opacity-light: 0.08;
+  --light-glass-opacity-medium: 0.12;
+  --light-glass-opacity-heavy: 0.16;
+  --light-glass-opacity-premium: 0.20;
+
+  /* Clean Light Mode Neutral Accent System */
+  --neutral-accent-subtle: 220 15% 92% / 0.40;
+  --neutral-accent-light: 210 20% 88% / 0.50;
+  --neutral-accent-medium: 200 25% 84% / 0.60;
+  --neutral-accent-strong: 190 30% 80% / 0.70;
+  --neutral-glow: 185 25% 85% / 0.25;
+  --neutral-atmosphere: 210 20% 96% / 0.30;
+
+  /* Enhanced Clean Light Mode Shadow System */
+  --light-shadow-subtle: 0 2px 8px hsl(240 15% 15% / 0.08), 0 1px 2px hsl(240 20% 10% / 0.12);
+  --light-shadow-medium: 0 4px 16px hsl(240 15% 15% / 0.12), 0 2px 4px hsl(240 20% 10% / 0.16);
+  --light-shadow-elevated: 0 8px 32px hsl(240 15% 15% / 0.16), 0 4px 8px hsl(240 20% 10% / 0.20);
+  --light-shadow-floating: 0 16px 64px hsl(240 15% 15% / 0.20), 0 8px 16px hsl(240 20% 10% / 0.25);
+  --light-shadow-premium: 0 24px 80px hsl(240 15% 15% / 0.25), 0 12px 24px hsl(240 20% 10% / 0.30);
+
+  /* Theme Surface System */
+  --surface-base: var(--background);
+  --surface-elevated: var(--card);
+  --surface-overlay: var(--popover);
+  --surface-glass-light: var(--card) / var(--glass-opacity-light);
+  --surface-glass-medium: var(--card) / var(--glass-opacity-medium);
+  --surface-glass-heavy: var(--card) / var(--glass-opacity-heavy);
+
+  /* Interactive States */
+  --state-hover-opacity: 0.08;
+  --state-active-opacity: 0.12;
+  --state-focus-opacity: 0.16;
+  --state-disabled-opacity: 0.40;
+
+  /* Theme Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 500ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: 400ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+  /* Enhanced Shadow System */
+  --shadow-xs: 0 1px 2px hsl(var(--foreground) / 0.05);
+  --shadow-sm: 0 2px 4px hsl(var(--foreground) / 0.06), 0 1px 2px hsl(var(--foreground) / 0.04);
+  --shadow-md: 0 4px 8px hsl(var(--foreground) / 0.08), 0 2px 4px hsl(var(--foreground) / 0.06);
+  --shadow-lg: 0 8px 16px hsl(var(--foreground) / 0.10), 0 4px 8px hsl(var(--foreground) / 0.08);
+  --shadow-xl: 0 16px 32px hsl(var(--foreground) / 0.12), 0 8px 16px hsl(var(--foreground) / 0.10);
+  --shadow-2xl: 0 24px 48px hsl(var(--foreground) / 0.15), 0 12px 24px hsl(var(--foreground) / 0.12);
+
+  /* Glass Shadow System */
+  --shadow-glass-sm: var(--shadow-sm), inset 0 1px 0 hsl(var(--foreground) / 0.08);
+  --shadow-glass-md: var(--shadow-md), inset 0 1px 0 hsl(var(--foreground) / 0.10);
+  --shadow-glass-lg: var(--shadow-lg), inset 0 2px 0 hsl(var(--foreground) / 0.12);
+  --shadow-glass-xl: var(--shadow-xl), inset 0 2px 0 hsl(var(--foreground) / 0.15);
+
+  /* Glass Input System */
+  --glass-input-bg: var(--card) / 0.50;
+  --glass-input-border: var(--border) / 0.50;
+  --glass-input-hover-bg: var(--card) / 0.60;
+  --glass-input-hover-border: var(--border) / 0.70;
+  --glass-input-focus-bg: var(--card) / 0.70;
+  --glass-input-focus-border: var(--primary) / 0.40;
+
+  /* Glass Dropdown System - Light Mode */
+  --glass-dropdown-bg: hsl(var(--card) / 0.85);
+  --glass-dropdown-border: hsl(var(--border) / 0.40);
+  --glass-dropdown-shadow: var(--light-shadow-floating);
+
+  /* Primary Button System */
+  --btn-primary-bg: hsl(var(--primary));
+  --btn-primary-hover: hsl(var(--primary) / 0.90);
+  --btn-primary-text: hsl(var(--primary-foreground));
+  --btn-primary-shadow: 0 4px 16px hsl(var(--primary) / 0.25);
+  --btn-primary-hover-shadow: 0 8px 24px hsl(var(--primary) / 0.35);
+
+  /* Multi-Channel Glass Colors */
+
+  /* SMS - Brand Periwinkle (keeping current brand color) */
+  --sms-glass-bg: 224 100% 76% / 0.12;
+  --sms-glass-border: 224 100% 76% / 0.25;
+  --sms-glass-hover: 224 100% 76% / 0.16;
+
+  /* WhatsApp - Glass Green */
+  --whatsapp-glass-bg: 142 76% 36% / 0.12;
+  --whatsapp-glass-border: 142 76% 36% / 0.25;
+  --whatsapp-glass-hover: 142 76% 36% / 0.16;
+  --whatsapp-checkmark: 142 76% 36%;
+
+  /* iMessage - Glass Blue */
+  --imessage-glass-bg: 212 100% 50% / 0.12;
+  --imessage-glass-border: 212 100% 50% / 0.25;
+  --imessage-glass-hover: 212 100% 50% / 0.16;
+  --imessage-delivered: 212 100% 50%;
 }
 
 .dark {
-    /* Enhanced Dark Mode Shadows with Periwinkle Atmosphere */
-    --shadow-xs: 0 1px 2px hsl(var(--primary) / 0.10), 0 1px 1px hsl(var(--foreground) / 0.06);
-    --shadow-sm: 0 2px 4px hsl(var(--primary) / 0.12), 0 1px 2px hsl(var(--foreground) / 0.08);
-    --shadow-md: 0 4px 8px hsl(var(--primary) / 0.15), 0 2px 4px hsl(var(--foreground) / 0.10);
-    --shadow-lg: 0 8px 16px hsl(var(--primary) / 0.18), 0 4px 8px hsl(var(--foreground) / 0.12);
-    --shadow-xl: 0 16px 32px hsl(var(--primary) / 0.22), 0 8px 16px hsl(var(--foreground) / 0.15);
-    --shadow-2xl: 0 24px 48px hsl(var(--primary) / 0.26), 0 12px 24px hsl(var(--foreground) / 0.18);
-    
-    /* Dark Mode Glass Shadows */
-    --shadow-glass-sm: var(--shadow-sm), inset 0 1px 0 hsl(var(--foreground) / 0.12);
-    --shadow-glass-md: var(--shadow-md), inset 0 1px 0 hsl(var(--foreground) / 0.15);
-    --shadow-glass-lg: var(--shadow-lg), inset 0 2px 0 hsl(var(--foreground) / 0.18);
-    --shadow-glass-xl: var(--shadow-xl), inset 0 2px 0 hsl(var(--foreground) / 0.20);
-    
-    /* Glass Dropdown System - Dark Mode Override */
-    --glass-dropdown-bg: hsl(0 0% 0% / 0.40);
-    --glass-dropdown-border: hsl(0 0% 100% / 0.10);
-    --glass-dropdown-shadow: 0 32px 80px hsl(0 0% 0% / 0.40);
+  /* Enhanced Dark Mode Shadows with Periwinkle Atmosphere */
+  --shadow-xs: 0 1px 2px hsl(var(--primary) / 0.10), 0 1px 1px hsl(var(--foreground) / 0.06);
+  --shadow-sm: 0 2px 4px hsl(var(--primary) / 0.12), 0 1px 2px hsl(var(--foreground) / 0.08);
+  --shadow-md: 0 4px 8px hsl(var(--primary) / 0.15), 0 2px 4px hsl(var(--foreground) / 0.10);
+  --shadow-lg: 0 8px 16px hsl(var(--primary) / 0.18), 0 4px 8px hsl(var(--foreground) / 0.12);
+  --shadow-xl: 0 16px 32px hsl(var(--primary) / 0.22), 0 8px 16px hsl(var(--foreground) / 0.15);
+  --shadow-2xl: 0 24px 48px hsl(var(--primary) / 0.26), 0 12px 24px hsl(var(--foreground) / 0.18);
+
+  /* Dark Mode Glass Shadows */
+  --shadow-glass-sm: var(--shadow-sm), inset 0 1px 0 hsl(var(--foreground) / 0.12);
+  --shadow-glass-md: var(--shadow-md), inset 0 1px 0 hsl(var(--foreground) / 0.15);
+  --shadow-glass-lg: var(--shadow-lg), inset 0 2px 0 hsl(var(--foreground) / 0.18);
+  --shadow-glass-xl: var(--shadow-xl), inset 0 2px 0 hsl(var(--foreground) / 0.20);
+
+  /* Glass Dropdown System - Dark Mode Override */
+  --glass-dropdown-bg: hsl(0 0% 0% / 0.40);
+  --glass-dropdown-border: hsl(0 0% 100% / 0.10);
+  --glass-dropdown-shadow: 0 32px 80px hsl(0 0% 0% / 0.40);
 }
 
 /* Theme Surface Utilities */
@@ -196,6 +219,36 @@
   color: hsl(var(--primary));
 }
 
+/* Background-aware text utilities for all modes - HIGH SPECIFICITY */
+.text-on-background,
+.text-on-background * {
+  color: hsl(var(--text-on-background)) !important;
+}
+
+.text-on-background-muted,
+.text-on-background-muted * {
+  color: hsl(var(--text-on-background-muted)) !important;
+}
+
+.text-in-container,
+.text-in-container * {
+  color: hsl(var(--text-in-container)) !important;
+}
+
+.text-in-container-muted,
+.text-in-container-muted * {
+  color: hsl(var(--text-in-container-muted)) !important;
+}
+
+/* Navigation specific overrides - Theme aware */
+.nav-text-override {
+  color: hsl(var(--foreground)) !important;
+}
+
+.nav-text-muted-override {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
 /* Theme Borders */
 .border-theme-light {
   border-color: hsl(var(--border) / var(--opacity-light));
@@ -219,6 +272,12 @@
   border-color: hsl(var(--primary) / var(--opacity-medium));
 }
 
+/* Clean Light Mode Hover States */
+.light\:hover-theme-neutral:hover {
+  background: hsl(var(--neutral-accent-light));
+  box-shadow: var(--light-shadow-medium);
+}
+
 /* Theme Transitions */
 .transition-theme-fast {
   transition: var(--transition-fast);
@@ -234,6 +293,59 @@
 
 .transition-theme-spring {
   transition: var(--transition-spring);
+}
+
+/* Glass Input Utilities - Unified dark glass styling */
+.glass-input {
+  background: hsl(var(--background) / 0.50);
+  border-color: hsl(var(--border) / 0.30);
+  border-radius: var(--radius-xl);
+  backdrop-filter: blur(12px);
+  transition: var(--transition-base);
+}
+
+.glass-input:hover {
+  background: hsl(var(--background) / 0.60);
+  border-color: hsl(var(--border) / 0.40);
+}
+
+.glass-input:focus-visible {
+  background: hsl(var(--background) / 0.65);
+  border-color: hsl(var(--primary) / 0.60);
+  outline: none;
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.15);
+}
+
+/* Glass Dropdown Utilities */
+.glass-dropdown {
+  background: var(--glass-dropdown-bg);
+  border-color: var(--glass-dropdown-border);
+  backdrop-filter: blur(12px);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--glass-dropdown-shadow);
+}
+
+/* Primary Button Utility */
+.btn-primary {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border: none;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--btn-primary-shadow);
+  transition: var(--transition-base);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background: var(--btn-primary-hover);
+  box-shadow: var(--btn-primary-hover-shadow);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: var(--btn-primary-shadow);
 }
 
 /* Multi-Channel Message Bubble Utilities */
@@ -253,14 +365,6 @@
   background: hsl(var(--imessage-glass-bg));
   border-color: hsl(var(--imessage-glass-border));
   backdrop-filter: blur(8px);
-}
-
-/* Override outgoing message colors to match Project 2 */
-.message-bubble-sms:not(.incoming),
-.message-bubble-whatsapp:not(.incoming),
-.message-bubble-imessage:not(.incoming) {
-  background: hsl(220 70% 50% / 0.15);
-  border-color: hsl(220 70% 50% / 0.25);
 }
 
 .channel-indicator-sms {

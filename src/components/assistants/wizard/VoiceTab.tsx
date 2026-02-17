@@ -24,13 +24,13 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
     switch (data.provider) {
       case "ElevenLabs":
         return [
-          { value: "Rachel", label: "Rachel" },
-          { value: "Domi", label: "Domi" },
-          { value: "Bella", label: "Bella" },
-          { value: "Antoni", label: "Antoni" },
-          { value: "Elli", label: "Elli" },
-          { value: "Josh", label: "Josh" },
-          { value: "Arnold", label: "Arnold" }
+          { value: "Rachel", label: "Rachel", description: "Professional, warm female voice" },
+          { value: "Domi", label: "Domi", description: "Strong, expressive female voice" },
+          { value: "Bella", label: "Bella", description: "Soft, gentle female voice" },
+          { value: "Antoni", label: "Antoni", description: "Well-rounded, friendly male voice" },
+          { value: "Elli", label: "Elli", description: "Bright, natural female voice" },
+          { value: "Josh", label: "Josh", description: "Deep, resonant male voice" },
+          { value: "Arnold", label: "Arnold", description: "Powerful, authoritative male voice" }
         ];
       case "Rime":
         // Show only Arcana voices when Arcana model is selected
@@ -298,18 +298,18 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
 
     const filteredVoices = getFilteredVoicesForProvider(value);
     const filteredModels = getFilteredModelsForProvider(value);
-    
+
     // Check if current voice is valid for new provider
     const isCurrentVoiceValid = filteredVoices.some(voice => voice.value === data.voice);
     const isCurrentModelValid = filteredModels.some(model => model.value === data.model);
-    
+
     const updates: Partial<VoiceData> = { provider: value };
-    
+
     // Reset model if not valid for new provider
     if (!isCurrentModelValid && filteredModels.length > 0) {
       updates.model = filteredModels[0].value;
     }
-    
+
     // Reset voice if not valid for new provider
     // For Deepgram, voice should match the model
     if (value === "Deepgram" && filteredModels.length > 0) {
@@ -320,24 +320,24 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
     } else if (!isCurrentVoiceValid && filteredVoices.length > 0) {
       updates.voice = filteredVoices[0].value;
     }
-    
+
     onChange(updates);
   };
 
-    // Handle model change and reset voice if needed
+  // Handle model change and reset voice if needed
   const handleModelChange = (value: string) => {
     // For Deepgram, model and voice are the same
     if (data.provider === "Deepgram") {
       onChange({ model: value, voice: value });
       return;
     }
-    
+
     // For Cartesia, use first voice when model changes
     if (data.provider === "Cartesia") {
       onChange({ model: value, voice: "41468051-3a85-4b68-92ad-64add250d369" });
       return;
     }
-    
+
     // For Rime, check if current voice is valid for the new model
     if (data.provider === "Rime") {
       // Determine available voices for the new model
@@ -371,18 +371,18 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
           { value: "destin", label: "Destin" }
         ];
       }
-      
+
       const isCurrentVoiceValid = availableVoices.some(voice => voice.value === data.voice);
-      
+
       const updates: Partial<VoiceData> = { model: value };
-      
+
       // Reset voice if not valid for new model
       if (!isCurrentVoiceValid && availableVoices.length > 0) {
         updates.voice = availableVoices[0].value;
       }
-      
+
       onChange(updates);
-    } 
+    }
     // For Hume, use default voices only (Octave-2 disabled)
     else if (data.provider === "Hume") {
       const defaultVoices = [
@@ -396,16 +396,16 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
         { value: "Conversational English Guy", label: "Conversational English Guy" },
         { value: "English Casual Conversationalist", label: "English Casual Conversationalist" }
       ];
-      
+
       const isCurrentVoiceValid = defaultVoices.some(voice => voice.value === data.voice);
-      
+
       const updates: Partial<VoiceData> = { model: value };
-      
+
       // Reset voice if not valid for new model
       if (!isCurrentVoiceValid && defaultVoices.length > 0) {
         updates.voice = defaultVoices[0].value;
       }
-      
+
       onChange(updates);
     } else {
       onChange({ model: value });
@@ -457,9 +457,16 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {getFilteredVoices().map((voice) => (
+                  {getFilteredVoices().map((voice: any) => (
                     <SelectItem key={voice.value} value={voice.value}>
-                      {voice.label}
+                      <div className="flex flex-col text-left py-0.5">
+                        <span className="font-medium text-sm">{voice.label}</span>
+                        {voice.description && (
+                          <span className="text-xs text-muted-foreground font-light">
+                            {voice.description}
+                          </span>
+                        )}
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -601,7 +608,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
             <div className="flex items-center justify-between">
               <Label className="text-[16px] font-semibold tracking-[0.2px]">Input Min Characters</Label>
               <div className="w-[300px]">
-                <Input 
+                <Input
                   type="number"
                   value={data.inputMinCharacters || 10}
                   onChange={(e) => onChange({ inputMinCharacters: Math.max(10, Math.min(100, parseInt(e.target.value) || 10)) })}
@@ -708,7 +715,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
                       <Label className="text-[16px] font-semibold tracking-[0.2px]">Use Speaker Boost</Label>
                       <p className="text-sm text-muted-foreground">Boost voice similarity at some cost to speed.</p>
                     </div>
-                    <Switch 
+                    <Switch
                       checked={data.useSpeakerBoost || false}
                       onCheckedChange={(checked) => onChange({ useSpeakerBoost: checked })}
                     />
@@ -745,7 +752,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
                       <Label className="text-[16px] font-semibold tracking-[0.2px]">Reduce Latency</Label>
                       <p className="text-sm text-muted-foreground">Optimize for lower latency at some cost to quality.</p>
                     </div>
-                    <Switch 
+                    <Switch
                       checked={data.reduceLatency || true}
                       onCheckedChange={(checked) => onChange({ reduceLatency: checked })}
                     />
@@ -794,7 +801,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
                       <Label className="text-[16px] font-semibold tracking-[0.2px]">Instant Mode</Label>
                       <p className="text-sm text-muted-foreground">Enable instant mode for faster response times.</p>
                     </div>
-                    <Switch 
+                    <Switch
                       checked={data.instantMode || true}
                       onCheckedChange={(checked) => onChange({ instantMode: checked })}
                     />

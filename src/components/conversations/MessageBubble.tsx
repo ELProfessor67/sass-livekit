@@ -65,13 +65,16 @@ export function MessageBubble({ message, conversation, showAvatar = true, onRetr
 
   // Get channel-specific styling
   const getChannelStyles = (channel: string, isIncoming: boolean) => {
-    const baseStyles = "px-3 py-2 rounded-xl backdrop-blur-sm border";
-    
+    const baseStyles = "px-3 py-2 rounded-xl backdrop-blur-md border shadow-glass-sm";
+    const channelClass = `message-bubble-${channel}`;
+
     if (isIncoming) {
-      return cn(baseStyles, "message-bubble-incoming");
+      // Dark theme for incoming messages (matches screenshot contrast)
+      return cn(baseStyles, "bg-zinc-950/90 border-white/[0.08] text-white", "message-bubble-incoming", channelClass, "incoming");
     }
-    
-    return cn(baseStyles, "message-bubble-outgoing");
+
+    // Vibrant periwinkle glass for outgoing messages
+    return cn(baseStyles, "bg-primary/20 border-primary/30 text-white", "message-bubble-outgoing", channelClass, "outgoing");
   };
 
   // Handle retry message
@@ -138,9 +141,9 @@ export function MessageBubble({ message, conversation, showAvatar = true, onRetr
   // Render delivery status indicators
   const renderDeliveryStatus = (message: any) => {
     if (!message.deliveryStatus || message.direction === 'inbound') return null;
-    
+
     const statusInfo = getStatusInfo(message.deliveryStatus);
-    
+
     // Common status indicators for all channels
     const renderStatusIcon = () => {
       switch (message.deliveryStatus) {
@@ -166,7 +169,7 @@ export function MessageBubble({ message, conversation, showAvatar = true, onRetr
         default:
           break;
       }
-      
+
       // Channel-specific indicators for successful states
       switch (message.channel) {
         case 'whatsapp':
@@ -218,7 +221,7 @@ export function MessageBubble({ message, conversation, showAvatar = true, onRetr
   const getOutcomeBadgeColor = (outcome?: string) => {
     if (!outcome) return "secondary";
     const normalized = normalizeResolution(outcome).toLowerCase();
-    
+
     if (normalized.includes('appointment') || normalized.includes('booked')) {
       return "default";
     } else if (normalized.includes('qualified') && !normalized.includes('not')) {
@@ -257,14 +260,14 @@ export function MessageBubble({ message, conversation, showAvatar = true, onRetr
             )}>
               {message.body || message.smsData?.body}
             </p>
-            
+
             {/* Message Effects for iMessage */}
             {message.effects && message.channel === 'imessage' && (
               <div className="text-[10px] text-muted-foreground mt-1 italic">
                 Sent with {message.effects} effect
               </div>
             )}
-            
+
             {/* Reactions for iMessage */}
             {message.reactions && message.reactions.length > 0 && (
               <div className="flex space-x-1 mt-1">
@@ -316,11 +319,12 @@ export function MessageBubble({ message, conversation, showAvatar = true, onRetr
 
       <div className={`max-w-sm ${!isIncoming ? 'ml-auto' : ''}`}>
         <div
-          className={`px-3 py-2 rounded-xl backdrop-blur-sm ${
+          className={cn(
+            "px-3 py-2 rounded-xl backdrop-blur-md border shadow-glass-sm",
             isIncoming
-              ? 'message-bubble-incoming'
-              : 'message-bubble-outgoing'
-          }`}
+              ? 'bg-zinc-950/90 border-white/[0.08] text-white message-bubble-incoming'
+              : 'bg-primary/20 border-primary/30 text-white message-bubble-outgoing'
+          )}
         >
           {/* Call Header */}
           <div className="flex items-center space-x-2 mb-1">
@@ -328,7 +332,7 @@ export function MessageBubble({ message, conversation, showAvatar = true, onRetr
             <span className="text-xs font-medium text-foreground">
               {isIncoming ? 'Incoming' : 'Outgoing'} Call
             </span>
-            <Badge 
+            <Badge
               variant={getOutcomeBadgeColor(message.resolution)}
               className="text-[10px] ml-auto px-1.5 py-0"
             >
@@ -351,7 +355,7 @@ export function MessageBubble({ message, conversation, showAvatar = true, onRetr
             <div className="mb-2">
               <div className="flex items-start gap-1">
                 <div className="flex-1">
-                  <p 
+                  <p
                     className="text-xs text-foreground leading-relaxed"
                     style={{
                       display: '-webkit-box',

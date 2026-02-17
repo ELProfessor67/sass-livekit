@@ -221,15 +221,13 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
           <label className="block text-base font-semibold tracking-[0.2px] mb-2">
             First Message (Call Greeting)
           </label>
-          <p className="text-sm text-muted-foreground mb-2">
-            This is the first message your assistant will say when a call starts
-          </p>
+
           <Textarea
             placeholder="Hi! This is [Your Name] from [Your Company]. How may I help you today?"
             value={data.firstMessage}
             onChange={(e) => onChange({ firstMessage: e.target.value })}
-            className="h-12 text-[15px] resize-none"
-            rows={2}
+            className="min-h-0 h-[42px] text-[15px] resize-none overflow-hidden"
+            rows={1}
           />
         </div>
 
@@ -250,7 +248,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
 
       {/* Right Column - Sidebar */}
       <div className="lg:col-span-4">
-        <div className="bg-background/50 rounded-lg p-5 h-full">
+        <div className="nested-section p-5 h-full">
           <h3 className="text-lg font-semibold tracking-tight mb-4">Model Settings</h3>
 
           <div className="space-y-4">

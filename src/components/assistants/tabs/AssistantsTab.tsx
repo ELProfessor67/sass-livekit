@@ -74,7 +74,7 @@ function AssistantCard({
 
   return (
     <ThemeCard
-      variant="elevated"
+      variant="glass"
       interactive
       className="group aspect-square relative"
     >
@@ -106,25 +106,16 @@ function AssistantCard({
         {/* Header Section - Clean layout without action buttons */}
         <div className="mb-3 pr-12">
           <h3
-            className="font-medium text-base mb-1 text-theme-primary group-hover:text-primary transition-colors line-clamp-2 cursor-pointer hover:underline"
             onClick={handleTitleClick}
+
+            className="font-medium text-base text-primary group-hover:text-primary transition-colors line-clamp-2"
           >
             {assistant.name}
           </h3>
-          <div className="flex items-center space-x-2">
-            <div
-              className="w-2 h-2 rounded-full flex-shrink-0"
-              style={{ backgroundColor: statusColors[assistant.status] }}
-            />
-            <span className="text-sm text-theme-secondary">
-              {assistant.status.charAt(0).toUpperCase() + assistant.status.slice(1)}
-            </span>
-          </div>
         </div>
 
-        {/* Content Section - Flexible height */}
         <div className="flex-1 mb-4">
-          <p className="text-sm text-theme-secondary leading-relaxed">
+          <p className="text-sm text-white/70 leading-relaxed">
             {assistant.description.length > 120
               ? `${assistant.description.substring(0, 120)}...`
               : assistant.description
@@ -381,12 +372,14 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
 
       {/* Search Bar */}
       <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <Search className="h-4 w-4 text-white/50" />
+        </div>
         <Input
           placeholder="Search assistants..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
+          className="pl-9 bg-black/40 border-white/10 text-white placeholder:text-white/40"
         />
       </div>
 

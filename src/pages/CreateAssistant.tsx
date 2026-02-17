@@ -60,8 +60,7 @@ const CreateAssistant = () => {
     { id: "voice", label: "Voice" },
     { id: "sms", label: "Messages" },
     { id: "analysis", label: "Analysis" },
-    { id: "advanced", label: "Advanced" },
-    { id: "n8n", label: "n8n" }
+    { id: "advanced", label: "Advanced" }
   ];
 
   const searchParams = new URLSearchParams(location.search);
@@ -761,12 +760,12 @@ const CreateAssistant = () => {
                         onChange={(data) => handleFormDataChange('advanced', data)}
                       />
                     )}
-                    {activeTab === "n8n" && (
+                    {/* {activeTab === "n8n" && (
                       <N8nTab
                         data={formData.n8n}
                         onChange={(data) => handleFormDataChange('n8n', data)}
                       />
-                    )}
+                    )} */}
                   </motion.div>
                 </AnimatePresence>
               )}

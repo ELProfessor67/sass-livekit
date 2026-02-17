@@ -1,5 +1,5 @@
+
 import React from "react";
-import { cn } from "@/lib/utils";
 
 interface TranscriptEntry {
   speaker: string;
@@ -37,21 +37,17 @@ export function TranscriptView({ transcript }: TranscriptViewProps) {
         <div className="space-y-4">
           {transcriptData.map((entry: any, idx: number) => (
             <div key={idx} className={`flex ${entry.speaker === "Agent" || entry.speaker === "AI" ? "justify-end" : "justify-start"}`}>
-              <div className={cn(
-                "max-w-[85%] p-4 rounded-3xl shadow-lg transition-all duration-300",
-                entry.speaker === "Agent" || entry.speaker === "AI"
-                  ? "bg-[#3e4a6d]/40 dark:bg-[#3e4a6d]/60 border border-white/10 rounded-tr-lg shadow-blue-900/10"
+              <div className={`max-w-[80%] p-3 rounded-lg shadow-sm ${entry.speaker === "Agent" || entry.speaker === "AI"
+                  ? "bg-primary/15 dark:bg-primary/20 border border-primary/20 dark:border-primary/30"
                   : entry.speaker === "System"
-                    ? "bg-amber-100/10 dark:bg-amber-900/20 border border-amber-200/20 dark:border-amber-800/30 rounded-tl-lg"
-                    : "bg-zinc-800/60 dark:bg-zinc-900/70 border border-white/5 dark:border-white/5 rounded-tl-lg"
-              )}>
-                <div className="flex justify-between items-center mb-1.5 gap-4">
-                  <span className="font-bold text-xs tracking-wider uppercase opacity-70">
-                    {entry.speaker === "AI" ? "Agent" : entry.speaker}
-                  </span>
-                  <span className="text-[10px] font-medium opacity-50">{entry.time || ""}</span>
+                    ? "bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800/50"
+                    : "bg-muted dark:bg-muted/80 border border-border/30"
+                }`}>
+                <div className="flex justify-between mb-1">
+                  <span className="font-medium text-sm">{entry.speaker === "AI" ? "Agent" : entry.speaker}</span>
+                  <span className="text-xs text-muted-foreground">{entry.time || ""}</span>
                 </div>
-                <p className="text-[14px] leading-relaxed font-light tracking-tight">{entry.text}</p>
+                <p className="text-sm leading-relaxed">{entry.text}</p>
               </div>
             </div>
           ))}

@@ -188,10 +188,10 @@ export function ConversationsList({
               <div
                 onClick={() => onSelectConversation(conversation)}
                 className={cn(
-                  "p-3 rounded-[var(--radius-md)] cursor-pointer transition-all duration-200 border",
+                  "p-3 rounded-[var(--radius-lg)] cursor-pointer transition-all duration-200 border mb-[var(--space-xs)]",
                   (selectedConversationId === conversation.id || (selectedConversationId && selectedConversationId === conversation.phoneNumber))
-                    ? "bg-white/[0.12] border-white/20 shadow-[0_4px_12px_rgba(0,0,0,0.1)]"
-                    : "hover:bg-white/10 border-transparent hover:border-white/20",
+                    ? "bg-primary/25 border-transparent shadow-sm ring-1 ring-primary/20"
+                    : "hover:bg-primary/10 border-transparent",
                   conversation.hasNewMessages && (selectedConversationId !== conversation.id && selectedConversationId !== conversation.phoneNumber) && "bg-blue-50/10 border-blue-200/20"
                 )}
               >

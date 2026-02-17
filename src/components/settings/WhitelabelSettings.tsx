@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Upload, Shield, Link2, Loader2, CreditCard } from 'lucide-react';
+import { Upload, Shield, Link2, Loader2, CreditCard, Paintbrush } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 const SLUG_INPUT_REGEX = /[^a-z0-9-]/g;
 const MAIN_DOMAIN = import.meta.env.VITE_MAIN_DOMAIN || window.location.hostname;
@@ -313,196 +314,229 @@ export function WhitelabelSettings() {
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-3xl font-extralight tracking-tight text-foreground">Whitelabel</h2>
-        <p className="mt-2 text-muted-foreground leading-relaxed">
-          Enable your own branded workspace with a custom domain and logo.
+        <h2 className="text-2xl font-light tracking-[0.2px] text-foreground">Whitelabel Configuration</h2>
+        <p className="text-sm text-muted-foreground mt-2">
+          Enable your own branded workspace with a custom domain and logo
         </p>
       </div>
 
-      <div className="settings-card">
-        <div className="flex items-center gap-3 mb-6">
-          <Shield className="w-5 h-5 text-primary" />
-          <div>
-            <h3 className="settings-card-title">Brand Configuration</h3>
-            <p className="text-sm text-muted-foreground">
-              Choose your slug, brand name, and logo for the customer-facing experience.
-            </p>
-          </div>
-        </div>
+      <Card variant="glass" className="backdrop-blur-xl bg-white/[0.02] border-white/[0.08]">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-3 text-lg font-medium text-foreground">
+            <Paintbrush className="w-5 h-5 text-primary" />
+            Brand Configuration
+          </CardTitle>
+          <CardDescription className="leading-relaxed">
+            Choose your slug, brand name, and logo for the customer-facing experience
+          </CardDescription>
+        </CardHeader>
 
-        {isLoading ? (
-          <div className="py-8 text-center text-muted-foreground">Loading whitelabel settings...</div>
-        ) : (
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <Label>Whitelabel Slug</Label>
-              <Input
-                value={slug}
-                onChange={(event) => {
-                  const value = event.target.value.toLowerCase().replace(SLUG_INPUT_REGEX, '');
-                  setSlug(value);
-                  if (hasWhitelabel) {
-                    setIsSlugUnique(true);
-                  }
-                }}
-                disabled={hasWhitelabel || isSaving}
-                placeholder="yourcompany"
-              />
-
+        <CardContent>
+          {isLoading ? (
+            <div className="py-8 text-center text-muted-foreground flex items-center justify-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading whitelabel settings...
             </div>
-
-            <div className="space-y-2">
-              <Label>Brand Name</Label>
-              <Input
-                value={brandName}
-                onChange={(event) => setBrandName(event.target.value)}
-                placeholder="Your Company Name"
-                disabled={isSaving}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Brand Logo</Label>
-              <div className="flex items-center gap-6">
-                <div className="flex-shrink-0">
-                  <div className="w-20 h-20 rounded-lg border-2 border-dashed border-border bg-muted/30 flex items-center justify-center overflow-hidden">
-                    {logoUrl ? (
-                      <img src={logoUrl} alt="Brand logo" className="w-full h-full object-cover" />
-                    ) : (
-                      <Shield className="w-8 h-8 text-muted-foreground" />
-                    )}
-                  </div>
-                </div>
-                <div className="flex-1">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={(event) => handleLogoUpload(event.target.files?.[0])}
-                    className="hidden"
+          ) : (
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-foreground">Whitelabel Slug</Label>
+                <div className="space-y-1">
+                  <Input
+                    value={slug}
+                    onChange={(event) => {
+                      const value = event.target.value.toLowerCase().replace(SLUG_INPUT_REGEX, '');
+                      setSlug(value);
+                      if (hasWhitelabel) {
+                        setIsSlugUnique(true);
+                      }
+                    }}
+                    disabled={hasWhitelabel || isSaving}
+                    placeholder="yourcompany"
+                    className="h-9 backdrop-blur-sm"
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isUploadingLogo || isSaving}
-                    className="w-full sm:w-auto"
-                  >
-                    <Upload className="w-4 h-4 mr-2" />
-                    {isUploadingLogo ? 'Uploading...' : 'Upload Logo'}
-                  </Button>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    PNG, JPG or SVG. Max file size 5MB.
-                  </p>
+                  {renderSlugHelper()}
                 </div>
               </div>
-            </div>
 
-            {/* Stripe Connect Section */}
-            <div className="pt-6 border-t border-border/40">
-              <div className="flex items-center gap-3 mb-4">
-                <CreditCard className="w-5 h-5 text-primary" />
-                <div>
-                  <h4 className="font-medium text-foreground">Stripe Connect Payouts</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Connect a Stripe Express account to receive payouts for this whitelabel workspace.
-                  </p>
-                </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-foreground">Brand Name</Label>
+                <Input
+                  value={brandName}
+                  onChange={(event) => setBrandName(event.target.value)}
+                  placeholder="Your Company Name"
+                  disabled={isSaving}
+                  className="h-9 backdrop-blur-sm"
+                />
               </div>
 
               <div className="space-y-4">
-                <div className="space-y-2 border-border/40">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={isSaving || isStripeLoading}
-                    onClick={async () => {
-                      try {
-                        setIsStripeLoading(true);
-                        const accessToken = await ensureAuthenticated();
-
-                        // Ensure Stripe account exists
-                        const createResp = await fetch(`${apiUrl}/api/v1/whitelabel/stripe/create-account`, {
-                          method: 'POST',
-                          headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${accessToken}`
-                          }
-                        });
-                        const createData = await createResp.json();
-                        if (!createResp.ok || !createData.success) {
-                          throw new Error(createData.message || 'Failed to create Stripe account');
-                        }
-
-                        // Generate onboarding link
-                        const linkResp = await fetch(`${apiUrl}/api/v1/whitelabel/stripe/account-link`, {
-                          method: 'POST',
-                          headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${accessToken}`
-                          }
-                        });
-                        const linkData = await linkResp.json();
-                        if (!linkResp.ok || !linkData.success) {
-                          throw new Error(linkData.message || 'Failed to create Stripe onboarding link');
-                        }
-
-                        window.location.href = linkData.url;
-                      } catch (error) {
-                        console.error('Stripe Connect setup error:', error);
-                        toast.error(error instanceof Error ? error.message : 'Failed to start Stripe onboarding');
-                      } finally {
-                        setIsStripeLoading(false);
-                      }
-                    }}
-                  >
-                    {isStripeLoading ? 'Redirecting to Stripe...' : 'Set up Stripe payouts'}
-                  </Button>
-                  {stripeAccountStatus && (
-                    <p className="text-xs text-muted-foreground">
-                      Status:{' '}
-                      {stripeAccountStatus.hasAccount
-                        ? stripeAccountStatus.charges_enabled
-                          ? 'Payments and payouts enabled'
-                          : 'Account created - please finish onboarding in Stripe'
-                        : 'Not connected yet'}
+                <Label className="text-sm font-medium text-foreground">Brand Logo</Label>
+                <div className="flex flex-col sm:flex-row items-start gap-6">
+                  <div className="flex-shrink-0">
+                    <div className="w-24 h-24 rounded-xl border-2 border-dashed border-white/[0.12] bg-white/[0.02] backdrop-blur-sm flex items-center justify-center overflow-hidden hover:border-white/[0.2] transition-all duration-300 group">
+                      {logoUrl ? (
+                        <img src={logoUrl} alt="Brand logo" className="w-full h-full object-cover" />
+                      ) : (
+                        <Paintbrush className="w-8 h-8 text-muted-foreground group-hover:text-foreground transition-colors" />
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-1 space-y-3">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      id="logo-upload"
+                      accept="image/*"
+                      onChange={(event) => handleLogoUpload(event.target.files?.[0])}
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => document.getElementById("logo-upload")?.click()}
+                      disabled={isUploadingLogo || isSaving}
+                      className="w-full sm:w-auto backdrop-blur-sm bg-white/[0.05] border-white/[0.12] hover:bg-white/[0.08] hover:border-white/[0.2] transition-all duration-200"
+                    >
+                      {isUploadingLogo ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-4 h-4 mr-2" />
+                          Upload Logo
+                        </>
+                      )}
+                    </Button>
+                    <p className="text-sm text-muted-foreground">
+                      PNG, JPG or SVG. Max file size 5MB.
                     </p>
-                  )}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {hasWhitelabel && existingSlug ? (
-              ""
-            ) : (
-              <div className="rounded-lg border border-border/60 bg-muted/10 p-4 text-sm text-muted-foreground">
-                <p className="font-medium text-foreground">What happens next?</p>
-                <p className="mt-2">
-                  After activation, you will be logged out and redirected to your branded workspace.
-                  Use that domain moving forward to manage your account and invite customers.
-                </p>
+              {/* Stripe Connect Section */}
+              <div className="pt-6 border-t border-white/[0.08]">
+                <div className="flex items-center gap-3 mb-4">
+                  <CreditCard className="w-5 h-5 text-primary" />
+                  <div>
+                    <h4 className="font-medium text-foreground">Stripe Connect Payouts</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Connect a Stripe Express account to receive payouts for this whitelabel workspace
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isSaving || isStripeLoading}
+                      className="backdrop-blur-sm bg-white/[0.05] border-white/[0.12] hover:bg-white/[0.08] hover:border-white/[0.2] transition-all duration-200"
+                      onClick={async () => {
+                        try {
+                          setIsStripeLoading(true);
+                          const accessToken = await ensureAuthenticated();
+
+                          // Ensure Stripe account exists
+                          const createResp = await fetch(`${apiUrl}/api/v1/whitelabel/stripe/create-account`, {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              'Authorization': `Bearer ${accessToken}`
+                            }
+                          });
+                          const createData = await createResp.json();
+                          if (!createResp.ok || !createData.success) {
+                            throw new Error(createData.message || 'Failed to create Stripe account');
+                          }
+
+                          // Generate onboarding link
+                          const linkResp = await fetch(`${apiUrl}/api/v1/whitelabel/stripe/account-link`, {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              'Authorization': `Bearer ${accessToken}`
+                            }
+                          });
+                          const linkData = await linkResp.json();
+                          if (!linkResp.ok || !linkData.success) {
+                            throw new Error(linkData.message || 'Failed to create Stripe onboarding link');
+                          }
+
+                          window.location.href = linkData.url;
+                        } catch (error) {
+                          console.error('Stripe Connect setup error:', error);
+                          toast.error(error instanceof Error ? error.message : 'Failed to start Stripe onboarding');
+                        } finally {
+                          setIsStripeLoading(false);
+                        }
+                      }}
+                    >
+                      {isStripeLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Redirecting to Stripe...
+                        </>
+                      ) : (
+                        'Set up Stripe payouts'
+                      )}
+                    </Button>
+                    {stripeAccountStatus && (
+                      <p className="text-xs text-muted-foreground">
+                        Status:{' '}
+                        {stripeAccountStatus.hasAccount
+                          ? stripeAccountStatus.charges_enabled
+                            ? 'Payments and payouts enabled'
+                            : 'Account created - please finish onboarding in Stripe'
+                          : 'Not connected yet'}
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
-            )}
 
-            <div className="flex justify-end">
-              <Button
-                onClick={hasWhitelabel ? handleUpdateBranding : handleActivateWhitelabel}
-                disabled={
-                  isSaving ||
-                  isUploadingLogo ||
-                  (!hasWhitelabel && (!slug || !brandName.trim()))
-                }
-              >
-                {isSaving
-                  ? 'Saving...'
-                  : hasWhitelabel
-                    ? 'Save Branding Changes'
-                    : 'Activate Whitelabel'}
-              </Button>
+              {(!hasWhitelabel || !existingSlug) && (
+                <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-5 backdrop-blur-sm transition-all hover:border-white/[0.16] hover:bg-white/[0.03]">
+                  <p className="font-medium text-foreground">What happens next?</p>
+                  <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+                    After activation, you will be logged out and redirected to your branded workspace.
+                    Use that domain moving forward to manage your account and invite customers.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex justify-end pt-4 border-t border-white/[0.08]">
+                <Button
+                  onClick={hasWhitelabel ? handleUpdateBranding : handleActivateWhitelabel}
+                  disabled={
+                    isSaving ||
+                    isUploadingLogo ||
+                    (!hasWhitelabel && (!slug || !brandName.trim()))
+                  }
+                  className="px-8 backdrop-blur-sm bg-primary/90 hover:bg-primary transition-all duration-200 border border-primary/20"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : hasWhitelabel ? (
+                    'Save Branding Changes'
+                  ) : (
+                    'Activate Whitelabel'
+                  )}
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -56,29 +56,21 @@ export function WorkflowRow({ workflow, onClick }: WorkflowRowProps) {
 
     return (
         <TableRow
-            className="group cursor-pointer hover:bg-white/[0.04] transition-all duration-300 border-b border-white/[0.05] last:border-0"
+            className="cursor-pointer hover:bg-muted/20 transition-colors border-b border-border/30"
             onClick={onClick}
         >
             {/* Checkbox */}
-            <TableCell className="w-12 py-4" onClick={(e) => e.stopPropagation()}>
-                <Checkbox className="border-muted-foreground/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary" />
+            <TableCell className="w-12" onClick={(e) => e.stopPropagation()}>
+                <Checkbox className="border-muted-foreground/40" />
             </TableCell>
 
-            {/* Name & Source */}
-            <TableCell className="py-4">
-                <div className="flex flex-col gap-0.5">
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{workflow.name}</span>
-                        <SourceIndicator sourceType={workflow.source_type} className="scale-75 origin-left" />
-                    </div>
-                    <span className="text-[11px] text-muted-foreground line-clamp-1 max-w-[280px]">
-                        {workflow.description || "No description provided"}
-                    </span>
-                </div>
+            {/* Name */}
+            <TableCell>
+                <span className="text-sm font-medium text-foreground">{workflow.name}</span>
             </TableCell>
 
             {/* Steps - integration icons */}
-            <TableCell className="py-4">
+            <TableCell>
                 <div className="flex items-center gap-1.5">
                     {stepIcons.length > 0 ? (
                         stepIcons.map((step, index) => {
@@ -86,8 +78,7 @@ export function WorkflowRow({ workflow, onClick }: WorkflowRowProps) {
                             return (
                                 <div
                                     key={index}
-                                    className={`w-6 h-6 rounded-md ${step.bg} flex items-center justify-center border border-white/5`}
-                                    title={step.type as string}
+                                    className={`w-6 h-6 rounded-full ${step.bg} flex items-center justify-center`}
                                 >
                                     <Icon size={12} weight="fill" className={step.color} />
                                 </div>
@@ -97,40 +88,32 @@ export function WorkflowRow({ workflow, onClick }: WorkflowRowProps) {
                         <span className="text-[11px] text-muted-foreground/50">0 steps</span>
                     )}
                     {remainingSteps > 0 && (
-                        <span className="text-[10px] text-muted-foreground font-medium ml-0.5">+{remainingSteps}</span>
+                        <span className="text-xs text-muted-foreground ml-0.5">+{remainingSteps}</span>
                     )}
                 </div>
             </TableCell>
 
-            {/* Location (Folder or Client) */}
-            <TableCell className="py-4">
-                <div className="flex items-center gap-2">
-                    {isAgency ? (
-                        <>
-                            <Globe size={14} className="text-blue-500/60" />
-                            <span className="text-xs text-muted-foreground font-medium">{workflow.account_name || "Internal"}</span>
-                        </>
-                    ) : (
-                        <>
-                            <FolderSimple size={14} className="text-primary/60" />
-                            <span className="text-xs text-muted-foreground font-medium">{workflow.folder_name || "All Flows"}</span>
-                        </>
-                    )}
-                </div>
+            {/* Location (Folder) */}
+            <TableCell>
+                <span className="text-sm text-muted-foreground">
+                    {isAgency
+                        ? (workflow.account_name || "Internal")
+                        : (workflow.folder_name || "Uncategorized")
+                    }
+                </span>
             </TableCell>
 
             {/* Last modified */}
-            <TableCell className="py-4">
-                <span className="text-xs text-muted-foreground tabular-nums">
-                    {format(new Date(workflow.updated_at), "MMM d, yyyy")}
+            <TableCell>
+                <span className="text-sm text-muted-foreground">
+                    {format(new Date(workflow.updated_at), "MMM d, yyyy, h:mm a")}
                 </span>
             </TableCell>
 
             {/* Status - toggle switch */}
-            <TableCell className="py-4 text-center" onClick={(e) => e.stopPropagation()}>
+            <TableCell onClick={(e) => e.stopPropagation()}>
                 <Switch
                     checked={workflow.is_active}
-                    className="scale-75 data-[state=checked]:bg-green-500"
                     onCheckedChange={(checked) => {
                         updateWorkflow.mutate({
                             id: workflow.id,
@@ -143,11 +126,11 @@ export function WorkflowRow({ workflow, onClick }: WorkflowRowProps) {
             </TableCell>
 
             {/* Actions */}
-            <TableCell className="py-4 text-right" onClick={(e) => e.stopPropagation()}>
+            <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <DotsThreeVertical size={18} weight="bold" />
+                        <Button variant="ghost" size="icon" className="h-8 w-8 opacity-50 hover:opacity-100 transition-opacity">
+                            <DotsThreeVertical size={16} weight="bold" />
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-44 glass-dropdown">

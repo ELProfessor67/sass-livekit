@@ -5,9 +5,7 @@ import {
   ThemedDialogHeader
 } from "@/components/ui/themed-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, ChatCircle, MusicNotes } from "phosphor-react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { FileText, ChatCircle, Headphones } from "phosphor-react";
 import { TranscriptView } from "./TranscriptView";
 import { RecordingPlayer } from "./RecordingPlayer";
 import { getOutcomeBadge } from "../call-outcomes/utils";
@@ -35,84 +33,80 @@ export function CallDialogContent({ call }: CallDialogContentProps) {
 
       {/* Call Details Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <ThemeCard variant="glass" className="p-3">
+        <div className="p-3 rounded-lg bg-muted/30 border border-border/20">
           <div className="text-center">
-            <p className="text-xs text-theme-secondary mb-1">Phone</p>
-            <p className="text-sm text-theme-primary">{call.phone_number || call.phoneNumber}</p>
+            <p className="text-xs text-muted-foreground mb-1">Phone</p>
+            <p className="text-sm text-foreground">{call.phone_number || call.phoneNumber}</p>
           </div>
-        </ThemeCard>
+        </div>
 
-        <ThemeCard variant="glass" className="p-3">
+        <div className="p-3 rounded-lg bg-muted/30 border border-border/20">
           <div className="text-center">
-            <p className="text-xs text-theme-secondary mb-1">Time</p>
-            <p className="text-sm text-theme-primary">{new Date(call.created_at || `${call.date}T${call.time}`).toLocaleTimeString()}</p>
+            <p className="text-xs text-muted-foreground mb-1">Time</p>
+            <p className="text-sm text-foreground">{new Date(call.created_at || `${call.date}T${call.time}`).toLocaleTimeString()}</p>
           </div>
-        </ThemeCard>
+        </div>
 
-        <ThemeCard variant="glass" className="p-3">
+        <div className="p-3 rounded-lg bg-muted/30 border border-border/20">
           <div className="text-center">
-            <p className="text-xs text-theme-secondary mb-1">Duration</p>
-            <p className="text-sm text-theme-primary">{formatCallDuration(call.duration || '0s')}</p>
+            <p className="text-xs text-muted-foreground mb-1">Duration</p>
+            <p className="text-sm text-foreground">{formatCallDuration(call.duration || '0s')}</p>
           </div>
-        </ThemeCard>
+        </div>
 
-        <ThemeCard variant="glass" className="p-3 flex items-center justify-center">
+        <div className="p-3 rounded-lg bg-muted/30 border border-border/20 flex items-center justify-center">
           {getOutcomeBadge(call.call_outcome || call.resolution)}
-        </ThemeCard>
+        </div>
       </div>
 
-      <Tabs defaultValue="summary" className="mt-8">
-        <TabsList className="bg-white/5 dark:bg-white/10 backdrop-blur-md border border-white/10 p-1.5 h-auto gap-1 rounded-2xl">
+      <Tabs defaultValue="summary" className="mt-6">
+        <TabsList className="bg-muted/50 border border-border/40">
           <TabsTrigger
             value="summary"
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl data-[state=active]:bg-white/20 data-[state=active]:text-white transition-all"
+            className="flex items-center gap-2 data-[state=active]:bg-background data-[state=active]:text-theme-primary"
           >
-            <FileText size={16} weight="bold" />
+            <FileText size={14} strokeWidth={1.5} />
             Summary
           </TabsTrigger>
           <TabsTrigger
             value="transcript"
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl data-[state=active]:bg-white/20 data-[state=active]:text-white transition-all"
+            className="flex items-center gap-2 data-[state=active]:bg-background data-[state=active]:text-theme-primary"
           >
-            <ChatCircle size={16} weight="bold" />
+            <ChatCircle size={14} weight="duotone" />
             Transcript
           </TabsTrigger>
           <TabsTrigger
             value="recording"
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl data-[state=active]:bg-white/20 data-[state=active]:text-white transition-all"
+            className="flex items-center gap-2 data-[state=active]:bg-background data-[state=active]:text-theme-primary"
           >
-            <MusicNotes size={16} weight="bold" />
+            <Headphones size={14} strokeWidth={1.5} />
             Recording
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="summary" className="mt-4">
-          <ThemeCard variant="glass">
-            <CardContent className="p-6">
-              <p className="text-sm leading-relaxed text-theme-secondary">{formatSummaryForDisplay(call.summary)}</p>
-            </CardContent>
-          </ThemeCard>
+          <div className="p-4 rounded-lg bg-muted/20 border border-border/10">
+            <p className="text-sm leading-relaxed text-muted-foreground">{call.summary}</p>
+          </div>
         </TabsContent>
 
         <TabsContent value="transcript" className="mt-4">
-          <ThemeCard variant="glass">
-            <CardContent className="p-6">
-              <TranscriptView transcript={call.transcript} />
-            </CardContent>
-          </ThemeCard>
+          <div className="p-4 rounded-lg bg-muted/20 border border-border/10">
+            <TranscriptView transcript={call.transcript} />
+          </div>
         </TabsContent>
 
         <TabsContent value="recording" className="mt-4">
           <ThemeCard variant="glass">
-            <CardContent className="p-6">
-              {isRecordingLoading ? (
-                <div className="flex items-center justify-center p-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                </div>
-              ) : (
-                <RecordingPlayer recording={recordingUrl} duration={call.duration} />
-              )}
-            </CardContent>
+
+            {isRecordingLoading ? (
+              <div className="flex items-center justify-center p-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            ) : (
+              <RecordingPlayer recording={recordingUrl} duration={call.duration} />
+            )}
+
           </ThemeCard>
         </TabsContent>
       </Tabs>

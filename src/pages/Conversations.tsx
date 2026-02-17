@@ -500,7 +500,7 @@ export default function Conversations() {
     <DashboardLayout>
       <ThemeContainer variant="base" className="no-hover-scaling">
         <div className="container mx-auto px-[var(--space-lg)]">
-          <div className="max-w-6xl mx-auto">
+          <div className="max-w-[1400px] mx-auto">
             <ThemeSection spacing="lg">
               {/* Header */}
               <div className="flex flex-col space-y-[var(--space-md)]">
@@ -511,7 +511,6 @@ export default function Conversations() {
                   <p className="text-muted-foreground text-sm font-medium tracking-[0.1px]">
                     Manage your customer conversations and messages
                   </p>
-
                 </div>
               </div>
 
@@ -554,18 +553,18 @@ export default function Conversations() {
                   </div>
                 </ThemeCard>
               ) : (
-                <ThemeCard variant="glass" className="h-[calc(100vh-8rem)] overflow-y-auto grid grid-cols-[15rem_minmax(0,1fr)_20rem] rounded-[var(--radius-lg)] ">
+                <ThemeCard variant="glass" className="h-[calc(100vh-8rem)] flex rounded-[var(--radius-lg)] overflow-hidden">
                   {/* Left Panel - Conversations List */}
-                  <div className=" border-r border-border/50 overflow-y-auto">
+                  <div className="w-60 flex flex-col border-r border-border/50">
                     <ConversationsList
-                      conversations={displayItems}
+                      conversations={displayItems as any}
                       selectedConversationId={selectedConversation?.phoneNumber || selectedConversation?.id}
                       onSelectConversation={handleSelectConversation}
                     />
                   </div>
 
                   {/* Middle Panel - Message Thread */}
-                  <div className="border-r border-border/50 flex flex-col min-h-0 h-full overflow-y-auto">
+                  <div className="flex-1 flex flex-col border-r border-border/50">
                     {isLoadingConversation ? (
                       <div className="flex-1 flex items-center justify-center">
                         <div className="text-center text-muted-foreground">
@@ -600,7 +599,7 @@ export default function Conversations() {
                   </div>
 
                   {/* Right Panel - Contact Info */}
-                  <div className=" overflow-y-auto">
+                  <div className="w-72 flex flex-col">
                     {selectedConversation ? (
                       <ContactInfoPanel conversation={selectedConversation} />
                     ) : (

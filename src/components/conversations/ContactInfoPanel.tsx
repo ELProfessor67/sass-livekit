@@ -64,13 +64,13 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
     }
 
     // Sort calls by date to get the most recent one
-    const sortedCalls = [...conversation.calls].sort((a, b) => 
+    const sortedCalls = [...conversation.calls].sort((a, b) =>
       new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime()
     );
-    
+
     // Get the most recent call
     const latestCall = sortedCalls[0];
-    
+
     // Return the resolution/outcome from the latest call
     return latestCall.resolution || latestCall.status || null;
   };
@@ -82,13 +82,13 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
     }
 
     // Sort calls by date to get the most recent one
-    const sortedCalls = [...conversation.calls].sort((a, b) => 
+    const sortedCalls = [...conversation.calls].sort((a, b) =>
       new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime()
     );
-    
+
     // Get the most recent call
     const latestCall = sortedCalls[0];
-    
+
     // Return the timestamp from the latest call
     return latestCall.created_at || latestCall.date || null;
   };
@@ -101,13 +101,13 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
     }
 
     // Sort calls by date to get the most recent one
-    const sortedCalls = [...conversation.calls].sort((a, b) => 
+    const sortedCalls = [...conversation.calls].sort((a, b) =>
       new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime()
     );
-    
+
     // Get the most recent call
     const latestCall = sortedCalls[0];
-    
+
     console.log('ContactInfoPanel: Latest call data:', {
       callId: latestCall.id,
       callName: latestCall.name,
@@ -115,7 +115,7 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
       analysisType: typeof latestCall.analysis,
       analysisContent: latestCall.analysis
     });
-    
+
     // Check if the call has structured_data (analysis results)
     let structuredData = null;
     if (latestCall.analysis && typeof latestCall.analysis === 'object') {
@@ -146,7 +146,7 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
 
     // Extract contact information from the structured data format
     const analysisData: AnalysisData = {};
-    
+
     // Helper function to extract value from structured data field
     const extractValue = (field: any): string | undefined => {
       if (typeof field === 'string') {
@@ -160,7 +160,7 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
     // Map structured data fields to our analysis data
     Object.keys(structuredData).forEach(key => {
       const field = structuredData[key];
-      
+
       switch (key.toLowerCase()) {
         case 'customer name':
         case 'name':
@@ -200,7 +200,7 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
   const getDisplayName = (): string => {
     const analysisData = getAnalysisData();
     const hasStructuredName = analysisData.name && analysisData.name.trim() !== '';
-    
+
     if (hasStructuredName) {
       return analysisData.name; // Only name, no phone number
     } else {
@@ -231,16 +231,16 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
     ...(analysisData.company ? [{ label: "Company", value: analysisData.company, icon: Building }] : []),
     ...(analysisData.location ? [{ label: "Location", value: analysisData.location, icon: MapPin }] : []),
     { label: "Phone", value: formatPhoneNumber(conversation.phoneNumber), icon: Phone },
-    { 
-      label: "Last Contact", 
+    {
+      label: "Last Contact",
       value: (() => {
         const latestTimestamp = getLatestCallTimestamp();
         if (latestTimestamp) {
           return formatDistanceToNow(new Date(latestTimestamp), { addSuffix: true });
         }
         return formatDistanceToNow(conversation.lastActivityTimestamp, { addSuffix: true });
-      })(), 
-      icon: Calendar 
+      })(),
+      icon: Calendar
     },
   ];
 
@@ -290,17 +290,17 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
       };
 
       const result = await createContact(contactData);
-      
+
       if (result.success) {
         setIsSaved(true);
         toast({
           title: "Success",
           description: "Contact saved successfully!",
         });
-        
+
         // Update contact list count
-        setContactLists(prev => prev.map(list => 
-          list.id === listId 
+        setContactLists(prev => prev.map(list =>
+          list.id === listId
             ? { ...list, count: list.count + 1 }
             : list
         ));
@@ -331,43 +331,39 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="p-[var(--space-lg)] border-b border-white/[0.08] bg-background/30">
-        <div className="flex items-center justify-between mb-[var(--space-lg)]">
-          <div className="flex items-center gap-3">
-            <Avatar className="h-16 w-16">
-              <AvatarFallback className="text-xl font-medium bg-muted text-muted-foreground">
+      <div className="p-[var(--space-lg)] border-b border-white/[0.08] bg-background/20">
+        <div className="flex flex-col mb-[var(--space-lg)]">
+          <div className="flex items-center gap-4 mb-4">
+            <Avatar className="h-16 w-16 bg-primary/10 ring-1 ring-white/10">
+              <AvatarFallback className="text-xl font-medium bg-primary/20 text-primary">
                 {getInitials(getDisplayName())}
               </AvatarFallback>
             </Avatar>
-            <div>
-              <h2 className="text-lg font-medium text-foreground">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-xl font-medium text-foreground truncate">
                 {getDisplayName()}
               </h2>
-              {analysisData.email && (
-                <p className="text-xs text-muted-foreground">
-                  {analysisData.email}
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground truncate">
+                {formatPhoneNumber(conversation.phoneNumber)}
+              </p>
             </div>
           </div>
-          {hasAnalysisData && !isSaved && (
-            <Button
-              onClick={handleSaveContact}
-              disabled={isSaving}
-              size="sm"
-              variant="outline"
-              className="h-8 px-3 text-xs"
-            >
-              <Save className="h-3 w-3 mr-1" />
-              {isSaving ? 'Saving...' : 'Save'}
-            </Button>
-          )}
-          {isSaved && (
-            <Badge variant="secondary" className="flex items-center gap-1">
-              <User className="h-3 w-3" />
-              Saved
-            </Badge>
-          )}
+
+          <div className="flex items-center gap-2">
+            {hasAnalysisData && !isSaved && (
+              <Button
+                onClick={handleSaveContact}
+                disabled={isSaving}
+                size="sm"
+                variant="outline"
+                className="h-8 flex-1 text-xs bg-white text-black hover:bg-white/90 border-none"
+              >
+                <Save className="h-3 w-3 mr-1" />
+                {isSaving ? 'Saving...' : 'Save to Contacts'}
+              </Button>
+            )}
+
+          </div>
         </div>
       </div>
 
@@ -378,13 +374,13 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
           <div className="space-y-[var(--space-md)]">
             <h3 className="text-sm font-medium text-foreground">Overview</h3>
             <div className="grid grid-cols-2 gap-[var(--space-md)]">
-              <div className="p-[var(--space-md)] bg-muted/20 rounded-[var(--radius-md)] border border-border/20">
-                <div className="text-[10px] text-muted-foreground">Total Calls</div>
-                <div className="text-base font-medium text-foreground mt-1">{conversation.totalCalls}</div>
+              <div className="p-3 bg-white/[0.04] rounded-[var(--radius-lg)] border border-white/[0.08]">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1">Total Calls</div>
+                <div className="text-lg font-light text-foreground">{conversation.totalCalls}</div>
               </div>
-              <div className="p-[var(--space-md)] bg-muted/20 rounded-[var(--radius-md)] border border-border/20">
-                <div className="text-[10px] text-muted-foreground">Duration</div>
-                <div className="text-base font-medium text-foreground mt-1">{conversation.totalDuration}</div>
+              <div className="p-3 bg-white/[0.04] rounded-[var(--radius-lg)] border border-white/[0.08]">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1">Duration</div>
+                <div className="text-lg font-light text-foreground">{conversation.totalDuration}</div>
               </div>
             </div>
           </div>
@@ -395,11 +391,11 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
             {hasAnalysisData ? (
               <div className="space-y-[var(--space-sm)]">
                 {contactProperties.map((property, index) => (
-                  <ContactProperty 
+                  <ContactProperty
                     key={index}
-                    label={property.label} 
-                    value={property.value} 
-                    icon={property.icon} 
+                    label={property.label}
+                    value={property.value}
+                    icon={property.icon}
                   />
                 ))}
               </div>
@@ -423,15 +419,15 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
                     </Badge>
                   );
                 }
-                
+
                 // Just show whatever is in the database
                 return (
                   <div className="flex items-center gap-2">
-                    <div 
+                    <div
                       className="w-2 h-2 rounded-full bg-blue-500"
                     />
-                    <Badge 
-                      variant="secondary" 
+                    <Badge
+                      variant="secondary"
                       className="text-xs px-3 py-1 bg-blue-100 text-blue-800 border-blue-200"
                     >
                       {latestOutcome}
@@ -442,18 +438,7 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
             </div>
           </div>
 
-          {/* Notes Section */}
-          <div className="space-y-[var(--space-md)]">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium text-foreground">Notes</h3>
-              <Button variant="ghost" size="sm" className="text-xs h-7 px-3 rounded-[var(--radius-md)]">
-                Add Note
-              </Button>
-            </div>
-            <div className="p-[var(--space-md)] bg-muted/10 rounded-[var(--radius-md)] border border-border/10 text-xs text-muted-foreground text-center">
-              No notes yet
-            </div>
-          </div>
+
         </div>
       </div>
     </div>

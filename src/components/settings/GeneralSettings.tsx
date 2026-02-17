@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Globe, Clock } from "lucide-react";
+import { Globe, Clock, Building2, Briefcase } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -101,85 +102,96 @@ export function GeneralSettings() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div>
-        <h2 className="text-3xl font-extralight tracking-tight text-foreground">General Settings</h2>
-        <p className="mt-2 text-muted-foreground leading-relaxed">
+        <h2 className="text-2xl font-light tracking-[0.2px] text-foreground">General Settings</h2>
+        <p className="text-sm text-muted-foreground mt-2">
           Configure your workspace name, timezone, and business information
         </p>
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           {/* Workspace Information */}
-          <div className="settings-card">
-            <div className="flex items-center gap-3 mb-6">
-              <Globe className="w-5 h-5 text-primary" />
-              <h3 className="settings-card-title">Workspace Information</h3>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="workspace_name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Workspace Name</FormLabel>
-                    <FormControl>
-                      <Input {...field} className="settings-input" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+          <Card variant="glass" className="backdrop-blur-xl bg-white/[0.02] border-white/[0.08]">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3 text-lg font-medium text-foreground">
+                <Building2 className="w-5 h-5 text-primary" />
+                Workspace Information
+              </CardTitle>
+              <CardDescription className="leading-relaxed">
+                Customize your workspace identity and preferences
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FormField
+                  control={form.control}
+                  name="workspace_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium text-foreground">Workspace Name</FormLabel>
+                      <FormControl>
+                        <Input {...field} className="h-9 backdrop-blur-sm" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="timezone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      <div className="flex items-center gap-2">
+                <FormField
+                  control={form.control}
+                  name="timezone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium text-foreground flex items-center gap-2">
                         <Clock className="w-4 h-4" />
                         Timezone
-                      </div>
-                    </FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="settings-input">
-                          <SelectValue placeholder="Select timezone" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {timezones.map((tz) => (
-                          <SelectItem key={tz.value} value={tz.value}>
-                            {tz.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-          </div>
+                      </FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-9 backdrop-blur-sm">
+                            <SelectValue placeholder="Select timezone" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {timezones.map((tz) => (
+                            <SelectItem key={tz.value} value={tz.value}>
+                              {tz.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Business Information */}
-          <div className="settings-card">
-            <h3 className="settings-card-title mb-6">Business Information</h3>
-            
-            <div className="space-y-6">
+          <Card variant="glass" className="backdrop-blur-xl bg-white/[0.02] border-white/[0.08]">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3 text-lg font-medium text-foreground">
+                <Briefcase className="w-5 h-5 text-primary" />
+                Business Information
+              </CardTitle>
+              <CardDescription className="leading-relaxed">
+                Additional details about your company (optional)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
               <FormField
                 control={form.control}
                 name="company_address"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Company Address</FormLabel>
+                    <FormLabel className="text-sm font-medium text-foreground">Company Address</FormLabel>
                     <FormControl>
-                      <Textarea 
-                        {...field} 
-                        className="settings-input"
+                      <Textarea
+                        {...field}
+                        className="h-9 backdrop-blur-sm min-h-[80px]"
                         placeholder="123 Business St, City, State, Country"
                         rows={3}
                       />
@@ -195,11 +207,11 @@ export function GeneralSettings() {
                   name="company_phone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Phone Number</FormLabel>
+                      <FormLabel className="text-sm font-medium text-foreground">Phone Number</FormLabel>
                       <FormControl>
-                        <Input 
-                          {...field} 
-                          className="settings-input"
+                        <Input
+                          {...field}
+                          className="h-9 backdrop-blur-sm"
                           placeholder="+1 (555) 123-4567"
                         />
                       </FormControl>
@@ -213,11 +225,11 @@ export function GeneralSettings() {
                   name="company_website"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Website</FormLabel>
+                      <FormLabel className="text-sm font-medium text-foreground">Website</FormLabel>
                       <FormControl>
-                        <Input 
-                          {...field} 
-                          className="settings-input"
+                        <Input
+                          {...field}
+                          className="h-9 backdrop-blur-sm"
                           placeholder="https://www.example.com"
                         />
                       </FormControl>
@@ -231,10 +243,10 @@ export function GeneralSettings() {
                   name="company_industry"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Industry</FormLabel>
+                      <FormLabel className="text-sm font-medium text-foreground">Industry</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger className="settings-input">
+                          <SelectTrigger className="h-9 backdrop-blur-sm">
                             <SelectValue placeholder="Select industry" />
                           </SelectTrigger>
                         </FormControl>
@@ -256,10 +268,10 @@ export function GeneralSettings() {
                   name="company_size"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Company Size</FormLabel>
+                      <FormLabel className="text-sm font-medium text-foreground">Company Size</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger className="settings-input">
+                          <SelectTrigger className="h-9 backdrop-blur-sm">
                             <SelectValue placeholder="Select company size" />
                           </SelectTrigger>
                         </FormControl>
@@ -282,29 +294,35 @@ export function GeneralSettings() {
                 name="company_description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Company Description</FormLabel>
+                    <FormLabel className="text-sm font-medium text-foreground">Company Description</FormLabel>
                     <FormControl>
-                      <Textarea 
-                        {...field} 
-                        className="settings-input"
+                      <Textarea
+                        {...field}
+                        className="h-9 backdrop-blur-sm min-h-[100px]"
                         placeholder="Brief description of your company and what you do..."
                         rows={4}
                       />
                     </FormControl>
-                    <FormDescription>
+                    <FormDescription className="text-xs text-muted-foreground leading-relaxed">
                       Tell us about your business (optional)
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
-          <div className="flex justify-end">
-            <Button type="submit" disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save Changes"}
-            </Button>
+          <div className="pt-6 border-t border-border/30">
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                disabled={isSaving}
+                className="px-8 backdrop-blur-sm bg-primary/90 hover:bg-primary transition-all duration-200 border border-primary/20"
+              >
+                {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
           </div>
         </form>
       </Form>

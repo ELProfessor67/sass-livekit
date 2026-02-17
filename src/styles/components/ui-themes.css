@@ -1,362 +1,421 @@
 /* Glass UI Theme */
 .glass-ui {
-  background: transparent; /* Don't override the background image */
+  background: transparent;
+  /* Don't override the background image */
   position: relative;
-  min-height: 100vh; /* Ensure full viewport coverage */
+  min-height: 100vh;
+  /* Ensure full viewport coverage */
 }
-  
-  .glass-ui::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    z-index: -3;
-    background-image: url('/lovable-uploads/697970d0-a16b-465a-829c-2e187277097d.png');
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-attachment: fixed;
-    pointer-events: none;
-  }
-  
-  .glass-ui::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    z-index: -2;
-    backdrop-filter: blur(1px);
-    background: hsl(var(--background) / 0.01);
-    pointer-events: none;
-  }
 
-  /* Header styling for themes */
-  .glass-ui header {
-    @apply backdrop-blur-sm border-b border-white/10 dark:border-white/10;
-    background: transparent;
-  }
+.glass-ui::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  background-image: url('/lovable-uploads/697970d0-a16b-465a-829c-2e187277097d.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  pointer-events: none;
+}
 
-  .minimal-ui header {
-    @apply bg-background border-b border-border;
-  }
+.glass-ui::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  backdrop-filter: blur(1px);
+  background: hsl(var(--background) / 0.01);
+  pointer-events: none;
+}
 
-  /* Minimal UI Theme - Force override any glass background effects */
-  html.minimal-ui,
-  html.minimal-ui body,
-  .minimal-ui {
-    background: hsl(var(--background)) !important;
-    background-image: none !important;
-  }
+/* Header styling for themes */
+.glass-ui header {
+  @apply backdrop-blur-sm border-b border-white/10 dark:border-white/10;
+  background: transparent;
+}
 
-  /* Explicitly prevent any glass background effects in minimal theme with highest specificity */
-  html.minimal-ui::before,
-  html.minimal-ui::after,
-  html.minimal-ui body::before,
-  html.minimal-ui body::after,
-  .minimal-ui::before,
-  .minimal-ui::after {
-    display: none !important;
-    content: none !important;
-    background-image: none !important;
-    background: transparent !important;
-    backdrop-filter: none !important;
-  }
-  
-  /* Enhanced Glass Material System - 3 Levels */
-  /* Light Glass - Decorative elements */
-  .glass-ui .card-glass-light {
-    @apply rounded-2xl backdrop-blur-sm 
-           bg-[hsl(var(--background)/0.08)] dark:bg-[hsl(var(--glass-bluish-light))] 
-           shadow-lg transition-all duration-300 
-           hover:bg-[hsl(var(--background)/0.12)] dark:hover:bg-[hsl(220_15%_35%/0.12)]
-           relative border border-border/25;
-  }
-  
-  .dark .glass-ui .card-glass-light {
-    border-color: hsl(var(--glass-border-bluish));
-  }
-  
-  /* Medium Glass - Secondary content */
-  .glass-ui .card-glass {
-    @apply rounded-2xl backdrop-blur-md 
-           bg-[hsl(var(--background)/0.16)] dark:bg-[hsl(var(--glass-bluish-medium))] 
-           shadow-xl transition-all duration-300 
-           hover:shadow-2xl
-           relative overflow-hidden border border-border/30;
-  }
-  
-  .dark .glass-ui .card-glass {
-    border-color: hsl(var(--glass-border-bluish-medium));
-  }
-  
-  .glass-ui .card-glass::before {
-    content: '';
-    @apply absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent
-           opacity-0 transition-opacity duration-500 pointer-events-none;
-  }
-  
-  .glass-ui .card-glass:hover::before {
-    @apply opacity-0;
-  }
-  
-  /* Heavy Glass - Primary content areas */
-  .glass-ui .card-glass-heavy {
-    @apply rounded-2xl backdrop-blur-lg 
-           bg-[hsl(var(--background)/0.24)] dark:bg-[hsl(var(--glass-bluish-heavy))] 
-           shadow-2xl shadow-[hsl(var(--foreground)/0.05)] dark:shadow-primary/10
-           transition-all duration-300 
-           hover:shadow-2xl hover:shadow-[hsl(var(--foreground)/0.08)] dark:hover:shadow-primary/15
-           relative overflow-hidden border border-border/30;
-  }
-  
-  .dark .glass-ui .card-glass-heavy {
-    border-color: hsl(var(--glass-border-bluish-medium));
-  }
-  
-  .glass-ui .card-glass-heavy::before {
-    content: '';
-    @apply absolute inset-0 bg-gradient-to-br from-primary/[0.08] to-accent/5
-           opacity-0 transition-opacity duration-500 pointer-events-none;
-  }
-  
-  .glass-ui .card-glass-heavy:hover::before {
-    @apply opacity-0;
-  }
-  
-  /* Reading Zone Enhancement */
-  .glass-ui .card-glass-reading {
-    @apply rounded-2xl border border-border/[0.35]
-           bg-[hsl(var(--background)/0.22)] dark:bg-[hsl(220_15%_35%/0.14)] backdrop-blur-lg 
-           shadow-xl shadow-[hsl(var(--foreground)/0.03)] dark:shadow-primary/[0.08]
-           transition-all duration-300 
-           relative overflow-hidden;
-  }
-  
-  .dark .glass-ui .card-glass-reading {
-    border-color: hsl(var(--glass-border-bluish-medium));
-  }
-  
-  .glass-ui .card-glass-reading::after {
-    content: '';
-    @apply absolute inset-0 bg-gradient-to-b from-[hsl(var(--background)/0.1)] via-transparent to-[hsl(var(--background)/0.05)]
-           dark:from-[hsl(220_15%_40%/0.06)] dark:via-transparent dark:to-[hsl(220_15%_35%/0.04)]
-           pointer-events-none;
-  }
-  
-  .minimal-ui .card-minimal {
-    @apply bg-card border border-border/80 rounded-3xl;
-    @apply hover:border-border transition-all duration-300;
-  }
-  
-  .dark .minimal-ui .card-minimal {
-    @apply bg-card border-border/60;
-    @apply hover:border-border/80;
-  }
+.minimal-ui header {
+  @apply bg-background border-b border-border;
+}
 
-  /* Clean Minimal Card Variants - No shadows, just clean borders */
-  .minimal-ui .card-elevated-minimal {
-    @apply bg-card border border-border rounded-3xl
-           transition-all duration-300;
-  }
-  
-  .minimal-ui .card-elevated-minimal:hover {
-    @apply border-border/80;
-  }
-  
-  .dark .minimal-ui .card-elevated-minimal {
-    @apply bg-card border-border/70;
-  }
-  
-  .dark .minimal-ui .card-elevated-minimal:hover {
-    @apply border-border/90;
-  }
+/* Minimal UI Theme - Force override any glass background effects */
+html.minimal-ui,
+html.minimal-ui body,
+.minimal-ui {
+  background: hsl(var(--background)) !important;
+  background-image: none !important;
+}
 
-  .minimal-ui .card-premium-enhanced-minimal {
-    @apply bg-card border-2 border-primary/20 rounded-3xl
-           transition-all duration-300;
-  }
-  
-  .minimal-ui .card-premium-enhanced-minimal:hover {
-    @apply border-primary/30;
-  }
-  
-  .dark .minimal-ui .card-premium-enhanced-minimal {
-    @apply bg-card border-primary/25;
-  }
-  
-  .dark .minimal-ui .card-premium-enhanced-minimal:hover {
-    @apply border-primary/35;
-  }
-  
-  /* Theme-specific stat card styles */
-  .glass-ui .stat-card-glass {
-    @apply rounded-2xl border backdrop-blur-md 
-           shadow-xl transition-all duration-300 
-           hover:scale-105 hover:shadow-2xl hover:shadow-white/5
-           relative;
-    /* Light mode periwinkle glass */
-    background: hsl(var(--glass-periwinkle-light));
-    border-color: hsl(var(--glass-border-periwinkle));
-  }
-  
-  .dark .glass-ui .stat-card-glass {
-    /* Dark mode bluish-gray glass */
-    background: hsl(var(--glass-bluish-light));
-    border-color: hsl(var(--glass-border-bluish));
-  }
-  
-  .minimal-ui .stat-card-minimal {
-    @apply bg-card border-border rounded-3xl shadow-md;
-  }
-  
-  .dark .minimal-ui .stat-card-minimal {
-    @apply bg-card/95 border-border/50 shadow-xl;
-  }
-  
-  /* Premium Glass Variants with Enhanced Legibility */
-  .glass-ui .card-premium-glass {
-    @apply rounded-2xl border border-primary/[0.35] dark:border-primary/[0.3] 
-           bg-primary/[0.12] dark:bg-[hsl(var(--glass-bluish-premium))] backdrop-blur-lg 
-           shadow-2xl shadow-primary/[0.25] dark:shadow-primary/[0.35]
-           transition-all duration-300 
-           hover:bg-primary/[0.16] dark:hover:bg-[hsl(220_15%_32%/0.18)]
-           hover:border-primary/[0.45] dark:hover:border-primary/40
-           hover:shadow-2xl hover:shadow-primary/[0.35] dark:hover:shadow-primary/[0.45]
-           relative overflow-hidden;
-  }
-  
-  .glass-ui .card-premium-glass::before {
-    content: '';
-    @apply absolute inset-0 bg-gradient-to-br from-primary/[0.12] via-primary/[0.08] to-accent/[0.06]
-           dark:from-primary/15 dark:via-primary/10 dark:to-accent/[0.08]
-           opacity-0 transition-opacity duration-500 pointer-events-none;
-  }
-  
-  .glass-ui .card-premium-glass:hover::before {
-    @apply opacity-100;
-  }
-  
-  /* Ultra Premium with Maximum Legibility */
-  .glass-ui .card-ultra-premium-glass {
-    @apply rounded-3xl border-2 border-primary/40 dark:border-primary/[0.35] 
-           bg-primary/[0.16] dark:bg-[hsl(var(--glass-bluish-ultra))] backdrop-blur-xl 
-           shadow-2xl shadow-primary/[0.3] dark:shadow-primary/40
-           transition-all duration-500 
-           hover:bg-primary/[0.2] dark:hover:bg-[hsl(220_15%_30%/0.22)]
-           hover:border-primary/50 dark:hover:border-primary/[0.45]
-           hover:shadow-2xl hover:shadow-primary/40 dark:hover:shadow-primary/50
-           relative overflow-hidden;
-  }
-  
-  .glass-ui .card-ultra-premium-glass::before {
-    content: '';
-    @apply absolute inset-0 bg-gradient-to-br from-primary/15 via-primary/10 to-accent/[0.08]
-           dark:from-primary/20 dark:via-primary/[0.12] dark:to-accent/10
-           opacity-0 transition-opacity duration-700 pointer-events-none;
-  }
-  
-  .glass-ui .card-ultra-premium-glass:hover::before {
-    @apply opacity-100;
-  }
-  
-  .glass-ui .card-ultra-premium-glass::after {
-    content: '';
-    @apply absolute inset-[1px] rounded-3xl bg-gradient-to-br 
-           from-white/10 via-transparent to-primary/5
-           dark:from-white/5 dark:via-transparent dark:to-primary/[0.08]
-           opacity-60 pointer-events-none;
-  }
-  
-  .minimal-ui .card-premium-minimal {
-    @apply bg-card border-2 border-primary/20 rounded-3xl;
-    @apply hover:border-primary/30 transition-all duration-300;
-  }
-  
-  .dark .minimal-ui .card-premium-minimal {
-    @apply bg-card border-primary/30;
-    @apply hover:border-primary/40;
-  }
-  
-  /* Glass UI Button Variants */
-  .glass-ui .btn-glass {
-    @apply rounded-2xl backdrop-blur-md 
-           bg-[hsl(var(--background)/0.16)] dark:bg-[hsl(var(--glass-bluish-medium))] 
-           border border-[hsl(var(--glass-border-periwinkle))] dark:border-[hsl(var(--glass-border-bluish))]
-           shadow-lg transition-all duration-300 
-           hover:bg-[hsl(var(--background)/0.22)] dark:hover:bg-[hsl(220_15%_35%/0.16)]
-           hover:shadow-xl;
-  }
+/* Explicitly prevent any glass background effects in minimal theme with highest specificity */
+html.minimal-ui::before,
+html.minimal-ui::after,
+html.minimal-ui body::before,
+html.minimal-ui body::after,
+.minimal-ui::before,
+.minimal-ui::after {
+  display: none !important;
+  content: none !important;
+  background-image: none !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+}
 
-  .glass-ui .btn-glass-light {
-    @apply rounded-2xl backdrop-blur-sm 
-           bg-[hsl(var(--background)/0.08)] dark:bg-[hsl(var(--glass-bluish-light))] 
-           border border-[hsl(var(--glass-border-periwinkle))] dark:border-[hsl(var(--glass-border-bluish))]
-           shadow-md transition-all duration-300 
-           hover:bg-[hsl(var(--background)/0.12)] dark:hover:bg-[hsl(220_15%_35%/0.12)]
-           hover:shadow-lg;
-  }
+/* Enhanced Glass Material System - 3 Levels */
+/* Light Glass - Decorative elements */
+.glass-ui .card-glass-light {
+  @apply rounded-2xl backdrop-blur-sm bg-[hsl(var(--background)/0.08)] dark:bg-[hsl(var(--glass-bluish-light))] shadow-lg transition-all duration-300 hover:bg-[hsl(var(--background)/0.12)] dark:hover:bg-[hsl(220_15%_35%/0.12)] relative border border-border/25;
+}
 
-  .glass-ui .popover-glass {
-    @apply rounded-2xl backdrop-blur-lg 
-           bg-[hsl(var(--background)/0.24)] dark:bg-[hsl(var(--glass-bluish-heavy))] 
-           border border-[hsl(var(--glass-border-periwinkle-medium))] dark:border-[hsl(var(--glass-border-bluish-medium))]
-           shadow-2xl transition-all duration-300;
-  }
+.dark .glass-ui .card-glass-light {
+  border-color: hsl(var(--glass-border-bluish));
+}
 
-  /* Minimal UI Button Variants */
-  .minimal-ui .btn-minimal {
-    @apply bg-card border-border rounded-xl shadow-md
-           hover:shadow-lg transition-all duration-300;
-  }
+/* Medium Glass - Secondary content */
+.glass-ui .card-glass {
+  @apply rounded-2xl backdrop-blur-md bg-[hsl(var(--background)/0.16)] dark:bg-[hsl(var(--glass-bluish-medium))] shadow-xl transition-all duration-300 hover:shadow-2xl relative overflow-hidden border border-border/30;
+}
 
-  .minimal-ui .popover-minimal {
-    @apply bg-card border border-border rounded-2xl shadow-xl;
-    background: linear-gradient(135deg, 
-      hsl(var(--card)) 0%, 
+.dark .glass-ui .card-glass {
+  border-color: hsl(var(--glass-border-bluish-medium));
+}
+
+.glass-ui .card-glass::before {
+  content: '';
+  @apply absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 transition-opacity duration-500 pointer-events-none;
+}
+
+.glass-ui .card-glass:hover::before {
+  @apply opacity-0;
+}
+
+/* Heavy Glass - Primary content areas */
+.glass-ui .card-glass-heavy {
+  @apply rounded-2xl backdrop-blur-lg bg-[hsl(var(--background)/0.24)] dark:bg-[hsl(var(--glass-bluish-heavy))] shadow-2xl shadow-[hsl(var(--foreground)/0.05)] dark:shadow-primary/10 transition-all duration-300 hover:shadow-2xl hover:shadow-[hsl(var(--foreground)/0.08)] dark:hover:shadow-primary/15 relative overflow-hidden border border-border/30;
+}
+
+.dark .glass-ui .card-glass-heavy {
+  border-color: hsl(var(--glass-border-bluish-medium));
+}
+
+.glass-ui .card-glass-heavy::before {
+  content: '';
+  @apply absolute inset-0 bg-gradient-to-br from-primary/[0.08] to-accent/5 opacity-0 transition-opacity duration-500 pointer-events-none;
+}
+
+.glass-ui .card-glass-heavy:hover::before {
+  @apply opacity-0;
+}
+
+/* Reading Zone Enhancement */
+.glass-ui .card-glass-reading {
+  @apply rounded-2xl border border-border/[0.35] bg-[hsl(var(--background)/0.22)] dark:bg-[hsl(220_15%_35%/0.14)] backdrop-blur-lg shadow-xl shadow-[hsl(var(--foreground)/0.03)] dark:shadow-primary/[0.08] transition-all duration-300 relative overflow-hidden;
+}
+
+.dark .glass-ui .card-glass-reading {
+  border-color: hsl(var(--glass-border-bluish-medium));
+}
+
+.glass-ui .card-glass-reading::after {
+  content: '';
+  @apply absolute inset-0 bg-gradient-to-b from-[hsl(var(--background)/0.1)] via-transparent to-[hsl(var(--background)/0.05)] dark:from-[hsl(220_15%_40%/0.06)] dark:via-transparent dark:to-[hsl(220_15%_35%/0.04)] pointer-events-none;
+}
+
+/* Global backdrop filter and glass background reset for ALL elements in minimal mode */
+.minimal-ui * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Specific overrides for hardcoded glass background utilities */
+.minimal-ui .bg-white\/\[0\.02\],
+.minimal-ui .bg-white\/\[0\.03\],
+.minimal-ui .bg-white\/\[0\.05\],
+.minimal-ui .bg-white\/\[0\.08\],
+.minimal-ui .bg-white\/\[0\.1\],
+.minimal-ui .bg-white\/\[0\.12\],
+.minimal-ui .bg-white\/\[0\.15\],
+.minimal-ui .bg-white\/\[0\.16\],
+.minimal-ui .bg-white\/\[0\.2\],
+.minimal-ui .bg-white\/\[0\.24\] {
+  background-color: transparent !important;
+}
+
+/* Border overrides for hardcoded glass borders */
+.minimal-ui .border-white\/\[0\.08\],
+.minimal-ui .border-white\/\[0\.12\],
+.minimal-ui .border-white\/\[0\.15\],
+.minimal-ui .border-white\/\[0\.2\],
+.minimal-ui .border-white\/\[0\.3\] {
+  border-color: hsl(var(--border) / 0.5) !important;
+}
+
+/* Card Styling for Minimal UI - Matches saas-livekit-ui */
+/* Light mode minimal cards - subtle off-white + soft shadows */
+.minimal-ui .card-minimal {
+  @apply bg-card rounded-3xl transition-all duration-300;
+  border: 1px solid hsl(220 10% 90%);
+  box-shadow: 0 1px 3px hsl(220 10% 50% / 0.04),
+    0 4px 12px hsl(220 10% 50% / 0.02);
+}
+
+.minimal-ui .card-minimal:hover {
+  border-color: hsl(220 10% 85%);
+  box-shadow: 0 2px 6px hsl(220 10% 50% / 0.06),
+    0 8px 20px hsl(220 10% 50% / 0.04);
+}
+
+/* Dark mode minimal cards - enhanced hierarchy with visible borders + depth shadows */
+.dark.minimal-ui .card-minimal {
+  @apply bg-card rounded-3xl transition-all duration-300;
+  border: 1px solid hsl(0 0% 18%);
+  box-shadow:
+    0 1px 2px hsl(0 0% 0% / 0.3),
+    0 4px 12px hsl(0 0% 0% / 0.2),
+    0 0 0 1px hsl(0 0% 14% / 0.5);
+}
+
+.dark.minimal-ui .card-minimal:hover {
+  border-color: hsl(0 0% 24%);
+  box-shadow:
+    0 2px 4px hsl(0 0% 0% / 0.35),
+    0 8px 24px hsl(0 0% 0% / 0.25),
+    0 0 0 1px hsl(0 0% 18% / 0.6);
+}
+
+/* Form fields styling for minimal UI - clear input areas */
+.minimal-ui input:not([type="checkbox"]):not([type="radio"]),
+.minimal-ui textarea,
+.minimal-ui select,
+.minimal-ui [role="combobox"] {
+  background: hsl(220 5% 96%) !important;
+  border-color: hsl(220 10% 88%) !important;
+}
+
+.minimal-ui input:focus:not([type="checkbox"]):not([type="radio"]),
+.minimal-ui textarea:focus,
+.minimal-ui select:focus {
+  background: hsl(0 0% 100%) !important;
+  border-color: hsl(var(--primary)) !important;
+}
+
+.dark.minimal-ui input:not([type="checkbox"]):not([type="radio"]),
+.dark.minimal-ui textarea,
+.dark.minimal-ui select,
+.dark.minimal-ui [role="combobox"] {
+  background: hsl(0 0% 10%) !important;
+  border-color: hsl(0 0% 14%) !important;
+}
+
+.dark.minimal-ui input:focus:not([type="checkbox"]):not([type="radio"]),
+.dark.minimal-ui textarea:focus,
+.dark.minimal-ui select:focus {
+  background: hsl(0 0% 12%) !important;
+  border-color: hsl(var(--primary)) !important;
+}
+
+/* Clean Minimal Card Variants - No shadows, just clean borders */
+.minimal-ui .card-elevated-minimal {
+  @apply bg-card border border-border rounded-3xl transition-all duration-300;
+}
+
+.minimal-ui .card-elevated-minimal:hover {
+  @apply border-border/80;
+}
+
+.dark.minimal-ui .card-elevated-minimal {
+  @apply bg-card rounded-3xl transition-all duration-300;
+  border: 1px solid hsl(0 0% 20%);
+  box-shadow:
+    0 2px 6px hsl(0 0% 0% / 0.25),
+    0 8px 20px hsl(0 0% 0% / 0.15);
+}
+
+.dark.minimal-ui .card-elevated-minimal:hover {
+  border-color: hsl(0 0% 26%);
+  box-shadow:
+    0 4px 12px hsl(0 0% 0% / 0.3),
+    0 12px 32px hsl(0 0% 0% / 0.2);
+}
+
+.minimal-ui .card-premium-enhanced-minimal {
+  @apply bg-card border-2 border-primary/20 rounded-3xl transition-all duration-300;
+}
+
+.minimal-ui .card-premium-enhanced-minimal:hover {
+  @apply border-primary/30;
+}
+
+/* Nested sections within cards - descending hierarchy */
+.minimal-ui .nested-section {
+  @apply rounded-2xl transition-all duration-200;
+  background: hsl(220 5% 95%);
+  border: 1px solid hsl(220 10% 90%);
+}
+
+.dark.minimal-ui .nested-section {
+  background: hsl(0 0% 10%);
+  border-color: hsl(0 0% 14%);
+}
+
+/* Glass UI nested sections - matches glass-surface aesthetic */
+.glass-ui .nested-section {
+  @apply rounded-2xl transition-all duration-200 backdrop-blur-xl;
+  background: linear-gradient(to bottom right, hsla(var(--card), 0.35), hsla(var(--card), 0.20));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.dark.glass-ui .nested-section {
+  background: linear-gradient(to bottom right, hsla(var(--card), 0.5), hsla(var(--card), 0.35));
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.dark .minimal-ui .card-premium-enhanced-minimal {
+  @apply bg-card border-primary/25;
+}
+
+.dark .minimal-ui .card-premium-enhanced-minimal:hover {
+  @apply border-primary/35;
+}
+
+/* Theme-specific stat card styles */
+.glass-ui .stat-card-glass {
+  @apply rounded-2xl border backdrop-blur-md shadow-xl transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-white/5 relative;
+  /* Light mode periwinkle glass */
+  background: hsl(var(--glass-periwinkle-light));
+  border-color: hsl(var(--glass-border-periwinkle));
+}
+
+.dark .glass-ui .stat-card-glass {
+  /* Dark mode bluish-gray glass */
+  background: hsl(var(--glass-bluish-light));
+  border-color: hsl(var(--glass-border-bluish));
+}
+
+.minimal-ui .stat-card-minimal {
+  @apply bg-card border-border rounded-3xl shadow-md;
+}
+
+.dark .minimal-ui .stat-card-minimal {
+  @apply bg-card/95 border-border/50 shadow-xl;
+}
+
+/* Premium Glass Variants with Enhanced Legibility */
+.glass-ui .card-premium-glass {
+  @apply rounded-2xl border border-primary/[0.35] dark:border-primary/[0.3] bg-primary/[0.12] dark:bg-[hsl(var(--glass-bluish-premium))] backdrop-blur-lg shadow-2xl shadow-primary/[0.25] dark:shadow-primary/[0.35] transition-all duration-300 hover:bg-primary/[0.16] dark:hover:bg-[hsl(220_15%_32%/0.18)] hover:border-primary/[0.45] dark:hover:border-primary/40 hover:shadow-2xl hover:shadow-primary/[0.35] dark:hover:shadow-primary/[0.45] relative overflow-hidden;
+}
+
+.glass-ui .card-premium-glass::before {
+  content: '';
+  @apply absolute inset-0 bg-gradient-to-br from-primary/[0.12] via-primary/[0.08] to-accent/[0.06] dark:from-primary/15 dark:via-primary/10 dark:to-accent/[0.08] opacity-0 transition-opacity duration-500 pointer-events-none;
+}
+
+.glass-ui .card-premium-glass:hover::before {
+  @apply opacity-100;
+}
+
+/* Ultra Premium with Maximum Legibility */
+.glass-ui .card-ultra-premium-glass {
+  @apply rounded-3xl border-2 border-primary/40 dark:border-primary/[0.35] bg-primary/[0.16] dark:bg-[hsl(var(--glass-bluish-ultra))] backdrop-blur-xl shadow-2xl shadow-primary/[0.3] dark:shadow-primary/40 transition-all duration-500 hover:bg-primary/[0.2] dark:hover:bg-[hsl(220_15%_30%/0.22)] hover:border-primary/50 dark:hover:border-primary/[0.45] hover:shadow-2xl hover:shadow-primary/40 dark:hover:shadow-primary/50 relative overflow-hidden;
+}
+
+.glass-ui .card-ultra-premium-glass::before {
+  content: '';
+  @apply absolute inset-0 bg-gradient-to-br from-primary/15 via-primary/10 to-accent/[0.08] dark:from-primary/20 dark:via-primary/[0.12] dark:to-accent/10 opacity-0 transition-opacity duration-700 pointer-events-none;
+}
+
+.glass-ui .card-ultra-premium-glass:hover::before {
+  @apply opacity-100;
+}
+
+.glass-ui .card-ultra-premium-glass::after {
+  content: '';
+  @apply absolute inset-[1px] rounded-3xl bg-gradient-to-br from-white/10 via-transparent to-primary/5 dark:from-white/5 dark:via-transparent dark:to-primary/[0.08] opacity-60 pointer-events-none;
+}
+
+.minimal-ui .card-premium-minimal {
+  @apply bg-card border-2 border-primary/20 rounded-3xl;
+  @apply hover:border-primary/30 transition-all duration-300;
+}
+
+.dark .minimal-ui .card-premium-minimal {
+  @apply bg-card border-primary/30;
+  @apply hover:border-primary/40;
+}
+
+/* Glass UI Button Variants */
+.glass-ui .btn-glass {
+  @apply rounded-2xl backdrop-blur-md bg-[hsl(var(--background)/0.16)] dark:bg-[hsl(var(--glass-bluish-medium))] border border-[hsl(var(--glass-border-periwinkle))] dark:border-[hsl(var(--glass-border-bluish))] shadow-lg transition-all duration-300 hover:bg-[hsl(var(--background)/0.22)] dark:hover:bg-[hsl(220_15%_35%/0.16)] hover:shadow-xl;
+}
+
+.glass-ui .btn-glass-light {
+  @apply rounded-2xl backdrop-blur-sm bg-[hsl(var(--background)/0.08)] dark:bg-[hsl(var(--glass-bluish-light))] border border-[hsl(var(--glass-border-periwinkle))] dark:border-[hsl(var(--glass-border-bluish))] shadow-md transition-all duration-300 hover:bg-[hsl(var(--background)/0.12)] dark:hover:bg-[hsl(220_15%_35%/0.12)] hover:shadow-lg;
+}
+
+.glass-ui .popover-glass {
+  @apply rounded-2xl backdrop-blur-lg bg-[hsl(var(--background)/0.24)] dark:bg-[hsl(var(--glass-bluish-heavy))] border border-[hsl(var(--glass-border-periwinkle-medium))] dark:border-[hsl(var(--glass-border-bluish-medium))] shadow-2xl transition-all duration-300;
+}
+
+/* Minimal UI Button Variants */
+.minimal-ui .btn-minimal {
+  @apply bg-card border-border rounded-xl shadow-md hover:shadow-lg transition-all duration-300;
+}
+
+.minimal-ui .popover-minimal {
+  @apply bg-card border border-border rounded-2xl shadow-xl;
+  background: linear-gradient(135deg,
+      hsl(var(--card)) 0%,
       hsl(var(--card) / 0.95) 100%);
-    border: 1px solid hsl(var(--border) / 0.8);
-    box-shadow: 
-      0 10px 25px -5px hsl(var(--foreground) / 0.1),
-      0 4px 6px -2px hsl(var(--foreground) / 0.05);
-  }
-  .minimal-ui .rounded-squircle {
-    border-radius: 1.5rem; /* 24px */
-  }
-  
-  .minimal-ui .rounded-squircle-lg {
-    border-radius: 2rem; /* 32px */
-  }
-  
-  .minimal-ui .rounded-squircle-xl {
-    border-radius: 2.5rem; /* 40px */
-  }
+  border: 1px solid hsl(var(--border) / 0.8);
+  box-shadow:
+    0 10px 25px -5px hsl(var(--foreground) / 0.1),
+    0 4px 6px -2px hsl(var(--foreground) / 0.05);
+}
 
-  /* Disable pseudo-element overlay and background changes on all pages except dashboard */
-  body:not([data-page="dashboard"]) .glass-ui .card-glass:hover::before,
-  body:not([data-page="dashboard"]) .glass-ui .card-glass-heavy:hover::before,
-  body:not([data-page="dashboard"]) .glass-ui .card-premium-glass:hover::before,
-  body:not([data-page="dashboard"]) .glass-ui .card-ultra-premium-glass:hover::before {
-    opacity: 0 !important;
-  }
+.minimal-ui .rounded-squircle {
+  border-radius: 1.5rem;
+  /* 24px */
+}
 
-  /* Comprehensive color/background hover overrides for non-dashboard pages */
-  body:not([data-page="dashboard"]) .glass-ui .card-glass:hover,
-  body:not([data-page="dashboard"]) .glass-ui .card-glass-light:hover,
-  body:not([data-page="dashboard"]) .glass-ui .card-glass-heavy:hover,
-  body:not([data-page="dashboard"]) .glass-ui .card-premium-glass:hover,
-  body:not([data-page="dashboard"]) .glass-ui .card-ultra-premium-glass:hover,
-  body:not([data-page="dashboard"]) .glass-ui .stat-card-glass:hover,
-  body:not([data-page="dashboard"]) .minimal-ui .card-minimal:hover,
-  body:not([data-page="dashboard"]) .minimal-ui .card-premium-minimal:hover,
-  body:not([data-page="dashboard"]) .minimal-ui .stat-card-minimal:hover {
-    background: inherit !important;
-    border-color: inherit !important;
-  }
+.minimal-ui .rounded-squircle-lg {
+  border-radius: 2rem;
+  /* 32px */
+}
 
-  /* Disable glass interactive hover effects for non-dashboard pages */
-  body:not([data-page="dashboard"]) .glass-interactive:hover,
-  body:not([data-page="dashboard"]) .glass-interactive-premium:hover {
-    background: inherit !important;
-    border-color: inherit !important;
-  }
+.minimal-ui .rounded-squircle-xl {
+  border-radius: 2.5rem;
+  /* 40px */
+}
+
+/* Disable pseudo-element overlay and background changes on all pages except dashboard */
+body:not([data-page="dashboard"]) .glass-ui .card-glass:hover::before,
+body:not([data-page="dashboard"]) .glass-ui .card-glass-heavy:hover::before,
+body:not([data-page="dashboard"]) .glass-ui .card-premium-glass:hover::before,
+body:not([data-page="dashboard"]) .glass-ui .card-ultra-premium-glass:hover::before {
+  opacity: 0 !important;
+}
+
+/* Comprehensive color/background hover overrides for non-dashboard pages */
+body:not([data-page="dashboard"]) .glass-ui .card-glass:hover,
+body:not([data-page="dashboard"]) .glass-ui .card-glass-light:hover,
+body:not([data-page="dashboard"]) .glass-ui .card-glass-heavy:hover,
+body:not([data-page="dashboard"]) .glass-ui .card-premium-glass:hover,
+body:not([data-page="dashboard"]) .glass-ui .card-ultra-premium-glass:hover,
+body:not([data-page="dashboard"]) .glass-ui .stat-card-glass:hover,
+body:not([data-page="dashboard"]) .minimal-ui .card-minimal:hover,
+body:not([data-page="dashboard"]) .minimal-ui .card-premium-minimal:hover,
+body:not([data-page="dashboard"]) .minimal-ui .stat-card-minimal:hover {
+  background: inherit !important;
+  border-color: inherit !important;
+}
+
+/* Disable glass interactive hover effects for non-dashboard pages */
+body:not([data-page="dashboard"]) .glass-interactive:hover,
+body:not([data-page="dashboard"]) .glass-interactive-premium:hover {
+  background: inherit !important;
+  border-color: inherit !important;
+}
 
 /* Disable ambient glow effects for non-dashboard pages */
 body:not([data-page="dashboard"]) .glass-ambient-warm:hover::before {
@@ -385,9 +444,9 @@ body:not([data-page="dashboard"]) .glass-ambient-warm:hover::before {
 
 .minimal-ui .nav-minimal {
   @apply bg-card border border-border rounded-full;
-  background: linear-gradient(135deg, 
-    hsl(var(--card)) 0%, 
-    hsl(var(--card) / 0.95) 100%);
+  background: linear-gradient(135deg,
+      hsl(var(--card)) 0%,
+      hsl(var(--card) / 0.95) 100%);
   border: 1px solid hsl(var(--border) / 0.8);
 }
 
@@ -395,6 +454,7 @@ body:not([data-page="dashboard"]) .glass-ambient-warm:hover::before {
   @apply bg-white/30 backdrop-blur-md;
   color: hsl(var(--nav-glass-foreground, 0 0% 0%)) !important;
 }
+
 .minimal-ui .nav-item-active-minimal {
   @apply bg-primary text-primary-foreground;
 }

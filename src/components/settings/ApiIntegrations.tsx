@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { WhatsAppIntegrationCard } from "./WhatsAppIntegrationCard";
 import { WhatsAppCredentialsService, type UserWhatsAppCredentials } from "@/lib/whatsapp-credentials";
 import { SlackIcon, FacebookIcon, HubSpotIcon } from "@/components/composer/nodes/IntegrationIcons";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
+import { cn } from "@/lib/utils";
 
 const integrations = [
   // NEW: Leads Category
@@ -140,6 +141,8 @@ export function ApiIntegrations() {
   const [showTwilioDetails, setShowTwilioDetails] = useState(false);
   const [showCalendarDetails, setShowCalendarDetails] = useState(false);
   const [showWhatsappDetails, setShowWhatsappDetails] = useState(false);
+
+
 
   // Helper function to check if connection has page permissions
   const hasPagePermissions = (connection: any): boolean => {
@@ -458,6 +461,26 @@ export function ApiIntegrations() {
       ? updatedIntegrations.length
       : updatedIntegrations.filter(integration => integration.category.toLowerCase() === category).length;
   };
+
+  const categories = [
+    { id: "all", label: "All" },
+    { id: "marketing", label: "Marketing" },
+    { id: "communication", label: "Communication" },
+    { id: "crm", label: "CRM" },
+    { id: "productivity", label: "Productivity" },
+    { id: "ai", label: "AI" },
+    { id: "calendar", label: "Calendars" }
+  ];
+
+  const groupedIntegrations = useMemo(() => {
+    const groups: Record<string, typeof integrations[0][]> = {};
+    filteredIntegrations.forEach(integration => {
+      const cat = integration.category;
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(integration);
+    });
+    return groups;
+  }, [filteredIntegrations]);
 
   const handleTwilioConnect = async (data: { accountSid: string; authToken: string; label: string }) => {
     console.log("handleTwilioConnect called with data:", data);
@@ -784,18 +807,18 @@ export function ApiIntegrations() {
 
     return (
       <Card className="group relative border-border/60 bg-card/50 backdrop-blur-sm hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 hover:-translate-y-1 h-full">
-        <div className="p-4 h-full flex flex-col">
+        <div className="p-5 h-full flex flex-col">
           {/* Header with Icon and Status */}
           <div className="flex items-start justify-between mb-3">
             <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-300"
+              className="w-11 h-11 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-300"
               style={{ backgroundColor: `${integration.brandColor}15` }}
             >
               {isReactComponent ? (
-                <IconComponent size={16} style={{ color: integration.brandColor }} />
+                <IconComponent size={28} style={{ color: integration.brandColor }} />
               ) : (
                 <IconComponent
-                  className="w-4 h-4"
+                  className="w-7 h-7"
                   style={{ color: integration.brandColor }}
                 />
               )}
@@ -933,40 +956,49 @@ export function ApiIntegrations() {
         </p>
       </div>
 
-      {/* Category Tabs */}
-      <Tabs value={activeCategory} onValueChange={setActiveCategory} className="w-full">
-        <TabsList className="grid w-full max-w-3xl grid-cols-5 mb-8 h-12 glass-input">
-          <TabsTrigger value="all" className="text-sm font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
-            All ({getCategoryCount("all")})
-          </TabsTrigger>
-          <TabsTrigger value="leads" className="text-sm font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
-            Leads ({getCategoryCount("leads")})
-          </TabsTrigger>
-          <TabsTrigger value="crm" className="text-sm font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
-            CRM ({getCategoryCount("crm")})
-          </TabsTrigger>
-          <TabsTrigger value="communication" className="text-sm font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
-            Communication ({getCategoryCount("communication")})
-          </TabsTrigger>
-          <TabsTrigger value="calendar" className="text-sm font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
-            Calendar ({getCategoryCount("calendar")})
-          </TabsTrigger>
-        </TabsList>
+      {/* Category Pills */}
+      <div className="flex gap-2 flex-wrap mb-8">
+        {categories.map(cat => (
+          <button
+            key={cat.id}
+            onClick={() => setActiveCategory(cat.id)}
+            className={cn(
+              "px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200",
+              activeCategory === cat.id
+                ? "bg-foreground text-background"
+                : "bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {cat.label} ({getCategoryCount(cat.id)})
+          </button>
+        ))}
+      </div>
 
-        <TabsContent value={activeCategory} className="mt-0">
-          {filteredIntegrations.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">No integrations available in this category.</p>
+      {/* Integration Sections */}
+      <div className="space-y-12">
+        {Object.keys(groupedIntegrations).length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">No integrations available in this category.</p>
+          </div>
+        ) : (
+          Object.entries(groupedIntegrations).map(([category, categoryIntegrations]) => (
+            <div key={category} className="space-y-6">
+              {/* Category Header */}
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-medium text-foreground uppercase tracking-wider">{category}</h3>
+                <span className="text-sm text-muted-foreground">{categoryIntegrations.length}</span>
+              </div>
+
+              {/* Integration Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
+                {categoryIntegrations.map((integration) => (
+                  <IntegrationCard key={integration.id} integration={integration} />
+                ))}
+              </div>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 max-w-6xl items-stretch">
-              {filteredIntegrations.map((integration) => (
-                <IntegrationCard key={integration.id} integration={integration} />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+          ))
+        )}
+      </div>
 
       {/* Twilio Integration Details - Only show when toggled */}
       {showTwilioDetails && twilioIntegrations.length > 0 && (

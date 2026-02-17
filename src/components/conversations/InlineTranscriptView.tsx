@@ -56,9 +56,9 @@ export function InlineTranscriptView({ transcript }: InlineTranscriptViewProps) 
         <Collapsible open={isOpen} onOpenChange={setIsOpen}>
           <CollapsibleContent className="mt-2">
             <div className="space-y-2 max-h-32 overflow-y-auto">
-              <div className="px-3 py-2 rounded-xl backdrop-blur-sm border text-[11px] leading-relaxed message-bubble-incoming">
-                <span className="font-medium text-foreground">Transcript:</span>
-                <span className="text-muted-foreground ml-1">{transcript}</span>
+              <div className="px-3 py-2 rounded-xl backdrop-blur-md border text-[11px] leading-relaxed bg-zinc-950/90 border-white/[0.08] text-white shadow-glass-sm">
+                <span className="font-semibold text-white/90">Transcript:</span>
+                <span className="text-white/80 ml-1">{transcript}</span>
               </div>
             </div>
           </CollapsibleContent>
@@ -117,11 +117,10 @@ export function InlineTranscriptView({ transcript }: InlineTranscriptViewProps) 
               const isIncoming = entry.speaker === "Customer" || entry.speaker === "customer";
               return (
                 <div key={idx} className={`flex ${isIncoming ? 'justify-start' : 'justify-end'}`}>
-                  <div className={`max-w-xs px-3 py-2 rounded-xl backdrop-blur-sm border text-[11px] leading-relaxed ${
-                    isIncoming
+                  <div className={`max-w-xs px-3 py-2 rounded-xl backdrop-blur-sm border text-[11px] leading-relaxed ${isIncoming
                       ? 'message-bubble-incoming'
                       : 'message-bubble-outgoing'
-                  }`}>
+                    }`}>
                     <span className="font-medium text-foreground">
                       {entry.speaker === "AI" ? "Agent" : entry.speaker}:
                     </span>

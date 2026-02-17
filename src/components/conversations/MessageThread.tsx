@@ -519,7 +519,7 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
                   <div key={dateKey} className="space-y-2">
                     {/* Date Separator - use first message's timestamp for correct user-local date */}
                     <div className="flex items-center justify-center">
-                      <div className="px-2 py-0.5 bg-muted/50 rounded-full text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">
+                      <div className="px-2 py-0.5 bg-muted/50 rounded-full text-[10px] text-muted-foreground uppercase tracking-[0.05em] font-semibold">
                         {formatMessageDateSeparator(dayMessages[0].timestamp)}
                       </div>
                     </div>

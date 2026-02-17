@@ -14,13 +14,7 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const location = useLocation();
-  const { setUIStyle } = useTheme();
   const { user, isImpersonating, activeSupportSession, endSupportAccess, exitImpersonation } = useAuth();
-
-  // Ensure glass theme is applied when on dashboard
-  useEffect(() => {
-    setUIStyle("glass");
-  }, [setUIStyle]);
 
   const handleEndSupportSession = async () => {
     await endSupportAccess();

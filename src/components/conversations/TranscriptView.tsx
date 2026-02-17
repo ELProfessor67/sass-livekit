@@ -1,4 +1,5 @@
 import React from "react";
+import { cn } from "@/lib/utils";
 
 interface TranscriptEntry {
   speaker: string;
@@ -35,14 +36,15 @@ export function TranscriptView({ transcript }: TranscriptViewProps) {
       <div className="max-h-[50vh] overflow-y-auto pr-4">
         <div className="space-y-4">
           {transcriptData.map((entry: any, idx: number) => (
-            <div key={idx} className={`flex ${entry.speaker === "Agent" || entry.speaker === "AI" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[80%] p-3 rounded-lg shadow-sm ${
-                entry.speaker === "Agent" || entry.speaker === "AI" 
-                  ? "bg-primary/10 dark:bg-[#1A1F2C] border border-border/20 dark:border-white/10" 
+            <div key={idx} className={cn("flex", (entry.speaker === "Agent" || entry.speaker === "AI") ? "justify-end" : "justify-start")}>
+              <div className={cn(
+                "max-w-[80%] p-3 rounded-xl border backdrop-blur-md shadow-glass-sm",
+                (entry.speaker === "Agent" || entry.speaker === "AI")
+                  ? "bg-primary/20 border-primary/30 text-white"
                   : entry.speaker === "System"
-                    ? "bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800/50"
-                    : "bg-secondary dark:bg-[#403E43] border border-border/20 dark:border-white/10"
-              }`}>
+                    ? "bg-amber-500/10 border-amber-500/20 text-amber-200"
+                    : "bg-zinc-950/90 border-white/[0.08] text-white"
+              )}>
                 <div className="flex justify-between mb-1">
                   <span className="font-medium text-sm">{entry.speaker === "AI" ? "Agent" : entry.speaker}</span>
                   <span className="text-xs text-muted-foreground">{entry.time || ""}</span>
