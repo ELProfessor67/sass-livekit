@@ -35,6 +35,7 @@ const IDLE_MESSAGE_OPTIONS = [
 
 interface ModelTabProps {
   data: ModelData;
+  language?: string; // Add language prop if needed, but it's usually inside data.language
   onChange: (data: Partial<ModelData>) => void;
 }
 
@@ -580,8 +581,9 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                   <SelectItem value="fr">French</SelectItem>
                   <SelectItem value="de">German</SelectItem>
                   <SelectItem value="nl">Dutch</SelectItem>
-                  <SelectItem value="no">Norwegian</SelectItem>
-                  <SelectItem value="ar">Arabic</SelectItem>
+                  <SelectItem value="it">Italian</SelectItem>
+                  <SelectItem value="hi">Hindi</SelectItem>
+                  <SelectItem value="zh">Chinese</SelectItem>
                 </SelectContent>
               </Select>
             </div>

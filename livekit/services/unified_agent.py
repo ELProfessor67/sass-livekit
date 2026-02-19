@@ -175,7 +175,8 @@ class UnifiedAgent(Agent):
         phone_number: Optional[str] = None,
         prewarmed_llm: Optional[object] = None,
         prewarmed_tts: Optional[object] = None,
-        prewarmed_vad: Optional[object] = None
+        prewarmed_vad: Optional[object] = None,
+        language_setting: str = "en"
     ) -> None:
         # Use pre-warmed components if available, otherwise use defaults
         if prewarmed_llm and prewarmed_vad and prewarmed_tts:
@@ -202,6 +203,7 @@ class UnifiedAgent(Agent):
         self.assistant_id = assistant_id
         self.user_id = user_id
         self.phone_number = phone_number
+        self.language_setting = language_setting
         
         # Initialize services (singleton; no double init; Supabase is optional for read)
         self.rag_service = get_rag_service() if knowledge_base_id else None
@@ -314,16 +316,24 @@ class UnifiedAgent(Agent):
         """Require call timezone before any slot listing or scheduling. If missing, return message to prompt user; do not assume UTC."""
         if self._call_timezone is not None:
             return None
-        return (
-            "I need your time zone before I can show available slots or schedule. "
-            "What time zone are you in? You can say a city (e.g. New York), a region (e.g. Eastern time), or an IANA timezone (e.g. America/New_York)."
-        )
+            
+        responses = {
+            "hi": "मुझे स्लॉट्स दिखाने या शेड्यूल करने से पहले आपके टाइम ज़ोन की आवश्यकता है। आप किस टाइम ज़ोन में हैं? आप एक शहर (जैसे दिल्ली), क्षेत्र, या IANA टाइमज़ोन (जैसे Asia/Kolkata) बता सकते हैं।",
+            "es": "Necesito su zona horaria antes de poder mostrar los horarios disponibles o programar. ¿En qué zona horaria se encuentra? Puede decir una ciudad (por ejemplo, Madrid), una región o una zona horaria IANA.",
+            "en": "I need your time zone before I can show available slots or schedule. What time zone are you in? You can say a city (e.g. New York), a region (e.g. Eastern time), or an IANA timezone (e.g. America/New_York)."
+        }
+        return responses.get(self.language_setting, responses["en"])
 
     def _require_calendar(self) -> Optional[str]:
         """Check if calendar is available for booking."""
         if not self.calendar:
             logging.info("_require_calendar FAILED | calendar is None")
-            return "I can't take bookings right now."
+            responses = {
+                "hi": "मैं अभी बुकिंग नहीं कर सकती।",
+                "es": "No puedo realizar reservas en este momento.",
+                "en": "I can't take bookings right now."
+            }
+            return responses.get(self.language_setting, responses["en"])
         logging.info("_require_calendar SUCCESS | calendar type=%s", type(self.calendar).__name__)
         return None
 
@@ -887,7 +897,12 @@ class UnifiedAgent(Agent):
             dummy: Optional parameter (not used, required for schema compatibility).
         """
         self._booking_data.confirmed = False
-        return "No problem. What would you like to change—name, email, phone, or time?"
+        responses = {
+            "hi": "कोई बात नहीं। आप क्या बदलना चाहेंगे—नाम, ईमेल, फोन या समय?",
+            "es": "No hay problema. ¿Qué le gustaría cambiar: nombre, correo electrónico, teléfono o la hora?",
+            "en": "No problem. What would you like to change—name, email, phone, or time?"
+        }
+        return responses.get(self.language_setting, responses["en"])
 
     @function_tool(name="finalize_booking")
     async def finalize_booking(self, ctx: RunContext, slot_id: Optional[str] = None, name: Optional[str] = None, email: Optional[str] = None, phone: Optional[str] = None) -> str:
@@ -942,7 +957,22 @@ class UnifiedAgent(Agent):
                 missing_fields.append("phone")
             
             logging.warning("FINALIZE_BOOKING_MISSING_FIELDS | missing=%s", missing_fields)
-            return f"We need a few more details to finalize: {', '.join(missing_fields)}. Feel free to provide them all at once!"
+            
+            field_mappings = {
+                "hi": {"time slot": "समय", "name": "नाम", "email": "ईमेल", "phone": "फोन"},
+                "es": {"time slot": "horario", "name": "nombre", "email": "correo electrónico", "phone": "teléfono"},
+                "en": {"time slot": "time slot", "name": "name", "email": "email", "phone": "phone"}
+            }
+            
+            lang = self.language_setting if self.language_setting in field_mappings else "en"
+            m_fields = [field_mappings[lang].get(f, f) for f in missing_fields]
+            
+            responses = {
+                "hi": f"फाइनल करने के लिए हमें कुछ और विवरण चाहिए: {', '.join(m_fields)}। बेझिझक ये सब एक साथ बता दें!",
+                "es": f"Necesitamos algunos detalles más para finalizar: {', '.join(m_fields)}. ¡No dude en proporcionarlos todos a la vez!",
+                "en": f"We need a few more details to finalize: {', '.join(m_fields)}. Feel free to provide them all at once!"
+            }
+            return responses.get(self.language_setting, responses["en"])
         
         self._booking_data.confirmed = True
         msg = self._require_calendar()
@@ -1135,12 +1165,19 @@ class UnifiedAgent(Agent):
         
         # Proactively say processing message to remove dead air (Fix #4)
         try:
+            processing_msgs = {
+                "hi": "बिल्कुल, एक पल रुकिए जब मैं आपके लिए वह समय सुरक्षित करता हूँ।",
+                "es": "Perfecto, un momento mientras aseguro ese horario para usted.",
+                "en": "Perfect, one moment while I secure that time for you."
+            }
+            proc_msg = processing_msgs.get(self.language_setting, processing_msgs["en"])
+            
             # Use play or say depending on implementation; returning text is standard but 
             # we want to speak immediately to cover the API latency.
             if hasattr(self, "say"):
-                await self.say("Perfect, one moment while I secure that time for you.", allow_interruptions=False)
+                await self.say(proc_msg, allow_interruptions=False)
             elif hasattr(ctx, "agent") and hasattr(ctx.agent, "say"):
-                await ctx.agent.say("Perfect, one moment while I secure that time for you.", allow_interruptions=False)
+                await ctx.agent.say(proc_msg, allow_interruptions=False)
             logging.info("PROCESSING_SPEECH_TRIGGERED")
         except Exception as e:
             logging.debug("PROCESSING_SPEECH_FAILED | tool will continue | error=%s", str(e))
@@ -1258,13 +1295,23 @@ class UnifiedAgent(Agent):
                 logging.info("BOOKING_COMPLETED_SUCCESSFULLY | slot=%s", formatted_time)
                 
                 # One short, confident confirmation sentence as per guidelines
-                return f"You’re all set for {local_time.strftime('%A')} at {local_time.strftime('%I:%M %p')}. You’ll get a confirmation text shortly."
+                responses = {
+                    "hi": f"आपका अपॉइंटमेंट {local_time.strftime('%A')} को {local_time.strftime('%I:%M %p')} के लिए बुक हो गया है। आपको जल्द ही एक पुष्टिकरण मैसेज मिलेगा।",
+                    "es": f"Todo listo para el {local_time.strftime('%A')} a las {local_time.strftime('%I:%M %p')}. Recibirá un mensaje de confirmación en breve.",
+                    "en": f"You’re all set for {local_time.strftime('%A')} at {local_time.strftime('%I:%M %p')}. You’ll get a confirmation text shortly."
+                }
+                return responses.get(self.language_setting, responses["en"])
             
             except asyncio.TimeoutError:
                 logging.error("BOOKING_TIMEOUT | calendar operation timed out after 15 seconds")
                 # Don't reset booking state on timeout - the booking might have succeeded
                 # Return a message that allows verification
-                return "The booking is taking longer than expected. I can verify if it went through - just say 'verify booking' or I can try booking again."
+                responses = {
+                    "hi": "बुकिंग में उम्मीद से ज़्यादा समय लग रहा है। मैं जांच कर सकती हूँ कि क्या यह सफल रही - बस 'बुकिंग की पुष्टि करें' कहें या मैं फिर से प्रयास कर सकती हूँ।",
+                    "es": "La reserva está tardando más de lo esperado. Puedo verificar si se realizó; solo diga 'verificar reserva' o puedo intentar reservar de nuevo.",
+                    "en": "The booking is taking longer than expected. I can verify if it went through - just say 'verify booking' or I can try booking again."
+                }
+                return responses.get(self.language_setting, responses["en"])
             except SlotUnavailableError as e:
                 logging.error("SLOT_UNAVAILABLE | error=%s | slot=%s", str(e), self._booking_data.selected_slot.start_time if self._booking_data.selected_slot else None)
                 self._booking_data.selected_slot = None
@@ -1273,12 +1320,24 @@ class UnifiedAgent(Agent):
                 if self.calendar:
                     _calendar_cache.clear()
                     logging.info("CALENDAR_CACHE_INVALIDATED | reason=slot_unavailable_error")
-                return "That time was just taken. Let's pick another option."
+                
+                responses = {
+                    "hi": "वह समय अभी ले लिया गया है। चलिए कोई दूसरा विकल्प चुनते हैं।",
+                    "es": "Ese horario acaba de ser ocupado. Escojamos otra opción.",
+                    "en": "That time was just taken. Let's pick another option."
+                }
+                return responses.get(self.language_setting, responses["en"])
             except Exception as e:
                 logging.error("BOOKING_ERROR | error=%s | error_type=%s", str(e), type(e).__name__)
                 logging.exception("Full booking error traceback")
                 self._booking_data.confirmed = False
-                return f"I ran into a problem booking that: {str(e)}. Let's try a different time."
+                
+                responses = {
+                    "hi": f"मुझे उसे बुक करने में समस्या हुई: {str(e)}। चलिए दूसरा समय चुनते हैं।",
+                    "es": f"Tuve un problema al reservar eso: {str(e)}. Intentemos con otro horario.",
+                    "en": f"I ran into a problem booking that: {str(e)}. Let's try a different time."
+                }
+                return responses.get(self.language_setting, responses["en"])
             finally:
                 self._booking_inflight = False
 
@@ -1290,13 +1349,23 @@ class UnifiedAgent(Agent):
             dummy: Optional parameter (not used, required for schema compatibility).
         """
         if not self._booking_data.selected_slot:
-            return "I don't have a booking to verify. Let's start over with a new appointment."
+            responses = {
+                "hi": "मेरे पास सत्यापित करने के लिए कोई बुकिंग नहीं है। चलिए नए अपॉइंटमेंट के साथ फिर से शुरू करते हैं।",
+                "es": "No tengo ninguna reserva que verificar. Empecemos de nuevo con una nueva cita.",
+                "en": "I don't have a booking to verify. Let's start over with a new appointment."
+            }
+            return responses.get(self.language_setting, responses["en"])
         
         if self._booking_data.booked:
             tz = self._tz()
             local_time = self._booking_data.selected_slot.start_time.astimezone(tz)
             formatted_time = local_time.strftime('%A, %B %d at %I:%M %p')
-            return f"Your booking is confirmed for {formatted_time}. You should receive a confirmation email shortly."
+            responses = {
+                "hi": f"आपकी बुकिंग {formatted_time} के लिए पक्की हो गई है। आपको जल्द ही एक पुष्टिकरण ईमेल प्राप्त होना चाहिए।",
+                "es": f"Su reserva está confirmada para el {formatted_time}. Debería recibir un correo electrónico de confirmación en breve.",
+                "en": f"Your booking is confirmed for {formatted_time}. You should receive a confirmation email shortly."
+            }
+            return responses.get(self.language_setting, responses["en"])
         
         # Try to check if the slot is still available
         try:
@@ -1318,13 +1387,28 @@ class UnifiedAgent(Agent):
                 tz = self._tz()
                 local_time = self._booking_data.selected_slot.start_time.astimezone(tz)
                 formatted_time = local_time.strftime('%A, %B %d at %I:%M %p')
-                return f"Good news! Your booking is confirmed for {formatted_time}. The slot is no longer available, which means it was successfully booked."
+                responses = {
+                    "hi": f"अच्छी खबर! आपकी बुकिंग {formatted_time} के लिए पक्की हो गई है। स्लॉट अब उपलब्ध नहीं है, जिसका मतलब है कि यह सफलतापूर्वक बुक हो गया था।",
+                    "es": f"¡Buenas noticias! Su reserva está confirmada para el {formatted_time}. El horario ya no está disponible, lo que significa que se reservó con éxito.",
+                    "en": f"Good news! Your booking is confirmed for {formatted_time}. The slot is no longer available, which means it was successfully booked."
+                }
+                return responses.get(self.language_setting, responses["en"])
             else:
-                return "The slot is still available, so the booking didn't go through. Would you like me to try booking it again?"
+                responses = {
+                    "hi": "स्लॉट अभी भी उपलब्ध है, इसलिए बुकिंग नहीं हुई। क्या आप चाहेंगे कि मैं इसे फिर से बुक करने का प्रयास करूं?",
+                    "es": "El horario todavía está disponible, por lo que la reserva no se realizó. ¿Le gustaría que intente reservarlo de nuevo?",
+                    "en": "The slot is still available, so the booking didn't go through. Would you like me to try booking it again?"
+                }
+                return responses.get(self.language_setting, responses["en"])
                 
         except Exception as e:
             logging.error("BOOKING_VERIFICATION_ERROR | error=%s", str(e))
-            return "I'm having trouble verifying the booking status. Would you like me to try booking again or pick a different time?"
+            responses = {
+                "hi": "मुझे बुकिंग की स्थिति सत्यापित करने में समस्या हो रही है। क्या आप चाहेंगे कि मैं फिर से बुकिंग करने का प्रयास करूं या कोई अन्य समय चुनूं?",
+                "es": "Tengo problemas para verificar el estado de la reserva. ¿Le gustaría que intente reservar de nuevo o prefiere elegir otro horario?",
+                "en": "I'm having trouble verifying the booking status. Would you like me to try booking again or pick a different time?"
+            }
+            return responses.get(self.language_setting, responses["en"])
 
     # ========== ANALYSIS TOOLS ==========
     
@@ -1335,7 +1419,12 @@ class UnifiedAgent(Agent):
                     field_name, field_value, field_type)
         
         if not field_name or not field_value:
-            return "I need both the field name and value to collect this information."
+            responses = {
+                "hi": "इस जानकारी को इकट्ठा करने के लिए मुझे फ़ील्ड का नाम और वैल्यू दोनों की आवश्यकता है।",
+                "es": "Necesito tanto el nombre del campo como el valor para recopilar esta información.",
+                "en": "I need both the field name and value to collect this information."
+            }
+            return responses.get(self.language_setting, responses["en"])
 
         # Format and store the analysis data
         # Format email addresses before storing in analysis data
@@ -1364,7 +1453,12 @@ class UnifiedAgent(Agent):
         logging.info("ANALYSIS_DATA_COLLECTED | field=%s | type=%s | total_fields=%d", 
                     field_name, field_type, len(self._analysis_data))
         
-        return f"okay"
+        responses = {
+            "hi": "ठीक है",
+            "es": "entendido",
+            "en": "okay"
+        }
+        return responses.get(self.language_setting, responses["en"])
 
     def get_analysis_data(self) -> dict[str, str]:
         """Get collected analysis data."""
@@ -1397,4 +1491,9 @@ class UnifiedAgent(Agent):
             dummy: Optional parameter (not used, required for schema compatibility).
         """
         self._reset_state()
-        return "Great! Let's start fresh. What day would you like to book an appointment?"
+        responses = {
+            "hi": "बहुत बढ़िया! चलिए नए सिरे से शुरू करते हैं। आप किस दिन अपॉइंटमेंट बुक करना चाहेंगे?",
+            "es": "¡Genial! Empecemos de nuevo. ¿Qué día le gustaría reservar una cita?",
+            "en": "Great! Let's start fresh. What day would you like to book an appointment?"
+        }
+        return responses.get(self.language_setting, responses["en"])

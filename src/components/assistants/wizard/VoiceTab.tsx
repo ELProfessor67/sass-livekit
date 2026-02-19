@@ -12,12 +12,73 @@ import { WizardSlider } from "./WizardSlider";
 
 interface VoiceTabProps {
   data: VoiceData;
+  language?: string;
   onChange: (data: Partial<VoiceData>) => void;
 }
 
-export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
+export const VoiceTab: React.FC<VoiceTabProps> = ({ data, language = "en", onChange }) => {
   const [advancedTimingOpen, setAdvancedTimingOpen] = useState(false);
   const [advancedInterruptionOpen, setAdvancedInterruptionOpen] = useState(false);
+
+  // Cartesia voices mapped by language
+  const CARTESIA_VOICES: Record<string, { value: string, label: string, description: string }[]> = {
+    "en": [
+      { value: "f9836c6e-a0bd-460e-9d3c-f7299fa60f94", label: "Caroline", description: "Female, Southern US" },
+      { value: "e07c00bc-4134-4eae-9ea4-1a55fb45746b", label: "Brooke", description: "Female, American" },
+      { value: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b", label: "Tessa", description: "Female, American" },
+      { value: "ec1e269e-9ca0-402f-8a18-58e0e022355a", label: "Ariana", description: "Female, American" },
+      { value: "565510e8-6b45-45de-8758-13588fbaec73", label: "Ray", description: "Male, Midwestern" },
+      { value: "607167f6-9bf2-473c-accc-ac7b3b66b30b", label: "Brenda", description: "Female, Southern" },
+      { value: "34575e71-908f-4ab6-ab54-b08c95d6597d", label: "Joey", description: "Male, New York" },
+      { value: "2f251ac3-89a9-4a77-a452-704b474ccd01", label: "Lucy", description: "Female, British" },
+      { value: "7ea5e9c2-b719-4dc3-b870-5ba5f14d31d8", label: "Janvi", description: "Female, Hindi Accent" },
+      { value: "f8f5f1b2-f02d-4d8e-a40d-fd850a487b3d", label: "Kiara", description: "Female, Hindi Accent" },
+      { value: "1259b7e3-cb8a-43df-9446-30971a46b8b0", label: "Devansh", description: "Male, Hindi Accent" },
+      { value: "41468051-3a85-4b68-92ad-64add250d369", label: "Cory", description: "Male, American" },
+      { value: "ee8b13e7-98af-4b15-89d1-8d402be10c94", label: "Carson", description: "Male, American" }
+    ],
+    "es": [
+      { value: "b0689631-eee7-4a6c-bb86-195f1d267c2e", label: "Emilio", description: "Male, Mexican" },
+      { value: "5c5ad5e7-1020-476b-8b91-fdcbe9cc313c", label: "Daniela", description: "Female, Mexican" },
+      { value: "162e0f37-8504-474c-bb33-c606c01890dc", label: "Catalina", description: "Female, Colombian" },
+      { value: "ccfea4bf-b3f4-421e-87ed-dd05dae01431", label: "Alondra", description: "Female, Castilian" },
+      { value: "02aeee94-c02b-456e-be7a-659672acf82d", label: "Benito", description: "Male, Castilian" }
+    ],
+    "pt": [
+      { value: "b0f46533-d4bb-493f-a26f-a99e1f2e86e3", label: "Heitor", description: "Male, Brazilian" },
+      { value: "d4b44b9a-82bc-4b65-b456-763fce4c52f9", label: "Beatriz", description: "Female, Portugal" }
+    ],
+    "fr": [
+      { value: "0418348a-0ca2-4e90-9986-800fb8b3bbc0", label: "Antoine", description: "Male, Parisian" },
+      { value: "ab636c8b-9960-4fb3-bb0c-b7b655fb9745", label: "Erwan", description: "Male, Parisian" },
+      { value: "ab7c61f5-3daa-47dd-a23b-4ac0aac5f5c3", label: "Friendly French Man", description: "Male, Parisian" }
+    ],
+    "de": [
+      { value: "38aabb6a-f52b-4fb0-a3d1-988518f4dc06", label: "Alina", description: "Female, German" },
+      { value: "b9de4a89-2257-424b-94c2-db18ba68c81a", label: "Viktoria", description: "Female, German" },
+      { value: "384b625b-da5d-49e8-a76d-a2855d4f31eb", label: "Thomas", description: "Male, German" },
+      { value: "afa425cf-5489-4a09-8a3f-d3cb1f82150d", label: "Nico", description: "Male, German" }
+    ],
+    "nl": [
+      { value: "0eb213fe-4658-45bc-9442-33a48b24b133", label: "Sanne", description: "Female, Dutch (Randstad)" }
+    ],
+    "it": [
+      { value: "d718e944-b313-4998-b011-d1cc078d4ef3", label: "Liv", description: "Female, Italian" },
+      { value: "79693aee-1207-4771-a01e-20c393c89e6f", label: "Marco", description: "Male, Italian" },
+      { value: "d609f27f-f1a4-410f-85bb-10037b4fba99", label: "Francesca", description: "Female, Italian" }
+    ],
+    "hi": [
+      { value: "bec003e2-3cb3-429c-8468-206a393c67ad", label: "Parvati", description: "Female, Hindi" },
+      { value: "56e35e2d-6eb6-4226-ab8b-9776515a7094", label: "Kavita", description: "Female, Hindi" },
+      { value: "7e8cb11d-37af-476b-ab8f-25da99b18644", label: "Anuj", description: "Male, Hindi" },
+      { value: "6303e5fb-a0a7-48f9-bb1a-dd42c216dc5d", label: "Sagar", description: "Male, Hindi" }
+    ],
+    "zh": [
+      { value: "e90c6678-f0d3-4767-9883-5d0ecf5894a8", label: "Yue", description: "Female, Chinese" },
+      { value: "653b9445-ae0c-4312-a3ce-375504cff31e", label: "Lie", description: "Male, Chinese" },
+      { value: "f9a4b3a6-b44b-469f-90e3-c8e19bd30e99", label: "Shuwen", description: "Female, Chinese" }
+    ]
+  };
 
   // Filter voices based on selected provider
   const getFilteredVoices = () => {
@@ -88,22 +149,23 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
           { value: "aura-asteria-en", label: "Aura Asteria" }
         ];
       case "Cartesia":
-        // Cartesia Sonic 3 voices with names
-        return [
-          { value: "41468051-3a85-4b68-92ad-64add250d369", label: "Cory" },
-          { value: "6c64b57a-bc65-48e4-bff4-12dbe85606cd", label: "Eloise" },
-          { value: "95d51f79-c397-46f9-b49a-23763d3eaa2d", label: "Arushi" },
-          { value: "9cebb910-d4b7-4a4a-85a4-12c79137724c", label: "Aarti" },
-          { value: "a01c369f-6d2d-4185-bc20-b32c225eab70", label: "Fiona" },
-          { value: "726d5ae5-055f-4c3d-8355-d9677de68937", label: "Troy" },
-          { value: "ce74c4da-4aee-435d-bc6d-81d1a9367e12", label: "Maroc" },
-          { value: "22f1a356-56c2-4428-bc91-2ab2e6d0c215", label: "Isabelle" },
-          { value: "ee8b13e7-98af-4b15-89d1-8d402be10c94", label: "Carson" },
-          { value: "5cad89c9-d88a-4832-89fb-55f2f16d13d3", label: "Brandon - Emotive" },
-          { value: "e07c00bc-4134-4eae-9ea4-1a55fb45746b", label: "Brooke - Emotive" },
-          { value: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b", label: "Tessa - Emotive" },
-          { value: "ec1e269e-9ca0-402f-8a18-58e0e022355a", label: "Ariana - Emotive" }
-        ];
+        // Handle combined and individual languages
+        const selectedLangs = language === "en-es" ? ["en", "es"] : [language];
+        let filteredCartesiaVoices: { value: string, label: string, description: string }[] = [];
+
+        selectedLangs.forEach(lang => {
+          if (CARTESIA_VOICES[lang]) {
+            filteredCartesiaVoices = [...filteredCartesiaVoices, ...CARTESIA_VOICES[lang]];
+          }
+        });
+
+        // Fallback to English if no matching language found or empty
+        if (filteredCartesiaVoices.length === 0) {
+          return CARTESIA_VOICES["en"];
+        }
+
+        return filteredCartesiaVoices;
+
       default:
         return [];
     }
@@ -230,21 +292,15 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
             { value: "aura-zeus-en", label: "Aura Zeus" }
           ];
         case "Cartesia":
-          return [
-            { value: "41468051-3a85-4b68-92ad-64add250d369", label: "Cory" },
-            { value: "6c64b57a-bc65-48e4-bff4-12dbe85606cd", label: "Eloise" },
-            { value: "95d51f79-c397-46f9-b49a-23763d3eaa2d", label: "Arushi" },
-            { value: "9cebb910-d4b7-4a4a-85a4-12c79137724c", label: "Aarti" },
-            { value: "a01c369f-6d2d-4185-bc20-b32c225eab70", label: "Fiona" },
-            { value: "726d5ae5-055f-4c3d-8355-d9677de68937", label: "Troy" },
-            { value: "ce74c4da-4aee-435d-bc6d-81d1a9367e12", label: "Maroc" },
-            { value: "22f1a356-56c2-4428-bc91-2ab2e6d0c215", label: "Isabelle" },
-            { value: "ee8b13e7-98af-4b15-89d1-8d402be10c94", label: "Carson" },
-            { value: "5cad89c9-d88a-4832-89fb-55f2f16d13d3", label: "Brandon - Emotive" },
-            { value: "e07c00bc-4134-4eae-9ea4-1a55fb45746b", label: "Brooke - Emotive" },
-            { value: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b", label: "Tessa - Emotive" },
-            { value: "ec1e269e-9ca0-402f-8a18-58e0e022355a", label: "Ariana - Emotive" }
-          ];
+          // Use the same logic as getFilteredVoices for consistency
+          const targetLangs = language === "en-es" ? ["en", "es"] : [language];
+          let cartesiaOptions: { value: string, label: string, description: string }[] = [];
+          targetLangs.forEach(lang => {
+            if (CARTESIA_VOICES[lang]) {
+              cartesiaOptions = [...cartesiaOptions, ...CARTESIA_VOICES[lang]];
+            }
+          });
+          return cartesiaOptions.length > 0 ? cartesiaOptions : CARTESIA_VOICES["en"];
         default:
           return [];
       }
@@ -315,8 +371,8 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
     if (value === "Deepgram" && filteredModels.length > 0) {
       updates.voice = updates.model || filteredModels[0].value;
     } else if (value === "Cartesia" && filteredVoices.length > 0) {
-      // For Cartesia, use first Sonic 3 voice
-      updates.voice = "41468051-3a85-4b68-92ad-64add250d369";
+      // For Cartesia, use first voice for the selected language
+      updates.voice = filteredVoices[0].value;
     } else if (!isCurrentVoiceValid && filteredVoices.length > 0) {
       updates.voice = filteredVoices[0].value;
     }
@@ -334,7 +390,8 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, onChange }) => {
 
     // For Cartesia, use first voice when model changes
     if (data.provider === "Cartesia") {
-      onChange({ model: value, voice: "41468051-3a85-4b68-92ad-64add250d369" });
+      const cartesiaVoices = getFilteredVoices();
+      onChange({ model: value, voice: cartesiaVoices.length > 0 ? cartesiaVoices[0].value : "" });
       return;
     }
 

@@ -234,8 +234,9 @@ export const SMSTab: React.FC<SMSTabProps> = ({ data, onChange }) => {
                   <SelectItem value="fr">French</SelectItem>
                   <SelectItem value="de">German</SelectItem>
                   <SelectItem value="nl">Dutch</SelectItem>
-                  <SelectItem value="no">Norwegian</SelectItem>
-                  <SelectItem value="ar">Arabic</SelectItem>
+                  <SelectItem value="it">Italian</SelectItem>
+                  <SelectItem value="hi">Hindi</SelectItem>
+                  <SelectItem value="zh">Chinese</SelectItem>
                 </SelectContent>
               </Select>
             </div>

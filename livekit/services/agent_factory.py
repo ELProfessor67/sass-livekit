@@ -80,10 +80,86 @@ class AgentFactory:
 
         # Add first message handling
         first_message = config.get("first_message", "")
+        language_setting = config.get("language_setting", "en")
+        
+        # Backend-level localization for default greetings if user hasn't customized them
+        default_greetings = {
+            "hi": "नमस्ते! मैं {name} बोल रही हूँ। मैं आज आपकी कैसे मदद कर सकती हूँ?",
+            "es": "¡Hola! Soy {name}. ¿En qué puedo ayudarle hoy?",
+            "pt": "Olá! Aqui é {name}. Como posso ajudar você hoje?",
+            "fr": "Bonjour! C'est {name}. Comment puis-je vous aider aujourd'hui?",
+            "de": "Hallo! Hier ist {name}. Wie kann ich Ihnen heute helfen?",
+            "nl": "Hallo! Met {name}. Waarmee kan ik u vandaag helpen?",
+            "it": "Ciao! Sono {name}. Come posso aiutarla oggi?",
+            "zh": "您好！我是 {name}。请问今天有什么可以帮您的吗？",
+            "en-es": "Hi! This is {name}. ¡Hola! Habla con {name}. How can I help you? ¿En qué puedo ayudarle?"
+        }
+        
+        known_english_defaults = [
+            "Hi! This is Helen from Dental Care. How may I help you today?",
+            "Hi! This is [Your Name] from [Your Company]. How may I help you today?",
+            "Hello, how can I help you today?",
+            "Hi, how are you today?",
+            "I'm still here if you need anything",
+            "Are you still there?",
+            "Did you have any other questions?",
+            ""
+        ]
+
+        # Robust English detection: if non-English language and message is pure ASCII with greeting keywords
+        is_english_looking = False
+        if first_message and all(ord(c) < 128 for c in first_message):
+            greeting_keywords = ["hi", "hello", "hey", "help you", "how are you", "this is"]
+            if any(keyword in first_message.lower() for keyword in greeting_keywords):
+                is_english_looking = True
+
+        # If language is not English and first_message is English-looking, translate it
+        if language_setting != "en" and (first_message in known_english_defaults or is_english_looking):
+            # Try to extract name/company if it's "this is X from Y" or "this is X"
+            name_part = "your assistant"
+            import re
+            name_match = re.search(r"(?:this is|i'm|i am)\s+([^.!?]+)", first_message, re.IGNORECASE)
+            if name_match:
+                name_part = name_match.group(1).strip()
+            
+            template = default_greetings.get(language_setting, "नमस्ते! मैं आपकी मदद कैसे कर सकता हूँ?")
+            # For Hindi specifically, if we can't find a template, use a generic Hindi one
+            if "{name}" in template:
+                translated_message = template.replace("{name}", name_part)
+            else:
+                translated_message = template
+                
+            first_message = translated_message
+            # CRITICAL: Update the config dict so main.py sees the translated message
+            config["first_message"] = first_message
+            logger.info(f"FIRST_MESSAGE_LOCALIZED_BACKEND | language={language_setting} | original={config.get('first_message', '')[:20]} | localized={first_message[:30]}...")
+
         force_first = os.getenv("FORCE_FIRST_MESSAGE", "true").lower() != "false"
         if force_first and first_message:
             instructions += f' IMPORTANT: Start the conversation by saying exactly: "{first_message}" Do not repeat or modify this greeting.'
             logger.info(f"FIRST_MESSAGE_SET | first_message={first_message}")
+
+        # Add language constraints to ensure the LLM responds in the correct language
+        language_names = {
+            "en": "English",
+            "es": "Spanish",
+            "pt": "Portuguese",
+            "fr": "French",
+            "de": "German",
+            "nl": "Dutch",
+            "it": "Italian",
+            "hi": "Hindi",
+            "zh": "Chinese",
+            "en-es": "English or Spanish as appropriate for the user's input"
+        }
+        lang_name = language_names.get(language_setting, "English")
+        instructions += f"\n\nLANGUAGE:\n- You MUST respond in {lang_name} at all times. "
+        if language_setting == "en-es":
+            instructions += "If the user speaks English, respond in English. If they speak Spanish, respond in Spanish."
+        else:
+            instructions += f"Even if the user speaks another language, you must stay in {lang_name}."
+        
+        logger.info(f"LANGUAGE_INSTRUCTIONS_ADDED | language={language_setting} | name={lang_name}")
 
         # Log final instructions for debugging
         # logger.info(f"FINAL_INSTRUCTIONS_LENGTH | length={len(instructions)}")
@@ -149,7 +225,8 @@ class AgentFactory:
             phone_number=config.get("phone_number"),
             prewarmed_llm=prewarmed_llm,
             prewarmed_tts=prewarmed_tts,
-            prewarmed_vad=prewarmed_vad
+            prewarmed_vad=prewarmed_vad,
+            language_setting=language_setting
         )
         
         logger.info("UNIFIED_AGENT_CREATED | rag_enabled=%s | calendar_enabled=%s", 

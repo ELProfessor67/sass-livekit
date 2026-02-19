@@ -1747,8 +1747,9 @@ class CallHandler:
             "fr": "fr",
             "de": "de",
             "nl": "nl",
-            "no": "no",
-            "ar": "ar"
+            "it": "it",
+            "hi": "hi",
+            "zh": "zh"
         }
         deepgram_language = language_mapping.get(language_setting, "en")
         
@@ -1788,7 +1789,7 @@ class CallHandler:
             # Map language codes for OpenAI Whisper
             whisper_language_mapping = {
                 "en": "en", "es": "es", "pt": "pt", "fr": "fr", 
-                "de": "de", "nl": "nl", "no": "no", "ar": "ar",
+                "de": "de", "nl": "nl", "it": "it", "hi": "hi", "zh": "zh",
                 "en-es": "en"  # Default to English for combined
             }
             whisper_language = whisper_language_mapping.get(language_setting, "en")
@@ -2091,7 +2092,14 @@ class CallHandler:
             cartesia_model = config.get("voice_model_setting", "sonic-3")  # From DB
             # Default to first Sonic 3 voice if not set
             cartesia_voice = config.get("voice_name_setting", "f9836c6e-a0bd-460e-9d3c-f7299fa60f94")  # From DB (default Sonic 3 voice)
-            cartesia_language = config.get("language_setting", "en")  # From DB
+            # Map language codes for Cartesia
+            cartesia_language_mapping = {
+                "en": "en", "es": "es", "pt": "pt", "fr": "fr",
+                "de": "de", "nl": "nl", "it": "it", "hi": "hi", "zh": "zh",
+                "en-es": "en"  # Default to English for combined
+            }
+            cartesia_language = cartesia_language_mapping.get(config.get("language_setting", "en"), "en")
+
             cartesia_speed = config.get("speed", 1.0)  # From DB
             cartesia_volume = config.get("volume", 1.0)  # From DB (if available)
             cartesia_emotion = config.get("emotion")  # From DB (optional)

@@ -739,8 +739,10 @@ const CreateAssistant = () => {
                     {activeTab === "voice" && (
                       <VoiceTab
                         data={formData.voice}
+                        language={formData.model.language}
                         onChange={(data) => handleFormDataChange('voice', data)}
                       />
+
                     )}
                     {activeTab === "sms" && (
                       <SMSTab
