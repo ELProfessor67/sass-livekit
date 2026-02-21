@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Badge } from '@/components/ui/badge';
 import {
     SidebarFilter,
     WorkflowSidebar
@@ -79,6 +80,37 @@ function ComposerContent() {
             <div className="container mx-auto px-6">
                 <div className="max-w-6xl mx-auto">
                     <ThemeSection spacing="lg">
+                        {/* Header */}
+                        <div className="flex flex-col space-y-[var(--space-md)] sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <div className="flex items-center gap-3">
+                                    <h1 className="text-[28px] font-light tracking-[0.2px] text-foreground">
+                                        Composer
+                                    </h1>
+                                    <Badge variant="secondary" className="text-xs">Beta</Badge>
+                                    <RoleSwitcher variant="compact" />
+                                </div>
+                                <p className="text-muted-foreground text-sm font-medium tracking-[0.1px] mt-1">
+                                    Compose and automate workflows for your operations
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-[var(--space-sm)]">
+                                <SearchInput
+                                    placeholder="Search workflows..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-64"
+                                />
+                                <Button
+                                    className="gap-2"
+                                    onClick={() => setShowCreateDialog(true)}
+                                >
+                                    <Plus weight="bold" size={16} />
+                                    Create
+                                </Button>
+                            </div>
+                        </div>
+
                         <ThemeCard variant="glass" className="flex rounded-3xl overflow-hidden min-h-[calc(100vh-14rem)] border border-white/5 shadow-2xl">
                             {/* Left Panel - Sidebar */}
                             <WorkflowSidebar
@@ -89,27 +121,6 @@ function ComposerContent() {
 
                             {/* Main Content Area */}
                             <div className="flex-1 flex flex-col min-w-0 bg-transparent">
-                                <header className="h-16 shrink-0 border-b border-border/10 bg-white/[0.02] backdrop-blur-xl px-8 flex items-center justify-between z-10">
-                                    <div className="flex items-center gap-4 flex-1 max-w-xl">
-                                        <SearchInput
-                                            placeholder="Search workflows..."
-                                            value={searchQuery}
-                                            onChange={(e) => setSearchQuery(e.target.value)}
-                                            className="bg-white/[0.03] border-border/10 h-9"
-                                        />
-                                    </div>
-
-                                    <div className="flex items-center gap-3">
-                                        <RoleSwitcher variant="compact" />
-                                        <button
-                                            onClick={() => setShowCreateDialog(true)}
-                                            className="h-9 px-4 rounded-xl flex items-center gap-2 bg-primary text-primary-foreground font-medium shadow-lg shadow-primary/20 hover:opacity-90 transition-all"
-                                        >
-                                            <Plus weight="bold" size={14} />
-                                            Create Workflow
-                                        </button>
-                                    </div>
-                                </header>
 
                                 {/* Scrollable Table Area */}
                                 <main className="flex-1 overflow-auto p-8">
@@ -187,7 +198,6 @@ export default function ComposerPage() {
     return (
         <AccountRoleProvider>
             <DashboardLayout>
-                <WorkflowsHeader />
                 <ComposerContent />
             </DashboardLayout>
         </AccountRoleProvider>

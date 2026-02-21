@@ -49,7 +49,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
     const defaultState: OnboardingState = {
       currentStep: 0,
-      totalSteps: 7,
+      totalSteps: 8,
       isCompleted,
       data: {
         companyName: "",
@@ -66,16 +66,18 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
     let initial: OnboardingState = saved ? JSON.parse(saved) : defaultState;
 
-    // Normalize legacy saved state (pre-pricing step) to ensure navigation works
+    // Normalize legacy saved state (pre-pricing/welcome step) to ensure navigation works
     if (!initial.data?.plan) {
       initial = {
         ...initial,
         data: { ...initial.data, plan: "starter" },
       };
     }
-    if (!initial.totalSteps || initial.totalSteps < 7) {
-      initial = { ...initial, totalSteps: 7 };
-    }
+
+    // Always force total steps to 8 to match our new flow
+    initial = { ...initial, totalSteps: 8 };
+
+    // Make sure we never exceed the bounds
     if (initial.currentStep > initial.totalSteps - 1) {
       initial = { ...initial, currentStep: initial.totalSteps - 1 };
     }
@@ -125,7 +127,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     localStorage.removeItem(COMPLETED_KEY);
     setState({
       currentStep: 0,
-      totalSteps: 7,
+      totalSteps: 8,
       isCompleted: false,
       data: {
         companyName: "",

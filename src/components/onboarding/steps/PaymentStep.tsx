@@ -24,10 +24,10 @@ const cardElementOptions = {
   style: {
     base: {
       fontSize: '16px',
-      color: '#ffffff',
-      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+      color: '#111827',
+      backgroundColor: 'transparent',
       '::placeholder': {
-        color: '#a1a1aa',
+        color: '#9ca3af',
       },
       padding: '12px 16px',
     },
@@ -114,14 +114,14 @@ function PaymentForm() {
 
       // Payment method created successfully
       console.log("Payment method created:", paymentMethod);
-      
+
       setPaymentSuccess(true);
-      
+
       // Extract card details for storage
       const cardDetails = paymentMethod.card;
-      
+
       // Update onboarding data with payment info and card details
-      updateData({ 
+      updateData({
         paymentMethodId: paymentMethod.id,
         cardBrand: cardDetails?.brand,
         cardLast4: cardDetails?.last4,
@@ -147,10 +147,10 @@ function PaymentForm() {
     return (
       <div className="space-y-[var(--space-2xl)]">
         <div className="text-center">
-          <h2 className="text-[var(--text-2xl)] font-[var(--font-semibold)] text-theme-primary mb-[var(--space-sm)]">
+          <h2 className="text-3xl font-bold text-gray-900 mb-[var(--space-sm)]">
             Complete Your Subscription
           </h2>
-          <p className="text-[var(--text-base)] text-theme-secondary">
+          <p className="text-lg text-gray-500">
             Loading plan details...
           </p>
         </div>
@@ -169,10 +169,10 @@ function PaymentForm() {
           <Check className="h-8 w-8 text-green-600" />
         </div>
         <div>
-          <h3 className="text-xl font-semibold text-theme-primary mb-2">
+          <h3 className="text-2xl font-bold text-gray-900 mb-2">
             Payment Successful!
           </h3>
-          <p className="text-theme-secondary">
+          <p className="text-lg text-gray-500">
             Your {selectedPlan.name} plan has been activated. Redirecting...
           </p>
         </div>
@@ -183,48 +183,48 @@ function PaymentForm() {
   return (
     <div className="space-y-[var(--space-2xl)]">
       <div className="text-center">
-        <h2 className="text-[var(--text-2xl)] font-[var(--font-semibold)] text-theme-primary mb-[var(--space-sm)]">
+        <h2 className="text-3xl font-bold text-gray-900 mb-[var(--space-sm)]">
           Complete Your Subscription
         </h2>
-        <p className="text-[var(--text-base)] text-theme-secondary">
+        <p className="text-lg text-gray-500">
           Enter your payment details to activate your {selectedPlan.name} plan
         </p>
       </div>
 
       <div className="grid md:grid-cols-2 gap-[var(--space-xl)]">
         {/* Plan Summary */}
-        <Card className="liquid-glass-light border-white/10">
+        <Card className="bg-white/60 border-2 border-gray-100 shadow-xl rounded-xl">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-theme-primary">
-              <CreditCard className="h-5 w-5" />
+            <CardTitle className="flex items-center gap-2 text-gray-900 text-xl">
+              <CreditCard className="h-5 w-5 text-[#668cff]" />
               Plan Summary
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="font-medium text-theme-primary">{selectedPlan.name} Plan</span>
-              <span className="text-2xl font-bold text-theme-primary">${selectedPlan.price}</span>
+            <div className="flex justify-between items-center text-lg">
+              <span className="font-semibold text-gray-900">{selectedPlan.name} Plan</span>
+              <span className="text-2xl font-bold text-[#668cff]">${selectedPlan.price}</span>
             </div>
-            <Separator />
+            <Separator className="bg-gray-200" />
             <div className="space-y-2">
-              <h4 className="font-medium text-theme-primary">What's included:</h4>
-              <ul className="space-y-1 text-sm text-theme-secondary">
+              <h4 className="font-semibold text-gray-900">What's included:</h4>
+              <ul className="space-y-2 text-sm text-gray-600">
                 {selectedPlan.features.map((feature, index) => (
                   <li key={index} className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
+                    <Check className="h-4 w-4 text-[#668cff] flex-shrink-0" />
                     {feature}
                   </li>
                 ))}
               </ul>
             </div>
-            <div className="pt-4 border-t border-white/10">
+            <div className="pt-4 border-t border-gray-200 mt-4">
               <div className="flex justify-between text-sm">
-                <span className="text-theme-secondary">Billing cycle</span>
-                <span className="text-theme-primary">Monthly</span>
+                <span className="text-gray-500">Billing cycle</span>
+                <span className="text-gray-900 font-medium">Monthly</span>
               </div>
-              <div className="flex justify-between text-sm mt-1">
-                <span className="text-theme-secondary">Next billing date</span>
-                <span className="text-theme-primary">
+              <div className="flex justify-between text-sm mt-2">
+                <span className="text-gray-500">Next billing date</span>
+                <span className="text-gray-900 font-medium">
                   {new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString()}
                 </span>
               </div>
@@ -233,10 +233,11 @@ function PaymentForm() {
         </Card>
 
         {/* Payment Form */}
-        <Card className="liquid-glass-light border-white/10">
+        <Card className="bg-white border-2 border-[#668cff]/20 shadow-xl shadow-[#668cff]/10 rounded-xl relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-[#668cff]" />
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-theme-primary">
-              <Lock className="h-5 w-5" />
+            <CardTitle className="flex items-center gap-2 text-gray-900 text-xl">
+              <Lock className="h-5 w-5 text-[#668cff]" />
               Payment Details
             </CardTitle>
           </CardHeader>
@@ -244,28 +245,28 @@ function PaymentForm() {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="email" className="text-theme-primary">
+                  <Label htmlFor="email" className="text-sm font-medium text-gray-700">
                     Email Address
                   </Label>
                   <Input
                     id="email"
                     type="email"
                     placeholder="your@email.com"
-                    className="mt-1 liquid-glass-light border-white/10"
+                    className="mt-1 h-12 bg-white/60 hover:bg-white focus:bg-white border-2 border-gray-100 focus:border-[#668cff] focus:ring-4 focus:ring-[#668cff]/10 transition-all rounded-xl text-gray-900"
                     value={billingEmail}
                     onChange={(e) => setBillingEmail(e.target.value)}
                     required
                   />
                 </div>
 
-                                 <div>
-                   <Label className="text-theme-primary">
-                     Card Information
-                   </Label>
-                   <div className="mt-2 p-4 liquid-glass-light border border-white/10 rounded-xl">
-                     <CardElement options={cardElementOptions} />
-                   </div>
-                 </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">
+                    Card Information
+                  </Label>
+                  <div className="mt-2 p-3 bg-white border-2 border-gray-100 focus-within:border-[#668cff] focus-within:ring-4 focus-within:ring-[#668cff]/10 transition-all rounded-xl">
+                    <CardElement options={cardElementOptions} />
+                  </div>
+                </div>
               </div>
 
               {paymentError && (
@@ -277,16 +278,16 @@ function PaymentForm() {
               <div className="flex gap-[var(--space-md)] pt-[var(--space-lg)]">
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   onClick={prevStep}
-                  className="liquid-glass-light hover:liquid-glass-medium flex-1"
+                  className="h-12 flex-1 rounded-xl border-2 border-gray-100 ring-0 hover:bg-gray-50 text-gray-600 font-medium"
                 >
                   Back
                 </Button>
                 <Button
                   type="submit"
                   disabled={!stripe || isProcessing}
-                  className="liquid-button flex-1"
+                  className="h-12 flex-1 rounded-xl bg-[#668cff] hover:bg-[#5a7ee6] shadow-lg shadow-[#668cff]/25 hover:shadow-xl hover:shadow-[#668cff]/35 transition-all duration-300 font-medium text-white"
                 >
                   {isProcessing ? "Processing..." : `Subscribe for $${selectedPlan.price}/month`}
                 </Button>
@@ -297,8 +298,8 @@ function PaymentForm() {
       </div>
 
       <div className="text-center">
-        <p className="text-xs text-theme-secondary flex items-center justify-center gap-2">
-          <Lock className="h-3 w-3" />
+        <p className="text-sm text-gray-500 flex items-center justify-center gap-2">
+          <Lock className="h-4 w-4" />
           Your payment information is secure and encrypted
         </p>
       </div>

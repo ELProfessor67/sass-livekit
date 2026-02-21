@@ -21,25 +21,25 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 const industries = [
-  "Technology", "Healthcare", "Finance", "Real Estate", "Education", 
-  "E-commerce", "Manufacturing", "Consulting", "Marketing", "Legal", 
+  "Technology", "Healthcare", "Finance", "Real Estate", "Education",
+  "E-commerce", "Manufacturing", "Consulting", "Marketing", "Legal",
   "Non-profit", "Government", "Other"
 ];
 
 const teamSizes = [
-  "Just me", "2-10 people", "11-50 people", "51-200 people", 
+  "Just me", "2-10 people", "11-50 people", "51-200 people",
   "201-1000 people", "1000+ people"
 ];
 
 const roles = [
-  "CEO/Founder", "Sales Manager", "Marketing Manager", "Operations Manager", 
-  "Customer Success", "Business Development", "Account Manager", "Team Lead", 
+  "CEO/Founder", "Sales Manager", "Marketing Manager", "Operations Manager",
+  "Customer Success", "Business Development", "Account Manager", "Team Lead",
   "Individual Contributor", "Other"
 ];
 
 export function BusinessProfileStep() {
   const { data, updateData, nextStep, prevStep } = useOnboarding();
-  
+
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -64,14 +64,12 @@ export function BusinessProfileStep() {
         className="text-center space-y-[var(--space-md)]"
       >
         <div className="flex justify-center mb-[var(--space-md)]">
-          <div className="p-[var(--space-md)] liquid-glass-light liquid-rounded-full">
-            <Building2 className="h-8 w-8 text-primary" />
-          </div>
+          <Building2 className="h-10 w-10 text-[#668cff]" />
         </div>
-        <h2 className="text-[var(--text-2xl)] font-[var(--font-bold)] text-theme-primary">
+        <h2 className="text-3xl font-bold text-gray-900">
           Tell us about your business
         </h2>
-        <p className="text-[var(--text-base)] text-theme-secondary max-w-xl mx-auto">
+        <p className="text-lg text-gray-500 max-w-xl mx-auto">
           This helps us customize your experience and show the most relevant features for your industry and role.
         </p>
       </motion.div>
@@ -89,14 +87,14 @@ export function BusinessProfileStep() {
                 name="companyName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-[var(--text-sm)] font-[var(--font-medium)] text-theme-primary">
+                    <FormLabel className="text-sm font-medium text-gray-700">
                       Company Name
                     </FormLabel>
                     <FormControl>
                       <Input
                         {...field}
                         placeholder="Enter your company name"
-                        className="liquid-glass-light border-white/10 focus:border-primary/30"
+                        className="h-12 bg-white/60 hover:bg-white focus:bg-white border-2 border-gray-100 focus:border-[#668cff] focus:ring-4 focus:ring-[#668cff]/10 transition-all rounded-xl text-gray-900"
                       />
                     </FormControl>
                     <FormMessage />
@@ -110,18 +108,22 @@ export function BusinessProfileStep() {
                   name="industry"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-[var(--text-sm)] font-[var(--font-medium)] text-theme-primary">
+                      <FormLabel className="text-sm font-medium text-gray-700">
                         Industry
                       </FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger className="liquid-glass-light border-white/10 focus:border-primary/30">
+                          <SelectTrigger className="h-12 bg-white/60 hover:bg-white focus:bg-white border-2 border-gray-100 focus:border-[#668cff] focus:ring-4 focus:ring-[#668cff]/10 transition-all rounded-xl text-gray-900 data-[state=open]:border-[#668cff]">
                             <SelectValue placeholder="Select industry" />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent className="liquid-glass-medium border-white/10">
+                        <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl p-1">
                           {industries.map((industry) => (
-                            <SelectItem key={industry} value={industry}>
+                            <SelectItem
+                              key={industry}
+                              value={industry}
+                              className="text-gray-700 focus:bg-[#668cff]/10 focus:text-[#668cff] cursor-pointer rounded-lg mb-1 last:mb-0"
+                            >
                               {industry}
                             </SelectItem>
                           ))}
@@ -137,18 +139,22 @@ export function BusinessProfileStep() {
                   name="teamSize"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-[var(--text-sm)] font-[var(--font-medium)] text-theme-primary">
+                      <FormLabel className="text-sm font-medium text-gray-700">
                         Team Size
                       </FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger className="liquid-glass-light border-white/10 focus:border-primary/30">
+                          <SelectTrigger className="h-12 bg-white/60 hover:bg-white focus:bg-white border-2 border-gray-100 focus:border-[#668cff] focus:ring-4 focus:ring-[#668cff]/10 transition-all rounded-xl text-gray-900 data-[state=open]:border-[#668cff]">
                             <SelectValue placeholder="Select team size" />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent className="liquid-glass-medium border-white/10">
+                        <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl p-1">
                           {teamSizes.map((size) => (
-                            <SelectItem key={size} value={size}>
+                            <SelectItem
+                              key={size}
+                              value={size}
+                              className="text-gray-700 focus:bg-[#668cff]/10 focus:text-[#668cff] cursor-pointer rounded-lg mb-1 last:mb-0"
+                            >
                               {size}
                             </SelectItem>
                           ))}
@@ -165,18 +171,22 @@ export function BusinessProfileStep() {
                 name="role"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-[var(--text-sm)] font-[var(--font-medium)] text-theme-primary">
+                    <FormLabel className="text-sm font-medium text-gray-700">
                       Your Role
                     </FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <SelectTrigger className="liquid-glass-light border-white/10 focus:border-primary/30">
+                        <SelectTrigger className="h-12 bg-white/60 hover:bg-white focus:bg-white border-2 border-gray-100 focus:border-[#668cff] focus:ring-4 focus:ring-[#668cff]/10 transition-all rounded-xl text-gray-900 data-[state=open]:border-[#668cff]">
                           <SelectValue placeholder="Select your role" />
                         </SelectTrigger>
                       </FormControl>
-                      <SelectContent className="liquid-glass-medium border-white/10">
+                      <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl p-1">
                         {roles.map((role) => (
-                          <SelectItem key={role} value={role}>
+                          <SelectItem
+                            key={role}
+                            value={role}
+                            className="text-gray-700 focus:bg-[#668cff]/10 focus:text-[#668cff] cursor-pointer rounded-lg mb-1 last:mb-0"
+                          >
                             {role}
                           </SelectItem>
                         ))}
@@ -191,15 +201,15 @@ export function BusinessProfileStep() {
             <div className="flex gap-[var(--space-md)] pt-[var(--space-lg)]">
               <Button
                 type="button"
-                variant="ghost"
+                variant="outline"
                 onClick={prevStep}
-                className="liquid-glass-light hover:liquid-glass-medium"
+                className="h-12 px-8 rounded-xl border-2 border-gray-100 hover:bg-gray-50 text-gray-600 font-medium"
               >
                 Back
               </Button>
               <Button
                 type="submit"
-                className="liquid-button flex-1"
+                className="h-12 flex-1 rounded-xl bg-[#668cff] hover:bg-[#5a7ee6] shadow-lg shadow-[#668cff]/25 hover:shadow-xl hover:shadow-[#668cff]/35 transition-all duration-300 font-medium text-white"
               >
                 Continue
               </Button>

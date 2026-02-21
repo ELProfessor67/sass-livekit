@@ -19,7 +19,7 @@ export function OnboardingComplete() {
     try {
       // Get signup data from localStorage
       const signupDataStr = localStorage.getItem("signup-data");
-      
+
       if (!signupDataStr) {
         // If no signup data, check if user is already authenticated (existing flow)
         if (!user?.id) {
@@ -50,7 +50,7 @@ export function OnboardingComplete() {
 
         // Extract tenant from hostname
         let tenant = extractTenantFromHostname();
-        
+
         // If tenant is not 'main', verify it exists
         if (tenant !== 'main') {
           try {
@@ -59,7 +59,7 @@ export function OnboardingComplete() {
               .select('slug_name')
               .eq('slug_name', tenant)
               .maybeSingle();
-            
+
             // If no tenant owner found, default to main
             if (!tenantOwner) {
               tenant = 'main';
@@ -76,12 +76,28 @@ export function OnboardingComplete() {
           password: signupData.password,
           options: {
             emailRedirectTo: redirectTo,
-            email_confirm: true, // Auto-confirm email, skip verification
+            email_confirm: true, // This confirms email server-side if using admin key, but client-side it requires the user to click a link unless disabled in Supabase settings
             data: {
               name: signupData.name,
               contactPhone: signupData.phone,
               countryCode: signupData.countryCode,
-              tenant: tenant // Include tenant in metadata so trigger can use it
+              tenant: tenant, // Include tenant in metadata so trigger can use it
+
+              // Onboarding data passed to the trigger
+              companyName: data.companyName,
+              industry: data.industry,
+              teamSize: data.teamSize,
+              role: data.role,
+              useCase: data.useCase,
+              theme: data.theme,
+              notifications: data.notifications,
+              goals: data.goals,
+              plan: data.plan,
+              stripePaymentMethodId: data.paymentMethodId,
+              cardBrand: data.cardBrand,
+              cardLast4: data.cardLast4,
+              cardExpMonth: data.cardExpMonth,
+              cardExpYear: data.cardExpYear
             }
           },
         });
@@ -105,152 +121,10 @@ export function OnboardingComplete() {
         throw new Error("User ID is required");
       }
 
-      // Calculate trial end date
-      const trialEndsAt = new Date();
-      trialEndsAt.setDate(trialEndsAt.getDate() + 7);
-      
-      // Save payment method if provided
-      if (data.paymentMethodId) {
-        try {
-          // Check if payment method already exists
-          const { data: existingPaymentMethod } = await (supabase as any)
-            .from('payment_methods')
-            .select('id')
-            .eq('stripe_payment_method_id', data.paymentMethodId)
-            .maybeSingle();
-
-          if (!existingPaymentMethod) {
-            // Extract card details from payment method data if available
-            const paymentMethodData: any = {
-              user_id: userId,
-              stripe_payment_method_id: data.paymentMethodId,
-              is_default: true,
-              is_active: true,
-            };
-
-            // Add optional fields if they exist in onboarding data
-            if (data.cardBrand) paymentMethodData.card_brand = data.cardBrand;
-            if (data.cardLast4) paymentMethodData.card_last4 = data.cardLast4;
-            if (data.cardExpMonth) paymentMethodData.card_exp_month = data.cardExpMonth;
-            if (data.cardExpYear) paymentMethodData.card_exp_year = data.cardExpYear;
-            if (signupData?.email || data.email) paymentMethodData.billing_email = signupData?.email || data.email;
-            if (signupData?.name || data.name) paymentMethodData.billing_name = signupData?.name || data.name;
-
-            const { error: paymentMethodError } = await (supabase as any)
-              .from('payment_methods')
-              .insert(paymentMethodData);
-
-            if (paymentMethodError) {
-              console.error('Error saving payment method:', paymentMethodError);
-              // Don't throw - continue with onboarding even if payment method save fails
-              toast({
-                title: "Payment method not saved",
-                description: "You can add a payment method later in settings.",
-                variant: "default",
-              });
-            } else {
-              console.log('Payment method saved successfully');
-            }
-          }
-        } catch (error) {
-          console.error('Error processing payment method:', error);
-          // Don't throw - continue with onboarding
-        }
-      }
-
-      // Determine tenant first (before creating userProfileData)
-      let finalTenant = 'main';
-      const tenantFromHost = extractTenantFromHostname();
-      if (tenantFromHost !== 'main') {
-        try {
-          const { data: tenantOwner } = await supabase
-            .from('users')
-            .select('slug_name')
-            .eq('slug_name', tenantFromHost)
-            .maybeSingle();
-          
-          if (tenantOwner) {
-            finalTenant = tenantFromHost;
-          }
-        } catch (error) {
-          console.warn('Error verifying tenant, defaulting to main:', error);
-        }
-      }
-
-      // Check if user is a white label admin (has slug_name)
-      // We need to preserve their admin role and slug_name
-      let userRole = data.role || "user";
-      let existingSlugName = null;
-      
-      // Check if user already exists (set by complete-signup endpoint)
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('slug_name, role')
-        .eq('id', userId)
-        .maybeSingle();
-      
-      if (existingUser?.slug_name) {
-        // If user has slug_name, they should be admin
-        userRole = 'admin';
-        existingSlugName = existingUser.slug_name;
-      }
-
-      // Create/update users table with all data (signup + onboarding)
-      const userProfileData: any = {
-        id: userId,
-        name: signupData?.name || user?.fullName || "",
-        company: data.companyName,
-        industry: data.industry,
-        team_size: data.teamSize,
-        role: userRole,
-        use_case: data.useCase,
-        theme: data.theme,
-        notifications: data.notifications,
-        goals: data.goals,
-        plan: data.plan,
-        minutes_limit: 0, // Start with 0 minutes - users purchase minutes separately
-        minutes_used: 0,
-        onboarding_completed: true,
-        contact: {
-          email: signupData?.email || user?.email || "",
-          phone: signupData?.phone || null,
-          countryCode: signupData?.countryCode || null,
-        },
-        is_active: true,
-      };
-
-      // Add trial_ends_at field
-      userProfileData.trial_ends_at = trialEndsAt.toISOString();
-
-      // Add white label fields if applicable
-      if (existingSlugName) {
-        // Preserve existing slug_name and set tenant to slug
-        userProfileData.slug_name = existingSlugName;
-        userProfileData.tenant = existingSlugName;
-      } else {
-        // Use the tenant we already determined
-        userProfileData.tenant = finalTenant;
-      }
-
-      // Try to upsert with trial_ends_at, if it fails (column doesn't exist), retry without it
-      let { error: profileError } = await supabase
-        .from("users")
-        .upsert(userProfileData);
-
-      // If error is about trial_ends_at column not existing, retry without it
-      if (profileError && profileError.message?.includes("trial_ends_at")) {
-        console.warn("trial_ends_at column does not exist, retrying without it");
-        const { trial_ends_at, ...userProfileDataWithoutTrial } = userProfileData;
-        const { error: retryError } = await supabase
-          .from("users")
-          .upsert(userProfileDataWithoutTrial);
-        
-        if (retryError) {
-          throw new Error(retryError.message);
-        }
-      } else if (profileError) {
-        throw new Error(profileError.message);
-      }
+      // Client-side inserts to `users` and `payment_methods` are removed.
+      // These are now handled securely by the `handle_new_auth_user` Postgres trigger
+      // upon successful `supabase.auth.signUp()` because the user is not automatically
+      // logged in on the client side (RLS would block it).
 
       // Mark onboarding as complete locally
       complete();
@@ -260,7 +134,7 @@ export function OnboardingComplete() {
 
       toast({
         title: "Welcome aboard! 🎉",
-        description: isNewUser 
+        description: isNewUser
           ? "Your account has been created successfully! Redirecting to login..."
           : "Your account has been set up successfully. Let's get started!",
       });
@@ -297,25 +171,17 @@ export function OnboardingComplete() {
       >
         <div className="flex justify-center mb-[var(--space-lg)]">
           <div className="relative">
-            <div className="p-[var(--space-lg)] liquid-glass-premium liquid-rounded-full">
-              <CheckCircle className="h-12 w-12 text-green-500" />
-            </div>
-            <motion.div
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ delay: 0.3, duration: 0.4 }}
-              className="absolute -top-2 -right-2 p-2 liquid-glass-medium liquid-rounded-full"
-            >
-              <Sparkles className="h-4 w-4 text-primary" />
-            </motion.div>
+            <CheckCircle className="h-12 w-12 text-green-500" />
+
+            <Sparkles className="h-4 w-4 text-primary" />
           </div>
         </div>
 
-        <h1 className="text-[var(--text-3xl)] font-[var(--font-bold)] text-theme-primary">
+        <h1 className="text-4xl font-bold text-gray-900 mb-[var(--space-md)]">
           You're all set!
         </h1>
-        
-        <p className="text-[var(--text-lg)] text-theme-secondary max-w-2xl mx-auto leading-relaxed">
+
+        <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
           Welcome to your personalized dashboard{(() => {
             const signupDataStr = localStorage.getItem("signup-data");
             if (signupDataStr) {
@@ -323,7 +189,7 @@ export function OnboardingComplete() {
               return `, ${signupData.name?.split(' ')[0] || 'there'}`;
             }
             return user?.fullName ? `, ${user.fullName.split(' ')[0]}` : '';
-          })()}. 
+          })()}.
           We've customized everything based on your preferences and business needs.
         </p>
       </motion.div>
@@ -332,26 +198,26 @@ export function OnboardingComplete() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.2 }}
-        className="max-w-md mx-auto space-y-[var(--space-md)]"
+        className="max-w-md mx-auto space-y-[var(--space-md)] mt-12"
       >
-        <h3 className="text-[var(--text-base)] font-[var(--font-semibold)] text-theme-primary mb-[var(--space-lg)]">
+        <h3 className="text-lg font-semibold text-gray-900 mb-[var(--space-lg)]">
           Setup Complete
         </h3>
-        
+
         {completedSteps.map((step, index) => (
           <motion.div
             key={step.title}
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.4, delay: 0.3 + index * 0.1 }}
-            className="flex items-center gap-[var(--space-md)] p-[var(--space-md)] liquid-glass-light liquid-rounded-lg"
+            className="flex items-center gap-[var(--space-md)] p-[var(--space-md)] bg-white/60 border-2 border-gray-100 rounded-xl"
           >
             <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
             <div className="text-left">
-              <p className="text-[var(--text-sm)] font-[var(--font-medium)] text-theme-primary">
+              <p className="text-sm font-medium text-gray-900">
                 {step.title}
               </p>
-              <p className="text-[var(--text-xs)] text-theme-secondary">
+              <p className="text-xs text-gray-500">
                 {step.description}
               </p>
             </div>
@@ -368,7 +234,7 @@ export function OnboardingComplete() {
         <Button
           onClick={handleComplete}
           size="lg"
-          className="liquid-button px-[var(--space-3xl)] py-[var(--space-lg)] text-[var(--text-base)] font-[var(--font-medium)]"
+          className="h-14 px-12 rounded-xl bg-[#668cff] hover:bg-[#5a7ee6] shadow-lg shadow-[#668cff]/25 hover:shadow-xl hover:shadow-[#668cff]/35 transition-all duration-300 font-medium text-white text-lg"
         >
           Enter Dashboard
         </Button>

@@ -211,9 +211,9 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
       <div className="lg:col-span-8 flex flex-col h-full">
         {/* Header Section */}
         <div className="mb-6">
-          <h2 className="text-[28px] font-light tracking-[0.2px] mb-2">Model Configuration</h2>
+          <h2 className="text-[28px] font-light tracking-[0.2px] mb-2">Assistant Intelligence </h2>
           <p className="text-base text-muted-foreground max-w-xl">
-            Configure your assistant's core AI model and behavior settings
+            Define how your assistant thinks and responds to create the perfect interaction experience
           </p>
         </div>
 
@@ -250,7 +250,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
       {/* Right Column - Sidebar */}
       <div className="lg:col-span-4">
         <div className="nested-section p-5 h-full">
-          <h3 className="text-lg font-semibold tracking-tight mb-4">Model Settings</h3>
+          <h3 className="text-lg font-semibold tracking-tight mb-4">Intelligence Settings</h3>
 
           <div className="space-y-4">
             {/* Provider */}

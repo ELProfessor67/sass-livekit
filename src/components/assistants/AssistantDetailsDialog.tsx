@@ -175,7 +175,11 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
     <ThemedDialog open={isOpen} onOpenChange={onClose}>
       <ThemedDialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <ThemedDialogHeader
-          title={assistant.name}
+          title={
+            <span className="text-white hover:text-blue-500 transition-colors">
+              {assistant.name}
+            </span>
+          }
           description={assistant.description}
         />
 

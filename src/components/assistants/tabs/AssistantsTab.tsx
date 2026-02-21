@@ -108,7 +108,7 @@ function AssistantCard({
           <h3
             onClick={handleTitleClick}
 
-            className="font-medium text-base text-primary group-hover:text-primary transition-colors line-clamp-2"
+            className="font-medium text-base text-white group-hover:text-blue-300 transition-colors line-clamp-2"
           >
             {assistant.name}
           </h3>

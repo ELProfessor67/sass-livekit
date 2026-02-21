@@ -36,17 +36,15 @@ export function OnboardingWelcome() {
         className="space-y-[var(--space-lg)]"
       >
         <div className="flex justify-center mb-[var(--space-lg)]">
-          <div className="p-[var(--space-lg)] liquid-glass-premium liquid-rounded-full">
-            <Sparkles className="h-12 w-12 text-primary" />
-          </div>
+          <Sparkles className="h-12 w-12 text-primary" />
         </div>
 
-        <h1 className="text-[var(--text-3xl)] font-[var(--font-bold)] text-theme-primary">
+        <h1 className="text-4xl md:text-5xl font-bold text-gray-900">
           Welcome to the Platform, {user?.fullName?.split(' ')[0] || 'there'}!
         </h1>
-        
-        <p className="text-[var(--text-lg)] text-theme-secondary max-w-2xl mx-auto leading-relaxed">
-          Let's get you set up with a personalized experience. We'll customize your dashboard, 
+
+        <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
+          Let's get you set up with a personalized experience. We'll customize your dashboard,
           terminology, and features based on your business needs.
         </p>
       </motion.div>
@@ -62,13 +60,13 @@ export function OnboardingWelcome() {
           return (
             <div
               key={feature.title}
-              className="p-[var(--space-xl)] liquid-glass-light hover:liquid-glass-medium transition-all duration-300 liquid-rounded-xl border border-white/5"
+              className="p-[var(--space-xl)] bg-[#668cff]/10 hover:bg-[#668cff]/15 transition-all duration-300 rounded-xl border border-[#668cff]/20"
             >
               <IconComponent className="h-8 w-8 text-primary mx-auto mb-[var(--space-md)]" />
-              <h3 className="text-[var(--text-base)] font-[var(--font-semibold)] text-theme-primary mb-[var(--space-sm)]">
+              <h3 className="text-lg font-semibold text-gray-900 mb-[var(--space-sm)]">
                 {feature.title}
               </h3>
-              <p className="text-[var(--text-sm)] text-theme-secondary leading-relaxed">
+              <p className="text-sm text-gray-600 leading-relaxed">
                 {feature.description}
               </p>
             </div>

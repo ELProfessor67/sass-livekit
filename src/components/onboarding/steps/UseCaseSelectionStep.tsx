@@ -29,14 +29,12 @@ export function UseCaseSelectionStep() {
         className="text-center space-y-[var(--space-md)]"
       >
         <div className="flex justify-center mb-[var(--space-md)]">
-          <div className="p-[var(--space-md)] liquid-glass-light liquid-rounded-full">
-            <Target className="h-8 w-8 text-primary" />
-          </div>
+          <Target className="h-10 w-10 text-[#668cff]" />
         </div>
-        <h2 className="text-[var(--text-2xl)] font-[var(--font-bold)] text-theme-primary">
+        <h2 className="text-3xl font-bold text-gray-900">
           Choose your primary use case
         </h2>
-        <p className="text-[var(--text-base)] text-theme-secondary max-w-xl mx-auto">
+        <p className="text-lg text-gray-500 max-w-xl mx-auto">
           This will customize your dashboard terminology, metrics, and outcomes to match your business needs.
         </p>
       </motion.div>
@@ -54,10 +52,10 @@ export function UseCaseSelectionStep() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: index * 0.1 }}
             className={`
-              p-[var(--space-xl)] liquid-rounded-xl border transition-all duration-300 cursor-pointer
+              p-[var(--space-xl)] rounded-xl border-2 transition-all duration-300 cursor-pointer
               ${data.useCase === key
-                ? 'liquid-glass-premium border-primary/30 shadow-[var(--shadow-glass-md)]'
-                : 'liquid-glass-light border-white/5 hover:liquid-glass-medium hover:border-white/10'
+                ? 'bg-[#668cff]/10 border-[#668cff] shadow-lg shadow-[#668cff]/10'
+                : 'bg-white/60 border-gray-100 hover:border-[#668cff]/40 hover:bg-white'
               }
             `}
             onClick={() => handleUseCaseSelect(key as BusinessUseCase)}
@@ -65,40 +63,40 @@ export function UseCaseSelectionStep() {
             <div className="flex items-start gap-[var(--space-lg)]">
               <div className="flex-1">
                 <div className="flex items-center gap-[var(--space-md)] mb-[var(--space-md)]">
-                  <h3 className="text-[var(--text-lg)] font-[var(--font-semibold)] text-theme-primary">
+                  <h3 className="text-xl font-semibold text-gray-900">
                     {config.name}
                   </h3>
                   {data.useCase === key && (
-                    <div className="p-1 liquid-glass-premium liquid-rounded-full">
-                      <Check className="h-4 w-4 text-primary" />
+                    <div className="p-1 bg-[#668cff]/20 rounded-full">
+                      <Check className="h-4 w-4 text-[#668cff]" />
                     </div>
                   )}
                 </div>
-                <p className="text-[var(--text-sm)] text-theme-secondary mb-[var(--space-lg)] leading-relaxed">
+                <p className="text-sm text-gray-600 mb-[var(--space-lg)] leading-relaxed">
                   {config.description}
                 </p>
-                
+
                 <div className="space-y-[var(--space-md)]">
                   <div>
-                    <h4 className="text-[var(--text-xs)] font-[var(--font-medium)] text-theme-primary mb-[var(--space-sm)] uppercase tracking-wider">
+                    <h4 className="text-xs font-semibold text-gray-900 mb-[var(--space-sm)] uppercase tracking-wider">
                       Key Metrics
                     </h4>
                     <div className="flex flex-wrap gap-[var(--space-xs)]">
                       {config.metrics.slice(0, 3).map((metric) => (
-                        <Badge key={metric.key} variant="outline" className="text-[var(--text-xs)] liquid-glass-light border-white/20">
+                        <Badge key={metric.key} variant="outline" className="text-xs bg-white border-gray-200 text-gray-700">
                           {metric.label}
                         </Badge>
                       ))}
                     </div>
                   </div>
-                  
+
                   <div>
-                    <h4 className="text-[var(--text-xs)] font-[var(--font-medium)] text-theme-primary mb-[var(--space-sm)] uppercase tracking-wider">
+                    <h4 className="text-xs font-semibold text-gray-900 mb-[var(--space-sm)] uppercase tracking-wider">
                       Primary Outcomes
                     </h4>
                     <div className="flex flex-wrap gap-[var(--space-xs)]">
                       {config.outcomes.slice(0, 3).map((outcome) => (
-                        <Badge key={outcome.key} variant="outline" className="text-[var(--text-xs)] liquid-glass-light border-white/20">
+                        <Badge key={outcome.key} variant="outline" className="text-xs bg-[#668cff]/10 border-[#668cff]/30 text-[#668cff]">
                           {outcome.label}
                         </Badge>
                       ))}
@@ -114,15 +112,15 @@ export function UseCaseSelectionStep() {
       <div className="flex gap-[var(--space-md)] pt-[var(--space-lg)]">
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           onClick={prevStep}
-          className="liquid-glass-light hover:liquid-glass-medium"
+          className="h-12 px-8 rounded-xl border-2 border-gray-100 hover:bg-gray-50 text-gray-600 font-medium"
         >
           Back
         </Button>
         <Button
           onClick={handleContinue}
-          className="liquid-button flex-1"
+          className="h-12 flex-1 rounded-xl bg-[#668cff] hover:bg-[#5a7ee6] shadow-lg shadow-[#668cff]/25 hover:shadow-xl hover:shadow-[#668cff]/35 transition-all duration-300 font-medium text-white"
           disabled={!data.useCase}
         >
           Continue

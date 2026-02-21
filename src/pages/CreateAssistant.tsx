@@ -634,9 +634,10 @@ const CreateAssistant = () => {
                   variant="ghost"
                   size="sm"
                   onClick={() => navigate("/assistants")}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="text-primary hover:text-primary/80"
                 >
-                  <ArrowLeft className="h-4 w-4" />
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back
                 </Button>
                 <div>
                   <div className="flex items-center gap-[var(--space-md)]">

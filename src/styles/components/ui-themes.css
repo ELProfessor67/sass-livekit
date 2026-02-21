@@ -262,12 +262,12 @@ html.minimal-ui body::after,
 /* Glass UI nested sections - matches glass-surface aesthetic */
 .glass-ui .nested-section {
   @apply rounded-2xl transition-all duration-200 backdrop-blur-xl;
-  background: linear-gradient(to bottom right, hsla(var(--card), 0.35), hsla(var(--card), 0.20));
+  background: linear-gradient(to bottom right, rgba(var(--card-rgb, 50, 55, 75), 0.35), rgba(var(--card-rgb, 50, 55, 75), 0.20));
   border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 .dark.glass-ui .nested-section {
-  background: linear-gradient(to bottom right, hsla(var(--card), 0.5), hsla(var(--card), 0.35));
+  background: linear-gradient(to bottom right, rgba(30, 35, 50, 0.5), rgba(30, 35, 50, 0.35));
   border-color: rgba(255, 255, 255, 0.15);
 }
 
@@ -357,9 +357,24 @@ html.minimal-ui body::after,
   @apply rounded-2xl backdrop-blur-lg bg-[hsl(var(--background)/0.24)] dark:bg-[hsl(var(--glass-bluish-heavy))] border border-[hsl(var(--glass-border-periwinkle-medium))] dark:border-[hsl(var(--glass-border-bluish-medium))] shadow-2xl transition-all duration-300;
 }
 
+.glass-ui .popover-glass {
+  @apply rounded-2xl backdrop-blur-lg bg-[hsl(var(--background)/0.24)] dark:bg-[hsl(var(--glass-bluish-heavy))] border border-[hsl(var(--glass-border-periwinkle-medium))] dark:border-[hsl(var(--glass-border-bluish-medium))] shadow-2xl transition-all duration-300;
+}
+
 /* Minimal UI Button Variants */
 .minimal-ui .btn-minimal {
   @apply bg-card border-border rounded-xl shadow-md hover:shadow-lg transition-all duration-300;
+}
+
+.minimal-ui .popover-minimal {
+  @apply bg-card border border-border rounded-2xl shadow-xl;
+  background: linear-gradient(135deg,
+      hsl(var(--card)) 0%,
+      hsl(var(--card) / 0.95) 100%);
+  border: 1px solid hsl(var(--border) / 0.8);
+  box-shadow:
+    0 10px 25px -5px hsl(var(--foreground) / 0.1),
+    0 4px 6px -2px hsl(var(--foreground) / 0.05);
 }
 
 .minimal-ui .popover-minimal {

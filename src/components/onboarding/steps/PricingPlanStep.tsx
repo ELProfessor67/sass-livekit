@@ -344,10 +344,10 @@ export function PricingPlanStep() {
     return (
       <div className="space-y-[var(--space-2xl)]">
         <div className="text-center">
-          <h2 className="text-[var(--text-2xl)] font-[var(--font-bold)] text-theme-primary">
+          <h2 className="text-3xl font-bold text-gray-900">
             Choose your plan
           </h2>
-          <p className="text-[var(--text-base)] text-theme-secondary max-w-xl mx-auto mt-4">
+          <p className="text-lg text-gray-500 max-w-xl mx-auto mt-4">
             Loading plans...
           </p>
         </div>
@@ -363,10 +363,10 @@ export function PricingPlanStep() {
         transition={{ duration: 0.6 }}
         className="text-center space-y-[var(--space-md)]"
       >
-        <h2 className="text-[var(--text-2xl)] font-[var(--font-bold)] text-theme-primary">
+        <h2 className="text-3xl font-bold text-gray-900">
           Choose your plan
         </h2>
-        <p className="text-[var(--text-base)] text-theme-secondary max-w-xl mx-auto">
+        <p className="text-lg text-gray-500 max-w-xl mx-auto">
           Start with a 7-day free trial. Pick a plan now; you can change it anytime.
         </p>
       </motion.div>
@@ -382,28 +382,31 @@ export function PricingPlanStep() {
             key={plan.key}
             type="button"
             onClick={() => setSelected(plan.key)}
-            className={`p-[var(--space-xl)] text-left liquid-rounded-xl border transition-all duration-200 ${selected === plan.key
-                ? "liquid-glass-premium border-white/20"
-                : "liquid-glass-light border-white/10 hover:liquid-glass-medium"
+            className={`p-[var(--space-xl)] text-left rounded-xl border-2 transition-all duration-300 ${selected === plan.key
+              ? "bg-[#668cff]/10 border-[#668cff] shadow-lg shadow-[#668cff]/10"
+              : "bg-white/60 border-gray-100 hover:border-[#668cff]/40 hover:bg-white"
               }`}
           >
             <div className="flex justify-between items-center mb-[var(--space-md)]">
-              <h3 className="text-[var(--text-lg)] font-[var(--font-semibold)] text-theme-primary">
+              <h3 className="text-xl font-semibold text-gray-900">
                 {plan.name}
               </h3>
-              <span className="text-[var(--text-base)] text-theme-primary/90">
+              <span className="text-base text-gray-700 font-medium">
                 {plan.price}/mo
               </span>
             </div>
 
-            <ul className="space-y-2 text-[var(--text-sm)] text-theme-secondary">
+            <ul className="space-y-2 text-sm text-gray-600">
               {plan.features.map((f) => (
-                <li key={f}>• {f}</li>
+                <li key={f} className="flex items-start">
+                  <span className="mr-2 text-[#668cff]">✓</span>
+                  {f}
+                </li>
               ))}
             </ul>
 
             <div className="mt-[var(--space-md)] space-y-1">
-              <div className="text-[var(--text-xs)] text-theme-secondary">
+              <div className="text-xs text-gray-500 font-medium">
                 Includes 7-day free trial
               </div>
             </div>
@@ -414,13 +417,17 @@ export function PricingPlanStep() {
       <div className="flex gap-[var(--space-md)] pt-[var(--space-lg)]">
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           onClick={prevStep}
-          className="liquid-glass-light hover:liquid-glass-medium"
+          className="h-12 px-8 rounded-xl border-2 border-gray-100 hover:bg-gray-50 text-gray-600 font-medium"
         >
           Back
         </Button>
-        <Button type="button" onClick={handleContinue} className="liquid-button flex-1">
+        <Button
+          type="button"
+          onClick={handleContinue}
+          className="h-12 flex-1 rounded-xl bg-[#668cff] hover:bg-[#5a7ee6] shadow-lg shadow-[#668cff]/25 hover:shadow-xl hover:shadow-[#668cff]/35 transition-all duration-300 font-medium text-white"
+        >
           Continue
         </Button>
       </div>

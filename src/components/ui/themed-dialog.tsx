@@ -27,8 +27,8 @@ interface ThemedDialogTriggerProps {
 }
 
 interface ThemedDialogHeaderProps {
-  title: string;
-  description?: string;
+  title: React.ReactNode;
+  description?: React.ReactNode;
   className?: string;
 }
 
