@@ -210,6 +210,9 @@ class UnifiedAgent(Agent):
             
         self.call_outcome_service = CallOutcomeService()
         
+        # Session reference for real-time speech generation
+        self._session = None
+        
         # Booking state - will be reset per conversation
         self._booking_data = BookingData()
         # Persistent booking data - preserved across resets for post-call processing
@@ -224,8 +227,11 @@ class UnifiedAgent(Agent):
         # Analysis data collection
         self._analysis_data: dict[str, str] = {}
         
-        # Concurrency guard for booking
+        # Concurrency and debounce state
         self._booking_inflight = False
+        self._last_slot_request: Optional[str] = None
+        self._last_slot_response: Optional[str] = None
+        self._last_slot_time: float = 0
         
         # Transfer configuration (will be set via set_transfer_config)
         self._transfer_config = {
@@ -251,6 +257,11 @@ class UnifiedAgent(Agent):
         
         logging.info("UNIFIED_AGENT_INITIALIZED | rag_enabled=%s | calendar_enabled=%s", 
                     bool(self.rag_service), bool(self.calendar))
+
+    def set_session(self, session):
+        """Set the agent session for real-time speech generation."""
+        self._session = session
+        logging.info("SESSION_SET_ON_AGENT | session_id=%s", id(session))
 
     def set_transfer_config(self, config: dict):
         """Set transfer configuration for this agent."""
@@ -279,6 +290,9 @@ class UnifiedAgent(Agent):
         self._transfer_requested = False
         self._booking_inflight = False
         self._call_timezone = None
+        self._last_slot_request = None
+        self._last_slot_response = None
+        self._last_slot_time = 0
         logging.info("STATE_RESET | All conversation state cleared")
 
     def _on_metrics_collected(self, event: MetricsCollectedEvent):
@@ -586,6 +600,36 @@ class UnifiedAgent(Agent):
         
         logging.info("list_slots_on_day START | day=%s | timeframe=%s | show_more=%s", day, timeframe, show_more)
         
+        # Simple debounce to prevent repetitive LLM tool calls from hitting API/speech twice
+        import time
+        current_request = f"{day}|{timeframe}|{show_more}"
+        if current_request == self._last_slot_request and (time.time() - self._last_slot_time < 5.0):
+            logging.info("list_slots_on_day DEBOUNCE | returning cached result")
+            return self._last_slot_response or "Searching..."
+        
+        self._last_slot_request = current_request
+        self._last_slot_time = time.time()
+
+        # Immediate filler speech to reduce perceived latency
+        if self._session:
+            # Localized filler phrases to reduce perceived latency
+            async def speak_filler():
+                import random
+                variations = {
+                    "en": ["Let me check that for you.", "Checking the schedule now.", "One moment while I see what's available.", "i'll get that for you"],
+                    "hi": ["मैं अभी चेक करके बताती हूँ।", "ज़रा रुकिए, मैं देख रही हूँ।"],
+                    "es": ["Dejeme revisar eso por usted.", "Consultando la disponibilidad ahora mismo."]
+                }
+                lang = self.language_setting if self.language_setting in variations else "en"
+                try:
+                    phrase = random.choice(variations[lang])
+                    logging.info("FILLER_SPOKEN | phrase='%s'", phrase)
+                    await self._session.say(phrase)
+                except Exception as e:
+                    logging.error(f"FILLER_SPEECH_ERROR | {e}")
+            
+            asyncio.create_task(speak_filler())
+        
         call_id = f"calendar_{ctx.room.name if hasattr(ctx, 'room') else 'unknown'}"
         
         async with measure_latency_context("calendar_list_slots", call_id, {
@@ -679,7 +723,12 @@ class UnifiedAgent(Agent):
                     return f"No slots found for {day}{timeframe_str}. Remember to offer checking another day or checking other times that day."
 
                 logging.info("SLOTS_LISTED | filtered=%d | displayed=%d | show_more=%s", len(filtered_slots), len(display_slots), show_more)
-                return "".join(response_parts)
+                
+                # Directive return value to prevent LLM from being repetitive
+                res_body = "\n".join(lines)
+                final_res = f"Available slots for {day} in {search_tz.key}:\n{res_body}\n\n(DIRECTIVE: Already said 'Let me check', just announce these slots concisely.)"
+                self._last_slot_response = final_res
+                return final_res
                 
             except asyncio.TimeoutError:
                 logging.warning(f"list_slots_on_day TIMEOUT | day={day}")

@@ -569,6 +569,10 @@ class CallHandler:
                 )
                 
                 agent = await agent_factory.create_agent(assistant_config)
+                
+                # Provide session to agent for real-time speech generation
+                if hasattr(agent, 'set_session'):
+                    agent.set_session(session)
 
             profiler.checkpoint("agent_created")
 

@@ -198,7 +198,8 @@ class AgentFactory:
                 "6. WAIT FOR TOOL: The tool will provide the final confirmation message. Do not make it up.\n\n"
                 "CRITICAL BOOKING RULES:\n"
                 "- INFO PRIORITY: Never list slots or ask for timezone until you have Name, Email, and Phone.\n"
-                "- TIMEZONE: You MUST resolve timezone before listing slots. Ask: 'What time zone are you in?' if not set. Do NOT assume UTC.\n"
+                "- TIMEZONE: Ensure timezone is resolved before listing slots. Once established (even if it's UTC), do NOT repetitively confirm it to the user.\n"
+                "- CONCISENESS: Just provide the requested information. Do not repeat 'We have established...' or similar redundant phrases.\n"
                 "- ONLY start booking if the user explicitly requests it.\n"
                 "- Do NOT call finalize_booking until you have: timezone, slot, name, email, and phone."
             )
