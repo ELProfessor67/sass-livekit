@@ -1857,9 +1857,12 @@ class CallHandler:
                 # Handle model mapping for decommissioned models
                 model_mapping = {
                     "llama3-8b-8192": "llama-3.1-8b-instant",
-                    "llama3-70b-8192": "llama-3.3-70b-versatile"
+                    "llama3-70b-8192": "llama-3.3-70b-versatile",
+                    "meta-llama/llama-4-maverick-17b-128e-instruct": "meta-llama/llama-4-maverick-17b-128e-instruct"
                 }
-                mapped_model = model_mapping.get(groq_model, groq_model)
+                # Use the passed model if available, otherwise check config or mapping
+                llm_model_name = model or groq_model
+                mapped_model = model_mapping.get(llm_model_name, llm_model_name)
                 
                 llm = lk_groq.LLM(
                     model=mapped_model,

@@ -407,6 +407,10 @@ def validate_model_names(config: Dict[str, Any]) -> Dict[str, Any]:
     elif llm_provider == "Cerebras" and llm_model not in valid_cerebras_models:
         logging.warning(f"INVALID_CEREBRAS_MODEL | model={llm_model} | using fallback=gpt-oss-120b")
         config["llm_model_setting"] = "gpt-oss-120b"
+    else:
+        # Final confirmation log for Groq/Cerebras
+        if llm_provider in ["Groq", "Cerebras"]:
+            logging.info(f"LLM_VALIDATION_PASSED | provider={llm_provider} | model={llm_model}")
     
     # Fix TTS model with mapping (like old implementation)
     voice_provider = config.get("voice_provider_setting", "OpenAI")
