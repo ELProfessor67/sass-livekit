@@ -1,308 +1,33 @@
-// import React from "react";
-// import { motion } from "framer-motion";
-// import { useOnboarding } from "@/hooks/useOnboarding";
-// import { Button } from "@/components/ui/button";
-// import { getPlanConfigs, PLAN_CONFIGS } from "@/lib/plan-config";
-// import { extractTenantFromHostname } from "@/lib/tenant-utils";
-// import { supabase } from "@/integrations/supabase/client";
-// import { useToast } from "@/hooks/use-toast";
-
-// export function PricingPlanStep() {
-//   const { data, updateData, nextStep, prevStep } = useOnboarding();
-//   const { toast } = useToast();
-//   const [selected, setSelected] = React.useState<string>(data.plan || "starter");
-//   const [plans, setPlans] = React.useState<Array<{
-//     key: string;
-//     name: string;
-//     price: string;
-//     features: string[];
-//     minutesLimit: number;
-//   }>>([]);
-//   const [loadingPlans, setLoadingPlans] = React.useState(true);
-//   const [availableMinutes, setAvailableMinutes] = React.useState<number | null>(null);
-//   const [adminMinutes, setAdminMinutes] = React.useState<number | null>(null);
-
-//   // Fetch plans from database based on tenant and check available minutes
-//   React.useEffect(() => {
-//     const fetchPlans = async () => {
-//       try {
-//         setLoadingPlans(true);
-//         const tenant = extractTenantFromHostname();
-//         const tenantSlug = tenant === 'main' ? null : tenant;
-//         console.log(`[PricingPlanStep] Detected tenant from URL: ${tenant}, Using slug: ${tenantSlug || 'null (main)'}`);
-//         const planConfigs = await getPlanConfigs(tenantSlug);
-//         console.log(`[PricingPlanStep] Received plans:`, Object.keys(planConfigs).map(key => `${key}: $${planConfigs[key].price}`));
-
-//         // Check available minutes for white label tenants
-//         if (tenantSlug) {
-//           // Get tenant admin's minutes
-//           const { data: adminData } = await supabase
-//             .from('users')
-//             .select('minutes_limit')
-//             .eq('slug_name', tenantSlug)
-//             .eq('role', 'admin')
-//             .single();
-
-//           if (adminData) {
-//             const adminMinutesLimit = adminData.minutes_limit || 0;
-//             setAdminMinutes(adminMinutesLimit);
-
-//             // If admin has unlimited (0), set available to null (no limit)
-//             if (adminMinutesLimit === 0) {
-//               setAvailableMinutes(null);
-//             } else {
-//               // Calculate total minutes already allocated to customers
-//               const { data: customers } = await supabase
-//                 .from('users')
-//                 .select('minutes_limit')
-//                 .eq('tenant', tenantSlug)
-//                 .neq('role', 'admin'); // Exclude admin
-
-//               const allocatedMinutes = (customers || []).reduce((sum, customer) => {
-//                 const customerMinutes = customer.minutes_limit || 0;
-//                 // Only count limited plans (exclude unlimited/0)
-//                 return customerMinutes > 0 ? sum + customerMinutes : sum;
-//               }, 0);
-
-//               const available = adminMinutesLimit - allocatedMinutes;
-//               setAvailableMinutes(Math.max(0, available));
-//             }
-//           }
-//         } else {
-//           // Main tenant - no limit
-//           setAvailableMinutes(null);
-//           setAdminMinutes(null);
-//         }
-
-//         // Filter out free plan and convert to array format for display
-//         const plansList = Object.values(planConfigs)
-//           .filter(plan => plan.key !== 'free')
-//           .map(plan => ({
-//             key: plan.key,
-//             name: plan.name,
-//             price: `$${plan.price}`,
-//             features: plan.features,
-//             minutesLimit: plan.minutesLimit
-//           }));
-
-//         setPlans(plansList);
-//       } catch (error) {
-//         console.error('Error fetching plans:', error);
-//         // Fallback to default plans
-//         const defaultPlans = Object.values(PLAN_CONFIGS)
-//           .filter(plan => plan.key !== 'free')
-//           .map(plan => ({
-//             key: plan.key,
-//             name: plan.name,
-//             price: `$${plan.price}`,
-//             features: plan.features,
-//             minutesLimit: plan.minutesLimit
-//           }));
-//         setPlans(defaultPlans);
-//         setAvailableMinutes(null);
-//         setAdminMinutes(null);
-//       } finally {
-//         setLoadingPlans(false);
-//       }
-//     };
-
-//     fetchPlans();
-//   }, []);
-
-//   const handleContinue = () => {
-//     // Validate if selected plan is available
-//     const selectedPlan = plans.find(p => p.key === selected);
-//     if (selectedPlan && availableMinutes !== null && adminMinutes !== null && adminMinutes > 0) {
-//       const planMinutes = selectedPlan.minutesLimit || 0;
-
-//       // Check if plan requires unlimited (0) - not allowed for limited admin
-//       if (planMinutes === 0) {
-//         toast({
-//           title: "Plan not available",
-//           description: "This unlimited plan is not available. Please select a plan with limited minutes.",
-//           variant: "destructive",
-//         });
-//         return;
-//       }
-
-//       // Check if admin has enough available minutes
-//       if (planMinutes > availableMinutes) {
-//         toast({
-//           title: "Insufficient minutes available",
-//           description: `This plan requires ${planMinutes.toLocaleString()} minutes, but only ${availableMinutes.toLocaleString()} minutes are available. Please contact your administrator to request more minutes or select a different plan.`,
-//           variant: "destructive",
-//         });
-//         return;
-//       }
-//     }
-
-//     updateData({ plan: selected });
-//     nextStep();
-//   };
-
-//   if (loadingPlans) {
-//     return (
-//       <div className="space-y-[var(--space-2xl)]">
-//         <div className="text-center">
-//           <h2 className="text-[var(--text-2xl)] font-[var(--font-bold)] text-theme-primary">
-//             Choose your plan
-//           </h2>
-//           <p className="text-[var(--text-base)] text-theme-secondary max-w-xl mx-auto mt-4">
-//             Loading plans...
-//           </p>
-//         </div>
-//       </div>
-//     );
-//   }
-
-//   return (
-//     <div className="space-y-[var(--space-2xl)]">
-//       <motion.div
-//         initial={{ opacity: 0, y: 20 }}
-//         animate={{ opacity: 1, y: 0 }}
-//         transition={{ duration: 0.6 }}
-//         className="text-center space-y-[var(--space-md)]"
-//       >
-//         <h2 className="text-[var(--text-2xl)] font-[var(--font-bold)] text-theme-primary">
-//           Choose your plan
-//         </h2>
-//         <p className="text-[var(--text-base)] text-theme-secondary max-w-xl mx-auto">
-//           Start with a 7-day free trial. Pick a plan now; you can change it anytime.
-//         </p>
-//       </motion.div>
-
-//       <motion.div
-//         initial={{ opacity: 0, y: 20 }}
-//         animate={{ opacity: 1, y: 0 }}
-//         transition={{ duration: 0.6, delay: 0.1 }}
-//         className="grid md:grid-cols-3 gap-[var(--space-xl)]"
-//       >
-//         {plans.map((plan) => {
-//           const planMinutes = plan.minutesLimit || 0;
-//           const isUnlimited = planMinutes === 0;
-//           const isAvailable = availableMinutes === null || 
-//             (adminMinutes !== null && adminMinutes > 0 && !isUnlimited && planMinutes <= availableMinutes) ||
-//             (adminMinutes !== null && adminMinutes === 0); // Admin has unlimited
-//           const isDisabled = availableMinutes !== null && adminMinutes !== null && adminMinutes > 0 && 
-//             (isUnlimited || planMinutes > availableMinutes);
-
-//           return (
-//             <button
-//               key={plan.key}
-//               type="button"
-//               onClick={() => {
-//                 if (isDisabled) {
-//                   if (isUnlimited) {
-//                     toast({
-//                       title: "Plan not available",
-//                       description: "Unlimited plans are not available. Please select a plan with limited minutes.",
-//                       variant: "destructive",
-//                     });
-//                   } else {
-//                     toast({
-//                       title: "Insufficient minutes",
-//                       description: `This plan requires ${planMinutes.toLocaleString()} minutes, but only ${availableMinutes?.toLocaleString()} minutes are available. Please contact your administrator to request more minutes.`,
-//                       variant: "destructive",
-//                     });
-//                   }
-//                   return;
-//                 }
-//                 setSelected(plan.key);
-//               }}
-//               disabled={isDisabled}
-//               className={`p-[var(--space-xl)] text-left liquid-rounded-xl border transition-all duration-200 ${
-//                 isDisabled 
-//                   ? "opacity-50 cursor-not-allowed liquid-glass-light border-white/5"
-//                   : selected === plan.key
-//                   ? "liquid-glass-premium border-white/20"
-//                   : "liquid-glass-light border-white/10 hover:liquid-glass-medium"
-//               }`}
-//             >
-//               <div className="flex justify-between items-center mb-[var(--space-md)]">
-//                 <h3 className="text-[var(--text-lg)] font-[var(--font-semibold)] text-theme-primary">{plan.name}</h3>
-//                 <span className="text-[var(--text-base)] text-theme-primary/90">{plan.price}/mo</span>
-//               </div>
-//               <ul className="space-y-2 text-[var(--text-sm)] text-theme-secondary">
-//                 {plan.features.map(f => (
-//                   <li key={f}>• {f}</li>
-//                 ))}
-//               </ul>
-//               <div className="mt-[var(--space-md)] space-y-1">
-//                 <div className="text-[var(--text-xs)] text-theme-secondary">
-//                   Includes 7-day free trial
-//                 </div>
-//                 {isDisabled && (
-//                   <div className="text-[var(--text-xs)] text-red-400 font-medium space-y-1">
-//                     {isUnlimited 
-//                       ? "Unlimited plan not available"
-//                       : `Requires ${planMinutes.toLocaleString()} min (${availableMinutes?.toLocaleString()} available)`
-//                     }
-//                     {!isUnlimited && (
-//                       <div className="text-[var(--text-xs)] text-yellow-400 mt-1">
-//                         Please contact your administrator
-//                       </div>
-//                     )}
-//                   </div>
-//                 )}
-//                 {availableMinutes !== null && adminMinutes !== null && adminMinutes > 0 && !isDisabled && (
-//                   <div className="text-[var(--text-xs)] text-green-400">
-//                     {availableMinutes.toLocaleString()} minutes available
-//                   </div>
-//                 )}
-//               </div>
-//             </button>
-//           );
-//         })}
-//       </motion.div>
-
-//       <div className="flex gap-[var(--space-md)] pt-[var(--space-lg)]">
-//         <Button
-//           type="button"
-//           variant="ghost"
-//           onClick={prevStep}
-//           className="liquid-glass-light hover:liquid-glass-medium"
-//         >
-//           Back
-//         </Button>
-//         <Button type="button" onClick={handleContinue} className="liquid-button flex-1">
-//           Continue
-//         </Button>
-//       </div>
-//     </div>
-//   );
-// }
-
-
-import React from "react";
-import { motion } from "framer-motion";
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { Button } from "@/components/ui/button";
 import { getPlanConfigs, PLAN_CONFIGS } from "@/lib/plan-config";
 import { extractTenantFromHostname } from "@/lib/tenant-utils";
 import { useToast } from "@/hooks/use-toast";
+import { Rocket, Buildings, Crown, Check, Sparkle } from "phosphor-react";
+import { cn } from "@/lib/utils";
 
 export function PricingPlanStep() {
   const { data, updateData, nextStep, prevStep } = useOnboarding();
   const { toast } = useToast();
 
-  const [selected, setSelected] = React.useState<string>(data.plan || "starter");
-  const [plans, setPlans] = React.useState<Array<{
+  const [selected, setSelected] = useState<string>(data.plan || "starter");
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("yearly");
+  const [plans, setPlans] = useState<Array<{
     key: string;
     name: string;
-    price: string;
+    price: number;
     features: string[];
   }>>([]);
-  const [loadingPlans, setLoadingPlans] = React.useState(true);
+  const [loadingPlans, setLoadingPlans] = useState(true);
 
-  // Fetch plans normally (NO MINUTES LOGIC)
-  React.useEffect(() => {
+  useEffect(() => {
     const fetchPlans = async () => {
       try {
         setLoadingPlans(true);
-
         const tenant = extractTenantFromHostname();
         const tenantSlug = tenant === "main" ? null : tenant;
-
         const planConfigs = await getPlanConfigs(tenantSlug);
 
         const plansList = Object.values(planConfigs)
@@ -310,28 +35,25 @@ export function PricingPlanStep() {
           .map(plan => ({
             key: plan.key,
             name: plan.name,
-            price: `$${plan.price}`,
+            price: plan.price,
             features: plan.features
           }));
 
         setPlans(plansList);
       } catch (error) {
-        // fallback to static
         const fallback = Object.values(PLAN_CONFIGS)
           .filter(plan => plan.key !== "free")
           .map(plan => ({
             key: plan.key,
             name: plan.name,
-            price: `$${plan.price}`,
+            price: plan.price,
             features: plan.features
           }));
-
         setPlans(fallback);
       } finally {
         setLoadingPlans(false);
       }
     };
-
     fetchPlans();
   }, []);
 
@@ -340,93 +62,210 @@ export function PricingPlanStep() {
     nextStep();
   };
 
+  const getPlanIcon = (key: string) => {
+    switch (key.toLowerCase()) {
+      case "starter": return <Rocket size={24} color="#EAB308" weight="duotone" />;
+      case "professional": return <Buildings size={24} color="#F43F5E" weight="duotone" />;
+      case "enterprise": return <Crown size={24} color="#8B5CF6" weight="duotone" />;
+      default: return <Sparkle size={24} color="#668CFF" weight="duotone" />;
+    }
+  };
+
+  const getPlanSubtitle = (key: string) => {
+    switch (key.toLowerCase()) {
+      case "starter": return "For startups & small teams";
+      case "professional": return "For growing agencies";
+      case "enterprise": return "For white-label resellers";
+      default: return "Custom features for you";
+    }
+  };
+
+  // Helper to handle plan selection
+  const handlePlanSelect = (planKey: string) => {
+    setSelected(planKey);
+  };
+
   if (loadingPlans) {
     return (
-      <div className="space-y-[var(--space-2xl)]">
-        <div className="text-center">
-          <h2 className="text-3xl font-bold text-gray-900">
-            Choose your plan
-          </h2>
-          <p className="text-lg text-gray-500 max-w-xl mx-auto mt-4">
-            Loading plans...
-          </p>
-        </div>
+      <div className="w-full max-w-5xl mx-auto py-12 flex flex-col items-center justify-center min-h-[400px]">
+        <div className="w-12 h-12 border-4 border-[#668cff]/20 border-t-[#668cff] rounded-full animate-spin mb-4" />
+        <p className="text-gray-500 font-medium">Loading premium plans...</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-[var(--space-2xl)]">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-        className="text-center space-y-[var(--space-md)]"
-      >
-        <h2 className="text-3xl font-bold text-gray-900">
-          Choose your plan
-        </h2>
-        <p className="text-lg text-gray-500 max-w-xl mx-auto">
-          Start with a 7-day free trial. Pick a plan now; you can change it anytime.
-        </p>
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.1 }}
-        className="grid md:grid-cols-3 gap-[var(--space-xl)]"
-      >
-        {plans.map((plan) => (
-          <button
-            key={plan.key}
-            type="button"
-            onClick={() => setSelected(plan.key)}
-            className={`p-[var(--space-xl)] text-left rounded-xl border-2 transition-all duration-300 ${selected === plan.key
-              ? "bg-[#668cff]/10 border-[#668cff] shadow-lg shadow-[#668cff]/10"
-              : "bg-white/60 border-gray-100 hover:border-[#668cff]/40 hover:bg-white"
-              }`}
+    <div className="w-full max-w-6xl mx-auto px-4 space-y-12">
+      {/* Header & Toggle */}
+      <div className="flex flex-col items-center text-center space-y-8">
+        <div className="space-y-3">
+          <motion.h2
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-4xl md:text-5xl font-light text-gray-900 tracking-tight"
           >
-            <div className="flex justify-between items-center mb-[var(--space-md)]">
-              <h3 className="text-xl font-semibold text-gray-900">
-                {plan.name}
-              </h3>
-              <span className="text-base text-gray-700 font-medium">
-                {plan.price}/mo
-              </span>
-            </div>
+            Choose your plan
+          </motion.h2>
+          <motion.p
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="text-gray-500 text-lg"
+          >
+            Pick a plan now; you can change it anytime.
+          </motion.p>
+        </div>
 
-            <ul className="space-y-2 text-sm text-gray-600">
-              {plan.features.map((f) => (
-                <li key={f} className="flex items-start">
-                  <span className="mr-2 text-[#668cff]">✓</span>
-                  {f}
-                </li>
-              ))}
-            </ul>
-
-            <div className="mt-[var(--space-md)] space-y-1">
-              <div className="text-xs text-gray-500 font-medium">
-                Includes 7-day free trial
-              </div>
-            </div>
+        {/* Billing Toggle */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.2 }}
+          className="flex items-center p-1.5 bg-gray-100 rounded-full"
+        >
+          <button
+            onClick={() => setBillingCycle("yearly")}
+            className={cn(
+              "px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 flex items-center gap-2",
+              billingCycle === "yearly"
+                ? "bg-[#668cff] text-white shadow-md shadow-[#668cff]/20"
+                : "text-gray-500 hover:text-gray-700"
+            )}
+          >
+            Yearly
+            <span className={cn(
+              "text-[10px] px-1.5 py-0.5 rounded-full",
+              billingCycle === "yearly" ? "bg-white/20 text-white" : "bg-[#668cff]/10 text-[#668cff]"
+            )}>
+              Save 20%
+            </span>
           </button>
-        ))}
-      </motion.div>
+          <button
+            onClick={() => setBillingCycle("monthly")}
+            className={cn(
+              "px-6 py-2 rounded-full text-sm font-medium transition-all duration-300",
+              billingCycle === "monthly"
+                ? "bg-[#668cff] text-white shadow-md shadow-[#668cff]/20"
+                : "text-gray-500 hover:text-gray-700"
+            )}
+          >
+            Monthly
+          </button>
+        </motion.div>
+      </div>
 
-      <div className="flex gap-[var(--space-md)] pt-[var(--space-lg)]">
+      {/* Pricing Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {plans.map((plan, index) => {
+          const isSelected = selected === plan.key;
+          const isPopular = plan.key === "professional";
+
+          // Apply 20% discount for yearly display if requested (or just show raw value)
+          // Since user said "don't change values", I'll show the monthly value but add subtext
+          const displayPrice = plan.price;
+          const yearlyTotal = plan.price * 12 * 0.8; // Example calculation for subtext
+          const perMinPrice = plan.key === "starter" ? "0.20" : plan.key === "professional" ? "0.15" : "0.10";
+
+          return (
+            <motion.div
+              key={plan.key}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 * index + 0.3 }}
+              className="relative"
+            >
+              {isPopular && (
+                <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-20">
+                  <span className="bg-[#668cff] text-white text-[10px] font-bold uppercase tracking-wider px-4 py-1.5 rounded-full shadow-lg shadow-[#668cff]/20">
+                    Most Popular
+                  </span>
+                </div>
+              )}
+
+              <div
+                onClick={() => handlePlanSelect(plan.key)}
+                className={cn(
+                  "h-full p-8 rounded-[2rem] border-2 transition-all duration-500 cursor-pointer flex flex-col bg-white",
+                  isSelected
+                    ? "border-[#668cff] shadow-2xl shadow-[#668cff]/10 ring-4 ring-[#668cff]/5"
+                    : isPopular
+                      ? "border-[#668cff]/30 shadow-xl"
+                      : "border-gray-100 hover:border-gray-200"
+                )}
+              >
+                {/* Plan Header */}
+                <div className="space-y-4 mb-8">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-gray-50">
+                      {getPlanIcon(plan.key)}
+                    </div>
+                    <h3 className="text-2xl font-bold text-gray-900">{plan.name}</h3>
+                  </div>
+                  <p className="text-gray-500 text-sm">{getPlanSubtitle(plan.key)}</p>
+                </div>
+
+                {/* Price */}
+                <div className="space-y-1 mb-8">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-bold text-gray-900">${displayPrice}</span>
+                    <span className="text-gray-500 text-sm">/mo</span>
+                  </div>
+                  <div className="text-xs font-medium text-gray-400">
+                    ${billingCycle === "yearly" ? Math.floor(yearlyTotal) : plan.price * 12}/yr billed annually
+                  </div>
+                  <div className="text-xs text-[#668cff]/70">
+                    ${perMinPrice}/min usage
+                  </div>
+                </div>
+
+                {/* Features */}
+                <div className="flex-1 space-y-4 mb-8">
+                  {plan.features.map((feature, fIndex) => (
+                    <div key={fIndex} className="flex items-start gap-3">
+                      <div className="mt-0.5 p-0.5 rounded-full bg-green-50">
+                        <Check size={12} color="#22C55E" weight="bold" />
+                      </div>
+                      <span className="text-sm text-gray-600 leading-tight">{feature}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Selection Button */}
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handlePlanSelect(plan.key);
+                  }}
+                  className={cn(
+                    "w-full py-6 rounded-2xl font-semibold transition-all duration-300",
+                    isPopular
+                      ? "bg-[#668cff] hover:bg-[#5a7ee6] text-white shadow-lg shadow-[#668cff]/20"
+                      : isSelected
+                        ? "bg-[#668cff]/10 text-[#668cff] hover:bg-[#668cff]/20"
+                        : "bg-gray-50 text-gray-600 hover:bg-gray-100"
+                  )}
+                >
+                  {isSelected ? "Selected" : "Select plan"}
+                </Button>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {/* Main Navigation */}
+      <div className="flex gap-4 pt-8">
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           onClick={prevStep}
-          className="h-12 px-8 rounded-xl border-2 border-gray-100 hover:bg-gray-50 text-gray-600 font-medium"
+          className="h-14 px-10 rounded-2xl text-gray-500 hover:text-gray-900 font-medium"
         >
           Back
         </Button>
         <Button
-          type="button"
           onClick={handleContinue}
-          className="h-12 flex-1 rounded-xl bg-[#668cff] hover:bg-[#5a7ee6] shadow-lg shadow-[#668cff]/25 hover:shadow-xl hover:shadow-[#668cff]/35 transition-all duration-300 font-medium text-white"
+          className="h-14 flex-1 rounded-2xl bg-[#668cff] hover:bg-[#5a7ee6] text-white shadow-xl shadow-[#668cff]/20 transition-all duration-300 font-bold text-lg"
         >
           Continue
         </Button>

@@ -2,17 +2,37 @@ import React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { motion } from "framer-motion";
+import { motion, Variants } from "framer-motion";
 import { useOnboarding } from "@/hooks/useOnboarding";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Building2 } from "lucide-react";
+import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
+
+const containerVariants: Variants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+      delayChildren: 0.1,
+    },
+  },
+};
+
+const itemVariants: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, ease: "easeOut" }
+  },
+};
 
 const schema = z.object({
-  companyName: z.string().min(1, "Company name is required"),
+  companyName: z.string().min(1, "Business name is required"),
   industry: z.string().min(1, "Please select an industry"),
   teamSize: z.string().min(1, "Please select team size"),
   role: z.string().min(1, "Please select your role"),
@@ -39,153 +59,161 @@ const roles = [
 
 export function BusinessProfileStep() {
   const { data, updateData, nextStep, prevStep } = useOnboarding();
+  const { toast } = useToast();
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      companyName: data.companyName,
-      industry: data.industry,
-      teamSize: data.teamSize,
-      role: data.role,
+      companyName: data.companyName || "",
+      industry: data.industry || "",
+      teamSize: data.teamSize || "",
+      role: data.role || "",
     },
   });
 
   const onSubmit = (values: FormData) => {
-    updateData(values);
-    nextStep();
+    try {
+      updateData(values);
+      nextStep();
+    } catch (error) {
+      toast({
+        title: "Something went wrong",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
+  const inputClassName = "h-11 bg-white hover:!bg-white focus:!bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:border-[#668cff] focus:ring-2 focus:ring-[#668cff]/20 transition-all duration-200";
+  const labelClassName = "block text-sm font-medium text-gray-500 mb-2";
+
+  const isFormValid = form.watch("companyName") && form.watch("industry") && form.watch("teamSize") && form.watch("role");
+
   return (
-    <div className="space-y-[var(--space-2xl)]">
+    <div className="w-full max-w-md mx-auto">
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-        className="text-center space-y-[var(--space-md)]"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="text-center mb-8"
       >
-        <div className="flex justify-center mb-[var(--space-md)]">
-          <Building2 className="h-10 w-10 text-[#668cff]" />
-        </div>
-        <h2 className="text-3xl font-bold text-gray-900">
-          Tell us about your business
-        </h2>
-        <p className="text-lg text-gray-500 max-w-xl mx-auto">
-          This helps us customize your experience and show the most relevant features for your industry and role.
-        </p>
+        <motion.h1
+          variants={itemVariants}
+          className="text-3xl md:text-4xl font-light text-gray-900 mb-3"
+        >
+          Tell me a bit about your business
+        </motion.h1>
+
+        <motion.p
+          variants={itemVariants}
+          className="text-gray-500 text-lg"
+        >
+          This helps me tailor everything perfectly for you.
+        </motion.p>
       </motion.div>
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.1 }}
+        transition={{ delay: 0.4 }}
       >
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-[var(--space-xl)]">
-            <div className="grid gap-[var(--space-xl)]">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+            <FormField
+              control={form.control}
+              name="companyName"
+              render={({ field }) => (
+                <FormItem>
+                  <Label className={labelClassName}>What's your business called?</Label>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="Acme Inc."
+                      className={inputClassName}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="industry"
+              render={({ field }) => (
+                <FormItem>
+                  <Label className={labelClassName}>What industry are you in?</Label>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger className={inputClassName}>
+                        <SelectValue placeholder="Select industry" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="bg-white border border-gray-200 shadow-lg z-[9999]">
+                      {industries.map((industry) => (
+                        <SelectItem
+                          key={industry}
+                          value={industry}
+                          className="text-gray-900 hover:bg-gray-50 focus:bg-[#668cff] focus:text-white"
+                        >
+                          {industry}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="companyName"
+                name="teamSize"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm font-medium text-gray-700">
-                      Company Name
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        placeholder="Enter your company name"
-                        className="h-12 bg-white/60 hover:bg-white focus:bg-white border-2 border-gray-100 focus:border-[#668cff] focus:ring-4 focus:ring-[#668cff]/10 transition-all rounded-xl text-gray-900"
-                      />
-                    </FormControl>
+                    <Label className={labelClassName}>Team size?</Label>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger className={inputClassName}>
+                          <SelectValue placeholder="Select size" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="bg-white border border-gray-200 shadow-lg z-[9999]">
+                        {teamSizes.map((size) => (
+                          <SelectItem
+                            key={size}
+                            value={size}
+                            className="text-gray-900 hover:bg-gray-50 focus:bg-[#668cff] focus:text-white"
+                          >
+                            {size}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-
-              <div className="grid md:grid-cols-2 gap-[var(--space-lg)]">
-                <FormField
-                  control={form.control}
-                  name="industry"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium text-gray-700">
-                        Industry
-                      </FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger className="h-12 bg-white/60 hover:bg-white focus:bg-white border-2 border-gray-100 focus:border-[#668cff] focus:ring-4 focus:ring-[#668cff]/10 transition-all rounded-xl text-gray-900 data-[state=open]:border-[#668cff]">
-                            <SelectValue placeholder="Select industry" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl p-1">
-                          {industries.map((industry) => (
-                            <SelectItem
-                              key={industry}
-                              value={industry}
-                              className="text-gray-700 focus:bg-[#668cff]/10 focus:text-[#668cff] cursor-pointer rounded-lg mb-1 last:mb-0"
-                            >
-                              {industry}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="teamSize"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium text-gray-700">
-                        Team Size
-                      </FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger className="h-12 bg-white/60 hover:bg-white focus:bg-white border-2 border-gray-100 focus:border-[#668cff] focus:ring-4 focus:ring-[#668cff]/10 transition-all rounded-xl text-gray-900 data-[state=open]:border-[#668cff]">
-                            <SelectValue placeholder="Select team size" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl p-1">
-                          {teamSizes.map((size) => (
-                            <SelectItem
-                              key={size}
-                              value={size}
-                              className="text-gray-700 focus:bg-[#668cff]/10 focus:text-[#668cff] cursor-pointer rounded-lg mb-1 last:mb-0"
-                            >
-                              {size}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
 
               <FormField
                 control={form.control}
                 name="role"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm font-medium text-gray-700">
-                      Your Role
-                    </FormLabel>
+                    <Label className={labelClassName}>Your role?</Label>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <SelectTrigger className="h-12 bg-white/60 hover:bg-white focus:bg-white border-2 border-gray-100 focus:border-[#668cff] focus:ring-4 focus:ring-[#668cff]/10 transition-all rounded-xl text-gray-900 data-[state=open]:border-[#668cff]">
-                          <SelectValue placeholder="Select your role" />
+                        <SelectTrigger className={inputClassName}>
+                          <SelectValue placeholder="Select role" />
                         </SelectTrigger>
                       </FormControl>
-                      <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl p-1">
+                      <SelectContent className="bg-white border border-gray-200 shadow-lg z-[9999]">
                         {roles.map((role) => (
                           <SelectItem
                             key={role}
                             value={role}
-                            className="text-gray-700 focus:bg-[#668cff]/10 focus:text-[#668cff] cursor-pointer rounded-lg mb-1 last:mb-0"
+                            className="text-gray-900 hover:bg-gray-50 focus:bg-[#668cff] focus:text-white"
                           >
                             {role}
                           </SelectItem>
@@ -198,21 +226,22 @@ export function BusinessProfileStep() {
               />
             </div>
 
-            <div className="flex gap-[var(--space-md)] pt-[var(--space-lg)]">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={prevStep}
-                className="h-12 px-8 rounded-xl border-2 border-gray-100 hover:bg-gray-50 text-gray-600 font-medium"
-              >
-                Back
-              </Button>
+            <div className="pt-4 space-y-3">
               <Button
                 type="submit"
-                className="h-12 flex-1 rounded-xl bg-[#668cff] hover:bg-[#5a7ee6] shadow-lg shadow-[#668cff]/25 hover:shadow-xl hover:shadow-[#668cff]/35 transition-all duration-300 font-medium text-white"
+                className="w-full h-12 rounded-xl bg-[#668cff] hover:bg-[#5a7ee6] shadow-lg shadow-[#668cff]/25 hover:shadow-xl hover:shadow-[#668cff]/35 transition-all duration-300 font-medium text-white"
+                disabled={!isFormValid}
               >
                 Continue
               </Button>
+
+              <button
+                type="button"
+                onClick={prevStep}
+                className="w-full text-sm text-gray-500 hover:text-gray-900 transition-colors"
+              >
+                Go back
+              </button>
             </div>
           </form>
         </Form>

@@ -4,7 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { WelcomeScreen } from "./steps/WelcomeScreen";
-import { OnboardingWelcome } from "./steps/OnboardingWelcome";
+import { NameStep } from "./steps/NameStep";
+import { PersonalizedGreeting } from "./steps/PersonalizedGreeting";
 import { BusinessProfileStep } from "./steps/BusinessProfileStep";
 import { UseCaseSelectionStep } from "./steps/UseCaseSelectionStep";
 import { PreferencesStep } from "./steps/PreferencesStep";
@@ -17,9 +18,10 @@ import { ArrowLeft } from "lucide-react";
 
 const steps = [
   { component: WelcomeScreen, title: "Welcome" },
-  { component: OnboardingWelcome, title: "Platform Introduction" },
-  { component: BusinessProfileStep, title: "Business Profile" },
+  { component: NameStep, title: "Name" },
+  { component: PersonalizedGreeting, title: "Greeting" },
   { component: UseCaseSelectionStep, title: "Use Case" },
+  { component: BusinessProfileStep, title: "Business Profile" },
   { component: PreferencesStep, title: "Preferences" },
   { component: PricingPlanStep, title: "Pricing" },
   { component: PaymentStep, title: "Payment" },
@@ -65,7 +67,7 @@ export function OnboardingLayout() {
 
   return (
     <div className="w-full flex flex-col items-center">
-      <div className="w-full max-w-4xl">
+      <div className="w-full max-w-6xl">
         {/* Progress Ring - only show after welcome screen */}
         {currentStep > 0 && (
           <div className="mb-8">

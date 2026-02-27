@@ -131,34 +131,9 @@ export default function Login() {
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {/* Social Login Options */}
-          <div className="space-y-3">
-            <Button
-              variant="outline"
-              className="w-full bg-white/[0.04] border-white/[0.12] hover:bg-white/[0.08]"
-              onClick={() => handleSocialLogin("Google")}
-            >
-              <Mail className="w-4 h-4 mr-2" />
-              Continue with Google
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full bg-white/[0.04] border-white/[0.12] hover:bg-white/[0.08]"
-              onClick={() => handleSocialLogin("Microsoft")}
-            >
-              <Building2 className="w-4 h-4 mr-2" />
-              Continue with Microsoft
-            </Button>
-          </div>
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <Separator className="w-full" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">or continue with email</span>
-            </div>
-          </div>
+
+
 
           {/* Login Form */}
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

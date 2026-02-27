@@ -2,14 +2,24 @@ import React from "react";
 import { motion } from "framer-motion";
 import {
     Building2,
-    Rocket,
     Settings,
     CreditCard,
     Lock,
-    CheckCircle,
-    Star,
     Sparkles
 } from "lucide-react";
+import {
+    HandWaving,
+    Star,
+    Rocket,
+    Buildings,
+    Globe,
+    AddressBook,
+    Phone,
+    CalendarCheck,
+    PaintBrush,
+    ShieldCheck,
+    CheckCircle,
+} from "phosphor-react";
 
 interface ProgressRingProps {
     currentStep: number;
@@ -18,10 +28,11 @@ interface ProgressRingProps {
 
 const stepIcons = [
     null, // Welcome (step 0) - no progress ring shown
-    Sparkles, // Platform Introduction
-    Building2, // Business Profile
+    HandWaving, // Name Step
+    Star, // Greeting Step
     Rocket, // Use Case
-    Settings, // Preferences
+    Building2, // Business Profile
+    Settings, // Preferences 
     CreditCard, // Pricing
     Lock, // Payment
     CheckCircle, // Complete
@@ -41,7 +52,9 @@ export function ProgressRing({ currentStep, totalSteps }: ProgressRingProps) {
     const offset = circumference - (progress / 100) * circumference;
 
     // Get current step icon
-    const IconComponent = stepIcons[currentStep] || Star;
+    const iconValue = stepIcons[currentStep] || Star;
+    const isEmoji = typeof iconValue === "string";
+    const IconComponent = !isEmoji ? iconValue : null;
 
     return (
         <motion.div
@@ -110,9 +123,11 @@ export function ProgressRing({ currentStep, totalSteps }: ProgressRingProps) {
                     className="absolute inset-0 flex items-center justify-center"
                 >
                     <div className="w-10 h-10 rounded-full bg-white/80 backdrop-blur-sm flex items-center justify-center shadow-sm">
-                        <IconComponent
-                            className="w-6 h-6 text-[#668cff]"
-                        />
+                        {isEmoji ? (
+                            <span className="text-xl">{iconValue}</span>
+                        ) : (
+                            IconComponent && <IconComponent className="w-6 h-6 text-[#668cff]" />
+                        )}
                     </div>
                 </motion.div>
             </div>

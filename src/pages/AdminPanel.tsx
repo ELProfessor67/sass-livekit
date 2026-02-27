@@ -597,7 +597,7 @@ const AdminPanel = () => {
           .select('slug_name, tenant, role')
           .eq('id', user.id)
           .single();
-        
+
         // Check if current user is a whitelabel admin (admin with slug_name)
         if (currentUserData?.role === 'admin' && currentUserData?.slug_name) {
           currentUserTenant = currentUserData.slug_name;
@@ -637,9 +637,9 @@ const AdminPanel = () => {
         // 1. Fetched from auth.users (has emails)
         // 2. Fetched from users table (has profile data)
         // 3. Merged them together
-        
+
         let filteredUsers = result.data;
-        
+
         // If current user is a whitelabel admin, filter to only show users from their tenant
         if (currentUserTenant) {
           filteredUsers = result.data.filter((u: User) => {
@@ -656,7 +656,7 @@ const AdminPanel = () => {
             return isMainTenantUser || isWhitelabelAdmin;
           });
         }
-        
+
         setUsers(filteredUsers);
 
         // Fetch stats for all filtered users
@@ -704,7 +704,6 @@ const AdminPanel = () => {
 
           if (callsError) {
             console.error(`Error fetching calls for user ${user.id}:`, callsError);
-            // Continue with 0 calls
           }
 
           // Fetch SMS messages count
@@ -715,7 +714,6 @@ const AdminPanel = () => {
 
           if (messagesError) {
             console.error(`Error fetching messages for user ${user.id}:`, messagesError);
-            // Continue with 0 messages
           }
 
           return {

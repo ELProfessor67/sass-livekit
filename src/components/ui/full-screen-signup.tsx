@@ -13,7 +13,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useWebsiteSettings } from "@/contexts/WebsiteSettingsContext";
 
 const signUpSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
   countryCode: z.string().min(1, "Please select a country code"),
   phone: z.string().min(6, "Please enter a valid phone number"),
   email: z.string().email("Please enter a valid email address"),
@@ -81,7 +80,6 @@ export const FullScreenSignup = () => {
       // Store signup data in localStorage instead of creating auth user
       // User will be created after onboarding is complete
       const signupData = {
-        name: data.name,
         email: data.email,
         password: data.password,
         phone: data.phone,
@@ -109,7 +107,7 @@ export const FullScreenSignup = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center overflow-hidden p-4">
-      <div className="w-full relative max-w-5xl overflow-hidden flex flex-col md:flex-row shadow-xl rounded-2xl backdrop-blur-xl">
+      <div className="w-full relative max-w-xl overflow-hidden flex flex-col shadow-xl rounded-2xl backdrop-blur-xl">
 
         {/* Background Effects */}
         <div className="absolute inset-0 bg-gradient-to-br from-background to-background/80 backdrop-blur-2xl rounded-2xl" />
@@ -120,47 +118,10 @@ export const FullScreenSignup = () => {
         <div className="absolute bottom-0 right-0 w-20 h-20 bg-secondary/30 rounded-full blur-2xl" />
         <div className="absolute top-0 left-1/4 w-16 h-16 bg-accent/20 rounded-full blur-xl" />
 
-        {/* Left Section - Brand/Features */}
-        <div className="liquid-glass-medium text-foreground p-8 md:p-12 md:w-1/2 relative rounded-l-2xl overflow-hidden">
-          <div className="relative z-10">
-            <h1 className="text-2xl md:text-3xl font-medium leading-tight tracking-tight mb-6">
-              Design and dev partner for{" "}
-              <span className="text-primary font-semibold">startups and founders</span>.
-            </h1>
 
-            <div className="space-y-4 mt-8">
-              <div className="flex items-start gap-3">
-                <div className="w-5 h-5 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center mt-0.5 flex-shrink-0">
-                  <div className="w-2 h-2 bg-primary rounded-full"></div>
-                </div>
-                <p className="text-muted-foreground text-sm leading-relaxed">
-                  Advanced AI-powered call analytics and insights
-                </p>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="w-5 h-5 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center mt-0.5 flex-shrink-0">
-                  <div className="w-2 h-2 bg-primary rounded-full"></div>
-                </div>
-                <p className="text-muted-foreground text-sm leading-relaxed">
-                  Real-time monitoring and performance tracking
-                </p>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="w-5 h-5 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center mt-0.5 flex-shrink-0">
-                  <div className="w-2 h-2 bg-primary rounded-full"></div>
-                </div>
-                <p className="text-muted-foreground text-sm leading-relaxed">
-                  Enterprise-grade security and compliance
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* Right Section - Sign Up Form */}
-        <div className="p-8 md:p-12 md:w-1/2 flex flex-col liquid-glass-light text-foreground relative rounded-r-2xl">
+        <div className="p-8 md:p-12 w-full flex flex-col liquid-glass-light text-foreground relative rounded-2xl">
           <div className="relative z-10">
             {/* Header */}
             <div className="flex flex-col items-start mb-8">
@@ -189,22 +150,7 @@ export const FullScreenSignup = () => {
 
             {/* Form */}
             <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)} noValidate>
-              {/* Full Name */}
-              <div>
-                <Label htmlFor="name" className="block text-sm mb-2">
-                  Full Name
-                </Label>
-                <Input
-                  type="text"
-                  id="name"
-                  placeholder="Enter your full name"
-                  className="w-full"
-                  {...register("name")}
-                />
-                {errors.name && (
-                  <p className="text-destructive text-xs mt-1">{errors.name.message}</p>
-                )}
-              </div>
+
 
               {/* Email */}
               <div>
@@ -345,23 +291,7 @@ export const FullScreenSignup = () => {
                 )}
               </Button>
 
-              {/* Alternative Method */}
-              <div className="relative my-4">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-border" />
-                </div>
-                <div className="relative flex justify-center text-xs">
-                  <span className="bg-background px-3 text-muted-foreground font-medium">or</span>
-                </div>
-              </div>
 
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-              >
-                Continue with email code
-              </Button>
 
               {/* Sign In Link */}
               <div className="text-center text-muted-foreground text-sm mt-4">

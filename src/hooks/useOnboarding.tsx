@@ -49,7 +49,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
     const defaultState: OnboardingState = {
       currentStep: 0,
-      totalSteps: 8,
+      totalSteps: 9,
       isCompleted,
       data: {
         companyName: "",
@@ -74,8 +74,8 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
       };
     }
 
-    // Always force total steps to 8 to match our new flow
-    initial = { ...initial, totalSteps: 8 };
+    // Always force total steps to 9 to match our new flow
+    initial = { ...initial, totalSteps: 9 };
 
     // Make sure we never exceed the bounds
     if (initial.currentStep > initial.totalSteps - 1) {
@@ -127,7 +127,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     localStorage.removeItem(COMPLETED_KEY);
     setState({
       currentStep: 0,
-      totalSteps: 8,
+      totalSteps: 9,
       isCompleted: false,
       data: {
         companyName: "",

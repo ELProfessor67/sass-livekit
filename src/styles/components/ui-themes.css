@@ -41,9 +41,9 @@
 }
 
 /* Minimal UI Theme - Force override any glass background effects */
-html.minimal-ui,
-html.minimal-ui body,
-.minimal-ui {
+html.minimal-ui:not([data-page="onboarding"]),
+html.minimal-ui body:not([data-page="onboarding"]),
+.minimal-ui:not([data-page="onboarding"]) {
   background: hsl(var(--background)) !important;
   background-image: none !important;
 }

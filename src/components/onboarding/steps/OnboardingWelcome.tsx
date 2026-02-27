@@ -24,8 +24,12 @@ const features = [
 ];
 
 export function OnboardingWelcome() {
-  const { nextStep } = useOnboarding();
+  const { nextStep, data } = useOnboarding();
   const { user } = useAuth();
+
+  // Use the name from onboarding data (collected in NameStep) or fallback to user metadata
+  const displayName = data.name || user?.fullName || 'there';
+  const firstName = displayName.split(' ')[0];
 
   return (
     <div className="text-center space-y-[var(--space-2xl)]">
@@ -40,7 +44,7 @@ export function OnboardingWelcome() {
         </div>
 
         <h1 className="text-4xl md:text-5xl font-bold text-gray-900">
-          Welcome to the Platform, {user?.fullName?.split(' ')[0] || 'there'}!
+          Welcome to the Platform, {firstName}!
         </h1>
 
         <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
