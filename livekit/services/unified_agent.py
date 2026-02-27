@@ -701,7 +701,8 @@ class UnifiedAgent(Agent):
                 self._display_map.clear()
                 for slot in display_slots:
                     local_time = slot.start_time.astimezone(search_tz)
-                    display_text = local_time.strftime('%A at %I:%M %p').lower()
+                    time_part = local_time.strftime('%I:%M %p').lstrip('0')
+                    display_text = f"{local_time.strftime('%A')} at {time_part}".lower()
                     self._display_map[display_text] = slot.start_time.isoformat()
                 
                 # Track exactly what we are presenting (Fix)
@@ -710,8 +711,9 @@ class UnifiedAgent(Agent):
                 lines = []
                 for i, slot in enumerate(display_slots, 1):
                     local_time = slot.start_time.astimezone(search_tz)
-                    # Format as Day at Time for the LLM to follow the guideline
-                    formatted_time = local_time.strftime('%A at %I:%M %p')
+                    # Use lstrip('0') to remove leading zero from the hour for natural matching
+                    time_part = local_time.strftime('%I:%M %p').lstrip('0')
+                    formatted_time = f"{local_time.strftime('%A')} at {time_part}"
                     lines.append(f"- {formatted_time}")
                 
                 timeframe_str = f" in the {timeframe}" if timeframe else ""
@@ -767,6 +769,25 @@ class UnifiedAgent(Agent):
         Args:
             option_id: The identifier or time of the slot to choose (e.g. '1', '2:00 PM', or ISO string).
         """
+        # Immediate filler speech to reduce perceived latency
+        if self._session:
+            async def speak_selection_filler():
+                import random
+                variations = {
+                    "en": ["Great, let me select that for you.", "Got it, selecting that slot now.", "One second while I pick that slot."],
+                    "hi": ["ठीक है, मैं वह स्लॉट चुन लेती हूँ।", "मैं अभी आपके लिए वह स्लॉट सेलेक्ट कर रही हूँ।"],
+                    "es": ["Excelente, déjeme seleccionar ese horario por usted.", "Entendido, seleccionando ese horario ahora mismo."]
+                }
+                lang = self.language_setting if self.language_setting in variations else "en"
+                try:
+                    phrase = random.choice(variations[lang])
+                    logging.info("CHOOSE_SLOT_FILLER_SPOKEN | phrase='%s'", phrase)
+                    await self._session.say(phrase)
+                except Exception as e:
+                    logging.error(f"CHOOSE_SLOT_FILLER_ERROR | {e}")
+            
+            asyncio.create_task(speak_selection_filler())
+
         tz_msg = self._require_call_timezone()
         if tz_msg:
             return tz_msg
@@ -1213,23 +1234,30 @@ class UnifiedAgent(Agent):
             return "Your appointment is already booked! Is there anything else I can help you with?"
         
         # Proactively say processing message to remove dead air (Fix #4)
-        try:
+        if self._session:
+            async def speak_booking_filler():
+                processing_msgs = {
+                    "hi": "बिल्कुल, एक पल रुकिए जब मैं आपके लिए वह समय सुरक्षित करती हूँ।",
+                    "es": "Perfecto, un momento mientras aseguro ese horario para usted.",
+                    "en": "Perfect, one moment while I secure that time for you."
+                }
+                proc_msg = processing_msgs.get(self.language_setting, processing_msgs["en"])
+                try:
+                    logging.info("BOOKING_FILLER_SPOKEN | phrase='%s'", proc_msg)
+                    await self._session.say(proc_msg)
+                except Exception as e:
+                    logging.error(f"BOOKING_FILLER_ERROR | {e}")
+            
+            asyncio.create_task(speak_booking_filler())
+        elif hasattr(self, "say"):
+            # Fallback for older interface
             processing_msgs = {
-                "hi": "बिल्कुल, एक पल रुकिए जब मैं आपके लिए वह समय सुरक्षित करता हूँ।",
+                "hi": "बिल्कुल, एक पल रुकिए जब मैं आपके लिए वह समय सुरक्षित करती हूँ।",
                 "es": "Perfecto, un momento mientras aseguro ese horario para usted.",
                 "en": "Perfect, one moment while I secure that time for you."
             }
             proc_msg = processing_msgs.get(self.language_setting, processing_msgs["en"])
-            
-            # Use play or say depending on implementation; returning text is standard but 
-            # we want to speak immediately to cover the API latency.
-            if hasattr(self, "say"):
-                await self.say(proc_msg, allow_interruptions=False)
-            elif hasattr(ctx, "agent") and hasattr(ctx.agent, "say"):
-                await ctx.agent.say(proc_msg, allow_interruptions=False)
-            logging.info("PROCESSING_SPEECH_TRIGGERED")
-        except Exception as e:
-            logging.debug("PROCESSING_SPEECH_FAILED | tool will continue | error=%s", str(e))
+            asyncio.create_task(self.say(proc_msg, allow_interruptions=False))
         
         self._booking_inflight = True
         call_id = f"booking_{self._booking_data.name or 'unknown'}"
