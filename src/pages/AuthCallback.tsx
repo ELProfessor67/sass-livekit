@@ -19,7 +19,7 @@ export default function AuthCallback() {
 
       // Get current user
       const { data: { user: currentUser } } = await supabase.auth.getUser();
-      
+
       if (!currentUser) {
         // If no user, go to login
         setTimeout(() => navigate("/login"), 1500);
@@ -62,6 +62,27 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get("code");
+
+        if (code) {
+          console.log("Exchanging code for session...");
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          if (exchangeError) {
+            console.error("Exchange error:", exchangeError);
+            throw exchangeError;
+          }
+
+          setStatus("success");
+          toast({
+            title: "Signed in with Google",
+            description: "You've been successfully signed in.",
+          });
+
+          await checkOnboardingAndRedirect();
+          return;
+        }
+
         // Check for error in URL hash (Supabase puts errors in hash)
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
         const error = hashParams.get("error");
@@ -71,7 +92,7 @@ export default function AuthCallback() {
         // If there's an error in the hash, handle it
         if (error) {
           console.error("Auth error:", error, errorCode, errorDescription);
-          
+
           // Check if it's an expired link - try to resend verification
           if (errorCode === "otp_expired" || error === "access_denied") {
             setStatus("error");

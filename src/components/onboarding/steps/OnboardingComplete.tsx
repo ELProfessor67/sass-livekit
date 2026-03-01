@@ -8,123 +8,107 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle, Sparkles } from "lucide-react";
 import { extractTenantFromHostname } from "@/lib/tenant-utils";
+import { ensureUserExists } from "@/lib/supabase-retry";
 
 export function OnboardingComplete() {
   const { data, complete } = useOnboarding();
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [isCompleting, setIsCompleting] = React.useState(false);
 
   const handleComplete = async () => {
+    if (isCompleting) return;
+    setIsCompleting(true);
+
     try {
       // Get signup data from localStorage
       const signupDataStr = localStorage.getItem("signup-data");
 
-      if (!signupDataStr) {
-        // If no signup data, check if user is already authenticated (existing flow)
-        if (!user?.id) {
-          toast({
-            title: "Missing signup information",
-            description: "Please start from the signup page.",
-            variant: "destructive",
-          });
-          navigate("/signup");
-          return;
-        }
-      }
-
-      let userId = user?.id;
-      let isNewUser = false;
-      let signupData = null;
-
-      // Parse signup data if it exists (before we clear it)
-      if (signupDataStr) {
-        signupData = JSON.parse(signupDataStr);
-      }
-
-      // If we have signup data, create auth user first
-      if (signupData) {
-        // Get the site URL from environment variable or use current origin
-        const siteUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
-        const redirectTo = `${siteUrl}/auth/callback`;
-
-        // Extract tenant from hostname
-        let tenant = extractTenantFromHostname();
-
-        // If tenant is not 'main', verify it exists
-        if (tenant !== 'main') {
-          try {
-            const { data: tenantOwner } = await supabase
-              .from('users')
-              .select('slug_name')
-              .eq('slug_name', tenant)
-              .maybeSingle();
-
-            // If no tenant owner found, default to main
-            if (!tenantOwner) {
-              tenant = 'main';
-            }
-          } catch (error) {
-            console.warn('Error verifying tenant, defaulting to main:', error);
-            tenant = 'main';
-          }
-        }
-
-        // Create auth user with email auto-confirmed
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: signupData.email,
-          password: signupData.password,
-          options: {
-            emailRedirectTo: redirectTo,
-            email_confirm: true, // This confirms email server-side if using admin key, but client-side it requires the user to click a link unless disabled in Supabase settings
-            data: {
-              name: signupData.name,
-              contactPhone: signupData.phone,
-              countryCode: signupData.countryCode,
-              tenant: tenant, // Include tenant in metadata so trigger can use it
-
-              // Onboarding data passed to the trigger
-              companyName: data.companyName,
-              industry: data.industry,
-              teamSize: data.teamSize,
-              role: data.role,
-              useCase: data.useCase,
-              theme: data.theme,
-              notifications: data.notifications,
-              goals: data.goals,
-              plan: data.plan,
-              stripePaymentMethodId: data.paymentMethodId,
-              cardBrand: data.cardBrand,
-              cardLast4: data.cardLast4,
-              cardExpMonth: data.cardExpMonth,
-              cardExpYear: data.cardExpYear
-            }
-          },
+      if (!signupDataStr && !user?.id) {
+        toast({
+          title: "Missing signup information",
+          description: "Please start from the signup page.",
+          variant: "destructive",
         });
+        navigate("/signup");
+        return;
+      }
 
-        if (authError) {
-          throw new Error(authError.message);
+      let signupData = null;
+      if (signupDataStr) {
+        try {
+          signupData = JSON.parse(signupDataStr);
+        } catch (e) {
+          console.error("Failed to parse signup data", e);
+        }
+      }
+
+      // If we are authenticated (via phone OTP) and have signup data
+      if (user && signupData) {
+        // First, ensure the user profile exists in the 'users' table
+        // This addresses the "user not created" concern
+        await ensureUserExists(user.id, signupData.name || data.name);
+
+        // Validate signup data
+        if (!signupData.email || !signupData.password) {
+          console.error("Invalid signup data:", signupData);
+          throw new Error("Account details (email/password) are missing. Please try signing up again.");
         }
 
-        if (!authData.user) {
-          throw new Error("Failed to create user account");
+        const updateDataParams: any = {
+          name: signupData.name || data.name,
+          companyName: data.companyName,
+          industry: data.industry,
+          teamSize: data.teamSize,
+          role: data.role,
+          useCase: data.useCase,
+          theme: data.theme,
+          notifications: data.notifications,
+          goals: data.goals,
+          plan: data.plan,
+          stripePaymentMethodId: data.paymentMethodId,
+          cardBrand: data.cardBrand,
+          cardLast4: data.cardLast4,
+          cardExpMonth: data.cardExpMonth,
+          cardExpYear: data.cardExpYear,
+          onboarding_completed: true
+        };
+
+        const updateOptions: any = { data: updateDataParams };
+
+        // Only include email/password if the email needs to be updated or added
+        // This avoids redundant calls that trigger Supabase 429 rate limits
+        if (user.email !== signupData.email) {
+          console.log("Updating user auth with email/password (Linking account)");
+          updateOptions.email = signupData.email;
+          updateOptions.password = signupData.password;
+        } else {
+          console.log("Email already matches, updating profile metadata only");
         }
 
-        userId = authData.user.id;
-        isNewUser = true;
+        const { error: updateError } = await supabase.auth.updateUser(updateOptions);
+
+        if (updateError) {
+          console.error("Auth update error:", updateError);
+          // Handle rate limit specifically
+          if (updateError.status === 429) {
+            throw new Error("Supabase is rate limiting requests. Your account details were saved, but we couldn't link your email just yet. Please try clicking 'Enter Dashboard' again in 30 seconds.");
+          }
+          throw new Error(updateError.message);
+        }
 
         // Clear signup data from localStorage after we've used it
         localStorage.removeItem("signup-data");
+      } else if (!user) {
+        toast({
+          title: "Session expired",
+          description: "Please restart the onboarding process.",
+          variant: "destructive",
+        });
+        navigate("/signup");
+        return;
       }
-
-      if (!userId) {
-        throw new Error("User ID is required");
-      }
-
-      // Client-side inserts to `users` and `payment_methods` are removed.
-      // These are now handled securely by the `handle_new_auth_user` Postgres trigger
-      // upon successful `supabase.auth.signUp()` because the user is not automatically
-      // logged in on the client side (RLS would block it).
 
       // Mark onboarding as complete locally
       complete();
@@ -134,17 +118,11 @@ export function OnboardingComplete() {
 
       toast({
         title: "Welcome aboard! 🎉",
-        description: isNewUser
-          ? "Your account has been created successfully! Redirecting to login..."
-          : "Your account has been set up successfully. Let's get started!",
+        description: "Your account has been set up successfully. Let's get started!",
       });
 
-      // Redirect to login for new users, dashboard for existing users
-      if (isNewUser) {
-        setTimeout(() => navigate("/login"), 1000);
-      } else {
-        navigate("/dashboard");
-      }
+      // Navigate to dashboard
+      navigate("/dashboard");
     } catch (error: any) {
       console.error("Error completing onboarding:", error);
       toast({
@@ -152,6 +130,8 @@ export function OnboardingComplete() {
         description: error?.message || "Please try again.",
         variant: "destructive",
       });
+    } finally {
+      setIsCompleting(false);
     }
   };
 
@@ -185,8 +165,12 @@ export function OnboardingComplete() {
           Welcome to your personalized dashboard{(() => {
             const signupDataStr = localStorage.getItem("signup-data");
             if (signupDataStr) {
-              const signupData = JSON.parse(signupDataStr);
-              return `, ${signupData.name?.split(' ')[0] || 'there'}`;
+              try {
+                const signupData = JSON.parse(signupDataStr);
+                return `, ${signupData.name?.split(' ')[0] || 'there'}`;
+              } catch (e) {
+                return '';
+              }
             }
             return user?.fullName ? `, ${user.fullName.split(' ')[0]}` : '';
           })()}.
@@ -234,9 +218,17 @@ export function OnboardingComplete() {
         <Button
           onClick={handleComplete}
           size="lg"
-          className="h-14 px-12 rounded-xl bg-[#668cff] hover:bg-[#5a7ee6] shadow-lg shadow-[#668cff]/25 hover:shadow-xl hover:shadow-[#668cff]/35 transition-all duration-300 font-medium text-white text-lg"
+          disabled={isCompleting}
+          className="h-14 px-12 rounded-xl bg-[#668cff] hover:bg-[#5a7ee6] shadow-lg shadow-[#668cff]/25 hover:shadow-xl hover:shadow-[#668cff]/35 transition-all duration-300 font-medium text-white text-lg min-w-[200px]"
         >
-          Enter Dashboard
+          {isCompleting ? (
+            <span className="flex items-center gap-2">
+              <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Completing...
+            </span>
+          ) : (
+            "Enter Dashboard"
+          )}
         </Button>
       </motion.div>
     </div>

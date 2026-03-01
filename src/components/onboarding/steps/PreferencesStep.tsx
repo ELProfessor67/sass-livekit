@@ -3,9 +3,6 @@ import { motion, AnimatePresence, Variants } from "framer-motion";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { useTheme } from "@/components/ThemeProvider";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Settings } from "lucide-react";
 import { Check } from "phosphor-react";
 import { cn } from "@/lib/utils";
 
@@ -31,15 +28,6 @@ const itemVariants: Variants = {
     transition: { duration: 0.5, ease: "easeOut" }
   },
 };
-
-const goalOptions = [
-  { id: "improve_conversion", label: "Improve conversion rates" },
-  { id: "track_performance", label: "Track team performance" },
-  { id: "analyze_calls", label: "Analyze call quality" },
-  { id: "automate_reporting", label: "Automate reporting" },
-  { id: "train_team", label: "Train team members" },
-  { id: "scale_operations", label: "Scale operations" }
-];
 
 const uiStyles = [
   {
@@ -72,14 +60,6 @@ export function PreferencesStep() {
 
   const handleStyleSelect = (style: "glass" | "minimal") => {
     setSelectedStyle(style);
-  };
-
-  const handleGoalToggle = (goalId: string) => {
-    const currentGoals = data.goals || [];
-    const updatedGoals = currentGoals.includes(goalId)
-      ? currentGoals.filter(id => id !== goalId)
-      : [...currentGoals, goalId];
-    updateData({ goals: updatedGoals });
   };
 
   const handleContinue = () => {
@@ -171,49 +151,6 @@ export function PreferencesStep() {
           })}
         </motion.div>
       </div>
-
-      {/* Goals Section */}
-      <motion.div
-        variants={itemVariants}
-        className="p-8 bg-white/60 border-2 border-gray-100 rounded-2xl space-y-6"
-      >
-        <div>
-          <h3 className="text-xl font-semibold text-gray-900">
-            What do you want to achieve?
-          </h3>
-          <p className="text-sm text-gray-500 mt-1">
-            Select all that apply to help us provide relevant insights.
-          </p>
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-4">
-          {goalOptions.map((goal) => (
-            <div
-              key={goal.id}
-              className={cn(
-                "flex items-center space-x-3 p-4 rounded-xl border-2 transition-all cursor-pointer",
-                (data.goals || []).includes(goal.id)
-                  ? "border-[#668cff] bg-[#668cff]/5"
-                  : "border-gray-50 bg-white/50 hover:border-gray-200"
-              )}
-              onClick={() => handleGoalToggle(goal.id)}
-            >
-              <Checkbox
-                id={goal.id}
-                checked={(data.goals || []).includes(goal.id)}
-                onCheckedChange={() => handleGoalToggle(goal.id)}
-                className="border-gray-300 data-[state=checked]:bg-[#668cff] data-[state=checked]:border-[#668cff]"
-              />
-              <Label
-                htmlFor={goal.id}
-                className="text-sm font-medium text-gray-700 cursor-pointer flex-1"
-              >
-                {goal.label}
-              </Label>
-            </div>
-          ))}
-        </div>
-      </motion.div>
 
       {/* Navigation */}
       <motion.div

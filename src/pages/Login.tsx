@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { useWebsiteSettings } from "@/contexts/WebsiteSettingsContext";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -131,9 +132,18 @@ export default function Login() {
         </CardHeader>
 
         <CardContent className="space-y-6">
+          <GoogleSignInButton text="Sign in with Google" />
 
-
-
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <Separator />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">
+                Or continue with email
+              </span>
+            </div>
+          </div>
 
           {/* Login Form */}
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

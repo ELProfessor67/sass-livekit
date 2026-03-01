@@ -6,8 +6,9 @@ import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { WelcomeScreen } from "./steps/WelcomeScreen";
 import { NameStep } from "./steps/NameStep";
 import { PersonalizedGreeting } from "./steps/PersonalizedGreeting";
-import { BusinessProfileStep } from "./steps/BusinessProfileStep";
+import { PhoneVerificationStep } from "./steps/PhoneVerificationStep";
 import { UseCaseSelectionStep } from "./steps/UseCaseSelectionStep";
+import { BusinessProfileStep } from "./steps/BusinessProfileStep";
 import { PreferencesStep } from "./steps/PreferencesStep";
 import { PricingPlanStep } from "./steps/PricingPlanStep";
 import { PaymentStep } from "./steps/PaymentStep";
@@ -20,6 +21,7 @@ const steps = [
   { component: WelcomeScreen, title: "Welcome" },
   { component: NameStep, title: "Name" },
   { component: PersonalizedGreeting, title: "Greeting" },
+  { component: PhoneVerificationStep, title: "Phone Verification" },
   { component: UseCaseSelectionStep, title: "Use Case" },
   { component: BusinessProfileStep, title: "Business Profile" },
   { component: PreferencesStep, title: "Preferences" },
@@ -41,10 +43,20 @@ export function OnboardingLayout() {
     if (isLoading || isProfileLoading) return;
 
     // Check for signup data in localStorage (new flow - onboarding before auth)
-    const signupData = localStorage.getItem("signup-data");
+    const signupDataStr = localStorage.getItem("signup-data");
+    let hasValidSignupData = false;
 
-    // If no signup data and not authenticated, redirect to signup
-    if (!signupData && !isAuthenticated) {
+    if (signupDataStr) {
+      try {
+        const parsed = JSON.parse(signupDataStr);
+        hasValidSignupData = !!(parsed && parsed.email);
+      } catch (e) {
+        hasValidSignupData = false;
+      }
+    }
+
+    // If no valid signup data and not authenticated, redirect to signup
+    if (!hasValidSignupData && !isAuthenticated) {
       navigate("/signup");
       return;
     }

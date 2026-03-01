@@ -19,7 +19,7 @@ if (!supabaseUrl || !supabaseServiceKey) {
   console.error('Supabase credentials not configured for user routes');
 }
 
-const supabase = supabaseUrl && supabaseServiceKey 
+const supabase = supabaseUrl && supabaseServiceKey
   ? createClient(supabaseUrl, supabaseServiceKey)
   : null;
 
@@ -30,6 +30,78 @@ const supabase = supabaseUrl && supabaseServiceKey
  * Complete signup with white label support
  * This endpoint ensures slug is properly assigned during signup
  */
+router.post('/signup-bypass', async (req, res) => {
+  try {
+    const { email, password, name, phone, countryCode } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({
+        success: false,
+        message: 'Database not configured'
+      });
+    }
+
+    // 1. Create the user in Auth with email_confirm: true to skip verification
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        name,
+        contactPhone: phone,
+        countryCode
+      }
+    });
+
+    if (authError) {
+      console.error('Bypass signup auth error:', authError);
+      return res.status(400).json({
+        success: false,
+        message: authError.message
+      });
+    }
+
+    const userId = authData.user.id;
+
+    // 2. Proactively create the user profile in the 'users' table
+    // This mirrors what we usually do in the frontend ensureUserExists
+    const { error: profileError } = await supabase
+      .from('users')
+      .insert({
+        id: userId,
+        name: name || email.split('@')[0],
+        onboarding_completed: false,
+        is_active: true, // Mark as active immediately since email is confirmed
+        tenant: 'main',  // Default tenant
+        role: 'user'     // Default role
+      });
+
+    if (profileError) {
+      console.warn('Bypass signup profile creation warning:', profileError);
+      // We don't fail the whole request if the profile insert fails (e.g. trigger might have done it)
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'User created successfully without verification',
+      user: authData.user
+    });
+  } catch (error) {
+    console.error('Error in signup-bypass:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'An error occurred during bypass signup'
+    });
+  }
+});
+
 router.post('/complete-signup', async (req, res) => {
   try {
     const { user_id, slug, whitelabel } = req.body;
@@ -106,17 +178,17 @@ router.post('/complete-signup', async (req, res) => {
         const mainDomain = process.env.MAIN_DOMAIN || process.env.VITE_MAIN_DOMAIN || 'frontend.ultratalkai.com';
         const fullDomain = `${lowerSlug}.${mainDomain}`;
         const frontendPort = process.env.FRONTEND_PORT || '8080';
-        
+
         // Path to script
         const scriptPath = path.join(__dirname, '..', 'scripts', 'setup_reverse_proxy.sh');
-        
+
         // Check if script exists
         if (!fs.existsSync(scriptPath)) {
           console.error('Nginx setup script not found:', scriptPath);
           // Don't fail signup, just log error
         } else {
           console.log(`🚀 Setting up Nginx reverse proxy for ${fullDomain} on port ${frontendPort}`);
-          
+
           // Execute script asynchronously (don't block signup response)
           const script = spawn('sudo', [
             'bash',
@@ -124,19 +196,19 @@ router.post('/complete-signup', async (req, res) => {
             fullDomain,
             frontendPort
           ]);
-          
+
           let output = '';
-          
+
           script.stdout.on('data', (data) => {
             output += data.toString();
             console.log('Nginx setup output:', data.toString());
           });
-          
+
           script.stderr.on('data', (data) => {
             output += data.toString();
             console.error('Nginx setup error:', data.toString());
           });
-          
+
           script.on('close', (code) => {
             if (code === 0) {
               console.log(`✅ Nginx reverse proxy setup completed for ${fullDomain}`);
@@ -145,12 +217,12 @@ router.post('/complete-signup', async (req, res) => {
               console.error('Script output:', output);
             }
           });
-          
+
           // Handle script errors
           script.on('error', (error) => {
             console.error('Error executing Nginx setup script:', error);
           });
-          
+
           // Don't wait for script to complete - return success immediately
           // Script runs in background
         }
@@ -183,7 +255,7 @@ router.post('/complete-signup', async (req, res) => {
       // Use Supabase's built-in email verification with proper redirect URL
       const siteUrl = process.env.VITE_SITE_URL || process.env.SITE_URL || 'http://localhost:8080';
       const redirectTo = `${siteUrl}/auth/callback`;
-      
+
       await supabase.auth.admin.generateLink({
         type: 'signup',
         email: authUser.email,
@@ -330,7 +402,7 @@ router.post('/send-verification-email', async (req, res) => {
         }, {
           onConflict: 'user_id'
         });
-      
+
       return res.status(500).json({
         success: false,
         message: 'Failed to send verification email. Please try again.'
@@ -347,7 +419,7 @@ router.post('/send-verification-email', async (req, res) => {
       }, {
         onConflict: 'user_id'
       });
-    
+
     // Note: Supabase sends the email automatically via generateLink
     // The link in the email will redirect to /auth/callback with tokens in hash
 

@@ -12,6 +12,8 @@ export interface OnboardingData {
   plan: string;
   name?: string;
   email?: string;
+  phone?: string;
+  countryCode?: string;
   paymentMethodId?: string;
   cardBrand?: string;
   cardLast4?: string;
@@ -49,7 +51,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
     const defaultState: OnboardingState = {
       currentStep: 0,
-      totalSteps: 9,
+      totalSteps: 10,
       isCompleted,
       data: {
         companyName: "",
@@ -74,8 +76,8 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
       };
     }
 
-    // Always force total steps to 9 to match our new flow
-    initial = { ...initial, totalSteps: 9 };
+    // Always force total steps to 10 to match our new flow
+    initial = { ...initial, totalSteps: 10 };
 
     // Make sure we never exceed the bounds
     if (initial.currentStep > initial.totalSteps - 1) {
@@ -127,7 +129,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     localStorage.removeItem(COMPLETED_KEY);
     setState({
       currentStep: 0,
-      totalSteps: 9,
+      totalSteps: 10,
       isCompleted: false,
       data: {
         companyName: "",

@@ -11,10 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useWebsiteSettings } from "@/contexts/WebsiteSettingsContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
+import { Separator } from "@/components/ui/separator";
 
 const signUpSchema = z.object({
-  countryCode: z.string().min(1, "Please select a country code"),
-  phone: z.string().min(6, "Please enter a valid phone number"),
   email: z.string().email("Please enter a valid email address"),
   password: z.string().min(8, "Password must be at least 8 characters"),
   acceptTerms: z.boolean().refine((val) => val === true, {
@@ -24,36 +25,13 @@ const signUpSchema = z.object({
 
 type SignUpFormData = z.infer<typeof signUpSchema>;
 
-const countryCodes = [
-  { code: "+1", country: "United States", flag: "🇺🇸" },
-  { code: "+1", country: "Canada", flag: "🇨🇦" },
-  { code: "+44", country: "United Kingdom", flag: "🇬🇧" },
-  { code: "+33", country: "France", flag: "🇫🇷" },
-  { code: "+49", country: "Germany", flag: "🇩🇪" },
-  { code: "+39", country: "Italy", flag: "🇮🇹" },
-  { code: "+34", country: "Spain", flag: "🇪🇸" },
-  { code: "+81", country: "Japan", flag: "🇯🇵" },
-  { code: "+82", country: "Korea", flag: "🇰🇷" },
-  { code: "+86", country: "China", flag: "🇨🇳" },
-  { code: "+91", country: "India", flag: "🇮🇳" },
-  { code: "+55", country: "Brazil", flag: "🇧🇷" },
-  { code: "+52", country: "Mexico", flag: "🇲🇽" },
-  { code: "+61", country: "Australia", flag: "🇦🇺" },
-  { code: "+64", country: "New Zealand", flag: "🇳🇿" },
-  { code: "+27", country: "South Africa", flag: "🇿🇦" },
-  { code: "+47", country: "Norway", flag: "🇳🇴" },
-  { code: "+46", country: "Sweden", flag: "🇸🇪" },
-  { code: "+45", country: "Denmark", flag: "🇩🇰" },
-  { code: "+41", country: "Switzerland", flag: "🇨🇭" },
-];
-
 export const FullScreenSignup = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { websiteSettings } = useWebsiteSettings();
+  const { signUp } = useAuth();
   const [showPassword, setShowPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
-  const [selectedCountry, setSelectedCountry] = React.useState<{ code: string; country: string; flag: string } | null>(countryCodes[0]);
 
   const {
     register,
@@ -63,9 +41,6 @@ export const FullScreenSignup = () => {
     watch
   } = useForm<SignUpFormData>({
     resolver: zodResolver(signUpSchema),
-    defaultValues: {
-      countryCode: countryCodes[0].code
-    }
   });
 
   const acceptTerms = watch("acceptTerms");
@@ -77,21 +52,26 @@ export const FullScreenSignup = () => {
       localStorage.removeItem("onboarding-state");
       localStorage.removeItem("onboarding-completed");
 
-      // Store signup data in localStorage instead of creating auth user
-      // User will be created after onboarding is complete
+      // Actually create the auth user now
+      // This avoids having to call updateUser({ email }) later which triggers 429
+      const { success, message } = await signUp("", data.email, data.password);
+
+      if (!success) {
+        throw new Error(message);
+      }
+
+      // Store email and password in localStorage for OnboardingComplete convenience (though we'll use session where possible)
       const signupData = {
         email: data.email,
         password: data.password,
-        phone: data.phone,
-        countryCode: data.countryCode
       };
 
       localStorage.setItem("signup-data", JSON.stringify(signupData));
 
       // Redirect to onboarding
       toast({
-        title: "Great! Let's set up your profile",
-        description: "We'll create your account after you complete onboarding.",
+        title: "Account created! 🎉",
+        description: "Let's set up your profile.",
       });
       navigate("/onboarding");
     } catch (error: any) {
@@ -117,8 +97,6 @@ export const FullScreenSignup = () => {
         <div className="absolute bottom-0 left-0 w-32 h-32 bg-primary/20 rounded-full blur-3xl" />
         <div className="absolute bottom-0 right-0 w-20 h-20 bg-secondary/30 rounded-full blur-2xl" />
         <div className="absolute top-0 left-1/4 w-16 h-16 bg-accent/20 rounded-full blur-xl" />
-
-
 
         {/* Right Section - Sign Up Form */}
         <div className="p-8 md:p-12 w-full flex flex-col liquid-glass-light text-foreground relative rounded-2xl">
@@ -148,9 +126,21 @@ export const FullScreenSignup = () => {
               </p>
             </div>
 
+            <GoogleSignInButton text="Sign up with Google" className="mb-4" />
+
+            <div className="relative mb-6">
+              <div className="absolute inset-0 flex items-center">
+                <Separator />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">
+                  Or continue with email
+                </span>
+              </div>
+            </div>
+
             {/* Form */}
             <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)} noValidate>
-
 
               {/* Email */}
               <div>
@@ -166,54 +156,6 @@ export const FullScreenSignup = () => {
                 />
                 {errors.email && (
                   <p className="text-destructive text-xs mt-1">{errors.email.message}</p>
-                )}
-              </div>
-
-              {/* Phone Number */}
-              <div>
-                <Label htmlFor="phone" className="block text-sm mb-2">
-                  Phone Number
-                </Label>
-                <div className="flex gap-3">
-                  <Select
-                    value={selectedCountry?.code}
-                    onValueChange={(value) => {
-                      const country = countryCodes.find(c => c.code === value);
-                      setSelectedCountry(country || countryCodes[0]);
-                      setValue("countryCode", value);
-                    }}
-                  >
-                    <SelectTrigger className="w-24">
-                      <SelectValue>
-                        <span className="text-sm">{selectedCountry?.flag}</span>
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent className="liquid-glass-medium backdrop-blur-xl border-border bg-card z-50">
-                      {countryCodes.map((country, index) => (
-                        <SelectItem
-                          key={`${country.code}-${country.country}-${index}`}
-                          value={country.code}
-                          className="hover:bg-accent focus:bg-accent"
-                        >
-                          <span className="flex items-center gap-2 text-sm">
-                            <span>{country.flag}</span>
-                            <span>{country.code}</span>
-                            <span className="text-muted-foreground">{country.country}</span>
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="Phone number"
-                    className="flex-1"
-                    {...register("phone")}
-                  />
-                </div>
-                {errors.phone && (
-                  <p className="text-destructive text-xs mt-1">{errors.phone.message}</p>
                 )}
               </div>
 
@@ -290,8 +232,6 @@ export const FullScreenSignup = () => {
                   "Create a new account"
                 )}
               </Button>
-
-
 
               {/* Sign In Link */}
               <div className="text-center text-muted-foreground text-sm mt-4">

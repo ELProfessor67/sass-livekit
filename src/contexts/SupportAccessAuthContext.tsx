@@ -46,6 +46,7 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
   signUp: (name: string, email: string, password: string, metadata?: { phone?: string; countryCode?: string }) => Promise<{ success: boolean; message: string }>;
+  signInWithGoogle: () => Promise<{ success: boolean; message: string }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<void>;
   // Impersonation functions
@@ -81,7 +82,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [originalUser, setOriginalUser] = useState<User | null>(null);
   const [activeSupportSession, setActiveSupportSession] = useState<SupportAccessSession | null>(null);
   const [lastFetchedUserId, setLastFetchedUserId] = useState<string | null>(null);
-  
+
   const supportAccessService = SupportAccessService.getInstance();
 
   useEffect(() => {
@@ -90,9 +91,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const fetchUserAndProfile = async () => {
       if (!mounted || isFetching) return;
-      
+
       isFetching = true;
-      
+
       try {
         // Check for support access session first
         const supportSessionData = localStorage.getItem('support_access_session');
@@ -101,12 +102,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             const parsed = JSON.parse(supportSessionData);
             const session = parsed.session;
             const scopedToken = parsed.scopedToken;
-            
+
             // Validate the scoped token
             const validation = await supportAccessService.validateScopedToken(scopedToken);
             if (validation.is_valid && validation.target_user_id) {
               console.log('Restoring support access session:', session);
-              
+
               // Load the target user data
               const targetUserData = await supportAccessService.getUserForScopedAccess(validation.target_user_id);
               if (targetUserData) {
@@ -123,7 +124,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                   createdAt: targetUserData.created_on,
                   updatedAt: targetUserData.updated_at,
                 };
-                
+
                 setActiveSupportSession(session);
                 setIsImpersonating(true);
                 setUser(impersonatedUser);
@@ -171,7 +172,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         // Get the current user from auth server
         const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
-        
+
         if (userError) {
           console.error('Error getting user:', userError);
           setUser(null);
@@ -204,9 +205,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
-        
+
         console.log('Auth event:', event);
-        
+
         if (event === 'SIGNED_IN' && session?.user) {
           setLastFetchedUserId(prev => {
             if (prev !== session.user.id && !isFetching) {
@@ -255,17 +256,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const loadUserProfile = async (authUser: any) => {
     try {
       console.log('Loading user profile for:', authUser.email);
-      
+
       // Check localStorage first for cached user data
       const cacheKey = `user_profile_${authUser.id}`;
       const cachedUserData = localStorage.getItem(cacheKey);
-      
+
       if (cachedUserData) {
         try {
           const parsedData = JSON.parse(cachedUserData);
           const cacheAge = Date.now() - parsedData.timestamp;
           const maxAge = 30 * 60 * 1000; // 30 minutes cache
-          
+
           if (cacheAge < maxAge) {
             console.log('Using cached user profile');
             setUser(parsedData.user);
@@ -280,7 +281,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           localStorage.removeItem(cacheKey);
         }
       }
-      
+
       // Create user object from auth metadata
       const userFromAuth = {
         id: authUser.id,
@@ -295,18 +296,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         createdAt: authUser.created_at || null,
         updatedAt: authUser.updated_at || null,
       };
-      
+
       // Set user immediately from auth data
       console.log('Loaded user profile from auth metadata:', userFromAuth);
       setUser(userFromAuth);
       setLoading(false);
-      
+
       // Cache the user data
       localStorage.setItem(cacheKey, JSON.stringify({
         user: userFromAuth,
         timestamp: Date.now()
       }));
-      
+
       // Optionally fetch extended profile data in background
       try {
         const { data: userData, error } = await supabaseWithRetry(async () => {
@@ -331,10 +332,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             createdAt: (userData as any).created_on || userFromAuth.createdAt,
             updatedAt: (userData as any).updated_at || userFromAuth.updatedAt,
           };
-          
+
           console.log('Enhanced user profile with database data:', enhancedUser);
           setUser(enhancedUser);
-          
+
           // Update cache with enhanced data
           localStorage.setItem(cacheKey, JSON.stringify({
             user: enhancedUser,
@@ -368,17 +369,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log('AuthContext: Starting sign in for:', email);
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      
+
       if (error) {
         console.log('AuthContext: Sign in error:', error.message);
         return { success: false, message: error.message };
       }
-      
+
       console.log('AuthContext: Supabase auth successful, user:', data.user?.email);
-      
+
       // Set onboarding as completed in localStorage to prevent redirect
       localStorage.setItem("onboarding-completed", "true");
-      
+
       return { success: true, message: 'Sign in successful' };
     } catch (error) {
       console.error('AuthContext: Sign in error:', error);
@@ -388,33 +389,66 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signUp = async (name: string, email: string, password: string, metadata?: { phone?: string; countryCode?: string }) => {
     try {
-      // Get the site URL from environment variable or use current origin
-      const siteUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
-      const redirectTo = `${siteUrl}/auth/callback`;
-      
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { 
-          emailRedirectTo: redirectTo,
-          email_confirm: true, // Auto-confirm email, skip verification
-          data: { 
-            name, 
-            contactPhone: metadata?.phone, 
-            countryCode: metadata?.countryCode
-          } 
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
+
+      // Call our new backend bypass endpoint
+      const response = await fetch(`${backendUrl}/api/v1/user/signup-bypass`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          email,
+          password,
+          name,
+          phone: metadata?.phone,
+          countryCode: metadata?.countryCode
+        }),
       });
-      
-      if (error) {
-        return { success: false, message: error.message };
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        return { success: false, message: result.message || 'Failed to create account' };
       }
 
-      // Email is auto-confirmed, user can login immediately
-      return { success: true, message: 'Sign up successful! You can now login.' };
+      // 2. Since the account is pre-confirmed on the backend, we can sign in immediately
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        console.error('Auto-login after bypass signup failed:', signInError);
+        return { success: true, message: 'Account created! Please log in manually.' };
+      }
+
+      return { success: true, message: 'Sign up successful! Welcome aboard.' };
     } catch (error) {
       console.error('Sign up error:', error);
       return { success: false, message: 'An error occurred during sign up' };
+    }
+  };
+
+  const signInWithGoogle = async () => {
+    try {
+      console.log('AuthContext: Starting Google sign in');
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) {
+        console.error('AuthContext: Google sign in error:', error.message);
+        return { success: false, message: error.message };
+      }
+
+      return { success: true, message: 'Redirecting to Google...' };
+    } catch (error) {
+      console.error('AuthContext: Google sign in error:', error);
+      return { success: false, message: 'An error occurred during Google sign in' };
     }
   };
 
@@ -516,7 +550,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const startSupportAccess = async (sessionData: any) => {
     try {
       const { session, token } = sessionData;
-      
+
       // Validate the scoped token
       const validation = await supportAccessService.validateScopedToken(token);
       if (!validation.is_valid) {
@@ -608,7 +642,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setActiveSupportSession(null);
       localStorage.removeItem('impersonation');
       localStorage.removeItem('support_access_session');
-      
+
       // Clear Twilio credentials cache when user logs out
       TwilioCredentialsService.clearUserCache();
     } catch (error) {
@@ -646,6 +680,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     loading,
     signIn,
     signUp,
+    signInWithGoogle,
     signOut,
     updateProfile,
     impersonateUser,
