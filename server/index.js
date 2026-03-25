@@ -38,7 +38,7 @@ import facebookWebhookRouter from './routes/facebook-webhook.js';
 import connectionsRouter from './routes/connections.js';
 import ghlWebhookRouter from './routes/ghl-webhook.js';
 import hubspotWebhookRouter from './routes/hubspot-webhook.js';
-
+import workspaceRouter from './routes/workspace.js';
 
 
 
@@ -57,6 +57,13 @@ const supabaseAdmin = supabaseUrl && supabaseServiceKey
 
 if (!supabaseAdmin) {
   console.warn('Supabase admin client not configured for Stripe webhooks');
+}
+
+// SMTP configuration check for invitations
+const smtpUser = process.env.SMTP_USER;
+const smtpPass = process.env.SMTP_PASS;
+if (!smtpUser || !smtpPass) {
+  console.warn('⚠️ SMTP credentials not configured. Workspace invitations will not send emails.');
 }
 
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -486,6 +493,7 @@ app.get('/api/vi/gogo/callback', (req, res, next) => {
 app.use('/api/v1/connections', connectionsRouter);
 app.use('/api/v1/webhooks/gohighlevel', ghlWebhookRouter);
 app.use('/api/v1/webhooks/hubspot', hubspotWebhookRouter);
+app.use('/api/v1/workspaces', workspaceRouter);
 console.log('Knowledge base routes registered at /api/v1/knowledge-base');
 console.log('Support access routes registered at /api/v1/support-access');
 console.log('Minutes routes registered at /api/v1/minutes');

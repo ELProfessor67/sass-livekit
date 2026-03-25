@@ -24,9 +24,10 @@ interface MessageThreadProps {
   conversation: Conversation;
   messageFilter: 'all' | 'calls' | 'sms';
   onMessageFilterChange: (filter: 'all' | 'calls' | 'sms') => void;
+  canEdit?: boolean;
 }
 
-export function MessageThread({ conversation, messageFilter, onMessageFilterChange }: MessageThreadProps) {
+export function MessageThread({ conversation, messageFilter, onMessageFilterChange, canEdit }: MessageThreadProps) {
 
   // Debug: Log when conversation prop changes
   useEffect(() => {
@@ -56,7 +57,7 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
       setLoadingAssistants(true);
       try {
         const [assistantsResponse, phoneMappingsResponse] = await Promise.all([
-          fetchAssistants(),
+          fetchAssistants(conversation?.workspace_id || ''),
           fetchPhoneNumberMappings()
         ]);
         setAssistants(assistantsResponse.assistants);
@@ -567,7 +568,8 @@ export function MessageThread({ conversation, messageFilter, onMessageFilterChan
           <ModernMessageInput
             conversation={conversation}
             selectedAgentPhoneNumber={getPhoneNumberForSelectedAgent()}
-            isDisabled={selectedAgentId === "all"}
+            isDisabled={selectedAgentId === "all" || !canEdit}
+            canEdit={canEdit}
           />
         </div>
       </div>

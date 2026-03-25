@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { useWebsiteSettings } from "@/contexts/WebsiteSettingsContext";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 
 export default function TopNavigation() {
   const location = useLocation();
@@ -23,6 +25,7 @@ export default function TopNavigation() {
   const { uiStyle } = useTheme();
   const { remainingMinutes, percentageUsed, isLoading: minutesLoading } = useAccountMinutes();
   const { websiteSettings } = useWebsiteSettings();
+  const { isOwner, isManager, isViewer } = useWorkspace();
 
   const navItems = [{
     icon: <ChartBar size={18} weight="bold" />,
@@ -52,7 +55,11 @@ export default function TopNavigation() {
     icon: <TreeStructure size={18} weight="bold" />,
     label: "Composer",
     to: "/workflows"
-  }];
+  }].filter(item => {
+    // Hidden modules based on role
+    // For now, all basic modules are visible to everyone, but specific actions inside are restricted
+    return true;
+  });
 
   // Add admin panel to nav items if user is admin
   if (isAdmin) {
@@ -69,24 +76,34 @@ export default function TopNavigation() {
         <div className="flex items-center justify-between">
           {/* Left section - Logo */}
           <div className="flex items-center gap-4">
-            <Link to={isAuthenticated ? "/dashboard" : "/"} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-              {websiteSettings?.logo ? (
-                <img
-                  src={websiteSettings.logo}
-                  alt={websiteSettings.website_name || "Logo"}
-                  className="h-10 w-auto object-contain max-w-[150px]"
-                />
-              ) : (
-                <img
-                  src="/logo.png"
-
-                  className="h-10 w-auto object-contain max-w-[150px]"
-                />
-              )}
-            </Link>
-            <h1 className="font-sans font-light text-xl tracking-tight text-foreground">
-              {websiteSettings?.website_name || ""}
-            </h1>
+            {isAuthenticated ? (
+              <div className="flex items-center gap-4">
+                <WorkspaceSwitcher variant="logo" />
+                <h1 className="font-sans font-light text-xl tracking-tight text-foreground hidden sm:block">
+                  {websiteSettings?.website_name || "AI Call Center"}
+                </h1>
+              </div>
+            ) : (
+              <>
+                <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                  {websiteSettings?.logo ? (
+                    <img
+                      src={websiteSettings.logo}
+                      alt={websiteSettings.website_name || "Logo"}
+                      className="h-10 w-auto object-contain max-w-[150px]"
+                    />
+                  ) : (
+                    <img
+                      src="/logo.png"
+                      className="h-10 w-auto object-contain max-w-[150px]"
+                    />
+                  )}
+                </Link>
+                <h1 className="font-sans font-light text-xl tracking-tight text-foreground">
+                  {websiteSettings?.website_name || "AI Call Center"}
+                </h1>
+              </>
+            )}
 
             {/* Impersonation Indicator */}
             {isImpersonating && originalUser && (
@@ -197,18 +214,22 @@ export default function TopNavigation() {
                           <span>Settings</span>
                         </Link>
                       </DropdownMenuItem>
-                      <DropdownMenuItem asChild className="cursor-pointer text-muted-foreground hover:text-foreground rounded-xl">
-                        <Link to="/settings?tab=integrations" className="flex items-center gap-3">
-                          <Lightning className="h-4 w-4" weight="bold" />
-                          <span>Integrations</span>
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild className="cursor-pointer text-muted-foreground hover:text-foreground rounded-xl">
-                        <Link to="/billing" className="flex items-center gap-3">
-                          <CreditCard className="h-4 w-4" weight="bold" />
-                          <span>Billing</span>
-                        </Link>
-                      </DropdownMenuItem>
+                      {(isOwner || isManager) && (
+                        <DropdownMenuItem asChild className="cursor-pointer text-muted-foreground hover:text-foreground rounded-xl">
+                          <Link to="/settings?tab=integrations" className="flex items-center gap-3">
+                            <Lightning className="h-4 w-4" weight="bold" />
+                            <span>Integrations</span>
+                          </Link>
+                        </DropdownMenuItem>
+                      )}
+                      {isOwner && (
+                        <DropdownMenuItem asChild className="cursor-pointer text-muted-foreground hover:text-foreground rounded-xl">
+                          <Link to="/billing" className="flex items-center gap-3">
+                            <CreditCard className="h-4 w-4" weight="bold" />
+                            <span>Billing</span>
+                          </Link>
+                        </DropdownMenuItem>
+                      )}
                     </div>
 
                     <div className="border-t border-border/40 p-2">

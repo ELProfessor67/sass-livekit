@@ -1,4 +1,5 @@
 import { TableCell, TableRow } from "@/components/ui/table";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { Workflow } from "@/hooks/useWorkflows";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,7 @@ function getStepIcons(nodes: any[]) {
 }
 
 export function WorkflowRow({ workflow, onClick }: WorkflowRowProps) {
+    const { canEdit } = useWorkspace();
     const { isAgency } = useAccountRoleContext();
     const { updateWorkflow, deleteWorkflow } = useWorkflows();
     const stepIcons = getStepIcons(workflow.nodes);
@@ -115,13 +117,14 @@ export function WorkflowRow({ workflow, onClick }: WorkflowRowProps) {
                 <Switch
                     checked={workflow.is_active}
                     onCheckedChange={(checked) => {
+                        if (!canEdit) return;
                         updateWorkflow.mutate({
                             id: workflow.id,
                             is_active: checked,
                             status: checked ? 'active' : 'paused'
                         });
                     }}
-                    disabled={updateWorkflow.isPending}
+                    disabled={updateWorkflow.isPending || !canEdit}
                 />
             </TableCell>
 
@@ -136,23 +139,29 @@ export function WorkflowRow({ workflow, onClick }: WorkflowRowProps) {
                     <DropdownMenuContent align="end" className="w-44 glass-dropdown">
                         <DropdownMenuItem className="gap-2">
                             <PencilSimple size={15} weight="duotone" />
-                            <span>Edit Workflow</span>
+                            <span>{canEdit ? "Edit Workflow" : "View Workflow"}</span>
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="gap-2">
-                            <Copy size={15} weight="duotone" />
-                            <span>Duplicate</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="gap-2">
-                            <Archive size={15} weight="duotone" />
-                            <span>Archive</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                            className="gap-2 text-destructive focus:bg-destructive/10"
-                            onClick={() => deleteWorkflow.mutate(workflow.id)}
-                        >
-                            <Trash size={15} weight="duotone" />
-                            <span>Delete</span>
-                        </DropdownMenuItem>
+                        {canEdit && (
+                            <DropdownMenuItem className="gap-2">
+                                <Copy size={15} weight="duotone" />
+                                <span>Duplicate</span>
+                            </DropdownMenuItem>
+                        )}
+                        {canEdit && (
+                            <>
+                                <DropdownMenuItem className="gap-2">
+                                    <Archive size={15} weight="duotone" />
+                                    <span>Archive</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    className="gap-2 text-destructive focus:bg-destructive/10"
+                                    onClick={() => deleteWorkflow.mutate(workflow.id)}
+                                >
+                                    <Trash size={15} weight="duotone" />
+                                    <span>Delete</span>
+                                </DropdownMenuItem>
+                            </>
+                        )}
                     </DropdownMenuContent>
                 </DropdownMenu>
             </TableCell>

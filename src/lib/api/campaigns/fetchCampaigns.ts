@@ -41,32 +41,39 @@ export interface CampaignsResponse {
 }
 
 /**
- * Fetch campaigns for the current user
+ * Fetch campaigns for the current user and workspace
  */
-export const fetchCampaigns = async (): Promise<CampaignsResponse> => {
+export const fetchCampaigns = async (workspaceId?: string | null): Promise<CampaignsResponse> => {
   try {
     const userId = await getCurrentUserIdAsync();
     console.log('Fetching campaigns for user ID:', userId);
-    
+
     // Get user's tenant for proper data isolation
-    const { data: userData } = await supabase
+    const { data: userData } = await (supabase as any)
       .from('users')
       .select('tenant')
       .eq('id', userId)
       .single();
 
-    const tenant = userData?.tenant || 'main';
+    const tenant = (userData as any)?.tenant || 'main';
 
     // Build query with tenant filter
-    let query = supabase
+    let query = (supabase as any)
       .from('campaigns')
       .select(`
         *,
         assistant:assistant(name),
         contact_list:contact_lists(name),
         csv_file:csv_files(name)
-      `)
-      .eq('user_id', userId);
+      `);
+
+    if (workspaceId) {
+      // If workspace specified, filter by it
+      query = query.eq('workspace_id', workspaceId);
+    } else {
+      // Otherwise fallback to user_id (global view)
+      query = query.eq('user_id', userId);
+    }
 
     // Add tenant filter
     if (tenant === 'main') {
@@ -83,7 +90,7 @@ export const fetchCampaigns = async (): Promise<CampaignsResponse> => {
     }
 
     // Transform the data to include related names
-    const transformedCampaigns: Campaign[] = (campaigns || []).map(campaign => ({
+    const transformedCampaigns: Campaign[] = (campaigns as any[] || []).map((campaign: any) => ({
       id: campaign.id,
       name: campaign.name,
       user_id: campaign.user_id,

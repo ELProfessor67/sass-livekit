@@ -28,6 +28,8 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useRouteChangeData } from "@/hooks/useRouteChange";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { fetchAssistants } from "@/lib/api/assistants/fetchAssistants";
 import { fetchPhoneNumberMappings } from "@/lib/api/phoneNumbers/fetchPhoneNumberMappings";
 
 interface PhoneNumber {
@@ -54,6 +56,7 @@ function PhoneNumberCard({
   onAssign: (phoneNumber: PhoneNumber, inboundAssistant: string, outboundAssistant?: string) => void;
   loading: boolean;
 }) {
+  const { currentWorkspace, canEdit } = useWorkspace();
   const { toast } = useToast();
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingNumber, setEditingNumber] = useState(phoneNumber);
@@ -106,19 +109,21 @@ function PhoneNumberCard({
               </div>
               
               {/* Compact Actions */}
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0 hover:bg-accent"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsEditOpen(true);
-                  }}
-                >
-                  <Pencil className="h-3 w-3" />
-                </Button>
-              </div>
+              {canEdit && (
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 hover:bg-accent"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsEditOpen(true);
+                    }}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
             </div>
             
             {/* Subtitle: Label */}
@@ -242,21 +247,26 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
   const [isImportOpen, setIsImportOpen] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
+  const { currentWorkspace, canEdit } = useWorkspace();
 
   const base = (import.meta.env.VITE_BACKEND_URL as string) ?? "http://localhost:4000";
 
-  // Load assistants for current user
+  // Load assistants for current workspace
   useEffect(() => {
-    if (user?.id) {
-      (async () => {
-        const { data } = await supabase
-          .from("assistant")
-          .select("id, name")
-          .eq("user_id", user.id);
-        setAssistants((data || []).map((a: any) => ({ id: a.id, name: a.name ?? "Untitled" })));
-      })();
-    }
-  }, [user?.id]);
+    (async () => {
+      try {
+        setLoading(true);
+        const workspaceId = currentWorkspace?.id || null;
+        const { assistants: workspaceAssistants } = await fetchAssistants(workspaceId as string);
+        setAssistants(workspaceAssistants.map(a => ({ id: a.id, name: a.name })));
+      } catch (error) {
+        console.error('Error loading assistants:', error);
+        toast({ title: "Error", description: "Failed to load assistants for this workspace.", variant: "destructive" });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [currentWorkspace?.id]);
 
   // Load phone numbers from Twilio after assistants are loaded
   useEffect(() => {
@@ -286,7 +296,7 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
       const url = `${base}/api/v1/twilio/user/phone-numbers`;
       const res = await fetch(url, {
         headers: {
-          'x-user-id': user?.id || '',
+          'x-user-id': currentWorkspace?.user_id || user?.id || '',
         },
       });
       const json = await res.json();
@@ -448,7 +458,7 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          'x-user-id': user?.id || '',
+          'x-user-id': currentWorkspace?.user_id || user?.id || '',
         },
         body: JSON.stringify({ phoneSid: phoneNumber.id }),
       });
@@ -464,7 +474,7 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
           method: "POST",
           headers: { 
             "Content-Type": "application/json",
-            'x-user-id': user?.id || ''
+            'x-user-id': currentWorkspace?.user_id || user?.id || ''
           },
           body: JSON.stringify({
             assistantId: inboundAssistant.id,
@@ -490,7 +500,7 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          'x-user-id': user?.id || '',
+          'x-user-id': currentWorkspace?.user_id || user?.id || '',
         },
         body: JSON.stringify({
           phoneSid: phoneNumber.id,
@@ -590,6 +600,7 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
               "Load from Twilio"
             )}
           </Button>
+        {canEdit && (
           <Button 
             variant="default"
             onClick={(e) => {
@@ -601,7 +612,8 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
             <Plus className="h-4 w-4 mr-2" />
             Import Numbers
           </Button>
-        </div>
+        )}
+      </div>
       </div>
 
       {/* Import Dialog */}

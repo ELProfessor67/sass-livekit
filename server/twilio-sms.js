@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { SMSAssistantService } from './services/sms-assistant-service.js';
 import { SMSDatabaseService } from './services/sms-database-service.js';
 import { SMSAIService } from './services/sms-ai-service.js';
+import { applyTenantFilterFromRequest } from './utils/applyTenantFilterToQuery.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -34,14 +35,15 @@ router.post('/send', async (req, res) => {
       headers: req.headers
     });
 
-    const { 
-      accountSid, 
-      authToken, 
-      to, 
-      from, 
-      body, 
+    const {
+      accountSid,
+      authToken,
+      to,
+      from,
+      body,
       conversationId,
-      userId 
+      userId,
+      workspaceId
     } = req.body;
 
     if (!accountSid || !authToken || !to || !body) {
@@ -109,7 +111,9 @@ router.post('/send', async (req, res) => {
           status: message.status,
           date_created: message.dateCreated || new Date().toISOString(),
           date_sent: message.dateSent || null,
-          date_updated: message.dateUpdated || new Date().toISOString()
+          date_updated: message.dateUpdated || new Date().toISOString(),
+          workspace_id: workspaceId || null,
+          tenant: req.body.tenant || 'main' // Fallback to main or passed tenant
         });
 
       if (insertError) {
@@ -184,10 +188,14 @@ router.get('/conversation/:conversationId', async (req, res) => {
     const client = twilio(accountSid, authToken);
 
     // Get messages from database for this phone number
-    const { data: messages, error } = await supabase
+    let query = supabase
       .from('sms_messages')
       .select('*')
-      .or(`to_number.eq.${conversationId.replace('conv_', '')},from_number.eq.${conversationId.replace('conv_', '')}`)
+      .or(`to_number.eq.${conversationId.replace('conv_', '')},from_number.eq.${conversationId.replace('conv_', '')}`);
+
+    query = applyTenantFilterFromRequest(req, query);
+
+    const { data: messages, error } = await query
       .order('date_created', { ascending: false })
       .limit(50);
 
@@ -270,7 +278,7 @@ router.post('/webhook', async (req, res) => {
 
       // Respond to Twilio with empty response (no further action needed)
       res.status(200).send('SMS processed');
-      
+
     } catch (error) {
       console.error('Error processing SMS:', error);
       res.status(500).send('Error processing SMS');

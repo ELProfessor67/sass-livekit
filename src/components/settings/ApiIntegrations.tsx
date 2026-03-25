@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useSearchParams } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Database, Users, Zap, Phone, MessageSquare, Calendar, CheckCircle2, Plus, Globe, AlertCircle } from "lucide-react";
+import { Building2, Database, Users, Zap, Phone, MessageSquare, Calendar, CheckCircle2, Plus, Globe, AlertCircle, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { TwilioIntegrationCard } from "./integrations/TwilioIntegrationCard";
 import { SecurityCard } from "./integrations/SecurityCard";
@@ -16,6 +17,9 @@ import { TwilioCredentialsService, type UserTwilioCredentials } from "@/lib/twil
 import { CalendarCredentialsService, type UserCalendarCredentials, type CalendarCredentialsInput } from "@/lib/calendar-credentials";
 import { WhatsAppIntegrationCard } from "./WhatsAppIntegrationCard";
 import { WhatsAppCredentialsService, type UserWhatsAppCredentials } from "@/lib/whatsapp-credentials";
+import { SMTPIntegrationCard } from "./SMTPIntegrationCard";
+import { SMTPAuthDialog } from "./SMTPAuthDialog";
+import { SMTPCredentialsService, type UserSMTPCredentials } from "@/lib/smtp-credentials";
 import { SlackIcon, FacebookIcon, HubSpotIcon } from "@/components/composer/nodes/IntegrationIcons";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { cn } from "@/lib/utils";
@@ -113,6 +117,15 @@ const integrations = [
     category: "Communication",
     brandColor: "#25D366"
   },
+  {
+    id: "smtp",
+    name: "Custom SMTP",
+    description: "Send emails from your own SMTP server",
+    icon: Mail,
+    status: "available",
+    category: "Communication",
+    brandColor: "#4f46e5"
+  },
   // Calendar Integrations
   {
     id: "calcom",
@@ -126,6 +139,7 @@ const integrations = [
 ];
 
 export function ApiIntegrations() {
+  const { canEdit } = useWorkspace();
   const { toast } = useToast();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -141,6 +155,8 @@ export function ApiIntegrations() {
   const [showTwilioDetails, setShowTwilioDetails] = useState(false);
   const [showCalendarDetails, setShowCalendarDetails] = useState(false);
   const [showWhatsappDetails, setShowWhatsappDetails] = useState(false);
+  const [showSmtpDetails, setShowSmtpDetails] = useState(false);
+  const [smtpCredentials, setSmtpCredentials] = useState<UserSMTPCredentials | null>(null);
 
 
 
@@ -158,6 +174,7 @@ export function ApiIntegrations() {
     loadFacebookConnections();
     loadHubSpotConnections();
     loadGHLConnections();
+    loadSMTPCredentials();
   }, [user]);
 
   // Handle OAuth callback parameters
@@ -301,6 +318,15 @@ export function ApiIntegrations() {
     }
   };
 
+  const loadSMTPCredentials = async () => {
+    try {
+      const creds = await SMTPCredentialsService.getCredentials();
+      setSmtpCredentials(creds);
+    } catch (error) {
+      console.error("Error loading SMTP credentials:", error);
+    }
+  };
+
   const loadTwilioCredentials = async () => {
     try {
       setIsLoading(true);
@@ -440,6 +466,12 @@ export function ApiIntegrations() {
       return {
         ...integration,
         status: ghlConnections.length > 0 ? "connected" : "available"
+      };
+    }
+    if (integration.id === "smtp") {
+      return {
+        ...integration,
+        status: smtpCredentials ? "connected" : "available"
       };
     }
     return integration;
@@ -624,6 +656,15 @@ export function ApiIntegrations() {
   };
 
   const handleIntegrationClick = (integration: typeof integrations[0]) => {
+    if (!canEdit) {
+      toast({
+        title: "Permission Denied",
+        description: "You do not have permission to manage integrations.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (integration.id === "twilio") {
       // Toggle Twilio details visibility
       setShowTwilioDetails(!showTwilioDetails);
@@ -707,6 +748,15 @@ export function ApiIntegrations() {
   };
 
   const handleDisconnect = async (provider: string) => {
+    if (!canEdit) {
+      toast({
+        title: "Permission Denied",
+        description: "You do not have permission to manage integrations.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!user?.id) return;
 
     try {
@@ -887,6 +937,26 @@ export function ApiIntegrations() {
                   Manage
                 </Button>
               </CalendarAuthDialog>
+            ) : integration.id === "smtp" ? (
+              <SMTPAuthDialog onSuccess={loadSMTPCredentials} initialData={smtpCredentials}>
+                <Button
+                  variant={isConnected ? "outline" : "default"}
+                  className="w-full text-sm h-8 relative z-10 flex items-center justify-center gap-1.5"
+                  size="sm"
+                >
+                  {isConnected ? (
+                    <>
+                      <CheckCircle2 className="w-3 h-3" />
+                      Manage
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-3 h-3" />
+                      Connect
+                    </>
+                  )}
+                </Button>
+              </SMTPAuthDialog>
             ) : integration.id === "facebook" && isConnected && facebookNeedsPages ? (
               // Show page connection button if Facebook is connected but pages aren't
               <div className="space-y-2">
@@ -1034,6 +1104,14 @@ export function ApiIntegrations() {
             integrations={whatsappIntegrations}
             onIntegrationsChange={setWhatsappIntegrations}
           />
+        </div>
+      )}
+
+      {/* SMTP Integration Details - Only show when toggled */}
+      {showSmtpDetails && (
+        <div className="mt-8 transition-all duration-300 ease-in-out">
+          <h3 className="text-lg font-semibold text-foreground mb-4">Email Configuration (SMTP)</h3>
+          <SMTPIntegrationCard />
         </div>
       )}
 

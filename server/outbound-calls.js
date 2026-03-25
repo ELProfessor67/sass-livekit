@@ -3,6 +3,7 @@ import express from 'express';
 import Twilio from 'twilio';
 import { createClient } from '@supabase/supabase-js';
 import { RoomServiceClient, AgentDispatchClient, SipClient } from 'livekit-server-sdk';
+import { applyTenantFilterFromRequest } from './utils/applyTenantFilterToQuery.js';
 
 export const outboundCallsRouter = express.Router();
 
@@ -23,7 +24,9 @@ outboundCallsRouter.post('/initiate', async (req, res) => {
       phoneNumber,
       contactName,
       assistantId,
-      fromNumber
+      fromNumber,
+      workspaceId,
+      tenant
     } = req.body;
 
     if ((!campaignId && !userId) || !phoneNumber || !assistantId) {
@@ -108,7 +111,9 @@ outboundCallsRouter.post('/initiate', async (req, res) => {
           contact_name: contactName || '',
           room_name: roomName,
           status: 'calling',
-          scheduled_at: new Date().toISOString()
+          scheduled_at: new Date().toISOString(),
+          workspace_id: campaign.workspace_id || workspaceId || null,
+          tenant: campaign.tenant || tenant || 'main'
         })
         .select()
         .single();
@@ -246,7 +251,9 @@ outboundCallsRouter.post('/initiate', async (req, res) => {
           contact_name: contactName || '',
           participant_identity: `outbound-${phoneNumber}`,
           start_time: new Date().toISOString(),
-          call_status: 'calling'
+          call_status: 'calling',
+          workspace_id: workspaceId || null,
+          tenant: tenant || 'main'
         });
 
       if (historyError) {
@@ -295,22 +302,26 @@ outboundCallsRouter.post('/status-callback', async (req, res) => {
     });
 
     // Find the call - try campaign_calls first
-    const { data: campaignCall, error: campaignError } = await supabase
+    let query = supabase
       .from('campaign_calls')
       .select('*, campaigns(*)')
-      .eq('call_sid', CallSid)
-      .single();
+      .eq('call_sid', CallSid);
+
+    query = applyTenantFilterFromRequest(req, query);
+    const { data: campaignCall, error: campaignError } = await query.single();
 
     let callRecord = campaignCall;
     let isCampaign = true;
 
     if (campaignError || !campaignCall) {
       // Try call_history for lead calls
-      const { data: leadCall, error: leadError } = await supabase
+      let leadQuery = supabase
         .from('call_history')
         .select('*')
-        .eq('call_sid', CallSid)
-        .single();
+        .eq('call_sid', CallSid);
+
+      leadQuery = applyTenantFilterFromRequest(req, leadQuery);
+      const { data: leadCall, error: leadError } = await leadQuery.single();
 
       if (leadError || !leadCall) {
         console.warn('Call record not found for status update (might be arriving early):', CallSid);
@@ -402,8 +413,10 @@ outboundCallsRouter.get('/campaign/:campaignId', async (req, res) => {
     let query = supabase
       .from('campaign_calls')
       .select('*')
-      .eq('campaign_id', campaignId)
-      .order('created_at', { ascending: false })
+      .eq('campaign_id', campaignId);
+
+    query = applyTenantFilterFromRequest(req, query);
+    query = query.order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (status) query = query.eq('status', status);
@@ -441,22 +454,26 @@ outboundCallsRouter.post('/livekit-callback', async (req, res) => {
     });
 
     // Find the call - try campaign_calls first
-    const { data: campaignCall, error: campaignError } = await supabase
+    let query = supabase
       .from('campaign_calls')
       .select('*, campaigns(*)')
-      .eq('call_sid', call_sid)
-      .single();
+      .eq('call_sid', call_sid);
+
+    query = applyTenantFilterFromRequest(req, query);
+    const { data: campaignCall, error: campaignError } = await query.single();
 
     let callRecord = campaignCall;
     let isCampaign = true;
 
     if (campaignError || !campaignCall) {
       // Try call_history for lead calls
-      const { data: leadCall, error: leadError } = await supabase
+      let leadQuery = supabase
         .from('call_history')
         .select('*')
-        .eq('call_sid', call_sid)
-        .single();
+        .eq('call_sid', call_sid);
+
+      leadQuery = applyTenantFilterFromRequest(req, leadQuery);
+      const { data: leadCall, error: leadError } = await leadQuery.single();
 
       if (leadError || !leadCall) {
         console.error('Call not found for LiveKit analysis SID:', call_sid);

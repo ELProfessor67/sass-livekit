@@ -14,9 +14,10 @@ interface ModernMessageInputProps {
   conversation: Conversation;
   selectedAgentPhoneNumber?: string | null;
   isDisabled?: boolean; // Disable input when "All Agents" is selected
+  canEdit?: boolean;
 }
 
-export function ModernMessageInput({ conversation, selectedAgentPhoneNumber, isDisabled = false }: ModernMessageInputProps) {
+export function ModernMessageInput({ conversation, selectedAgentPhoneNumber, isDisabled = false, canEdit = true }: ModernMessageInputProps) {
   const [message, setMessage] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -57,7 +58,8 @@ export function ModernMessageInput({ conversation, selectedAgentPhoneNumber, isD
           to: formatPhoneNumber(conversation.phoneNumber),
           from: selectedAgentPhoneNumber || '', // Use selected agent's phone number if available
           body: message.trim(),
-          conversationId: conversation.id
+          conversationId: conversation.id,
+          workspaceId: (conversation as any).workspace_id || '' // Ensure workspaceId is passed
         });
 
         if (result.success) {
@@ -159,7 +161,7 @@ export function ModernMessageInput({ conversation, selectedAgentPhoneNumber, isD
                   setIsExpanded(false);
                 }
               }}
-              placeholder={isDisabled ? "Select a specific agent to send messages" : `Message ${conversation.displayName}...`}
+              placeholder={!canEdit ? "You don't have permission to send messages" : (isDisabled ? "Select a specific agent to send messages" : `Message ${conversation.displayName}...`)}
               className="min-h-[2.25rem] max-h-32 resize-none text-sm bg-background/80 border-border/40 focus:border-border/60 rounded-[var(--radius-md)] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               rows={3}
               disabled={isDisabled}
@@ -172,7 +174,7 @@ export function ModernMessageInput({ conversation, selectedAgentPhoneNumber, isD
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyPress}
               onFocus={handleFocus}
-              placeholder={isDisabled ? "Select a specific agent to send messages" : `Message ${conversation.displayName}...`}
+              placeholder={!canEdit ? "You don't have permission to send messages" : (isDisabled ? "Select a specific agent to send messages" : `Message ${conversation.displayName}...`)}
               className="h-9 text-sm bg-background/80 border-border/40 focus:border-border/60 rounded-[var(--radius-md)] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isDisabled}
             />
@@ -188,7 +190,7 @@ export function ModernMessageInput({ conversation, selectedAgentPhoneNumber, isD
                 variant="ghost"
                 size="sm"
                 className="h-9 w-9 p-0 text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-[var(--radius-md)]"
-                disabled={false}
+                disabled={!canEdit}
               >
                 <Smile className="h-4 w-4" />
               </Button>
@@ -226,7 +228,11 @@ export function ModernMessageInput({ conversation, selectedAgentPhoneNumber, isD
 
       {/* Helper Text */}
       <div className="mt-2 text-[10px] text-center text-muted-foreground">
-        {isDisabled ? (
+        {!canEdit ? (
+          <span className="text-red-400">
+            Viewer role is read-only and cannot send messages
+          </span>
+        ) : isDisabled ? (
           <span className="text-white">
             Select a specific agent from the dropdown above to send messages
           </span>

@@ -8,6 +8,8 @@ import { WorkspaceSettings } from "@/components/settings/WorkspaceSettings";
 import { PlansAndPricingSettings } from "@/components/settings/PlansAndPricingSettings";
 import { ApiIntegrations } from "@/components/settings/ApiIntegrations";
 import { ThemeContainer, ThemeSection, ThemeCard } from "@/components/theme";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { useMemo } from 'react';
 
 const tabVariants = {
   initial: { opacity: 0, y: 10 },
@@ -16,22 +18,24 @@ const tabVariants = {
 };
 
 export default function Settings() {
+  const { canViewIntegrations, canViewBilling } = useWorkspace();
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("account");
 
   useEffect(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam && ['account', 'workspace', 'integrations', 'plans'].includes(tabParam)) {
+    const validTabs = ['account', 'workspace', 'integrations', 'plans'];
+    if (tabParam && validTabs.includes(tabParam)) {
       setActiveTab(tabParam);
     }
   }, [searchParams]);
 
-  const tabs = [
+  const tabs = useMemo(() => [
     { id: "account", label: "Account" },
     { id: "workspace", label: "Workspace" },
-    { id: "integrations", label: "Integrations" },
-    { id: "plans", label: "Plans & Pricing" }
-  ];
+    ...(canViewIntegrations ? [{ id: "integrations", label: "Integrations" }] : []),
+    ...(canViewBilling ? [{ id: "plans", label: "Plans & Pricing" }] : [])
+  ], [canViewIntegrations, canViewBilling]);
 
   return (
     <DashboardLayout>

@@ -221,8 +221,8 @@ export type Database = {
           analysis_summary_timeout: number | null
           structured_data_fields: Json | null
           audio_recording_format:
-            | Database["public"]["Enums"]["audio_recording_format"]
-            | null
+          | Database["public"]["Enums"]["audio_recording_format"]
+          | null
           audio_recording_setting: boolean | null
           backchanneling_enabled: boolean | null
           background_denoising_enabled: boolean | null
@@ -295,8 +295,8 @@ export type Database = {
           analysis_summary_timeout?: number | null
           structured_data_fields?: Json | null
           audio_recording_format?:
-            | Database["public"]["Enums"]["audio_recording_format"]
-            | null
+          | Database["public"]["Enums"]["audio_recording_format"]
+          | null
           audio_recording_setting?: boolean | null
           backchanneling_enabled?: boolean | null
           background_denoising_enabled?: boolean | null
@@ -374,8 +374,8 @@ export type Database = {
           analysis_summary_timeout?: number | null
           structured_data_fields?: Json | null
           audio_recording_format?:
-            | Database["public"]["Enums"]["audio_recording_format"]
-            | null
+          | Database["public"]["Enums"]["audio_recording_format"]
+          | null
           audio_recording_setting?: boolean | null
           backchanneling_enabled?: boolean | null
           background_denoising_enabled?: boolean | null
@@ -1005,6 +1005,8 @@ export type Database = {
           updated_at: string
           user_id: string
           workspace_name: string
+          minute_limit: number | null
+          minutes_used: number | null
         }
         Insert: {
           agency_id?: string | null
@@ -1021,6 +1023,8 @@ export type Database = {
           updated_at?: string
           user_id: string
           workspace_name?: string
+          minute_limit?: number | null
+          minutes_used?: number | null
         }
         Update: {
           agency_id?: string | null
@@ -1037,6 +1041,8 @@ export type Database = {
           updated_at?: string
           user_id?: string
           workspace_name?: string
+          minute_limit?: number | null
+          minutes_used?: number | null
         }
         Relationships: []
       }
@@ -1184,6 +1190,411 @@ export type Database = {
         }
         Relationships: []
       }
+      campaigns: {
+        Row: {
+          id: string
+          user_id: string
+          workspace_id: string | null
+          tenant: string | null
+          name: string
+          assistant_id: string | null
+          csv_file_id: string | null
+          execution_status: string | null
+          total_contacts: number | null
+          completed_contacts: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          workspace_id?: string | null
+          tenant?: string | null
+          name: string
+          assistant_id?: string | null
+          csv_file_id?: string | null
+          execution_status?: string | null
+          total_contacts?: number | null
+          completed_contacts?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          workspace_id?: string | null
+          tenant?: string | null
+          name?: string
+          assistant_id?: string | null
+          csv_file_id?: string | null
+          execution_status?: string | null
+          total_contacts?: number | null
+          completed_contacts?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      contacts: {
+        Row: {
+          id: string
+          user_id: string
+          workspace_id: string | null
+          tenant: string | null
+          first_name: string | null
+          last_name: string | null
+          email: string | null
+          phone: string | null
+          company: string | null
+          tags: Json | null
+          metadata: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          workspace_id?: string | null
+          tenant?: string | null
+          first_name?: string | null
+          last_name?: string | null
+          email?: string | null
+          phone?: string | null
+          company?: string | null
+          tags?: Json | null
+          metadata?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          workspace_id?: string | null
+          tenant?: string | null
+          first_name?: string | null
+          last_name?: string | null
+          email?: string | null
+          phone?: string | null
+          company?: string | null
+          tags?: Json | null
+          metadata?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      contact_lists: {
+        Row: {
+          id: string
+          user_id: string
+          workspace_id: string | null
+          tenant: string | null
+          name: string
+          description: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          workspace_id?: string | null
+          tenant?: string | null
+          name: string
+          description?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          workspace_id?: string | null
+          tenant?: string | null
+          name?: string
+          description?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      csv_files: {
+        Row: {
+          id: string
+          user_id: string
+          workspace_id: string | null
+          tenant: string | null
+          name: string
+          row_count: number
+          uploaded_at: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          workspace_id?: string | null
+          tenant?: string | null
+          name: string
+          row_count: number
+          uploaded_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          workspace_id?: string | null
+          tenant?: string | null
+          name?: string
+          row_count?: number
+          uploaded_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      csv_contacts: {
+        Row: {
+          id: string
+          user_id: string
+          workspace_id: string | null
+          tenant: string | null
+          csv_file_id: string
+          first_name: string | null
+          last_name: string | null
+          email: string | null
+          phone: string | null
+          data: Json | null
+          status: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          workspace_id?: string | null
+          tenant?: string | null
+          csv_file_id: string
+          first_name?: string | null
+          last_name?: string | null
+          email?: string | null
+          phone?: string | null
+          data?: Json | null
+          status?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          workspace_id?: string | null
+          tenant?: string | null
+          csv_file_id?: string
+          first_name?: string | null
+          last_name?: string | null
+          email?: string | null
+          phone?: string | null
+          data?: Json | null
+          status?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      workflows: {
+        Row: {
+          id: string
+          user_id: string
+          workspace_id: string | null
+          tenant: string | null
+          name: string
+          description: string | null
+          definition: Json | null
+          is_enabled: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          workspace_id?: string | null
+          tenant?: string | null
+          name: string
+          description?: string | null
+          definition?: Json | null
+          is_enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          workspace_id?: string | null
+          tenant?: string | null
+          name?: string
+          description?: string | null
+          definition?: Json | null
+          is_enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      knowledge_bases: {
+        Row: {
+          id: string
+          company_id: string
+          name: string
+          description: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          name: string
+          description?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          name?: string
+          description?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_smtp_credentials: {
+        Row: {
+          id: string
+          user_id: string
+          smtp_host: string
+          smtp_port: number
+          smtp_user: string
+          smtp_pass: string
+          smtp_secure: boolean
+          from_email: string
+          from_name: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          smtp_host: string
+          smtp_port?: number
+          smtp_user: string
+          smtp_pass: string
+          smtp_secure?: boolean
+          from_email: string
+          from_name?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          smtp_host?: string
+          smtp_port?: number
+          smtp_user?: string
+          smtp_pass?: string
+          smtp_secure?: boolean
+          from_email?: string
+          from_name?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_calendar_credentials: {
+        Row: {
+          id: string
+          user_id: string
+          provider: string
+          access_token: string
+          refresh_token: string | null
+          expires_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          provider: string
+          access_token: string
+          refresh_token?: string | null
+          expires_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          provider?: string
+          access_token?: string
+          refresh_token?: string | null
+          expires_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_whatsapp_credentials: {
+        Row: {
+          id: string
+          user_id: string
+          phone_number_id: string
+          waba_id: string
+          access_token: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          phone_number_id: string
+          waba_id: string
+          access_token: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          phone_number_id?: string
+          waba_id?: string
+          access_token?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_twilio_credentials: {
+        Row: {
+          id: string
+          user_id: string
+          account_sid: string
+          auth_token: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          account_sid: string
+          auth_token: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          account_sid?: string
+          auth_token?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -1210,116 +1621,116 @@ type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-    | { schema: keyof DatabaseWithoutInternals },
+  | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+  | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+  ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+    DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+  : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+    DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
-    ? R
-    : never
+  ? R
+  : never
   : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R
-      }
-      ? R
-      : never
-    : never
+    DefaultSchema["Views"])
+  ? (DefaultSchema["Tables"] &
+    DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+      Row: infer R
+    }
+  ? R
+  : never
+  : never
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+  | keyof DefaultSchema["Tables"]
+  | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+  ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+  : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Insert: infer I
-    }
-    ? I
-    : never
+    Insert: infer I
+  }
+  ? I
+  : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I
-      }
-      ? I
-      : never
-    : never
+  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+    Insert: infer I
+  }
+  ? I
+  : never
+  : never
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+  | keyof DefaultSchema["Tables"]
+  | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+  ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+  : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Update: infer U
-    }
-    ? U
-    : never
+    Update: infer U
+  }
+  ? U
+  : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U
-      }
-      ? U
-      : never
-    : never
+  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+    Update: infer U
+  }
+  ? U
+  : never
+  : never
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
+  | keyof DefaultSchema["Enums"]
+  | { schema: keyof DatabaseWithoutInternals },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+  ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+  : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never
+  ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+  : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof DatabaseWithoutInternals },
+  | keyof DefaultSchema["CompositeTypes"]
+  | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+  ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+  : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-    : never
+  ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+  : never
 
 export const Constants = {
   public: {

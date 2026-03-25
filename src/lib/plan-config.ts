@@ -13,6 +13,7 @@ export interface PlanConfig {
   price: number;
   features: string[];
   whitelabelEnabled?: boolean;
+  planType?: 'simple' | 'agency' | 'whitelabel';
 }
 
 // Default fallback plans (used if database fetch fails)
@@ -28,7 +29,8 @@ const DEFAULT_PLAN_CONFIGS: Record<string, PlanConfig> = {
       "Standard integrations",
       "Minutes purchased separately"
     ],
-    whitelabelEnabled: false
+    whitelabelEnabled: false,
+    planType: 'simple'
   },
   professional: {
     key: "professional",
@@ -42,7 +44,8 @@ const DEFAULT_PLAN_CONFIGS: Record<string, PlanConfig> = {
       "Custom branding",
       "Minutes purchased separately"
     ],
-    whitelabelEnabled: false
+    whitelabelEnabled: false,
+    planType: 'simple'
   },
   enterprise: {
     key: "enterprise",
@@ -57,7 +60,8 @@ const DEFAULT_PLAN_CONFIGS: Record<string, PlanConfig> = {
       "Dedicated account manager",
       "Minutes purchased separately"
     ],
-    whitelabelEnabled: false
+    whitelabelEnabled: false,
+    planType: 'agency'
   },
   free: {
     key: "free",
@@ -68,7 +72,8 @@ const DEFAULT_PLAN_CONFIGS: Record<string, PlanConfig> = {
       "Community support",
       "Minutes purchased separately"
     ],
-    whitelabelEnabled: false
+    whitelabelEnabled: false,
+    planType: 'simple'
   }
 };
 
@@ -133,7 +138,8 @@ async function fetchPlanConfigsFromDB(tenant?: string | null): Promise<Record<st
           name: plan.name,
           price: Number(plan.price),
           features: Array.isArray(plan.features) ? plan.features : [],
-          whitelabelEnabled: plan.whitelabel_enabled ?? false
+          whitelabelEnabled: plan.whitelabel_enabled ?? false,
+          planType: plan.plan_type || 'simple'
         };
       });
 
@@ -163,7 +169,8 @@ async function fetchPlanConfigsFromDB(tenant?: string | null): Promise<Record<st
           name: plan.name,
           price: Number(plan.price),
           features: Array.isArray(plan.features) ? plan.features : [],
-          whitelabelEnabled: plan.whitelabel_enabled ?? false
+          whitelabelEnabled: plan.whitelabel_enabled ?? false,
+          planType: plan.plan_type || 'simple'
         };
       });
 

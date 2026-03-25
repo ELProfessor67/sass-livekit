@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Zap, Phone, Mail, MessageSquare, Database, Globe, Slack, Webhook } from "lucide-react";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { ThemeContainer, ThemeCard } from "@/components/theme";
 
 const integrations = [
   {
@@ -58,6 +60,8 @@ const integrations = [
 ];
 
 export default function Integrations() {
+  const { canViewIntegrations, canManageIntegrations } = useWorkspace();
+
   const getStatusBadge = (status: string) => {
     const variants = {
       connected: { variant: 'default' as const, className: 'bg-success/10 text-success border-success/20' },
@@ -73,6 +77,23 @@ export default function Integrations() {
       </Badge>
     );
   };
+
+  // Access check
+  if (!canViewIntegrations) {
+    return (
+      <DashboardLayout>
+        <ThemeContainer variant="base" className="min-h-screen no-hover-scaling">
+          <div className="flex items-center justify-center min-h-[70vh]">
+            <ThemeCard variant="glass" className="p-10 text-center max-w-md">
+              <h2 className="text-2xl font-light mb-4 text-foreground">Access Denied</h2>
+              <p className="text-muted-foreground mb-6">You don't have permission to view integrations in this workspace.</p>
+              <Button onClick={() => window.history.back()}>Go Back</Button>
+            </ThemeCard>
+          </div>
+        </ThemeContainer>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -120,15 +141,16 @@ export default function Integrations() {
                           <div className="flex items-center gap-2">
                             <Switch 
                               checked={integration.status === 'connected' || integration.status === 'configured' || integration.status === 'active'}
-                              disabled={integration.status === 'available'}
+                              disabled={integration.status === 'available' || !canManageIntegrations}
                             />
                             <span className="text-sm text-muted-foreground">
                               {integration.status === 'available' ? 'Available' : 'Enabled'}
                             </span>
                           </div>
-                          <Button 
+                           <Button 
                             variant={integration.status === 'available' ? 'default' : 'outline'} 
                             size="sm"
+                            disabled={!canManageIntegrations}
                           >
                             {integration.status === 'available' ? 'Connect' : 'Configure'}
                           </Button>

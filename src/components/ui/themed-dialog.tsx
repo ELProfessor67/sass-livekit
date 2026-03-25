@@ -27,8 +27,8 @@ interface ThemedDialogTriggerProps {
 }
 
 interface ThemedDialogHeaderProps {
-  title: React.ReactNode;
-  description?: React.ReactNode;
+  title: string;
+  description?: string;
   className?: string;
 }
 
@@ -58,19 +58,16 @@ const ThemedDialogContent = ({
   const getDialogClasses = () => {
     if (uiStyle === "glass") {
       return cn(
-        // Glass effect with backdrop blur
         "backdrop-blur-xl border transition-all duration-300",
-        "shadow-2xl border sm:max-w-2xl rounded-xl",
-        // Light mode - more opaque for better text legibility
+        "shadow-2xl border sm:max-w-2xl rounded-2xl",
         "bg-white/[0.85] border-border/60 shadow-black/[0.1]",
-        // Dark mode overrides
-        "dark:bg-white/[0.08] dark:border-white/[0.15] dark:shadow-black/[0.3]"
+        "dark:bg-[#121212]/[0.8] dark:border-white/[0.1] dark:shadow-black/[0.3]"
       );
     } else {
       return cn(
         "bg-card border-border/60",
         "shadow-2xl border",
-        "sm:max-w-2xl rounded-xl"
+        "sm:max-w-2xl rounded-2xl"
       );
     }
   };
@@ -93,7 +90,7 @@ const ThemedDialogHeader = ({
 }: ThemedDialogHeaderProps) => {
   return (
     <DialogHeader className={cn("space-y-3", className)}>
-      <DialogTitle className="text-lg font-light text-foreground">
+      <DialogTitle className="text-xl font-light tracking-tight text-foreground">
         {title}
       </DialogTitle>
       {description && (

@@ -9,9 +9,10 @@ interface EdgeConfigPanelProps {
     edge: Edge;
     onUpdate: (edgeId: string, data: any) => void;
     onDelete?: (edgeId: string) => void;
+    canEdit?: boolean;
 }
 
-export function EdgeConfigPanel({ edge, onUpdate, onDelete }: EdgeConfigPanelProps) {
+export function EdgeConfigPanel({ edge, onUpdate, onDelete, canEdit = true }: EdgeConfigPanelProps) {
     const data = edge.data || {};
 
     const handleConditionChange = (value: string) => {
@@ -32,7 +33,7 @@ export function EdgeConfigPanel({ edge, onUpdate, onDelete }: EdgeConfigPanelPro
                     </div>
                 </div>
 
-                {onDelete && (
+                {onDelete && canEdit && (
                     <Button
                         variant="ghost"
                         size="icon"
@@ -52,6 +53,7 @@ export function EdgeConfigPanel({ edge, onUpdate, onDelete }: EdgeConfigPanelPro
                     <Select
                         value={(data.condition as string) || 'always'}
                         onValueChange={handleConditionChange}
+                        disabled={!canEdit}
                     >
                         <SelectTrigger className="bg-muted/30 border-border/50 focus:border-primary/50 text-sm h-9">
                             <SelectValue placeholder="Select condition..." />
@@ -79,6 +81,7 @@ export function EdgeConfigPanel({ edge, onUpdate, onDelete }: EdgeConfigPanelPro
                             value={(data.custom_condition as string) || ''}
                             onChange={(e) => onUpdate(edge.id, { custom_condition: e.target.value })}
                             placeholder="e.g. {status} == 'active'"
+                            disabled={!canEdit}
                         />
                     </div>
                 )}

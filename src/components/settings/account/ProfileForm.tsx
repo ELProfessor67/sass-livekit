@@ -1,4 +1,5 @@
 
+import { useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -16,7 +17,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { SectionHeading, BodyText } from "@/components/ui/typography";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
+import { Loader2 } from "lucide-react";
 
 const profileFormSchema = z.object({
   name: z.string().min(2, {
@@ -29,28 +31,63 @@ const profileFormSchema = z.object({
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
-const defaultValues: Partial<ProfileFormValues> = {
-  name: "John Doe",
-  email: "john.doe@example.com",
-  company: "AI Call Center",
-  bio: "AI enthusiast and call center specialist",
-};
-
 export function ProfileForm() {
   const { toast } = useToast();
+  const { user, updateProfile, loading } = useAuth();
   
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
-    defaultValues,
+    defaultValues: {
+      name: user?.fullName || "",
+      email: user?.email || "",
+      company: user?.company || "",
+      bio: user?.bio || "",
+    },
     mode: "onChange",
   });
 
-  function onSubmit(data: ProfileFormValues) {
-    toast({
-      title: "Profile updated",
-      description: "Your profile has been updated successfully."
-    });
-    console.log(data);
+  // Update form when user data loads
+  useEffect(() => {
+    if (user) {
+      form.reset({
+        name: user.fullName || "",
+        email: user.email || "",
+        company: user.company || "",
+        bio: user.bio || "",
+      });
+    }
+  }, [user, form]);
+
+  async function onSubmit(data: ProfileFormValues) {
+    try {
+      // In our DB schema, 'fullName' is stored as 'name'
+      // The updateProfile function in AuthContext currently expects Partial<User>
+      // We'll pass the updates and the context handler will deal with the Supabase call
+      await updateProfile({
+        fullName: data.name,
+        company: data.company,
+        bio: data.bio,
+      });
+
+      toast({
+        title: "Profile updated",
+        description: "Your profile has been updated successfully."
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Update failed",
+        description: "There was an error updating your profile."
+      });
+    }
+  }
+
+  if (loading && !user) {
+    return (
+      <Card className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.08] rounded-2xl p-12 flex justify-center items-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </Card>
+    );
   }
 
   return (
@@ -86,7 +123,7 @@ export function ProfileForm() {
                   <FormItem>
                     <FormLabel>Email</FormLabel>
                     <FormControl>
-                      <Input placeholder="Email address" {...field} />
+                      <Input placeholder="Email address" {...field} disabled />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -130,7 +167,12 @@ export function ProfileForm() {
             />
             
             <div className="flex justify-end">
-              <Button type="submit">Save Changes</Button>
+              <Button type="submit" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                Save Changes
+              </Button>
             </div>
           </form>
         </Form>

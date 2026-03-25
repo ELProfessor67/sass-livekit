@@ -10,6 +10,8 @@ import { AssistantDetailsDialog } from "@/components/assistants/AssistantDetails
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { fetchAssistants } from "@/lib/api/assistants/fetchAssistants";
 import {
   ThemedDialog,
   ThemedDialogTrigger,
@@ -48,6 +50,7 @@ function AssistantCard({
   onCardClick: (assistant: Assistant) => void;
 }) {
   const navigate = useNavigate();
+  const { canManageAssistants, canDeleteAssistants } = useWorkspace();
 
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const suppressClickRef = React.useRef(false);
@@ -80,28 +83,30 @@ function AssistantCard({
     >
       <div className="p-5 h-full flex flex-col relative">
         {/* Action Buttons - Absolute positioned to avoid layout interference */}
-        <div className="absolute top-3 right-3 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
-          <Button
-            size="sm"
-            variant="ghost"
-            onPointerDown={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={handleEdit}
-            className="h-6 w-6 p-0 hover:bg-primary/10 hover:text-primary transition-colors"
-          >
-            <Edit2 className="h-3 w-3" />
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onPointerDown={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={handleCopy}
-            className="h-6 w-6 p-0 hover:bg-primary/10 hover:text-primary transition-colors"
-          >
-            <Copy className="h-3 w-3" />
-          </Button>
-        </div>
+        {canManageAssistants && (
+          <div className="absolute top-3 right-3 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+            <Button
+              size="sm"
+              variant="ghost"
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={handleEdit}
+              className="h-6 w-6 p-0 hover:bg-primary/10 hover:text-primary transition-colors"
+            >
+              <Edit2 className="h-3 w-3" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={handleCopy}
+              className="h-6 w-6 p-0 hover:bg-primary/10 hover:text-primary transition-colors"
+            >
+              <Copy className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
 
         {/* Header Section - Clean layout without action buttons */}
         <div className="mb-3 pr-12">
@@ -124,59 +129,61 @@ function AssistantCard({
         </div>
 
         {/* Delete Button - Consistently positioned at bottom right */}
-        <div className="absolute bottom-3 right-3">
-          <ThemedDialog open={isDeleteOpen} onOpenChange={(open) => {
-            setIsDeleteOpen(open);
-            if (!open) {
-              suppressClickRef.current = true;
-              setTimeout(() => {
-                suppressClickRef.current = false;
-              }, 250);
-            }
-          }}>
-            <ThemedDialogTrigger>
-              <Button
-                size="sm"
-                variant="ghost"
-                onPointerDown={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
-                className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
-              >
-                <Trash2 className="h-3 w-3 text-destructive/60 hover:text-destructive" />
-              </Button>
-            </ThemedDialogTrigger>
-            <ThemedDialogContent>
-              <ThemedDialogHeader
-                title="Delete Assistant"
-                description={`Are you sure you want to delete "${assistant.name}"? This action cannot be undone and will permanently remove the assistant and all its data.`}
-              />
-              <div className="flex gap-3 mt-6">
+        {canDeleteAssistants && (
+          <div className="absolute bottom-3 right-3">
+            <ThemedDialog open={isDeleteOpen} onOpenChange={(open) => {
+              setIsDeleteOpen(open);
+              if (!open) {
+                suppressClickRef.current = true;
+                setTimeout(() => {
+                  suppressClickRef.current = false;
+                }, 250);
+              }
+            }}>
+              <ThemedDialogTrigger>
                 <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsDeleteOpen(false);
-                  }}
+                  size="sm"
+                  variant="ghost"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
                 >
-                  Cancel
+                  <Trash2 className="h-3 w-3 text-destructive/60 hover:text-destructive" />
                 </Button>
-                <Button
-                  variant="destructive"
-                  className="flex-1"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(assistant.id);
-                    setIsDeleteOpen(false);
-                  }}
-                >
-                  Delete Assistant
-                </Button>
-              </div>
-            </ThemedDialogContent>
-          </ThemedDialog>
-        </div>
+              </ThemedDialogTrigger>
+              <ThemedDialogContent>
+                <ThemedDialogHeader
+                  title="Delete Assistant"
+                  description={`Are you sure you want to delete "${assistant.name}"? This action cannot be undone and will permanently remove the assistant and all its data.`}
+                />
+                <div className="flex gap-3 mt-6">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsDeleteOpen(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    className="flex-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(assistant.id);
+                      setIsDeleteOpen(false);
+                    }}
+                  >
+                    Delete Assistant
+                  </Button>
+                </div>
+              </ThemedDialogContent>
+            </ThemedDialog>
+          </div>
+        )}
       </div>
     </ThemeCard>
   );
@@ -194,6 +201,7 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const { user } = useAuth();
+  const { currentWorkspace, canCreateAssistants } = useWorkspace();
   const { toast } = useToast();
 
   const loadAssistantsForUser = async () => {
@@ -202,44 +210,18 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
       return;
     }
 
-    console.log("Loading assistants for user:", user.id);
+    console.log("Loading assistants for workspace:", currentWorkspace.id);
 
-    const { data, error } = await supabase
-      .from("assistant")
-      .select(
-        "id, name, prompt, first_message, first_sms, sms_prompt, cal_api_key, cal_event_type_slug, cal_event_type_id, cal_timezone, inbound_workflow_id, created_at, updated_at, user_id"
-      )
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+    try {
+      const response = await fetchAssistants(currentWorkspace.id);
+      const data = response.assistants;
 
-    console.log("Load assistants - data:", data);
-    console.log("Load assistants - error:", error);
-    console.log("Number of assistants loaded:", data?.length || 0);
+      if (!data) {
+        setAssistants([]);
+        return;
+      }
 
-    if (error) {
-      console.warn("Failed to load assistants:", error);
-      setAssistants([]);
-      return;
-    }
-
-    type AssistantRow = {
-      id: string;
-      name: string | null;
-      prompt: string | null;
-      first_message: string | null;
-      first_sms: string | null;
-      sms_prompt: string | null;
-      cal_api_key: string | null;
-      cal_event_type_slug: string | null;
-      cal_event_type_id: string | null;
-      cal_timezone: string | null;
-      inbound_workflow_id: string | null;
-      created_at: string | null;
-      updated_at: string | null;
-    };
-
-    const mapped: Assistant[] =
-      (data as any)?.map((row: any) => {
+      const mapped: Assistant[] = data.map((row: any) => {
         const descriptionSource = row.prompt || row.first_message || "";
         return {
           id: row.id,
@@ -261,9 +243,13 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
           created_at: row.created_at || undefined,
           updated_at: row.updated_at || undefined,
         };
-      }) || [];
+      });
 
-    setAssistants(mapped);
+      setAssistants(mapped);
+    } catch (err) {
+      console.error("Error in loadAssistantsForUser:", err);
+      setAssistants([]);
+    }
   };
 
   const deleteAssistant = async (assistantId: string) => {
@@ -277,12 +263,19 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
     }
 
     try {
-      // Make sure we only delete assistants that belong to the current user
-      const { error } = await supabase
+      // Make sure we only delete assistants that belong to the current user and workspace
+      const deleteQuery = supabase
         .from("assistant")
         .delete()
-        .eq("id", assistantId)
-        .eq("user_id", user.id);
+        .eq("id", assistantId);
+
+      if (currentWorkspace?.id === null) {
+        deleteQuery.is("workspace_id", null).eq("user_id", user.id);
+      } else {
+        deleteQuery.eq("workspace_id", currentWorkspace?.id);
+      }
+
+      const { error } = await deleteQuery;
 
       if (error) {
         console.error("Failed to delete assistant:", error);
@@ -317,13 +310,13 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
     }
   };
 
-  // Load assistants when user exists or tab changes
+  // Load assistants when user exists, workspace changes or tab changes
   useEffect(() => {
     if (user?.id) {
       setLoading(true);
       loadAssistantsForUser().finally(() => setLoading(false));
     }
-  }, [user, tabChangeTrigger]);
+  }, [user, currentWorkspace?.id, tabChangeTrigger]);
 
   const handleAssistantClick = (assistant: Assistant) => {
     setSelectedAssistant(assistant);
@@ -357,17 +350,19 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
             Manage and configure your AI assistants for different use cases
           </p>
         </div>
-        <Button
-          variant="default"
-          className="font-medium"
-          onClick={(e) => {
-            console.log("Add Assistant button clicked", e);
-            setCreateDialogOpen(true);
-          }}
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Add Assistant
-        </Button>
+        {canCreateAssistants && (
+          <Button
+            variant="default"
+            className="font-medium"
+            onClick={(e) => {
+              console.log("Add Assistant button clicked", e);
+              setCreateDialogOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Assistant
+          </Button>
+        )}
       </div>
 
       {/* Search Bar */}
@@ -417,7 +412,7 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
                     : "Get started by creating your first AI assistant"
                   }
                 </p>
-                {!searchQuery && (
+                {!searchQuery && canCreateAssistants && (
                   <Button
                     variant="default"
                     className="font-medium"

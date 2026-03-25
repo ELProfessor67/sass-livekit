@@ -7,13 +7,18 @@ import { fetchRecordingUrlCached } from "../recordings/fetchRecordingUrl";
 import { getCustomerName } from "@/utils/formatUtils";
 
 // Fetch calls from Supabase with fallback to our mock data generator
-export const fetchCalls = async () => {
+export const fetchCalls = async (workspaceId?: string) => {
   try {
     // Try to fetch from Supabase first
-    const { data: calls, error } = await supabase
+    let query = supabase
       .from('call_history')
-      .select('*')
-      .order('start_time', { ascending: false });
+      .select('*');
+
+    if (workspaceId) {
+      query = query.eq('workspace_id', workspaceId);
+    }
+
+    const { data: calls, error } = await query.order('start_time', { ascending: false });
 
     if (error) {
       console.error('Error fetching calls:', error);

@@ -1,4 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useToast } from "@/hooks/use-toast";
@@ -22,6 +23,7 @@ const defaultValues: UIPreferencesValues = {
 };
 
 export function UIPreferencesSettings() {
+  const { canEdit } = useWorkspace();
   const { toast } = useToast();
   const { uiStyle, setUIStyle } = useTheme();
 
@@ -86,7 +88,7 @@ export function UIPreferencesSettings() {
                             : 'border-border/50 bg-card/30 hover:border-border hover:bg-card/50'
                           }
                         `}
-                        onClick={() => field.onChange("glass")}
+                        onClick={() => canEdit && field.onChange("glass")}
                       >
                         <div className="flex items-center gap-4">
                           <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 backdrop-blur-xl border border-primary/20 flex items-center justify-center flex-shrink-0">
@@ -113,7 +115,7 @@ export function UIPreferencesSettings() {
                             : 'border-border/50 bg-card/30 hover:border-border hover:bg-card/50'
                           }
                         `}
-                        onClick={() => field.onChange("minimal")}
+                        onClick={() => canEdit && field.onChange("minimal")}
                       >
                         <div className="flex items-center gap-4">
                           <div className="h-12 w-12 rounded-lg bg-muted/50 border border-border flex items-center justify-center flex-shrink-0">
@@ -153,8 +155,8 @@ export function UIPreferencesSettings() {
             </div>
 
             <div className="flex justify-end pt-6">
-              <Button type="submit" className="px-8 relative z-10 pointer-events-auto">
-                Save Preferences
+              <Button type="submit" disabled={!canEdit} className="px-8 relative z-10 pointer-events-auto">
+                {canEdit ? "Save Preferences" : "View Only"}
               </Button>
             </div>
           </form>

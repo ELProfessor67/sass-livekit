@@ -39,6 +39,7 @@ export interface Conversation {
   id: string;
   contactId: string;
   phoneNumber: string;
+  workspace_id?: string;
   firstName?: string;
   lastName?: string;
   displayName: string;

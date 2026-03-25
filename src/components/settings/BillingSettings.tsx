@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { CreditCard } from 'phosphor-react';
 import { PaymentMethodsCard } from "./billing/PaymentMethodsCard";
 import { InvoiceHistoryCard } from "./billing/InvoiceHistoryCard";
 import { MainHeading, BodyText } from "@/components/ui/typography";
@@ -24,6 +26,7 @@ interface Invoice {
 
 export function BillingSettings() {
   const { user } = useAuth();
+  const { canViewBilling, canManageBilling } = useWorkspace();
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,7 +42,7 @@ export function BillingSettings() {
         setLoading(true);
 
         // Fetch payment methods
-        const { data: paymentMethodsData, error: paymentMethodsError } = await supabase
+        const { data: paymentMethodsData, error: paymentMethodsError } = await (supabase as any)
           .from('payment_methods')
           .select('*')
           .eq('user_id', user.id)
@@ -65,7 +68,7 @@ export function BillingSettings() {
 
         // Fetch from invoices table
         try {
-          const { data: invoicesData, error: invoicesError } = await supabase
+          const { data: invoicesData, error: invoicesError } = await (supabase as any)
             .from('invoices')
             .select('*')
             .eq('user_id', user.id)
@@ -89,7 +92,7 @@ export function BillingSettings() {
 
         // Fetch from minutes_purchases table
         try {
-          const { data: purchasesData, error: purchasesError } = await supabase
+          const { data: purchasesData, error: purchasesError } = await (supabase as any)
             .from('minutes_purchases')
             .select('*')
             .eq('user_id', user.id)
@@ -145,6 +148,20 @@ export function BillingSettings() {
     );
   }
 
+  if (!canViewBilling) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] text-center space-y-4">
+        <div className="p-4 bg-muted/10 rounded-full">
+          <CreditCard size={48} className="text-muted-foreground/50" />
+        </div>
+        <h2 className="text-xl font-medium">Access Restricted</h2>
+        <p className="text-muted-foreground max-w-sm">
+          You don't have permission to view billing information. Please contact your workspace owner for access.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -155,7 +172,7 @@ export function BillingSettings() {
       </div>
       
       <div className="space-y-6">
-        <PaymentMethodsCard paymentMethods={paymentMethods} />
+        <PaymentMethodsCard paymentMethods={paymentMethods} canEdit={canManageBilling} />
         <InvoiceHistoryCard invoices={invoices} />
       </div>
     </div>

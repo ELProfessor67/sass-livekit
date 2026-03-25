@@ -20,6 +20,10 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
     const handleGoogleSignIn = async () => {
         setIsLoading(true);
         try {
+            // Clear any stale signup data before starting Google flow
+            localStorage.removeItem("signup-data");
+            localStorage.removeItem("onboarding-state");
+
             const { success, message } = await signInWithGoogle();
             if (!success) {
                 toast({

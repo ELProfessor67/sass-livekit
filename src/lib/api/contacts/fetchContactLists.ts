@@ -16,21 +16,27 @@ export interface ContactListsResponse {
 }
 
 /**
- * Fetch contact lists from Supabase
+ * Fetch contact lists from Supabase for a specific workspace
  */
-export const fetchContactLists = async (): Promise<ContactListsResponse> => {
+export const fetchContactLists = async (workspaceId?: string): Promise<ContactListsResponse> => {
   try {
     const userId = await getCurrentUserIdAsync();
     console.log('Fetching contact lists for user ID:', userId);
-    
-    const { data: contactLists, error } = await supabase
+
+    let query = supabase
       .from('contact_lists')
       .select(`
         *,
         contacts:contacts(count)
-      `)
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+      `);
+
+    if (workspaceId) {
+      query = query.eq('workspace_id', workspaceId);
+    } else {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data: contactLists, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching contact lists:', error);

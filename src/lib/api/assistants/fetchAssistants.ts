@@ -22,36 +22,25 @@ export interface AssistantsResponse {
 }
 
 /**
- * Fetch all assistants for the current user
+ * Fetch all assistants for a specific workspace
  */
-export const fetchAssistants = async (): Promise<AssistantsResponse> => {
+export const fetchAssistants = async (workspaceId: string): Promise<AssistantsResponse> => {
   try {
     const userId = await getCurrentUserIdAsync();
-    console.log('Fetching assistants for user ID:', userId);
+    console.log('Fetching assistants for workspace:', workspaceId);
 
-    // Get user's tenant
-    const { data: userData } = await supabase
-      .from('users')
-      .select('tenant')
-      .eq('id', userId)
-      .single();
-
-    const tenant = (userData as any)?.tenant || 'main';
-
-    // Build query with tenant filter
+    // Build query with workspace filter
     let query = supabase
       .from('assistant')
-      .select('id, name, prompt, first_message, first_sms, sms_prompt, whatsapp_credentials_id, inbound_workflow_id, created_at, updated_at')
-      .eq('user_id', userId);
+      .select('id, name, prompt, first_message, first_sms, sms_prompt, whatsapp_credentials_id, inbound_workflow_id, created_at, updated_at');
 
-    // Add tenant filter
-    if (tenant === 'main') {
-      query = query.or('tenant.eq.main,tenant.is.null');
+    if (workspaceId === null) {
+      query = query.is('workspace_id', null).eq('user_id', userId);
     } else {
-      query = (query as any).eq('tenant', tenant);
+      query = query.eq('workspace_id', workspaceId);
     }
 
-    const { data: assistants, error } = await (query as any);
+    const { data: assistants, error } = await query;
 
     if (error) {
       console.error('Error fetching assistants:', error);

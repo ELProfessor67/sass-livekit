@@ -12,6 +12,7 @@ export interface SaveCampaignRequest {
   endHour: number;
   campaignPrompt: string;
   userId: string;
+  workspaceId: string;
 }
 
 export interface SaveCampaignResponse {
@@ -50,7 +51,8 @@ export const saveCampaign = async (data: SaveCampaignRequest): Promise<SaveCampa
         campaign_prompt: data.campaignPrompt,
         status: 'draft',
         execution_status: 'idle',
-        tenant: tenant  // CRITICAL: Set tenant for data isolation
+        tenant: tenant,
+        workspace_id: data.workspaceId
       }])
       .select()
       .single();

@@ -1,5 +1,5 @@
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -31,6 +31,15 @@ export default function Login() {
   const { websiteSettings } = useWebsiteSettings();
   const [showPassword, setShowPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
+  const [searchParams] = useSearchParams();
+
+  React.useEffect(() => {
+    const returnTo = searchParams.get("returnTo");
+    if (returnTo) {
+      console.log('Login: Saving returnTo to sessionStorage:', returnTo);
+      sessionStorage.setItem("returnTo", returnTo);
+    }
+  }, [searchParams]);
 
   const {
     register,
@@ -62,7 +71,37 @@ export default function Login() {
           description: "You've been signed in successfully.",
         });
         const onboardingCompleted = localStorage.getItem("onboarding-completed") === "true";
-        navigate(onboardingCompleted ? "/dashboard" : "/onboarding");
+        const savedReturnTo = sessionStorage.getItem("returnTo");
+        const isInvitation = savedReturnTo?.includes("/accept-invitation");
+
+        if (isInvitation && !onboardingCompleted) {
+          console.log('Login: Invitation detected, skipping onboarding and marking as complete in DB');
+          try {
+            const { supabase: supabaseClient } = await import("@/integrations/supabase/client");
+            await supabaseClient
+              .from("users")
+              .update({ onboarding_completed: true } as any)
+              .eq("id", result.user.id);
+            localStorage.setItem("onboarding-completed", "true");
+          } catch (dbError) {
+            console.error("Error auto-completing onboarding for invitee:", dbError);
+          }
+
+          if (savedReturnTo) {
+            console.log('Login: Redirecting to saved returnTo:', savedReturnTo);
+            sessionStorage.removeItem("returnTo");
+            navigate(savedReturnTo);
+            return;
+          }
+        }
+
+        if (savedReturnTo && onboardingCompleted) {
+          console.log('Login: User already completed onboarding, using returnTo');
+          sessionStorage.removeItem("returnTo");
+          navigate(savedReturnTo);
+        } else {
+          navigate(onboardingCompleted ? "/dashboard" : "/onboarding");
+        }
       } else {
         console.log('Sign in failed:', result.message);
         toast({

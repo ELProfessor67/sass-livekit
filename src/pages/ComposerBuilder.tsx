@@ -66,6 +66,7 @@ import { EdgeConfigPanel } from '@/components/composer/panels/EdgeConfigPanel';
 import { WorkflowStatusBadge } from '@/components/composer/WorkflowStatusBadge';
 import { fetchAssistants } from '@/lib/api/assistants/fetchAssistants';
 import { useWorkflows, Workflow } from '@/hooks/useWorkflows';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 
 const nodeTypes = {
     trigger: TriggerNode,
@@ -89,6 +90,7 @@ export default function ComposerBuilder() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { workflows, updateWorkflow } = useWorkflows();
+    const { canEdit } = useWorkspace();
 
     const workflow = useMemo(() =>
         workflows?.find(w => w.id === id) || {
@@ -155,13 +157,13 @@ export default function ComposerBuilder() {
             data: {
                 ...edge.data,
                 sourceHandle: edge.sourceHandle, // Add this for SmartEdge to consume easily
-                onAddNode: (sourceId: string, targetId: string, sourceHandle?: string | null) => {
+                onAddNode: canEdit ? (sourceId: string, targetId: string, sourceHandle?: string | null) => {
                     setAddContext({ sourceId, targetId, branchHandle: sourceHandle || undefined });
                     setShowAddMenu(true);
-                }
+                } : undefined
             }
         }));
-    }, [edges]);
+    }, [edges, canEdit]);
 
     // Auto-layout nodes (structured or free mode)
     const layoutNodes = useLinearLayout(nodes, edges, isStructuredLayout);
@@ -619,7 +621,7 @@ export default function ComposerBuilder() {
                             size="sm"
                             className="h-8 gap-2 text-xs font-bold shadow-sm shadow-primary/20"
                             onClick={() => handleSave('active')}
-                            disabled={isSaving || updateWorkflow.isPending}
+                            disabled={isSaving || updateWorkflow.isPending || !canEdit}
                         >
                             {isSaving ? (
                                 <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -704,17 +706,19 @@ export default function ComposerBuilder() {
                                             Your workflow is empty. Start by adding your first node – a trigger or an initial action.
                                         </p>
                                     </div>
-                                    <Button
-                                        size="lg"
-                                        className="pointer-events-auto h-12 px-8 rounded-2xl font-bold uppercase tracking-widest text-[10px] shadow-xl shadow-primary/30 hover:shadow-primary/40 transition-all hover:scale-105 cursor-pointer"
-                                        onClick={() => {
-                                            setAddContext(null);
-                                            setShowAddMenu(true);
-                                        }}
-                                    >
-                                        <Plus size={16} className="mr-2" weight="bold" />
-                                        Add First Node
-                                    </Button>
+                                    {canEdit && (
+                                        <Button
+                                            size="lg"
+                                            className="pointer-events-auto h-12 px-8 rounded-2xl font-bold uppercase tracking-widest text-[10px] shadow-xl shadow-primary/30 hover:shadow-primary/40 transition-all hover:scale-105 cursor-pointer"
+                                            onClick={() => {
+                                                setAddContext(null);
+                                                setShowAddMenu(true);
+                                            }}
+                                        >
+                                            <Plus size={16} className="mr-2" weight="bold" />
+                                            Add First Node
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -749,6 +753,7 @@ export default function ComposerBuilder() {
                                                 ));
                                             }}
                                             onDelete={handleDeleteNode}
+                                            canEdit={canEdit}
                                             triggerType={nodes.find(n => n.type === 'trigger')?.data?.trigger_type as string}
                                             customVariables={getUpstreamVariables(selectedNode.id)}
                                         />
@@ -773,6 +778,7 @@ export default function ComposerBuilder() {
                                                 ));
                                             }}
                                             onDelete={handleDeleteEdge}
+                                            canEdit={canEdit}
                                         />
                                     </ScrollArea>
                                 </div>

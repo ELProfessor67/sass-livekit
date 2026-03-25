@@ -18,8 +18,10 @@ import { ThemeCard } from '@/components/theme/ThemeCard';
 import DashboardLayout from "@/layout/DashboardLayout";
 import WorkflowsHeader from "@/components/composer/WorkflowsHeader";
 import { ThemeContainer, ThemeSection } from "@/components/theme";
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 
 function ComposerContent() {
+    const { canEdit } = useWorkspace();
     const navigate = useNavigate();
     const [activeFilter, setActiveFilter] = useState<SidebarFilter>('all');
     const [searchQuery, setSearchQuery] = useState('');
@@ -103,10 +105,11 @@ function ComposerContent() {
                                 />
                                 <Button
                                     className="gap-2"
-                                    onClick={() => setShowCreateDialog(true)}
+                                    onClick={() => canEdit && setShowCreateDialog(true)}
+                                    disabled={!canEdit}
                                 >
                                     <Plus weight="bold" size={16} />
-                                    Create
+                                    {canEdit ? "Create" : "View Only"}
                                 </Button>
                             </div>
                         </div>
@@ -145,7 +148,11 @@ function ComposerContent() {
                                                     <div className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mt-0.5">Total Flows</div>
                                                 </div>
                                             </ThemeCard>
-                                            <ThemeCard variant="glass" className="p-6 flex items-center gap-5 border-dashed border-primary/20 bg-white/[0.01] hover:bg-white/[0.03] transition-colors cursor-pointer group">
+                                            <ThemeCard 
+                                                variant="glass" 
+                                                className={`p-6 flex items-center gap-5 border-dashed border-primary/20 bg-white/[0.01] transition-colors ${canEdit ? 'hover:bg-white/[0.03] cursor-pointer group' : 'opacity-80'}`}
+                                                onClick={() => canEdit && setShowCreateDialog(true)}
+                                            >
                                                 <div className="w-full flex items-center justify-center gap-2 text-primary font-medium">
                                                     <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
                                                         <Plus size={16} />

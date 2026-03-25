@@ -28,6 +28,7 @@ import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { ensureUserExists } from '@/lib/supabase-retry';
 import { CalendarCredentialsService } from "@/lib/calendar-credentials";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 
 const tabVariants = {
   initial: { opacity: 0, y: 10 },
@@ -45,6 +46,7 @@ const CreateAssistant = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
+  const { currentWorkspace, canDeploy, canCreateAssistants, canManageAssistants } = useWorkspace();
 
   // Debug logging
   console.log('CreateAssistant rendered', { isEditing, id, isLoading, activeTab });
@@ -225,12 +227,18 @@ const CreateAssistant = () => {
           return;
         }
 
-        const { data, error } = await supabase
+        const query = supabase
           .from('assistant')
           .select('*')
-          .eq('id', id)
-          .eq('user_id', user.id)
-          .single();
+          .eq('id', id);
+
+        if (currentWorkspace?.id === null) {
+          query.is('workspace_id', null);
+        } else {
+          query.eq('workspace_id', currentWorkspace?.id);
+        }
+
+        const { data, error } = await query.single();
 
         if (error) {
           console.error('Failed to load assistant:', error);
@@ -434,6 +442,7 @@ const CreateAssistant = () => {
 
     return {
       user_id: userId,
+      workspace_id: currentWorkspace?.id,
       name: formData.name,
       llm_provider_setting: formData.model.provider,
       llm_model_setting: formData.model.model,
@@ -539,8 +548,8 @@ const CreateAssistant = () => {
 
   const handleSave = async () => {
     try {
-      setIsSaving(true);
       if (!user?.id) throw new Error('You must be signed in to save an assistant.');
+      // Remove currentWorkspace?.id check as null is now a valid value
 
       await ensureUserExists(user.id, user.fullName || null);
 
@@ -663,17 +672,19 @@ const CreateAssistant = () => {
                   variant="outline"
                   className="px-[var(--space-lg)]"
                   onClick={handleSave}
-                  disabled={isSaving || isLoading}
+                  disabled={isSaving || isLoading || (isEditing ? !canManageAssistants : !canCreateAssistants)}
                 >
                   {isSaving ? 'Saving...' : 'Save'}
                 </Button>
-                <Button
-                  onClick={handleDeploy}
-                  disabled={isLoading}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground px-[var(--space-xl)]"
-                >
-                  Deploy Assistant
-                </Button>
+                {canDeploy && (
+                  <Button
+                    onClick={handleDeploy}
+                    disabled={isLoading}
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground px-[var(--space-xl)]"
+                  >
+                    Deploy Assistant
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -776,7 +787,7 @@ const CreateAssistant = () => {
           </ThemeCard>
 
           {/* Delete Assistant Button - Only in Edit Mode */}
-          {isEditing && (
+          {isEditing && canManageAssistants && (
             <div className="flex justify-end mt-[var(--space-lg)]">
               <AlertDialog>
                 <AlertDialogTrigger asChild>

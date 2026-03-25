@@ -11,9 +11,10 @@ interface CallsTableProps {
   isLoading: boolean;
   filteredCount?: number;
   totalCount?: number;
+  canEdit?: boolean;
 }
 
-export default function CallsTable({ calls, isLoading, filteredCount, totalCount }: CallsTableProps) {
+export default function CallsTable({ calls, isLoading, filteredCount, totalCount, canEdit }: CallsTableProps) {
   console.log(`CallsTable received ${calls?.length || 0} calls, isLoading=${isLoading}, filtered=${filteredCount}, total=${totalCount}`);
 
   if (isLoading) {
@@ -27,7 +28,7 @@ export default function CallsTable({ calls, isLoading, filteredCount, totalCount
   return (
     <Table>
       <CallsTableHeader />
-      <CallsTableBody calls={calls} />
+      <CallsTableBody calls={calls} canEdit={canEdit} />
     </Table>
   );
 }

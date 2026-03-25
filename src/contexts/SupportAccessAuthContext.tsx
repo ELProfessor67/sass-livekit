@@ -24,6 +24,7 @@ interface User {
   isActive?: boolean | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  bio?: string | null;
 }
 
 interface SupportAccessSession {
@@ -329,6 +330,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             role: (userData as any)?.role || userFromAuth.role,
             company: (userData as any)?.company || userFromAuth.company,
             industry: (userData as any)?.industry || userFromAuth.industry,
+            bio: (userData as any)?.bio || null,
             createdAt: (userData as any).created_on || userFromAuth.createdAt,
             updatedAt: (userData as any).updated_at || userFromAuth.updatedAt,
           };
@@ -654,10 +656,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (!user) return;
 
     try {
+      // Map frontend fields (e.g., fullName) to backend fields (e.g., name)
+      const dbUpdates: any = { ...updates };
+      
+      if (updates.fullName !== undefined) {
+        dbUpdates.name = updates.fullName;
+        delete dbUpdates.fullName;
+      }
+
       // Use Supabase client to update user profile
       const { error } = await supabase
         .from('users')
-        .update(updates)
+        .update(dbUpdates)
         .eq('id', user.id);
 
       if (error) {

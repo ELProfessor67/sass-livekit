@@ -61,12 +61,19 @@ export function OnboardingLayout() {
       return;
     }
 
-    // If authenticated and already completed onboarding, redirect to dashboard
+    // If authenticated and already completed onboarding, redirect to dashboard or returnTo
     if (isAuthenticated) {
       // @ts-expect-error - profile type might not have onboarding_completed explicitly defined in all contexts
       const dbCompleted = Boolean(profile?.onboarding_completed);
       if (dbCompleted || isCompleted) {
-        navigate("/dashboard");
+        const savedReturnTo = sessionStorage.getItem("returnTo");
+        if (savedReturnTo) {
+          console.log('OnboardingLayout: Redirecting to saved returnTo:', savedReturnTo);
+          sessionStorage.removeItem("returnTo");
+          navigate(savedReturnTo);
+        } else {
+          navigate("/dashboard");
+        }
       }
     }
     // @ts-expect-error - profile type might not have onboarding_completed explicitly defined in all contexts

@@ -21,6 +21,7 @@ import { getCampaignStatus } from "@/lib/api/campaigns/getCampaignStatus";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { exportAllCampaignsData } from "@/lib/api/campaigns/exportCampaignData";
 import { exportAllCampaignDataToExcel } from "@/lib/utils/excelExport";
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 
 // Campaign interface imported from API
 
@@ -28,6 +29,7 @@ import { exportAllCampaignDataToExcel } from "@/lib/utils/excelExport";
 
 export default function Campaigns() {
   const { user } = useAuth();
+  const { currentWorkspace, canViewCampaigns, canCreateCampaigns, canManageCampaigns } = useWorkspace();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [termsOpen, setTermsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -42,10 +44,10 @@ export default function Campaigns() {
   // Load campaigns from database
   useEffect(() => {
     const loadCampaigns = async () => {
-      if (!user?.id) return;
+      if (!user?.id || !currentWorkspace?.id) return;
 
       try {
-        const response = await fetchCampaigns();
+        const response = await fetchCampaigns(currentWorkspace.id);
         setCampaigns(response.campaigns);
       } catch (error) {
         console.error('Error loading campaigns:', error);
@@ -55,7 +57,7 @@ export default function Campaigns() {
     };
 
     loadCampaigns();
-  }, [user?.id]);
+  }, [user?.id, currentWorkspace?.id]);
 
   const handleNewCampaign = () => {
     setTermsOpen(true);
@@ -81,14 +83,15 @@ export default function Campaigns() {
         startHour: campaignData.startHour,
         endHour: campaignData.endHour,
         campaignPrompt: campaignData.campaignPrompt,
-        userId: user.id
+        userId: user.id,
+        workspaceId: currentWorkspace?.id || ''
       };
 
       const result = await saveCampaign(saveData);
 
       if (result.success) {
         // Reload campaigns from database
-        const response = await fetchCampaigns();
+        const response = await fetchCampaigns(currentWorkspace?.id);
         setCampaigns(response.campaigns);
         setSettingsOpen(false);
       } else {
@@ -220,6 +223,23 @@ export default function Campaigns() {
     );
   };
 
+  // Access check
+  if (!canViewCampaigns) {
+    return (
+      <DashboardLayout>
+        <ThemeContainer variant="base" className="min-h-screen no-hover-scaling">
+          <div className="flex items-center justify-center h-full py-20">
+            <ThemeCard variant="glass" className="p-10 text-center max-w-md">
+              <h2 className="text-2xl font-light mb-4 text-foreground">Access Denied</h2>
+              <p className="text-muted-foreground mb-6">You don't have permission to view campaigns in this workspace.</p>
+              <Button onClick={() => window.history.back()}>Go Back</Button>
+            </ThemeCard>
+          </div>
+        </ThemeContainer>
+      </DashboardLayout>
+    );
+  }
+
   if (campaigns.length === 0) {
     return (
       <DashboardLayout>
@@ -236,20 +256,24 @@ export default function Campaigns() {
                   <div className="space-y-[var(--space-md)]">
                     <BarChart3 className="w-16 h-16 mx-auto text-primary/60" />
                     <h1 className="text-5xl font-extralight tracking-tight text-foreground">
-                      Create And Launch Your First Campaign
+                      {canCreateCampaigns ? "Create And Launch Your First Campaign" : "No Campaigns Found"}
                     </h1>
                     <p className="text-xl text-muted-foreground font-light max-w-2xl mx-auto leading-relaxed">
-                      Launch your AI agents and start creating amazing campaigns that will help you connect with your customers in a meaningful way.
+                      {canCreateCampaigns 
+                        ? "Launch your AI agents and start creating amazing campaigns that will help you connect with your customers in a meaningful way."
+                        : "There are currently no active campaigns in this workspace."}
                     </p>
                   </div>
 
-                  <Button
-                    onClick={handleNewCampaign}
-                    size="lg"
-                    className="px-8 py-3 text-lg font-medium"
-                  >
-                    Launch a campaign
-                  </Button>
+                  {canCreateCampaigns && (
+                    <Button
+                      onClick={handleNewCampaign}
+                      size="lg"
+                      className="px-8 py-3 text-lg font-medium"
+                    >
+                      Launch a campaign
+                    </Button>
+                  )}
                 </motion.div>
               </ThemeSection>
             </div>
@@ -288,19 +312,23 @@ export default function Campaigns() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Button
-                    onClick={handleExportAllCampaigns}
-                    variant="outline"
-                    disabled={exporting}
-                    className="px-4"
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    {exporting ? 'Exporting...' : 'Export All'}
-                  </Button>
-                  <Button onClick={handleNewCampaign} className="px-6">
-                    <Plus className="w-4 h-4 mr-2" />
-                    New Campaign
-                  </Button>
+                  {canCreateCampaigns && (
+                    <>
+                      <Button
+                        onClick={handleExportAllCampaigns}
+                        variant="outline"
+                        disabled={exporting}
+                        className="px-4"
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        {exporting ? 'Exporting...' : 'Export All'}
+                      </Button>
+                      <Button onClick={handleNewCampaign} className="px-6">
+                        <Plus className="w-4 h-4 mr-2" />
+                        New Campaign
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -383,34 +411,38 @@ export default function Campaigns() {
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex items-center justify-end gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-theme-secondary hover:text-theme-primary"
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => toggleCampaignStatus(campaign.id)}
-                                  className="text-theme-secondary hover:text-theme-primary"
-                                >
-                                  {campaign.execution_status === 'running' ? (
-                                    <Pause className="w-4 h-4" />
-                                  ) : (
-                                    <Play className="w-4 h-4" />
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-theme-secondary hover:text-theme-primary"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </Button>
+                                  {canManageCampaigns && (
+                                    <>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => toggleCampaignStatus(campaign.id)}
+                                        className="text-theme-secondary hover:text-theme-primary"
+                                      >
+                                        {campaign.execution_status === 'running' ? (
+                                          <Pause className="w-4 h-4" />
+                                        ) : (
+                                          <Play className="w-4 h-4" />
+                                        )}
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleDeleteCampaign(campaign.id, campaign.name)}
+                                        className="text-destructive hover:text-destructive/80"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </Button>
+                                    </>
                                   )}
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleDeleteCampaign(campaign.id, campaign.name)}
-                                  className="text-destructive hover:text-destructive/80"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
+                                </div>
                             </TableCell>
                           </TableRow>
                         ))

@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { SourceType } from "@/components/composer/SourceBadge";
 import { supabase } from "@/integrations/supabase/client";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 
 export interface Workflow {
     id: string;
@@ -41,6 +43,8 @@ export interface WorkflowFilters {
 
 export function useWorkflows(filters?: WorkflowFilters) {
     const queryClient = useQueryClient();
+    const { currentWorkspace, isMember } = useWorkspace();
+    const { user } = useAuth();
 
     const { data: workflows, isLoading } = useQuery({
         queryKey: ['workflows', filters],
@@ -48,6 +52,7 @@ export function useWorkflows(filters?: WorkflowFilters) {
             let query = (supabase as any)
                 .from('workflows')
                 .select('*')
+                .eq('workspace_id', currentWorkspace?.id)
                 .order('created_at', { ascending: false });
 
             if (filters?.status) query = query.eq('status', filters.status);
@@ -78,6 +83,7 @@ export function useWorkflows(filters?: WorkflowFilters) {
                     edges: workflow.edges || [],
                     source_type: workflow.source_type || 'scratch',
                     is_starter: workflow.is_starter || false,
+                    workspace_id: currentWorkspace?.id,
                 })
                 .select()
                 .single();

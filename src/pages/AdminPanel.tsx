@@ -335,7 +335,8 @@ const AdminPanel = () => {
           name: plan.name,
           price: plan.price,
           features: [...plan.features],
-          whitelabelEnabled: plan.whitelabelEnabled ?? false
+          whitelabelEnabled: plan.whitelabelEnabled ?? false,
+          planType: plan.planType || 'simple'
         });
       }
     } else {
@@ -346,7 +347,8 @@ const AdminPanel = () => {
         name: '',
         price: 0,
         features: [],
-        whitelabelEnabled: false
+        whitelabelEnabled: false,
+        planType: 'simple'
       });
     }
 
@@ -413,6 +415,7 @@ const AdminPanel = () => {
         price: editPlanData.price,
         features: editPlanData.features || [],
         whitelabel_enabled: editPlanData.whitelabelEnabled,
+        plan_type: editPlanData.planType || 'simple',
         tenant: tenant
       };
 
@@ -2023,6 +2026,26 @@ const AdminPanel = () => {
                     />
                     <p className="text-xs text-muted-foreground">
                       Enter one feature per line. Each line will be a separate feature.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-plan-type">Plan Type *</Label>
+                    <Select
+                      value={editPlanData.planType || 'simple'}
+                      onValueChange={(value: 'simple' | 'agency' | 'whitelabel') => setEditPlanData({ ...editPlanData, planType: value })}
+                    >
+                      <SelectTrigger id="edit-plan-type">
+                        <SelectValue placeholder="Select plan type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="simple">Simple Plan (Standalone Business)</SelectItem>
+                        <SelectItem value="agency">Agency Plan (Manages Multiple Clients)</SelectItem>
+                        <SelectItem value="whitelabel">Whitelabel Plan (Platform Reseller)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Agency plans allow users to create and manage multiple client workspaces.
                     </p>
                   </div>
 

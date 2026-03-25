@@ -5,9 +5,10 @@ import { CallsTableRow } from "./CallsTableRow";
 
 interface CallsTableBodyProps {
   calls: Call[];
+  canEdit?: boolean;
 }
 
-export function CallsTableBody({ calls }: CallsTableBodyProps) {
+export function CallsTableBody({ calls, canEdit }: CallsTableBodyProps) {
   return (
     <TableBody>
       {calls.map((call) => {
@@ -17,7 +18,7 @@ export function CallsTableBody({ calls }: CallsTableBodyProps) {
           return null;
         }
         
-        return <CallsTableRow key={call.id} call={call} />;
+        return <CallsTableRow key={call.id} call={call} canEdit={canEdit} />;
       })}
     </TableBody>
   );

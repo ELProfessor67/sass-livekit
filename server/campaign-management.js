@@ -24,11 +24,13 @@ campaignManagementRouter.post('/:id/start', async (req, res) => {
     const { id } = req.params;
 
     // Get campaign details
-    const { data: campaign, error } = await supabase
+    let query = supabase
       .from('campaigns')
       .select('*')
-      .eq('id', id)
-      .single();
+      .eq('id', id);
+
+    query = applyTenantFilterFromRequest(req, query);
+    const { data: campaign, error } = await query.single();
 
     if (error || !campaign) {
       return res.status(404).json({
@@ -84,7 +86,7 @@ campaignManagementRouter.post('/:id/pause', async (req, res) => {
       .from('campaigns')
       .select('execution_status')
       .eq('id', id);
-    
+
     query = applyTenantFilterFromRequest(req, query);
     const { data: campaign, error: fetchError } = await query.single();
 
@@ -144,7 +146,7 @@ campaignManagementRouter.post('/:id/resume', async (req, res) => {
       .from('campaigns')
       .select('execution_status')
       .eq('id', id);
-    
+
     query = applyTenantFilterFromRequest(req, query);
     const { data: campaign, error: fetchError } = await query.single();
 
@@ -200,8 +202,8 @@ campaignManagementRouter.post('/:id/stop', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Update campaign status (both fields for consistency)
-    const { error } = await supabase
+    // Update campaign status with tenant filter
+    let updateQuery = supabase
       .from('campaigns')
       .update({
         execution_status: 'completed',
@@ -209,6 +211,9 @@ campaignManagementRouter.post('/:id/stop', async (req, res) => {
         updated_at: new Date().toISOString()
       })
       .eq('id', id);
+
+    updateQuery = applyTenantFilterFromRequest(req, updateQuery);
+    const { error } = await updateQuery;
 
     if (error) {
       throw error;
@@ -223,7 +228,7 @@ campaignManagementRouter.post('/:id/stop', async (req, res) => {
       })
       .eq('campaign_id', id)
       .eq('status', 'queued');
-    
+
     queueQuery = applyTenantFilterFromRequest(req, queueQuery);
     await queueQuery;
 
@@ -250,11 +255,13 @@ campaignManagementRouter.get('/:id/status', async (req, res) => {
     const { id } = req.params;
 
     // Get campaign details
-    const { data: campaign, error } = await supabase
+    let query = supabase
       .from('campaigns')
       .select('*')
-      .eq('id', id)
-      .single();
+      .eq('id', id);
+
+    query = applyTenantFilterFromRequest(req, query);
+    const { data: campaign, error } = await query.single();
 
     if (error || !campaign) {
       return res.status(404).json({
@@ -268,7 +275,7 @@ campaignManagementRouter.get('/:id/status', async (req, res) => {
       .from('campaign_calls')
       .select('status, outcome')
       .eq('campaign_id', id);
-    
+
     statsQuery = applyTenantFilterFromRequest(req, statsQuery);
     const { data: callStats, error: statsError } = await statsQuery;
 
@@ -297,7 +304,7 @@ campaignManagementRouter.get('/:id/status', async (req, res) => {
       .from('call_queue')
       .select('status')
       .eq('campaign_id', id);
-    
+
     queueQuery = applyTenantFilterFromRequest(req, queueQuery);
     const { data: queueStats, error: queueError } = await queueQuery;
 
@@ -352,10 +359,10 @@ campaignManagementRouter.get('/:id/status', async (req, res) => {
 campaignManagementRouter.get('/:id/calls', async (req, res) => {
   try {
     const { id } = req.params;
-    const { 
-      status, 
-      outcome, 
-      limit = 50, 
+    const {
+      status,
+      outcome,
+      limit = 50,
       offset = 0,
       sortBy = 'created_at',
       sortOrder = 'desc'
@@ -441,7 +448,7 @@ campaignManagementRouter.post('/:id/reset-daily', async (req, res) => {
         updated_at: new Date().toISOString()
       })
       .eq('id', id);
-    
+
     updateQuery = applyTenantFilterFromRequest(req, updateQuery);
     const { error } = await updateQuery;
 
@@ -476,7 +483,7 @@ campaignManagementRouter.delete('/:id', async (req, res) => {
       .from('campaigns')
       .select('id, execution_status')
       .eq('id', id);
-    
+
     query = applyTenantFilterFromRequest(req, query);
     const { data: campaign, error: fetchError } = await query.single();
 
@@ -500,7 +507,7 @@ campaignManagementRouter.delete('/:id', async (req, res) => {
       .from('campaigns')
       .delete()
       .eq('id', id);
-    
+
     deleteQuery = applyTenantFilterFromRequest(req, deleteQuery);
     const { error: deleteError } = await deleteQuery;
 
@@ -585,7 +592,7 @@ campaignManagementRouter.post('/metadata/:roomName', async (req, res) => {
 campaignManagementRouter.post('/webhook/:roomName', async (req, res) => {
   try {
     const { roomName } = req.params;
-    
+
     // Get stored metadata
     const metadata = campaignMetadataStore.get(roomName);
     if (!metadata) {

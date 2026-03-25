@@ -11,6 +11,7 @@ import { motion } from "framer-motion";
 import { useKnowledgeBase } from "@/hooks/useKnowledgeBase";
 import { Document, KnowledgeBase as APIKnowledgeBase } from "@/lib/api/knowledgeBase";
 import { PageHeading, PageSubtext, SubHeading, SecondaryText } from "@/components/ui/typography";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 
 // Convert API KnowledgeBase to display format
 const convertAPIKnowledgeBaseToDisplay = (apiKB: APIKnowledgeBase): KnowledgeBase => {
@@ -34,7 +35,17 @@ const convertAPIKnowledgeBaseToDisplay = (apiKB: APIKnowledgeBase): KnowledgeBas
         uploadedAt: doc.upload_timestamp
       }],
       createdAt: doc.created_at?.split('T')[0] || new Date().toISOString().split('T')[0]
-    }))
+    })),
+    documents: apiKB.knowledge_documents?.map(doc => ({
+      doc_id: doc.doc_id,
+      original_filename: doc.original_filename,
+      file_size: doc.file_size,
+      file_type: doc.file_type,
+      status: doc.status,
+      upload_timestamp: doc.upload_timestamp,
+      created_at: doc.created_at,
+      pinecone_status: doc.pinecone_status
+    })) || []
   };
 };
 
@@ -42,12 +53,14 @@ function SimplifiedKnowledgeBaseCard({
   knowledgeBase, 
   onEdit,
   onDelete,
-  onClick
+  onClick,
+  canEdit
 }: { 
   knowledgeBase: KnowledgeBase;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
   onClick: (id: string) => void;
+  canEdit: boolean;
 }) {
   return (
     <ThemeCard 
@@ -56,30 +69,32 @@ function SimplifiedKnowledgeBaseCard({
       onClick={() => onClick(knowledgeBase.id)}
     >
       {/* Hover Actions */}
-      <div className="absolute top-[var(--space-lg)] right-[var(--space-lg)] opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex space-x-[var(--space-xs)]">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit(knowledgeBase.id);
-          }}
-          className="h-8 w-8 p-0 hover:bg-primary/10"
-        >
-          <Pencil className="h-4 w-4 text-primary" />
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete(knowledgeBase.id);
-          }}
-          className="h-8 w-8 p-0 hover:bg-destructive/10"
-        >
-          <Trash2 className="h-4 w-4 text-destructive" />
-        </Button>
-      </div>
+      {canEdit && (
+        <div className="absolute top-[var(--space-lg)] right-[var(--space-lg)] opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex space-x-[var(--space-xs)]">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(knowledgeBase.id);
+            }}
+            className="h-8 w-8 p-0 hover:bg-primary/10"
+          >
+            <Pencil className="h-4 w-4 text-primary" />
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(knowledgeBase.id);
+            }}
+            className="h-8 w-8 p-0 hover:bg-destructive/10"
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex items-start space-x-[var(--space-lg)]">
@@ -116,6 +131,7 @@ export function KnowledgeBaseTab({ tabChangeTrigger = 0 }: KnowledgeBaseTabProps
   const navigate = useNavigate();
   const [isCreateKBOpen, setIsCreateKBOpen] = useState(false);
   const { toast } = useToast();
+  const { currentWorkspace, canEdit } = useWorkspace();
   
   // Use the knowledge base hook
   const {
@@ -128,7 +144,10 @@ export function KnowledgeBaseTab({ tabChangeTrigger = 0 }: KnowledgeBaseTabProps
     createKnowledgeBase,
     deleteKnowledgeBase,
     refresh
-  } = useKnowledgeBase({ autoRefresh: true });
+  } = useKnowledgeBase({ 
+    companyId: currentWorkspace?.user_id,
+    autoRefresh: true 
+  });
   
   // Convert API knowledge bases to display format
   const knowledgeBases = apiKnowledgeBases.map(convertAPIKnowledgeBaseToDisplay);
@@ -176,7 +195,7 @@ export function KnowledgeBaseTab({ tabChangeTrigger = 0 }: KnowledgeBaseTabProps
             <div className="flex gap-4 text-sm text-muted-foreground">
               <span>{stats.documents.total} documents</span>
               <span>{stats.chunks.total_chunks} chunks</span>
-              <span>{stats.documents.embedded} ready</span>
+              <span>{stats.documents.ready} ready</span>
             </div>
           )}
         </div>
@@ -190,10 +209,12 @@ export function KnowledgeBaseTab({ tabChangeTrigger = 0 }: KnowledgeBaseTabProps
             {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
             Refresh
           </Button>
-          <Button onClick={() => setIsCreateKBOpen(true)} className="flex-shrink-0">
-            <Plus className="h-4 w-4 mr-2" />
-            Create Knowledge Base
-          </Button>
+          {canEdit && (
+            <Button onClick={() => setIsCreateKBOpen(true)} className="flex-shrink-0">
+              <Plus className="h-4 w-4 mr-2" />
+              Create Knowledge Base
+            </Button>
+          )}
         </div>
       </div>
 
@@ -232,6 +253,7 @@ export function KnowledgeBaseTab({ tabChangeTrigger = 0 }: KnowledgeBaseTabProps
                 onEdit={handleEditKnowledgeBase}
                 onDelete={handleDeleteKnowledgeBase}
                 onClick={handleViewKnowledgeBase}
+                canEdit={canEdit}
               />
             </motion.div>
           ))
@@ -248,10 +270,12 @@ export function KnowledgeBaseTab({ tabChangeTrigger = 0 }: KnowledgeBaseTabProps
                     Create your first knowledge base to organize your content and information
                   </SecondaryText>
                 </div>
-                <Button onClick={() => setIsCreateKBOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Knowledge Base
-                </Button>
+                {canEdit && (
+                  <Button onClick={() => setIsCreateKBOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Knowledge Base
+                  </Button>
+                )}
               </div>
             </ThemeCard>
           </div>

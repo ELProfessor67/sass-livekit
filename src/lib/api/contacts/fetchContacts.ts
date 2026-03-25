@@ -22,21 +22,35 @@ export interface ContactsResponse {
 }
 
 /**
- * Fetch contacts from Supabase with optional list filtering
+ * Fetch contacts from Supabase with optional list and workspace filtering
  */
-export const fetchContacts = async (listId?: string): Promise<ContactsResponse> => {
+export const fetchContacts = async (listId?: string, workspaceId?: string): Promise<ContactsResponse> => {
   try {
     const userId = await getCurrentUserIdAsync();
     console.log('Fetching contacts for user ID:', userId);
-    
-    let query = supabase
+
+    const { data: userData } = await (supabase as any)
+      .from('users')
+      .select('tenant')
+      .eq('id', userId)
+      .single();
+
+    const tenant = (userData as any)?.tenant || 'main';
+
+    let query = (supabase as any)
       .from('contacts')
       .select(`
         *,
         contact_lists!inner(name)
-      `)
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+      `);
+
+    if (workspaceId) {
+      query = query.eq('workspace_id', workspaceId);
+    } else {
+      query = query.eq('user_id', userId);
+    }
+
+    query = query.order('created_at', { ascending: false });
 
     if (listId) {
       query = query.eq('list_id', listId);

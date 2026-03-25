@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Button } from '@/components/ui/button';
 import {
     Lightning,
@@ -32,6 +33,7 @@ interface WorkflowSidebarProps {
 }
 
 export function WorkflowSidebar({ activeFilter, onFilterChange, className }: WorkflowSidebarProps) {
+    const { canEdit } = useWorkspace();
     const { role, isPlatformOwner, isAgency, isClient } = useAccountRoleContext();
     const { stats } = useWorkflows();
     const { clients } = useClientAccounts();
@@ -159,12 +161,14 @@ export function WorkflowSidebar({ activeFilter, onFilterChange, className }: Wor
                                             indent
                                         />
                                     ))}
-                                    <button
-                                        className="w-full flex items-center gap-2 px-6 py-2 text-xs text-foreground hover:text-foreground/80 transition-colors"
-                                    >
-                                        <Plus size={12} weight="bold" />
-                                        Deploy to Client
-                                    </button>
+                                    {canEdit && (
+                                        <button
+                                            className="w-full flex items-center gap-2 px-6 py-2 text-xs text-foreground hover:text-foreground/80 transition-colors"
+                                        >
+                                            <Plus size={12} weight="bold" />
+                                            Deploy to Client
+                                        </button>
+                                    )}
                                 </div>
                             )}
                             <div className="my-2 px-3">
@@ -196,12 +200,14 @@ export function WorkflowSidebar({ activeFilter, onFilterChange, className }: Wor
                                             indent
                                         />
                                     ))}
-                                    <button
-                                        className="w-full flex items-center gap-2 px-6 py-2 text-xs text-primary hover:text-primary/80 transition-colors"
-                                    >
-                                        <Plus size={12} weight="bold" />
-                                        New Folder
-                                    </button>
+                                    {canEdit && (
+                                        <button
+                                            className="w-full flex items-center gap-2 px-6 py-2 text-xs text-primary hover:text-primary/80 transition-colors"
+                                        >
+                                            <Plus size={12} weight="bold" />
+                                            New Folder
+                                        </button>
+                                    )}
                                 </div>
                             )}
                             <div className="my-2 px-3">
@@ -212,25 +218,26 @@ export function WorkflowSidebar({ activeFilter, onFilterChange, className }: Wor
                 </div>
             </ScrollArea>
 
-            {/* Sidebar Footer Actions */}
-            <div className="p-[var(--space-md)] mt-auto border-t border-border/50">
-                {isAgency ? (
-                    <Button className="w-full gap-2" size="sm">
-                        <Export size={16} weight="bold" />
-                        Deploy to Client
-                    </Button>
-                ) : isClient ? (
-                    <Button variant="outline" className="w-full gap-2 border-dashed" size="sm">
-                        <Plus size={16} weight="bold" />
-                        New Folder
-                    </Button>
-                ) : isPlatformOwner && (
-                    <Button className="w-full gap-2" size="sm">
-                        <Lightning size={16} weight="bold" />
-                        New Starter Flow
-                    </Button>
-                )}
-            </div>
+            {canEdit && (
+                <div className="p-[var(--space-md)] mt-auto border-t border-border/50">
+                    {isAgency ? (
+                        <Button className="w-full gap-2" size="sm">
+                            <Export size={16} weight="bold" />
+                            Deploy to Client
+                        </Button>
+                    ) : isClient ? (
+                        <Button variant="outline" className="w-full gap-2 border-dashed" size="sm">
+                            <Plus size={16} weight="bold" />
+                            New Folder
+                        </Button>
+                    ) : isPlatformOwner && (
+                        <Button className="w-full gap-2" size="sm">
+                            <Lightning size={16} weight="bold" />
+                            New Starter Flow
+                        </Button>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

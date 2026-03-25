@@ -11,12 +11,15 @@ import { fetchCalls } from "@/lib/api/calls/fetchCalls";
 import { useLocation } from "react-router-dom";
 import { ThemeContainer, ThemeSection, ThemeCard } from "@/components/theme";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
 
 export default function Calls() {
   const { toast } = useToast();
   const location = useLocation();
   const { user, loading: isAuthLoading } = useAuth();
+  const { currentWorkspace, canViewCalls, canManageCalls } = useWorkspace();
 
   // Get the date range from session storage or location state
   const [filterDateRange, setFilterDateRange] = useState(() => {
@@ -62,9 +65,9 @@ export default function Calls() {
 
   // Fetch real calls data using React Query
   const { data: callsData, isLoading, error, refetch: loadCalls } = useQuery({
-    queryKey: ['calls', user?.id, filterDateRange],
+    queryKey: ['calls', user?.id, currentWorkspace?.id, filterDateRange],
     queryFn: async () => {
-      const response = await fetchCalls();
+      const response = await fetchCalls(currentWorkspace?.id);
       return response;
     },
     enabled: !isAuthLoading && !!user?.id,
@@ -125,6 +128,23 @@ export default function Calls() {
     setCurrentPage(1);
   }, [searchQuery, resolutionFilter]);
 
+  // Access check
+  if (!canViewCalls) {
+    return (
+      <DashboardLayout>
+        <ThemeContainer variant="base" className="min-h-screen no-hover-scaling">
+          <div className="flex items-center justify-center h-full py-20">
+            <ThemeCard variant="glass" className="p-10 text-center max-w-md">
+              <h2 className="text-2xl font-light mb-4 text-foreground">Access Denied</h2>
+              <p className="text-muted-foreground mb-6">You don't have permission to view calls in this workspace.</p>
+              <Button onClick={() => window.history.back()}>Go Back</Button>
+            </ThemeCard>
+          </div>
+        </ThemeContainer>
+      </DashboardLayout>
+    );
+  }
+
   // Handle loading and error states
   if (isAuthLoading || isLoading) {
     return (
@@ -161,7 +181,7 @@ export default function Calls() {
                     </svg>
                   </div>
                   <h3 className="text-lg font-medium text-foreground mb-2">Error Loading Calls</h3>
-                  <p className="text-muted-foreground mb-4">{error}</p>
+                  <p className="text-muted-foreground mb-4">{(error as any)?.message || String(error)}</p>
                   <button
                     onClick={() => window.location.reload()}
                     className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
@@ -203,6 +223,7 @@ export default function Calls() {
                   isLoading={isRefreshing}
                   filteredCount={filteredCalls.length}
                   totalCount={callsData?.total || 0}
+                  canEdit={canManageCalls}
                 />
               </ThemeCard>
 

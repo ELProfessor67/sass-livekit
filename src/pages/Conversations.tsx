@@ -12,10 +12,14 @@ import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { useRouteChangeData } from "@/hooks/useRouteChange";
 import { useToast } from "@/hooks/use-toast";
 import { format } from 'date-fns';
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Conversations() {
   const { user, loading: isAuthLoading } = useAuth();
+  const { currentWorkspace, canEdit } = useWorkspace();
   const { toast } = useToast();
+  const [selectedAssistantId, setSelectedAssistantId] = useState<string>("all");
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [contacts, setContacts] = useState<ContactSummary[]>([]);
@@ -52,8 +56,41 @@ export default function Conversations() {
       setIsLoadingContacts(true);
       setError(null);
 
-      console.log('📋 Loading contacts list...');
-      const { contacts: contactList, getConversationDetails, loadMoreHistory, fetchNewMessagesSince } = await getConversationsProgressive();
+      console.log('📋 Loading contacts list for workspace:', currentWorkspace?.id);
+
+      // Get assistant IDs for current workspace
+      let assistantIds: string[] = [];
+      const { data: assistantsData } = await supabase
+        .from('assistant')
+        .select('id')
+        .eq('user_id', user.id);
+
+      if (assistantsData) {
+        if (currentWorkspace?.id === null) {
+          assistantIds = assistantsData
+            .filter((a: any) => !a.workspace_id)
+            .map((a: any) => a.id);
+        } else {
+          // Re-fetch with workspace filter to be sure, or filter local if workspace_id was in select
+          const { data: wsAssistants } = await (supabase as any)
+            .from('assistant')
+            .select('id')
+            .eq('workspace_id', currentWorkspace?.id);
+          assistantIds = wsAssistants?.map((a: any) => a.id) || [];
+        }
+      }
+
+      // If a specific agent is selected, use only that one
+      let filterAssistantIds = assistantIds;
+      if (selectedAssistantId !== "all" && assistantIds.includes(selectedAssistantId)) {
+        filterAssistantIds = [selectedAssistantId];
+      } else if (selectedAssistantId !== "all") {
+        // Reset if selected agent not in current workspace
+        setSelectedAssistantId("all");
+      }
+
+      const { contacts: contactList, getConversationDetails, loadMoreHistory, fetchNewMessagesSince } =
+        await getConversationsProgressive(assistantIds.length > 0 ? filterAssistantIds : undefined);
 
       console.log(`📋 Loaded ${contactList.length} contacts`);
       setContacts(contactList);
@@ -62,30 +99,7 @@ export default function Conversations() {
     } catch (err) {
       console.error('Error loading contacts:', err);
       setError('Failed to load contacts - showing sample data');
-      // Set fallback contacts
-      const fallbackContacts: ContactSummary[] = [
-        {
-          id: 'contact_1',
-          phoneNumber: '+1234567890',
-          displayName: 'John Doe',
-          firstName: 'John',
-          lastName: 'Doe',
-          lastActivityDate: new Date().toISOString().split('T')[0],
-          lastActivityTime: new Date().toLocaleTimeString('en-US', { hour12: false }).slice(0, 5),
-          lastActivityTimestamp: new Date(),
-          totalCalls: 2,
-          totalSMS: 5,
-          lastCallOutcome: 'Completed',
-          totalDuration: '5:30',
-          outcomes: {
-            appointments: 1,
-            qualified: 1,
-            notQualified: 0,
-            spam: 0
-          }
-        }
-      ];
-      setContacts(fallbackContacts);
+      setContacts([]);
     } finally {
       setIsLoadingContacts(false);
     }
@@ -285,10 +299,10 @@ export default function Conversations() {
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [isAuthLoading, user?.id]);
+  }, [isAuthLoading, user?.id, currentWorkspace?.id, selectedAssistantId]);
 
   // Trigger API call on route changes
-  useRouteChangeData(loadConversations, [isAuthLoading, user?.id], {
+  useRouteChangeData(loadConversations, [isAuthLoading, user?.id, currentWorkspace?.id, selectedAssistantId], {
     enabled: !isAuthLoading && !!user?.id,
     refetchOnRouteChange: true
   });
@@ -522,37 +536,14 @@ export default function Conversations() {
                 onResolutionChange={setResolutionFilter}
                 dateRange={dateRange}
                 onDateRangeChange={setDateRange}
+                selectedAssistantId={selectedAssistantId}
+                onAssistantChange={setSelectedAssistantId}
               />
 
 
 
               {/* Unified Three-Panel Layout */}
-              {displayItems.length === 0 ? (
-                <ThemeCard variant="glass" className="h-[calc(100vh-8rem)] flex items-center justify-center rounded-[var(--radius-lg)]">
-                  <div className="text-center text-muted-foreground">
-                    <div className="w-16 h-16 mx-auto mb-4 bg-muted/20 rounded-full flex items-center justify-center">
-                      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-medium text-foreground mb-2">No Conversations Found</h3>
-                    <p className="mb-4">
-                      {contacts.length === 0
-                        ? "No contacts have been recorded yet. Contacts will appear here when calls are made."
-                        : "No contacts match your current filters. Try adjusting your search or date range."
-                      }
-                    </p>
-                    {contacts.length === 0 && (
-                      <button
-                        onClick={() => loadContacts()} // Load contacts on manual refresh
-                        className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-                      >
-                        Refresh
-                      </button>
-                    )}
-                  </div>
-                </ThemeCard>
-              ) : (
+              {displayItems.length > 0 && (
                 <ThemeCard variant="glass" className="h-[calc(100vh-8rem)] flex rounded-[var(--radius-lg)] overflow-hidden">
                   {/* Left Panel - Conversations List */}
                   <div className="w-60 flex flex-col border-r border-border/50">
@@ -583,6 +574,7 @@ export default function Conversations() {
                         conversation={selectedConversation}
                         messageFilter={messageFilter}
                         onMessageFilterChange={setMessageFilter}
+                        canEdit={canEdit}
                       />
                     ) : (
                       <div className="flex-1 flex items-center justify-center">
@@ -601,7 +593,7 @@ export default function Conversations() {
                   {/* Right Panel - Contact Info */}
                   <div className="w-72 flex flex-col">
                     {selectedConversation ? (
-                      <ContactInfoPanel conversation={selectedConversation} />
+                      <ContactInfoPanel conversation={selectedConversation} canEdit={canEdit} />
                     ) : (
                       <div className="h-full flex items-center justify-center">
                         <div className="text-center text-muted-foreground">

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ const SLUG_INPUT_REGEX = /[^a-z0-9-]/g;
 const MAIN_DOMAIN = import.meta.env.VITE_MAIN_DOMAIN || window.location.hostname;
 
 export function WhitelabelSettings() {
+  const { canEdit } = useWorkspace();
   const [slug, setSlug] = useState('');
   const [brandName, setBrandName] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
@@ -366,9 +368,9 @@ export function WhitelabelSettings() {
                     <Button
                       type="button"
                       variant="outline"
-                      size="sm"
+                       size="sm"
                       onClick={() => document.getElementById("logo-upload")?.click()}
-                      disabled={isUploadingLogo || isSaving}
+                      disabled={isUploadingLogo || isSaving || !canEdit}
                       className="backdrop-blur-sm bg-white/[0.05] border-white/[0.12] hover:bg-white/[0.08] hover:border-white/[0.2] transition-all duration-200"
                     >
                       {isUploadingLogo ? (
@@ -398,7 +400,7 @@ export function WhitelabelSettings() {
                     value={brandName}
                     onChange={(event) => setBrandName(event.target.value)}
                     placeholder="Your Company Name"
-                    disabled={isSaving}
+                    disabled={isSaving || !canEdit}
                     className="h-10 backdrop-blur-sm bg-white/[0.02] border-white/[0.08] focus:border-primary/50 transition-colors"
                   />
                   <p className="text-xs text-muted-foreground">
@@ -425,7 +427,7 @@ export function WhitelabelSettings() {
                         setIsSlugUnique(true);
                       }
                     }}
-                    disabled={hasWhitelabel || isSaving}
+                    disabled={hasWhitelabel || isSaving || !canEdit}
                     placeholder="yourcompany"
                     className="h-10 backdrop-blur-sm bg-white/[0.02] border-white/[0.08] focus:border-primary/50 transition-colors"
                   />
@@ -498,7 +500,7 @@ export function WhitelabelSettings() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    disabled={isSaving || isStripeLoading}
+                    disabled={isSaving || isStripeLoading || !canEdit}
                     className="backdrop-blur-sm bg-white/[0.05] border-white/[0.12] hover:bg-white/[0.08] hover:border-white/[0.2] transition-all"
                     onClick={async () => {
                       try {
@@ -552,6 +554,7 @@ export function WhitelabelSettings() {
                   disabled={
                     isSaving ||
                     isUploadingLogo ||
+                    !canEdit ||
                     (!hasWhitelabel && (!slug || !brandName.trim()))
                   }
                   className="px-10 h-11 backdrop-blur-sm bg-primary/90 hover:bg-primary transition-all duration-300 border border-primary/20 shadow-lg shadow-primary/10 font-medium"

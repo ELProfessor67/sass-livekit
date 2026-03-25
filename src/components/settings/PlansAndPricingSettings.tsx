@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +38,7 @@ const planColors = {
 };
 
 export function PlansAndPricingSettings() {
+  const { canManageBilling: canEdit } = useWorkspace();
   const { toast } = useToast();
   const { user, updateProfile } = useAuth();
   const [selectedPlan, setSelectedPlan] = useState<string>(user?.plan || "free");
@@ -115,7 +117,7 @@ export function PlansAndPricingSettings() {
         let storageUsed = 0;
         try {
           // Try to fetch from knowledge_documents if table exists
-          const { data: documentsData } = await supabase
+          const { data: documentsData } = await (supabase as any)
             .from('knowledge_documents')
             .select('file_size, file_path')
             .eq('user_id', user.id);
@@ -393,10 +395,10 @@ export function PlansAndPricingSettings() {
                   <Button
                     className="w-full"
                     variant={isCurrent ? "secondary" : isPopular ? "default" : "outline"}
-                    onClick={() => !isCurrent && handleUpgrade(planConfig.key)}
-                    disabled={isCurrent || isUpgrading}
+                    onClick={() => !isCurrent && canEdit && handleUpgrade(planConfig.key)}
+                    disabled={isCurrent || isUpgrading || !canEdit}
                   >
-                    {isUpgrading ? "Processing..." : isCurrent ? "Current Plan" : `Upgrade to ${planConfig.name}`}
+                    {!canEdit ? "View Only" : (isUpgrading ? "Processing..." : isCurrent ? "Current Plan" : `Upgrade to ${planConfig.name}`)}
                   </Button>
                 </CardContent>
               </Card>
@@ -423,7 +425,8 @@ export function PlansAndPricingSettings() {
             <Button
               variant="outline"
               className="justify-start h-auto p-4"
-              onClick={handleBillingPortal}
+              onClick={() => canEdit && handleBillingPortal()}
+              disabled={!canEdit}
             >
               <div className="flex items-center gap-3">
                 <Calendar className="h-5 w-5 text-muted-foreground" />

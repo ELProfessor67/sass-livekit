@@ -11,27 +11,33 @@
  */
 export function applyTenantFilter(query, tenant) {
   if (!query) return query;
-  
+
   const effectiveTenant = tenant || 'main';
-  
+
   if (effectiveTenant === 'main') {
     // For main tenant, include both 'main' and NULL (legacy data)
     return query.or('tenant.eq.main,tenant.is.null');
   }
-  
+
   // For whitelabel tenants, exact match
   return query.eq('tenant', effectiveTenant);
 }
 
 /**
- * Apply tenant filter from request object
+ * Apply tenant and workspace filter from request object
  * @param {object} req - Express request object
  * @param {object} query - Supabase query builder
- * @returns {object} - Query with tenant filter applied
+ * @returns {object} - Query with all filters applied
  */
 export function applyTenantFilterFromRequest(req, query) {
   const tenant = req.tenant || 'main';
-  return applyTenantFilter(query, tenant);
+  let filteredQuery = applyTenantFilter(query, tenant);
+
+  if (req.workspaceId) {
+    filteredQuery = filteredQuery.eq('workspace_id', req.workspaceId);
+  }
+
+  return filteredQuery;
 }
 
 export default {

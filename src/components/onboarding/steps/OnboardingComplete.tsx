@@ -77,14 +77,18 @@ export function OnboardingComplete() {
 
         const updateOptions: any = { data: updateDataParams };
 
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const provider = authUser?.app_metadata?.provider;
+        const isSocialLogin = provider && provider !== 'email';
+
         // Only include email/password if the email needs to be updated or added
-        // This avoids redundant calls that trigger Supabase 429 rate limits
-        if (user.email !== signupData.email) {
+        // AND it's not a social login (which already has its own auth method)
+        if (user.email !== signupData.email && !isSocialLogin) {
           console.log("Updating user auth with email/password (Linking account)");
           updateOptions.email = signupData.email;
           updateOptions.password = signupData.password;
         } else {
-          console.log("Email already matches, updating profile metadata only");
+          console.log(isSocialLogin ? "Social login detected, skipping auth credentials update" : "Email already matches, updating profile metadata only");
         }
 
         const { error: updateError } = await supabase.auth.updateUser(updateOptions);
@@ -110,6 +114,12 @@ export function OnboardingComplete() {
         return;
       }
 
+      // Persist onboarding status in the users table
+      await supabase
+        .from("users")
+        .update({ onboarding_completed: true } as any)
+        .eq("id", user.id);
+
       // Mark onboarding as complete locally
       complete();
 
@@ -121,8 +131,15 @@ export function OnboardingComplete() {
         description: "Your account has been set up successfully. Let's get started!",
       });
 
-      // Navigate to dashboard
-      navigate("/dashboard");
+      // Navigate to dashboard or returnTo
+      const savedReturnTo = sessionStorage.getItem("returnTo");
+      if (savedReturnTo) {
+        console.log('OnboardingComplete: Redirecting to saved returnTo:', savedReturnTo);
+        sessionStorage.removeItem("returnTo");
+        navigate(savedReturnTo);
+      } else {
+        navigate("/dashboard");
+      }
     } catch (error: any) {
       console.error("Error completing onboarding:", error);
       toast({

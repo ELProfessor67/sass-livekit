@@ -17,6 +17,7 @@ import { formatPhoneNumber } from "@/utils/formatUtils";
 
 interface ContactInfoPanelProps {
   conversation: Conversation;
+  canEdit?: boolean;
 }
 
 interface ContactList {
@@ -41,7 +42,7 @@ interface StructuredDataField {
   collection_method: string;
 }
 
-export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
+export function ContactInfoPanel({ conversation, canEdit }: ContactInfoPanelProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [contactLists, setContactLists] = useState<ContactList[]>([]);
@@ -350,7 +351,7 @@ export function ContactInfoPanel({ conversation }: ContactInfoPanelProps) {
           </div>
 
           <div className="flex items-center gap-2">
-            {hasAnalysisData && !isSaved && (
+            {hasAnalysisData && !isSaved && canEdit && (
               <Button
                 onClick={handleSaveContact}
                 disabled={isSaving}

@@ -25,6 +25,7 @@ import { DeleteContactDialog } from "@/components/contacts/dialogs/DeleteContact
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { fetchContacts } from "@/lib/api/contacts/fetchContacts";
 import { fetchContactLists } from "@/lib/api/contacts/fetchContactLists";
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useToast } from "@/hooks/use-toast";
 
 // Mock data structures
@@ -104,6 +105,7 @@ const parseCSV = (csvText: string): CSVContact[] => {
 
 export default function Contacts() {
   const { user } = useAuth();
+  const { currentWorkspace, canViewContacts, canCreateContacts, canManageContacts } = useWorkspace();
   const { toast } = useToast();
   const [selectedList, setSelectedList] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -116,14 +118,14 @@ export default function Contacts() {
   const [contactLists, setContactLists] = useState<ContactList[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // CSV upload states
   const [csvFiles, setCsvFiles] = useState<CSVFile[]>([]);
   const [selectedCsvFile, setSelectedCsvFile] = useState<string | null>(null);
   const [showCsvPreview, setShowCsvPreview] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // CSV delete states
   const [deleteCsvOpen, setDeleteCsvOpen] = useState(false);
   const [csvToDelete, setCsvToDelete] = useState<{ id: string; name: string; contactCount: number; campaigns?: Array<{ id: string; name: string }> } | null>(null);
@@ -131,16 +133,16 @@ export default function Contacts() {
 
   // Load real data from database
   const loadContacts = async () => {
-    if (!user?.id) {
+    if (!user?.id || !currentWorkspace?.id) {
       setIsLoading(false);
       return;
     }
 
     try {
       setIsLoading(true);
-      
+
       // Load contact lists
-      const listsResponse = await fetchContactLists();
+      const listsResponse = await fetchContactLists(currentWorkspace.id);
       const transformedLists: ContactList[] = listsResponse.contactLists.map(list => ({
         id: list.id,
         name: list.name,
@@ -150,7 +152,7 @@ export default function Contacts() {
       setContactLists(transformedLists);
 
       // Load contacts
-      const contactsResponse = await fetchContacts();
+      const contactsResponse = await fetchContacts(undefined, currentWorkspace.id);
       const transformedContacts: Contact[] = contactsResponse.contacts.map(contact => ({
         id: contact.id,
         firstName: contact.first_name,
@@ -172,20 +174,40 @@ export default function Contacts() {
     }
   };
 
+  // Load CSV files from database on component mount
+  const loadCsvFiles = async () => {
+    if (!user?.id || !currentWorkspace?.id) return;
+
+    try {
+      const response = await fetchCsvFiles(currentWorkspace.id);
+      const csvFilesData: CSVFile[] = response.csvFiles.map(file => ({
+        id: file.id,
+        name: file.name,
+        uploadedAt: file.uploaded_at.split('T')[0],
+        rowCount: file.row_count,
+        data: [] // We'll load this when needed
+      }));
+      setCsvFiles(csvFilesData);
+    } catch (error) {
+      console.error('Error loading CSV files:', error);
+    }
+  };
+
   // Load data on component mount
   useEffect(() => {
     loadContacts();
-  }, [user?.id]);
+    loadCsvFiles();
+  }, [user?.id, currentWorkspace?.id]);
 
   const filteredContacts = contacts.filter(contact => {
-    const matchesSearch = searchQuery === "" || 
+    const matchesSearch = searchQuery === "" ||
       contact.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       contact.lastName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       contact.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
       contact.phone.includes(searchQuery);
-    
+
     const matchesList = selectedList === "all" || contact.listId === selectedList;
-    
+
     return matchesSearch && matchesList;
   });
 
@@ -243,7 +265,7 @@ export default function Contacts() {
         try {
           const csvText = e.target?.result as string;
           const csvData = parseCSV(csvText);
-          
+
           if (csvData.length === 0) {
             alert('No valid contact data found in CSV file');
             setIsUploading(false);
@@ -255,11 +277,12 @@ export default function Contacts() {
             name: file.name,
             rowCount: csvData.length,
             fileSize: file.size,
-            userId: user.id
+            userId: user.id,
+            workspaceId: currentWorkspace?.id || ''
           };
 
           const csvFileResult = await saveCsvFile(csvFileData);
-          
+
           if (!csvFileResult.success || !csvFileResult.csvFileId) {
             alert('Failed to save CSV file: ' + csvFileResult.error);
             setIsUploading(false);
@@ -270,11 +293,12 @@ export default function Contacts() {
           const csvContactsData: SaveCsvContactsRequest = {
             csvFileId: csvFileResult.csvFileId,
             contacts: csvData,
-            userId: user.id
+            userId: user.id,
+            workspaceId: currentWorkspace?.id || ''
           };
 
           const csvContactsResult = await saveCsvContacts(csvContactsData);
-          
+
           if (!csvContactsResult.success) {
             alert('Failed to save CSV contacts: ' + csvContactsResult.error);
             setIsUploading(false);
@@ -293,7 +317,7 @@ export default function Contacts() {
           setCsvFiles(prev => [...prev, newCsvFile]);
           setSelectedCsvFile(newCsvFile.id);
           setShowCsvPreview(true);
-          
+
           alert(`Successfully uploaded ${csvContactsResult.savedCount} contacts from ${file.name}`);
         } catch (error) {
           console.error('Error processing CSV file:', error);
@@ -316,7 +340,7 @@ export default function Contacts() {
 
     // Load CSV contacts from database if not already loaded
     const csvFile = csvFiles.find(file => file.id === csvId);
-    
+
     if (csvFile && csvFile.data.length === 0) {
       try {
         const response = await fetchCsvContacts(csvId);
@@ -330,8 +354,8 @@ export default function Contacts() {
         }));
 
         // Update the CSV file with loaded data
-        setCsvFiles(prev => prev.map(file => 
-          file.id === csvId 
+        setCsvFiles(prev => prev.map(file =>
+          file.id === csvId
             ? { ...file, data: csvContactsData }
             : file
         ));
@@ -360,7 +384,7 @@ export default function Contacts() {
     setDeletingCsv(true);
     try {
       const result = await deleteCsvFileAPI({ csvFileId: csvToDelete.id });
-      
+
       if (result.success) {
         // Remove from local state
         setCsvFiles(prev => prev.filter(file => file.id !== csvToDelete.id));
@@ -389,28 +413,23 @@ export default function Contacts() {
 
   const selectedCsvData = csvFiles.find(file => file.id === selectedCsvFile);
 
-  // Load CSV files from database on component mount
-  useEffect(() => {
-    const loadCsvFiles = async () => {
-      if (!user?.id) return;
-      
-      try {
-        const response = await fetchCsvFiles();
-        const csvFilesData: CSVFile[] = response.csvFiles.map(file => ({
-          id: file.id,
-          name: file.name,
-          uploadedAt: file.uploaded_at.split('T')[0],
-          rowCount: file.row_count,
-          data: [] // We'll load this when needed
-        }));
-        setCsvFiles(csvFilesData);
-      } catch (error) {
-        console.error('Error loading CSV files:', error);
-      }
-    };
 
-    loadCsvFiles();
-  }, [user?.id]);
+  // Access check
+  if (!canViewContacts) {
+    return (
+      <DashboardLayout>
+        <ThemeContainer variant="base" className="min-h-screen no-hover-scaling">
+          <div className="flex items-center justify-center h-full py-20">
+            <ThemeCard variant="glass" className="p-10 text-center max-w-md">
+              <h2 className="text-2xl font-light mb-4 text-foreground">Access Denied</h2>
+              <p className="text-muted-foreground mb-6">You don't have permission to view contacts in this workspace.</p>
+              <Button onClick={() => window.history.back()}>Go Back</Button>
+            </ThemeCard>
+          </div>
+        </ThemeContainer>
+      </DashboardLayout>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -436,287 +455,341 @@ export default function Contacts() {
       <div className="container mx-auto px-[var(--space-lg)] max-w-6xl">
         <ThemeContainer variant="base">
           <ThemeSection spacing="lg">
-          {/* Page Header */}
-          <div className="space-y-[var(--space-md)]">
-            <h1 className="text-4xl font-extralight tracking-tight text-foreground">
-              Contacts
-            </h1>
-            <p className="text-muted-foreground text-lg font-light">
-              Manage your contact lists and reach out to prospects efficiently
-            </p>
-          </div>
+            {/* Page Header */}
+            <div className="space-y-[var(--space-md)]">
+              <h1 className="text-4xl font-extralight tracking-tight text-foreground">
+                Contacts
+              </h1>
+              <p className="text-muted-foreground text-lg font-light">
+                Manage your contact lists and reach out to prospects efficiently
+              </p>
+            </div>
 
-          {/* Main Content Card */}
-          <ThemeCard variant="glass" className="overflow-hidden">
-            <div className="flex min-h-[600px]">
-              {/* Left Sidebar - Contact Lists & CSV Files */}
-              <div className="w-56 border-r border-theme-light">
-                <div className="p-[var(--space-xl)] border-b border-theme-light">
-                  <div className="flex items-center justify-between mb-[var(--space-lg)]">
-                    <h2 className="text-base font-light text-theme-primary tracking-wide">Lists</h2>
-                    <Button
-                      size="sm"
-                      onClick={() => setAddListOpen(true)}
-                      className="h-8 w-8 p-0"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  
-                  <div className="space-y-[var(--space-sm)]">
-                    <div
-                      className={`flex items-center justify-between p-[var(--space-md)] rounded-lg cursor-pointer transition-theme-base ${
-                        selectedList === "all" && !showCsvPreview
-                          ? "bg-primary/10 border border-primary/20" 
-                          : "hover-theme-accent"
-                      }`}
-                      onClick={() => {
-                        setSelectedList("all");
-                        setShowCsvPreview(false);
-                      }}
-                    >
-                      <div className="flex items-center gap-[var(--space-md)]">
-                        <Users className="h-4 w-4 text-theme-secondary" />
-                        <span className="font-light text-theme-primary tracking-wide text-sm">All Contacts</span>
-                      </div>
-                      <Badge variant="secondary" className="text-xs">
-                        {totalContacts}
-                      </Badge>
+            {/* Main Content Card */}
+            <ThemeCard variant="glass" className="overflow-hidden">
+              <div className="flex min-h-[600px]">
+                {/* Left Sidebar - Contact Lists & CSV Files */}
+                <div className="w-56 border-r border-theme-light">
+                  <div className="p-[var(--space-xl)] border-b border-theme-light">
+                    <div className="flex items-center justify-between mb-[var(--space-lg)]">
+                      <h2 className="text-base font-light text-theme-primary tracking-wide">Lists</h2>
+                      {canCreateContacts && (
+                        <Button
+                          size="sm"
+                          onClick={() => setAddListOpen(true)}
+                          className="h-8 w-8 p-0"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
-                    
-                    {contactLists.map(list => (
+
+                    <div className="space-y-[var(--space-sm)]">
                       <div
-                        key={list.id}
-                        className={`flex items-center justify-between p-[var(--space-md)] rounded-lg cursor-pointer transition-theme-base ${
-                          selectedList === list.id && !showCsvPreview
-                            ? "bg-primary/10 border border-primary/20" 
-                            : "hover-theme-accent"
-                        }`}
+                        className={`flex items-center justify-between p-[var(--space-md)] rounded-lg cursor-pointer transition-theme-base ${selectedList === "all" && !showCsvPreview
+                          ? "bg-primary/10 border border-primary/20"
+                          : "hover-theme-accent"
+                          }`}
                         onClick={() => {
-                          setSelectedList(list.id);
+                          setSelectedList("all");
                           setShowCsvPreview(false);
                         }}
                       >
                         <div className="flex items-center gap-[var(--space-md)]">
-                          <div className="w-2 h-2 rounded-full bg-primary" />
-                          <span className="font-light text-theme-primary tracking-wide text-sm">{list.name}</span>
+                          <Users className="h-4 w-4 text-theme-secondary" />
+                          <span className="font-light text-theme-primary tracking-wide text-sm">All Contacts</span>
                         </div>
                         <Badge variant="secondary" className="text-xs">
-                          {list.count}
+                          {totalContacts}
                         </Badge>
                       </div>
-                    ))}
-                  </div>
-                </div>
 
-                {/* CSV Files Section */}
-                <div className="p-[var(--space-xl)] border-b border-theme-light">
-                  <div className="flex items-center justify-between mb-[var(--space-lg)]">
-                    <h2 className="text-base font-light text-theme-primary tracking-wide">CSV Files</h2>
-                    <Button
-                      size="sm"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="h-8 w-8 p-0"
-                    >
-                      <Upload className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  
-                  {csvFiles.length === 0 ? (
-                    <div className="text-center py-4 text-theme-secondary text-sm">
-                      No CSV files uploaded yet
-                    </div>
-                  ) : (
-                    <div className="space-y-[var(--space-sm)]">
-                      
-                      {csvFiles.map(file => (
+                      {contactLists.map(list => (
                         <div
-                          key={file.id}
-                          className={`flex items-center justify-between p-[var(--space-md)] rounded-lg transition-theme-base group cursor-pointer ${
-                            selectedCsvFile === file.id && showCsvPreview
-                              ? "bg-primary/10 border border-primary/20" 
-                              : "hover-theme-accent"
-                          }`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleCsvFileSelect(file.id);
+                          key={list.id}
+                          className={`flex items-center justify-between p-[var(--space-md)] rounded-lg cursor-pointer transition-theme-base ${selectedList === list.id && !showCsvPreview
+                            ? "bg-primary/10 border border-primary/20"
+                            : "hover-theme-accent"
+                            }`}
+                          onClick={() => {
+                            setSelectedList(list.id);
+                            setShowCsvPreview(false);
                           }}
-                          style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}
                         >
-                          <div className="flex items-center gap-[var(--space-md)] flex-1 min-w-0">
-                            <FileText className="h-4 w-4 text-theme-secondary flex-shrink-0" />
-                            <div className="min-w-0 flex-1">
-                              <div className="font-light text-theme-primary tracking-wide text-sm truncate">
-                                {file.name}
-                              </div>
-                              <div className="text-xs text-theme-tertiary">
-                                {file.rowCount} contacts
-                              </div>
-                            </div>
+                          <div className="flex items-center gap-[var(--space-md)]">
+                            <div className="w-2 h-2 rounded-full bg-primary" />
+                            <span className="font-light text-theme-primary tracking-wide text-sm">{list.name}</span>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <Badge variant="secondary" className="text-xs">
-                              {file.rowCount}
-                            </Badge>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRemoveCsvFile(file.id);
-                              }}
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
+                          <Badge variant="secondary" className="text-xs">
+                            {list.count}
+                          </Badge>
                         </div>
                       ))}
                     </div>
-                  )}
-                </div>
-                
-                <div className="p-[var(--space-xl)]">
-                  <div className="space-y-[var(--space-lg)]">
-                    <div className="text-sm text-theme-secondary">
-                      <div className="flex justify-between">
-                        <span>Total Contacts</span>
-                        <span className="font-medium">{totalContacts}</span>
-                      </div>
-                      <div className="flex justify-between mt-1">
-                        <span>Active</span>
-                        <span className="font-medium text-green-600">{activeContacts}</span>
-                      </div>
-                      <div className="flex justify-between mt-1">
-                        <span>Inactive</span>
-                        <span className="font-medium text-orange-600">{totalContacts - activeContacts}</span>
-                      </div>
-                    </div>
                   </div>
-                </div>
-              </div>
 
-              {/* Main Content Area */}
-              <div className="flex-1 flex flex-col">
-                {/* Toolbar */}
-                <div className="p-[var(--space-xl)] border-b border-theme-light">
-                  <div className="flex items-center justify-between mb-[var(--space-lg)]">
-                    <div className="flex items-center gap-[var(--space-md)]">
-                      <Button
-                        variant="outline"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={isUploading}
-                        className="flex items-center gap-2"
-                      >
-                        <Upload className="h-4 w-4" />
-                        {isUploading ? 'Uploading...' : 'Upload CSV'}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => setUploadContactsOpen(true)}
-                        className="flex items-center gap-2"
-                      >
-                        <Upload className="h-4 w-4" />
-                        Upload List
-                      </Button>
-                      <Button
-                        onClick={() => setAddContactOpen(true)}
-                        className="flex items-center gap-2"
-                      >
-                        <Plus className="h-4 w-4" />
-                        Add Contact
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  {/* Search */}
-                  <div className="flex items-center">
-                    <div className="relative flex-1 max-w-md">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-theme-secondary" />
-                      <Input
-                        placeholder={showCsvPreview ? "Search CSV contacts..." : "Search contacts..."}
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-10"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Hidden file input */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-
-                {/* Contacts Table or CSV Preview */}
-                <div className="flex-1 overflow-auto">
-                  {showCsvPreview && selectedCsvData ? (
-                    <div className="p-[var(--space-xl)]">
-                      <div className="flex items-center justify-between mb-[var(--space-lg)]">
-                        <div>
-                          <h3 className="text-lg font-semibold text-foreground mb-1">
-                            CSV Preview: {selectedCsvData.name}
-                          </h3>
-                          <p className="text-sm text-muted-foreground">
-                            {selectedCsvData.rowCount} contacts • Uploaded on {selectedCsvData.uploadedAt}
-                          </p>
-                        </div>
+                  {/* CSV Files Section */}
+                  <div className="p-[var(--space-xl)] border-b border-theme-light">
+                    <div className="flex items-center justify-between mb-[var(--space-lg)]">
+                      <h2 className="text-base font-light text-theme-primary tracking-wide">CSV Files</h2>
+                      {canCreateContacts && (
                         <Button
-                          variant="outline"
-                          className="flex items-center gap-2"
+                          size="sm"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="h-8 w-8 p-0"
                         >
-                          <Eye className="h-4 w-4" />
-                          View Regular Contacts
+                          <Upload className="h-4 w-4" />
                         </Button>
+                      )}
+                    </div>
+
+                    {csvFiles.length === 0 ? (
+                      <div className="text-center py-4 text-theme-secondary text-sm">
+                        No CSV files uploaded yet
                       </div>
-                      
+                    ) : (
+                      <div className="space-y-[var(--space-sm)]">
+
+                        {csvFiles.map(file => (
+                          <div
+                            key={file.id}
+                            className={`flex items-center justify-between p-[var(--space-md)] rounded-lg transition-theme-base group cursor-pointer ${selectedCsvFile === file.id && showCsvPreview
+                              ? "bg-primary/10 border border-primary/20"
+                              : "hover-theme-accent"
+                              }`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleCsvFileSelect(file.id);
+                            }}
+                            style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}
+                          >
+                            <div className="flex items-center gap-[var(--space-md)] flex-1 min-w-0">
+                              <FileText className="h-4 w-4 text-theme-secondary flex-shrink-0" />
+                              <div className="min-w-0 flex-1">
+                                <div className="font-light text-theme-primary tracking-wide text-sm truncate">
+                                  {file.name}
+                                </div>
+                                <div className="text-xs text-theme-tertiary">
+                                  {file.rowCount} contacts
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Badge variant="secondary" className="text-xs">
+                                {file.rowCount}
+                              </Badge>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveCsvFile(file.id);
+                                }}
+                                disabled={!canManageContacts}
+                              >
+                                {canManageContacts && <X className="h-3 w-3" />}
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-[var(--space-xl)]">
+                    <div className="space-y-[var(--space-lg)]">
+                      <div className="text-sm text-theme-secondary">
+                        <div className="flex justify-between">
+                          <span>Total Contacts</span>
+                          <span className="font-medium">{totalContacts}</span>
+                        </div>
+                        <div className="flex justify-between mt-1">
+                          <span>Active</span>
+                          <span className="font-medium text-green-600">{activeContacts}</span>
+                        </div>
+                        <div className="flex justify-between mt-1">
+                          <span>Inactive</span>
+                          <span className="font-medium text-orange-600">{totalContacts - activeContacts}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Main Content Area */}
+                <div className="flex-1 flex flex-col">
+                  {/* Toolbar */}
+                  <div className="p-[var(--space-xl)] border-b border-theme-light">
+                    <div className="flex items-center justify-between mb-[var(--space-lg)]">
+                      <div className="flex items-center gap-[var(--space-md)]">
+                        {canCreateContacts && (
+                          <>
+                            <Button
+                              variant="outline"
+                              onClick={() => fileInputRef.current?.click()}
+                              disabled={isUploading}
+                              className="flex items-center gap-2"
+                            >
+                              <Upload className="h-4 w-4" />
+                              {isUploading ? 'Uploading...' : 'Upload CSV'}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={() => setUploadContactsOpen(true)}
+                              className="flex items-center gap-2"
+                            >
+                              <Upload className="h-4 w-4" />
+                              Upload List
+                            </Button>
+                            <Button
+                              onClick={() => setAddContactOpen(true)}
+                              className="flex items-center gap-2"
+                            >
+                              <Plus className="h-4 w-4" />
+                              Add Contact
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Search */}
+                    <div className="flex items-center">
+                      <div className="relative flex-1 max-w-md">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-theme-secondary" />
+                        <Input
+                          placeholder={showCsvPreview ? "Search CSV contacts..." : "Search contacts..."}
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="pl-10"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Hidden file input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+
+                  {/* Contacts Table or CSV Preview */}
+                  <div className="flex-1 overflow-auto">
+                    {showCsvPreview && selectedCsvData ? (
+                      <div className="p-[var(--space-xl)]">
+                        <div className="flex items-center justify-between mb-[var(--space-lg)]">
+                          <div>
+                            <h3 className="text-lg font-semibold text-foreground mb-1">
+                              CSV Preview: {selectedCsvData.name}
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                              {selectedCsvData.rowCount} contacts • Uploaded on {selectedCsvData.uploadedAt}
+                            </p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            className="flex items-center gap-2"
+                          >
+                            <Eye className="h-4 w-4" />
+                            View Regular Contacts
+                          </Button>
+                        </div>
+
+                        <Table>
+                          <TableHeader className="backdrop-blur-sm bg-white/[0.01] border-b border-white/[0.06]">
+                            <TableRow className="border-b border-white/[0.06] hover:bg-white/[0.02]">
+                              <TableHead className="w-[200px] text-foreground font-medium text-sm font-feature-settings tracking-tight">Name</TableHead>
+                              <TableHead className="w-[250px] text-foreground font-medium text-sm font-feature-settings tracking-tight">Email</TableHead>
+                              <TableHead className="w-[160px] text-foreground font-medium text-sm font-feature-settings tracking-tight">Phone Number</TableHead>
+                              <TableHead className="w-[120px] text-foreground font-medium text-sm font-feature-settings tracking-tight">Status</TableHead>
+                              <TableHead className="w-[100px] text-foreground font-medium text-sm font-feature-settings tracking-tight">DND</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {selectedCsvData.data
+                              .filter(contact => {
+                                if (!searchQuery) return true;
+                                return (
+                                  contact.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                  contact.last_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                  contact.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                  contact.phone.includes(searchQuery)
+                                );
+                              })
+                              .map((contact, index) => (
+                                <TableRow key={index} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
+                                  <TableCell className="font-medium text-foreground">
+                                    {contact.first_name} {contact.last_name}
+                                  </TableCell>
+                                  <TableCell className="text-muted-foreground">
+                                    {contact.email || '-'}
+                                  </TableCell>
+                                  <TableCell className="text-muted-foreground">
+                                    {contact.phone ? formatPhoneNumber(contact.phone) : '-'}
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    <Badge
+                                      variant={contact.status === 'active' ? 'default' : contact.status === 'inactive' ? 'secondary' : 'destructive'}
+                                      className="text-xs"
+                                    >
+                                      {contact.status}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    {contact.do_not_call ? (
+                                      <Badge variant="destructive" className="text-xs">
+                                        Yes
+                                      </Badge>
+                                    ) : (
+                                      <span className="text-muted-foreground text-sm">No</span>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    ) : (
                       <Table>
                         <TableHeader className="backdrop-blur-sm bg-white/[0.01] border-b border-white/[0.06]">
                           <TableRow className="border-b border-white/[0.06] hover:bg-white/[0.02]">
                             <TableHead className="w-[200px] text-foreground font-medium text-sm font-feature-settings tracking-tight">Name</TableHead>
                             <TableHead className="w-[250px] text-foreground font-medium text-sm font-feature-settings tracking-tight">Email</TableHead>
                             <TableHead className="w-[160px] text-foreground font-medium text-sm font-feature-settings tracking-tight">Phone Number</TableHead>
-                            <TableHead className="w-[120px] text-foreground font-medium text-sm font-feature-settings tracking-tight">Status</TableHead>
+                            <TableHead className="w-[120px] text-foreground font-medium text-sm font-feature-settings tracking-tight">Created</TableHead>
                             <TableHead className="w-[100px] text-foreground font-medium text-sm font-feature-settings tracking-tight">DND</TableHead>
+                            <TableHead className="w-[60px]"></TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {selectedCsvData.data
-                            .filter(contact => {
-                              if (!searchQuery) return true;
-                              return (
-                                contact.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                contact.last_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                contact.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                contact.phone.includes(searchQuery)
-                              );
-                            })
-                            .map((contact, index) => (
-                              <TableRow key={index} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
+                          {filteredContacts.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                                {searchQuery ? "No contacts found matching your search." : "No contacts yet. Add your first contact to get started."}
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            filteredContacts.map(contact => (
+                              <TableRow key={contact.id} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
                                 <TableCell className="font-medium text-foreground">
-                                  {contact.first_name} {contact.last_name}
+                                  {contact.firstName} {contact.lastName}
                                 </TableCell>
                                 <TableCell className="text-muted-foreground">
-                                  {contact.email || '-'}
+                                  {contact.email}
                                 </TableCell>
                                 <TableCell className="text-muted-foreground">
-                                  {contact.phone ? formatPhoneNumber(contact.phone) : '-'}
+                                  {formatPhoneNumber(contact.phone)}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground text-sm">
+                                  {contact.created}
                                 </TableCell>
                                 <TableCell className="text-center">
-                                  <Badge 
-                                    variant={contact.status === 'active' ? 'default' : contact.status === 'inactive' ? 'secondary' : 'destructive'}
-                                    className="text-xs"
-                                  >
-                                    {contact.status}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="text-center">
-                                  {contact.do_not_call ? (
+                                  {contact.doNotCall ? (
                                     <Badge variant="destructive" className="text-xs">
                                       Yes
                                     </Badge>
@@ -724,84 +797,44 @@ export default function Contacts() {
                                     <span className="text-muted-foreground text-sm">No</span>
                                   )}
                                 </TableCell>
+                                <TableCell>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                        <MoreHorizontal className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      {canManageContacts ? (
+                                        <>
+                                          <DropdownMenuItem onClick={() => handleEditContact(contact)}>
+                                            Edit Contact
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            className="text-destructive"
+                                            onClick={() => handleDeleteContact(contact)}
+                                          >
+                                            Delete Contact
+                                          </DropdownMenuItem>
+                                        </>
+                                      ) : (
+                                        <DropdownMenuItem disabled>
+                                          View Only
+                                        </DropdownMenuItem>
+                                      )}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </TableCell>
                               </TableRow>
-                            ))}
+                            ))
+                          )}
                         </TableBody>
                       </Table>
-                    </div>
-                  ) : (
-                    <Table>
-                      <TableHeader className="backdrop-blur-sm bg-white/[0.01] border-b border-white/[0.06]">
-                        <TableRow className="border-b border-white/[0.06] hover:bg-white/[0.02]">
-                          <TableHead className="w-[200px] text-foreground font-medium text-sm font-feature-settings tracking-tight">Name</TableHead>
-                          <TableHead className="w-[250px] text-foreground font-medium text-sm font-feature-settings tracking-tight">Email</TableHead>
-                          <TableHead className="w-[160px] text-foreground font-medium text-sm font-feature-settings tracking-tight">Phone Number</TableHead>
-                          <TableHead className="w-[120px] text-foreground font-medium text-sm font-feature-settings tracking-tight">Created</TableHead>
-                          <TableHead className="w-[100px] text-foreground font-medium text-sm font-feature-settings tracking-tight">DND</TableHead>
-                          <TableHead className="w-[60px]"></TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredContacts.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                              {searchQuery ? "No contacts found matching your search." : "No contacts yet. Add your first contact to get started."}
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          filteredContacts.map(contact => (
-                            <TableRow key={contact.id} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
-                              <TableCell className="font-medium text-foreground">
-                                {contact.firstName} {contact.lastName}
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">
-                                {contact.email}
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">
-                                {formatPhoneNumber(contact.phone)}
-                              </TableCell>
-                              <TableCell className="text-muted-foreground text-sm">
-                                {contact.created}
-                              </TableCell>
-                              <TableCell className="text-center">
-                                {contact.doNotCall ? (
-                                  <Badge variant="destructive" className="text-xs">
-                                    Yes
-                                  </Badge>
-                                ) : (
-                                  <span className="text-muted-foreground text-sm">No</span>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                      <MoreHorizontal className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={() => handleEditContact(contact)}>
-                                      Edit Contact
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem 
-                                      className="text-destructive"
-                                      onClick={() => handleDeleteContact(contact)}
-                                    >
-                                      Delete Contact
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          </ThemeCard>
+            </ThemeCard>
           </ThemeSection>
         </ThemeContainer>
       </div>
@@ -812,20 +845,20 @@ export default function Contacts() {
         onOpenChange={setAddListOpen}
         onCreateList={handleCreateList}
       />
-      
+
       <AddContactDialog
         open={addContactOpen}
         onOpenChange={setAddContactOpen}
         onCreateContact={handleCreateContact}
         contactLists={contactLists}
       />
-      
+
       <UploadContactsDialog
         open={uploadContactsOpen}
         onOpenChange={setUploadContactsOpen}
         contactLists={contactLists}
       />
-      
+
       <DeleteCsvFileDialog
         open={deleteCsvOpen}
         onOpenChange={setDeleteCsvOpen}
@@ -835,7 +868,7 @@ export default function Contacts() {
         campaigns={csvToDelete?.campaigns || []}
         loading={deletingCsv}
       />
-      
+
       <EditContactDialog
         open={editContactOpen}
         onOpenChange={setEditContactOpen}
@@ -843,7 +876,7 @@ export default function Contacts() {
         contactLists={contactLists}
         onContactUpdated={handleContactUpdated}
       />
-      
+
       <DeleteContactDialog
         open={deleteContactOpen}
         onOpenChange={setDeleteContactOpen}

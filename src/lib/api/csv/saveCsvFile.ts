@@ -5,6 +5,7 @@ export interface SaveCsvFileRequest {
   rowCount: number;
   fileSize?: number;
   userId: string;
+  workspaceId: string;
 }
 
 export interface SaveCsvFileResponse {
@@ -24,7 +25,8 @@ export const saveCsvFile = async (data: SaveCsvFileRequest): Promise<SaveCsvFile
         name: data.name,
         user_id: data.userId,
         row_count: data.rowCount,
-        file_size: data.fileSize || null
+        file_size: data.fileSize || null,
+        workspace_id: data.workspaceId
       }])
       .select()
       .single();

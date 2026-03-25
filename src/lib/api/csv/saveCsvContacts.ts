@@ -13,6 +13,7 @@ export interface SaveCsvContactsRequest {
   csvFileId: string;
   contacts: CsvContactData[];
   userId: string;
+  workspaceId: string;
 }
 
 export interface SaveCsvContactsResponse {
@@ -35,7 +36,8 @@ export const saveCsvContacts = async (data: SaveCsvContactsRequest): Promise<Sav
       email: contact.email || null,
       status: contact.status || 'active',
       do_not_call: contact.do_not_call || false,
-      user_id: data.userId
+      user_id: data.userId,
+      workspace_id: data.workspaceId
     }));
 
     const { data: savedContacts, error } = await supabase

@@ -14,6 +14,7 @@ import { TwilioIcon, FacebookIcon, HubSpotIcon, GoHighLevelIcon } from "../nodes
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { fetchAssistants, Assistant } from "@/lib/api/assistants/fetchAssistants";
 import { VariableInput } from "../components/VariableInput";
 import { useEffect, useState } from "react";
@@ -27,6 +28,7 @@ interface NodeConfigPanelProps {
     customVariables?: string[]; // Custom variables from trigger node
     triggerType?: string; // Type of trigger (e.g., 'hubspot_contact_created')
     workflowAssistantId?: string | null;
+    canEdit?: boolean;
 }
 
 function getNodeIcon(type: string) {
@@ -63,8 +65,9 @@ function getNodeIconFixed(type: string, integration?: string) {
     return getNodeIcon(type);
 }
 
-export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = [], triggerType, workflowAssistantId }: NodeConfigPanelProps) {
+export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = [], triggerType, workflowAssistantId, canEdit = true }: NodeConfigPanelProps) {
     const { user } = useAuth();
+    const { currentWorkspace } = useWorkspace();
     const data = node.data;
     const integration = data.integration;
     const [slackConnections, setSlackConnections] = useState<any[]>([]);
@@ -92,7 +95,8 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
     const loadAssistants = async () => {
         setIsLoadingAssistants(true);
         try {
-            const res = await fetchAssistants();
+            if (!currentWorkspace?.id) return;
+            const res = await fetchAssistants(currentWorkspace.id);
             setAssistants(res.assistants);
         } catch (error) {
             console.error("Error loading assistants:", error);
@@ -174,7 +178,7 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
                         </div>
                     </div>
 
-                    {node.type !== 'trigger' && onDelete && (
+                    {node.type !== 'trigger' && onDelete && canEdit && (
                         <Button
                             variant="ghost"
                             size="icon"
@@ -197,6 +201,7 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
                             value={data.label}
                             onChange={(e) => handleFieldChange('label', e.target.value)}
                             placeholder="Enter node name..."
+                            disabled={!canEdit}
                         />
                     </div>
 

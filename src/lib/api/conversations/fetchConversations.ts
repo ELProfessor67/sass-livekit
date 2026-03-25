@@ -49,12 +49,14 @@ export interface CallHistoryRecord {
   end_time: string;
   call_duration: number;
   call_status: string;
-  transcription: Array<{ role: string; content: any }>;
-  call_sid?: string; // Note: This field may not exist in the current schema
-  recording_sid?: string; // Note: This field may not exist in the current schema
+  transcription: any; // Using any for transcription to avoid complex Json vs Array conflicts
+  call_sid?: string;
+  recording_sid?: string;
   call_summary?: string;
   success_evaluation?: string;
   structured_data?: any;
+  call_outcome?: string;      // Added missing field
+  outcome_confidence?: number; // Added missing field
   created_at: string;
   updated_at: string;
 }
@@ -479,13 +481,16 @@ export const fetchConversations = async (shouldSort: boolean = true): Promise<Co
 /**
  * Fetch lightweight contact list for initial display
  */
-export const fetchContactList = async (limit: number = 50): Promise<ContactSummary[]> => {
+export const fetchContactList = async (limit: number = 50, assistantIds: string[] = []): Promise<ContactSummary[]> => {
   try {
     const userId = await getCurrentUserIdAsync();
-    const assistantIds = await getUserAssistantIds();
-    console.log('📋 Fetching contact list for user ID:', userId, 'with assistants:', assistantIds);
 
-    if (assistantIds.length === 0) {
+    // Use provided assistantIds or fetch all for user
+    const effectiveAssistantIds = assistantIds.length > 0 ? assistantIds : await getUserAssistantIds();
+
+    console.log('📋 Fetching contact list for user ID:', userId, 'with assistants:', effectiveAssistantIds);
+
+    if (effectiveAssistantIds.length === 0) {
       console.log('No assistants found for user, returning empty contact list');
       return [];
     }
@@ -499,7 +504,7 @@ export const fetchContactList = async (limit: number = 50): Promise<ContactSumma
       const { data: callData, error: callError } = await supabase
         .from('call_history')
         .select('phone_number, participant_identity, start_time, call_duration, call_status, transcription, call_summary, success_evaluation, structured_data')
-        .in('assistant_id', assistantIds)
+        .in('assistant_id', effectiveAssistantIds)
         .order('start_time', { ascending: false })
         .limit(limit * 10);
 
@@ -644,91 +649,10 @@ export const fetchContactList = async (limit: number = 50): Promise<ContactSumma
       .sort((a, b) => b.lastActivityTimestamp.getTime() - a.lastActivityTimestamp.getTime())
       .slice(0, limit);
 
-    // If no contacts found from database, provide fallback data
+    // If no contacts found from database, return empty array
     if (contacts.length === 0) {
-      console.log('📋 No contacts found in database, providing fallback data');
-      contacts = [
-        {
-          id: 'contact_1',
-          phoneNumber: '+1234567890',
-          displayName: 'John Doe',
-          firstName: 'John',
-          lastName: 'Doe',
-          lastActivityDate: new Date().toISOString().split('T')[0],
-          lastActivityTime: new Date().toLocaleTimeString('en-US', { hour12: false }).slice(0, 5),
-          lastActivityTimestamp: new Date(),
-          totalCalls: 2,
-          totalSMS: 5,
-          lastCallOutcome: 'Completed',
-          totalDuration: '5:30',
-          outcomes: {
-            appointments: 1,
-            qualified: 1,
-            notQualified: 0,
-            spam: 0
-          }
-        },
-        {
-          id: 'contact_2',
-          phoneNumber: '+1987654321',
-          displayName: 'Jane Smith',
-          firstName: 'Jane',
-          lastName: 'Smith',
-          lastActivityDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-          lastActivityTime: '14:30',
-          lastActivityTimestamp: new Date(Date.now() - 86400000),
-          totalCalls: 1,
-          totalSMS: 3,
-          lastCallOutcome: 'Booked Appointment',
-          totalDuration: '3:15',
-          outcomes: {
-            appointments: 1,
-            qualified: 0,
-            notQualified: 0,
-            spam: 0
-          }
-        },
-        {
-          id: 'contact_3',
-          phoneNumber: '+1555123456',
-          displayName: 'Mike Johnson',
-          firstName: 'Mike',
-          lastName: 'Johnson',
-          lastActivityDate: new Date(Date.now() - 172800000).toISOString().split('T')[0],
-          lastActivityTime: '09:45',
-          lastActivityTimestamp: new Date(Date.now() - 172800000),
-          totalCalls: 3,
-          totalSMS: 2,
-          lastCallOutcome: 'Not Qualified',
-          totalDuration: '8:20',
-          outcomes: {
-            appointments: 0,
-            qualified: 0,
-            notQualified: 1,
-            spam: 0
-          }
-        },
-        {
-          id: 'contact_4',
-          phoneNumber: '+1444987654',
-          displayName: 'Sarah Wilson',
-          firstName: 'Sarah',
-          lastName: 'Wilson',
-          lastActivityDate: new Date(Date.now() - 259200000).toISOString().split('T')[0],
-          lastActivityTime: '16:20',
-          lastActivityTimestamp: new Date(Date.now() - 259200000),
-          totalCalls: 1,
-          totalSMS: 4,
-          lastCallOutcome: 'Completed',
-          totalDuration: '4:10',
-          outcomes: {
-            appointments: 0,
-            qualified: 1,
-            notQualified: 0,
-            spam: 0
-          }
-        }
-      ];
+      console.log('📋 No contacts found in database');
+      return [];
     }
 
     console.log(`📋 Found ${contacts.length} contacts`);
@@ -745,19 +669,42 @@ export const fetchContactList = async (limit: number = 50): Promise<ContactSumma
  */
 export const fetchConversationDetails = async (
   phoneNumber: string,
-  days: number | null = null // null means load all history
+  days: number | null = null, // null means load all history
+  assistantIds: string[] = []
 ): Promise<ConversationDetailsResponse> => {
   try {
     const userId = await getCurrentUserIdAsync();
-    const assistantIds = await getUserAssistantIds();
-    console.log(`📞 Fetching conversation details for ${phoneNumber} ${days !== null ? `(last ${days} days)` : '(all history)'} for user ID: ${userId} with assistants:`, assistantIds);
+    const effectiveAssistantIds = assistantIds.length > 0 ? assistantIds : await getUserAssistantIds();
 
-    if (assistantIds.length === 0) {
+    console.log(`📞 Fetching conversation details for ${phoneNumber} ${days !== null ? `(last ${days} days)` : '(all history)'} for user ID: ${userId} with assistants:`, effectiveAssistantIds);
+
+    if (effectiveAssistantIds.length === 0) {
       console.log('No assistants found for user, returning empty conversation details');
       return {
-        calls: [],
-        smsMessages: [],
-        hasMoreHistory: false
+        conversation: {
+          id: `conv_${phoneNumber}`,
+          contactId: `contact_${phoneNumber}`,
+          phoneNumber,
+          firstName: 'Unknown',
+          lastName: '',
+          displayName: formatPhoneNumber(phoneNumber),
+          totalCalls: 0,
+          totalSMS: 0,
+          lastActivityDate: '',
+          lastActivityTime: '',
+          lastActivityTimestamp: new Date(),
+          calls: [],
+          smsMessages: [],
+          totalDuration: '0:00',
+          outcomes: {
+            appointments: 0,
+            qualified: 0,
+            notQualified: 0,
+            spam: 0
+          }
+        } as any,
+        hasMoreHistory: false,
+        nextOffset: 0
       };
     }
 
@@ -766,7 +713,7 @@ export const fetchConversationDetails = async (
       .from('call_history')
       .select('*')
       .eq('phone_number', phoneNumber)
-      .in('assistant_id', assistantIds);
+      .in('assistant_id', effectiveAssistantIds);
 
     // Only apply date filter if days is specified
     if (days !== null) {
@@ -1032,87 +979,10 @@ export const fetchConversationDetails = async (
       }
     });
 
-    // If no data found from database, provide fallback conversation details
+    // If no data found from database, throw error or return null
     if (validCalls.length === 0 && processedSMS.length === 0) {
-      console.log(`📞 No conversation data found for ${phoneNumber}, providing fallback data`);
-
-      // Create fallback conversation with sample data
-      const fallbackConversation: Conversation = {
-        id: `conv_${phoneNumber}`,
-        contactId: `contact_${phoneNumber}`,
-        phoneNumber: phoneNumber,
-        firstName: phoneNumber === '+1234567890' ? 'John' : 'Contact',
-        lastName: phoneNumber === '+1234567890' ? 'Doe' : 'User',
-        displayName: phoneNumber === '+1234567890' ? 'John Doe' : `Contact ${phoneNumber}`,
-        totalCalls: 2,
-        totalSMS: 3,
-        lastActivityDate: new Date().toISOString().split('T')[0],
-        lastActivityTime: new Date().toLocaleTimeString('en-US', { hour12: false }).slice(0, 5),
-        lastActivityTimestamp: new Date(),
-        lastCallOutcome: 'Completed',
-        calls: [
-          {
-            id: 'call_1',
-            name: phoneNumber === '+1234567890' ? 'John Doe' : 'Contact User',
-            phoneNumber: phoneNumber,
-            date: new Date().toISOString().split('T')[0],
-            time: new Date().toLocaleTimeString('en-US', { hour12: false }).slice(0, 5),
-            duration: '5:30',
-            direction: 'inbound' as const,
-            channel: 'voice' as const,
-            tags: [],
-            status: 'completed',
-            resolution: 'Completed',
-            call_recording: '',
-            summary: 'Customer inquiry about services',
-            transcript: [
-              { speaker: 'Agent', time: '14:30', text: 'Hello, thank you for calling. How can I help you today?' },
-              { speaker: 'Customer', time: '14:31', text: 'Hi, I\'m interested in your window replacement services.' },
-              { speaker: 'Agent', time: '14:32', text: 'Great! I\'d be happy to help you with that. What type of windows are you looking to replace?' },
-              { speaker: 'Customer', time: '14:33', text: 'I have old wooden windows that need to be replaced with energy-efficient ones.' },
-              { speaker: 'Agent', time: '14:34', text: 'Perfect! We specialize in energy-efficient window replacements. Would you like to schedule a free consultation?' }
-            ],
-            analysis: null,
-            address: '',
-            messages: [],
-            created_at: new Date().toISOString(),
-            call_sid: '',
-            recording_info: null,
-            assistant_id: 'assistant_1'
-          }
-        ],
-        smsMessages: [
-          {
-            messageSid: 'sms_1',
-            to: phoneNumber,
-            from: '+1555123456',
-            body: 'Thank you for your interest! We\'ll send you more information about our services.',
-            direction: 'outbound',
-            status: 'delivered',
-            dateCreated: new Date(Date.now() - 3600000).toISOString(),
-            dateSent: new Date(Date.now() - 3600000).toISOString(),
-            dateUpdated: new Date(Date.now() - 3600000).toISOString(),
-            errorCode: null,
-            errorMessage: null,
-            numSegments: '1',
-            price: '0.01',
-            priceUnit: 'USD'
-          }
-        ],
-        totalDuration: '5:30',
-        outcomes: {
-          appointments: 0,
-          qualified: 1,
-          notQualified: 0,
-          spam: 0
-        }
-      };
-
-      return {
-        conversation: fallbackConversation,
-        hasMoreHistory: false,
-        nextOffset: 0
-      };
+      console.log(`📞 No conversation data found for ${phoneNumber}`);
+      throw new Error(`No conversation data found for ${phoneNumber}`);
     }
 
     console.log(`📞 Loaded ${validCalls.length} calls and ${processedSMS.length} SMS messages for ${phoneNumber}`);
@@ -1299,7 +1169,8 @@ export const loadConversationHistory = async (
  */
 export const fetchNewMessagesSince = async (
   phoneNumber: string,
-  sinceTimestamp: string
+  sinceTimestamp: string,
+  assistantIds: string[] = []
 ): Promise<{
   newSMSMessages: SMSMessage[];
   newCalls: any[];
@@ -1307,10 +1178,11 @@ export const fetchNewMessagesSince = async (
 }> => {
   try {
     const userId = await getCurrentUserIdAsync();
-    const assistantIds = await getUserAssistantIds();
-    console.log(`🔄 Fetching new messages for ${phoneNumber} since ${sinceTimestamp} for user ID: ${userId} with assistants:`, assistantIds);
+    const effectiveAssistantIds = assistantIds.length > 0 ? assistantIds : await getUserAssistantIds();
 
-    if (assistantIds.length === 0) {
+    console.log(`🔄 Fetching new messages for ${phoneNumber} since ${sinceTimestamp} for user ID: ${userId} with assistants:`, effectiveAssistantIds);
+
+    if (effectiveAssistantIds.length === 0) {
       console.log('No assistants found for user, returning empty new messages');
       return {
         newSMSMessages: [],
@@ -1361,7 +1233,7 @@ export const fetchNewMessagesSince = async (
         .from('call_history')
         .select('*')
         .eq('phone_number', phoneNumber)
-        .in('assistant_id', assistantIds)
+        .in('assistant_id', effectiveAssistantIds)
         .gt('start_time', sinceTimestamp)
         .order('start_time', { ascending: true });
 
@@ -1427,7 +1299,7 @@ export const fetchNewMessagesSince = async (
         // Filter to ensure only calls from user's assistants are included (defensive check)
         newCalls = newCalls
           .filter(Boolean)
-          .filter((call) => call.assistant_id && assistantIds.includes(call.assistant_id));
+          .filter((call) => call.assistant_id && effectiveAssistantIds.includes(call.assistant_id));
       }
     } catch (error) {
       console.warn('⚠️ Error fetching new calls:', error);
@@ -1457,7 +1329,7 @@ export const fetchNewMessagesSince = async (
  * Get conversations using the new progressive loading approach
  * This is the recommended way to fetch conversations for better performance
  */
-export const getConversationsProgressive = async (): Promise<{
+export const getConversationsProgressive = async (assistantIds: string[] = []): Promise<{
   contacts: ContactSummary[];
   getConversationDetails: (phoneNumber: string, days?: number) => Promise<ConversationDetailsResponse>;
   loadMoreHistory: (phoneNumber: string, offset?: number, limit?: number) => Promise<LoadMoreHistoryResponse>;
@@ -1468,16 +1340,16 @@ export const getConversationsProgressive = async (): Promise<{
   }>;
 }> => {
   try {
-    console.log('🚀 Using progressive loading approach for conversations');
+    console.log('🚀 Using progressive loading approach for conversations with filtered assistants:', assistantIds);
 
     // Fetch contact list first
-    const contacts = await fetchContactList();
+    const contacts = await fetchContactList(50, assistantIds);
 
     return {
       contacts,
-      getConversationDetails: fetchConversationDetails,
-      loadMoreHistory: loadConversationHistory,
-      fetchNewMessagesSince: fetchNewMessagesSince
+      getConversationDetails: (phoneNumber, days) => fetchConversationDetails(phoneNumber, days, assistantIds),
+      loadMoreHistory: (phoneNumber, offset, limit) => loadConversationHistory(phoneNumber, offset, limit),
+      fetchNewMessagesSince: (phoneNumber, sinceTimestamp) => fetchNewMessagesSince(phoneNumber, sinceTimestamp, assistantIds)
     };
   } catch (error) {
     console.error('Error in progressive conversations loading:', error);

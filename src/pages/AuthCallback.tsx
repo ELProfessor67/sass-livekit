@@ -37,12 +37,35 @@ export default function AuthCallback() {
       const localCompleted = localStorage.getItem("onboarding-completed") === "true";
 
       // Determine if onboarding is completed
-      const onboardingCompleted = userData?.onboarding_completed === true || localCompleted;
+      const onboardingCompleted = (userData as any)?.onboarding_completed === true || localCompleted;
 
       // Redirect based on onboarding status
-      setTimeout(() => {
-        if (onboardingCompleted) {
-          navigate("/dashboard");
+      const savedReturnTo = sessionStorage.getItem("returnTo");
+      const isInvitation = savedReturnTo?.includes("/accept-invitation");
+
+      setTimeout(async () => {
+        if (onboardingCompleted || isInvitation) {
+          // If it's an invitation, proactively mark onboarding as complete in DB
+          if (isInvitation && !onboardingCompleted) {
+            console.log('AuthCallback: Invitation detected, marking onboarding as complete in DB');
+            try {
+              await supabase
+                .from("users")
+                .update({ onboarding_completed: true } as any)
+                .eq("id", currentUser.id);
+              localStorage.setItem("onboarding-completed", "true");
+            } catch (dbError) {
+              console.error("Error auto-completing onboarding for invitee:", dbError);
+            }
+          }
+
+          if (savedReturnTo) {
+            console.log('AuthCallback: Redirecting to saved returnTo:', savedReturnTo);
+            sessionStorage.removeItem("returnTo");
+            navigate(savedReturnTo);
+          } else {
+            navigate("/dashboard");
+          }
         } else {
           // Clear any stale localStorage flag
           localStorage.removeItem("onboarding-completed");

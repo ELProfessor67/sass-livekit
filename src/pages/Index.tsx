@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { useRouteChangeData } from "@/hooks/useRouteChange";
 import { getCurrentUserIdAsync } from "@/lib/user-context";
 import { getCustomerName } from "@/utils/formatUtils";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 
 interface CallHistory {
   id: string;
@@ -34,12 +35,19 @@ interface CallHistory {
 /**
  * Get assistant IDs for the current user
  */
-async function getUserAssistantIds(): Promise<string[]> {
-  const userId = await getCurrentUserIdAsync();
-  const { data: assistants, error } = await supabase
+async function getWorkspaceAssistantIds(userId: string, workspaceId: string | null): Promise<string[]> {
+  let query = supabase
     .from('assistant')
     .select('id')
     .eq('user_id', userId);
+
+  if (workspaceId === null) {
+    query = query.is('workspace_id', null);
+  } else {
+    query = query.eq('workspace_id', workspaceId);
+  }
+
+  const { data: assistants, error } = await query;
 
   if (error) {
     console.error('Error fetching user assistants:', error);
@@ -52,6 +60,8 @@ async function getUserAssistantIds(): Promise<string[]> {
 export default function Index() {
   const { config } = useBusinessUseCase();
   const { user, loading: isAuthLoading } = useAuth();
+  const { currentWorkspace } = useWorkspace();
+  const [selectedAssistantId, setSelectedAssistantId] = useState<string>("all");
 
   // Set data-page attribute for dashboard page
   useEffect(() => {
@@ -99,21 +109,42 @@ export default function Index() {
     try {
       setIsLoadingRealData(true);
 
-      // Get user's assistant IDs to filter call history
-      const assistantIds = await getUserAssistantIds();
-      console.log('Fetching call history for user assistants:', assistantIds);
+      // Get user's assistant IDs for the current workspace to filter call history
+      const workspaceAssistantIds = await getWorkspaceAssistantIds(user.id, currentWorkspace?.id || null);
 
-      if (assistantIds.length === 0) {
-        console.log('No assistants found for user, returning empty call history');
+      let assistantIdsToFetch = workspaceAssistantIds;
+
+      // If a specific assistant is selected, use only that one (if it belongs to the workspace)
+      if (selectedAssistantId !== "all") {
+        if (workspaceAssistantIds.includes(selectedAssistantId)) {
+          assistantIdsToFetch = [selectedAssistantId];
+        } else {
+          // If the selected assistant doesn't belong to this workspace (e.g. after switch), 
+          // fall back to all workspace assistants
+          setSelectedAssistantId("all");
+        }
+      }
+
+      console.log('Fetching call history for assistant IDs:', assistantIdsToFetch);
+
+      if (assistantIdsToFetch.length === 0) {
+        console.log('No assistants found for this view, returning empty call history');
         setRealCallHistory([]);
         return;
       }
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('call_history' as any)
         .select('*')
-        .in('assistant_id', assistantIds)
-        .order('start_time', { ascending: false });
+        .in('assistant_id', assistantIdsToFetch);
+
+      if (currentWorkspace?.id) {
+        query = query.eq('workspace_id', currentWorkspace.id);
+      } else {
+        query = query.is('workspace_id', null).eq('user_id', user.id);
+      }
+
+      const { data, error } = await query.order('start_time', { ascending: false });
 
       if (error) {
         console.error('Error fetching call history:', error);
@@ -130,10 +161,10 @@ export default function Index() {
 
   useEffect(() => {
     fetchCallHistory();
-  }, [isAuthLoading, user?.id]);
+  }, [isAuthLoading, user?.id, currentWorkspace?.id, selectedAssistantId]);
 
   // Trigger API call on route changes
-  useRouteChangeData(fetchCallHistory, [isAuthLoading, user?.id], {
+  useRouteChangeData(fetchCallHistory, [isAuthLoading, user?.id, currentWorkspace?.id, selectedAssistantId], {
     enabled: !isAuthLoading && !!user?.id,
     refetchOnRouteChange: true
   });
@@ -304,7 +335,11 @@ export default function Index() {
   return (
     <DashboardLayout>
       <div className="relative">
-        <FilterBar onRangeChange={handleRangeChange} />
+        <FilterBar
+          onRangeChange={handleRangeChange}
+          selectedAssistantId={selectedAssistantId}
+          onAssistantChange={setSelectedAssistantId}
+        />
       </div>
       <DashboardContent
         dateRange={dateRange}

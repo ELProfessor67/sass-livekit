@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { 
+import {
   ThemedDialog,
   ThemedDialogContent,
   ThemedDialogHeader,
@@ -18,6 +18,7 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useWorkflows } from "@/hooks/useWorkflows";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 
 interface CreateAssistantDialogProps {
   open: boolean;
@@ -33,6 +34,7 @@ export function CreateAssistantDialog({ open, onOpenChange, onCreateAssistant }:
   const navigate = useNavigate();
   const { toast } = useToast();
   const { workflows, isLoading: isLoadingWorkflows } = useWorkflows();
+  const { currentWorkspace } = useWorkspace();
 
   const activeWorkflows = workflows?.filter(w => w.status === 'active') || [];
 
@@ -64,24 +66,24 @@ export function CreateAssistantDialog({ open, onOpenChange, onCreateAssistant }:
   // Handle form submission
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    
+
     if (!isNameValid || !isDescriptionValid || isCreating) return;
 
     setIsCreating(true);
     try {
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       toast({
         title: "Assistant Created",
         description: `"${name}" has been created successfully.`,
       });
-      
+
       // Call callback if provided
       if (onCreateAssistant) {
         onCreateAssistant(name, description);
       }
-      
+
       // Navigate to assistant creation page with the name and description
       const params = new URLSearchParams();
       params.set('name', name);
@@ -92,7 +94,7 @@ export function CreateAssistantDialog({ open, onOpenChange, onCreateAssistant }:
         params.set('inbound_workflow_id', selectedWorkflowId);
       }
       navigate(`/assistants/create?${params.toString()}`);
-      
+
       // Reset form and close modal
       setName("");
       setDescription("");
@@ -128,7 +130,7 @@ export function CreateAssistantDialog({ open, onOpenChange, onCreateAssistant }:
 
   return (
     <ThemedDialog open={open} onOpenChange={onOpenChange}>
-      
+
       <ThemedDialogContent className="sm:max-w-xl">
         <ThemedDialogHeader
           title="Create New Assistant"
@@ -140,7 +142,7 @@ export function CreateAssistantDialog({ open, onOpenChange, onCreateAssistant }:
           <div className="relative overflow-hidden px-1">
             {/* Decorative gradients */}
             <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-            
+
             <div className="relative group">
               <input
                 id="assistant-name-input"
@@ -160,7 +162,7 @@ export function CreateAssistantDialog({ open, onOpenChange, onCreateAssistant }:
                   isNameNearLimit && !isNameOverLimit && "border-amber-400/60 focus-visible:border-amber-400/80"
                 )}
               />
-              
+
               {/* Character Counter */}
               <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium pointer-events-none">
                 <span
@@ -199,7 +201,7 @@ export function CreateAssistantDialog({ open, onOpenChange, onCreateAssistant }:
                   isDescriptionNearLimit && !isDescriptionOverLimit && "border-amber-400/60 focus-visible:border-amber-400/80"
                 )}
               />
-              
+
               {/* Character Counter */}
               <div className="absolute right-3 bottom-3 text-xs font-medium pointer-events-none">
                 <span

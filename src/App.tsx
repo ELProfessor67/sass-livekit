@@ -8,6 +8,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "rea
 import { ThemeProvider } from "./components/ThemeProvider";
 import { BusinessUseCaseProvider } from "./components/BusinessUseCaseProvider";
 import { AuthProvider, useAuth } from "./contexts/SupportAccessAuthContext";
+import { WorkspaceProvider } from "./contexts/WorkspaceContext";
 import { WebsiteSettingsProvider } from "./contexts/WebsiteSettingsContext";
 import { supabase } from "./integrations/supabase/client";
 import Index from "./pages/Index";
@@ -35,6 +36,7 @@ import Composer from "./pages/Composer";
 import ComposerBuilder from "./pages/ComposerBuilder";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
+import { AcceptInvitation } from "./pages/AcceptInvitation";
 
 
 // Create a client with better error handling and retry limits
@@ -54,8 +56,14 @@ const queryClient = new QueryClient({
 function ProtectedAuthPage({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
-  // If user is authenticated, redirect to dashboard
+  // If user is authenticated, redirect to dashboard or returnTo
   if (user && !loading) {
+    const savedReturnTo = sessionStorage.getItem("returnTo");
+    if (savedReturnTo) {
+      console.log('ProtectedAuthPage: Redirecting to saved returnTo:', savedReturnTo);
+      sessionStorage.removeItem("returnTo");
+      return <Navigate to={savedReturnTo} replace />;
+    }
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -89,7 +97,7 @@ function RequireOnboarding() {
             .eq("id", user.id)
             .single();
 
-          const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
+          const { data, error } = (await Promise.race([queryPromise, timeoutPromise])) as any;
 
           if (error) {
             console.error("Error checking onboarding status:", error);
@@ -135,8 +143,14 @@ function RequireOnboarding() {
     return <Navigate to="/onboarding" replace />;
   }
 
-  // If user is authenticated and on landing page, redirect to dashboard
+  // If user is authenticated and on landing page, redirect to dashboard or returnTo
   if (user && location.pathname === "/") {
+    const savedReturnTo = sessionStorage.getItem("returnTo");
+    if (savedReturnTo) {
+      console.log('RequireOnboarding: Redirecting to saved returnTo:', savedReturnTo);
+      sessionStorage.removeItem("returnTo");
+      return <Navigate to={savedReturnTo} replace />;
+    }
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -179,6 +193,7 @@ function AnimatedRoutes() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
+      <Route path="/accept-invitation" element={<AcceptInvitation />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
@@ -193,17 +208,19 @@ const App = () => (
       }}
     >
       <AuthProvider>
-        <WebsiteSettingsProvider>
-          <BusinessUseCaseProvider>
-            <QueryClientProvider client={queryClient}>
-              <TooltipProvider>
-                <Toaster />
-                <Sonner />
-                <AnimatedRoutes />
-              </TooltipProvider>
-            </QueryClientProvider>
-          </BusinessUseCaseProvider>
-        </WebsiteSettingsProvider>
+        <WorkspaceProvider>
+          <WebsiteSettingsProvider>
+            <BusinessUseCaseProvider>
+              <QueryClientProvider client={queryClient}>
+                <TooltipProvider>
+                  <Toaster />
+                  <Sonner />
+                  <AnimatedRoutes />
+                </TooltipProvider>
+              </QueryClientProvider>
+            </BusinessUseCaseProvider>
+          </WebsiteSettingsProvider>
+        </WorkspaceProvider>
       </AuthProvider>
     </BrowserRouter>
   </ThemeProvider>

@@ -447,6 +447,16 @@ export const tenantMiddleware = async (req, res, next) => {
   }
 
   req.tenant = tenant;
+
+  // Extract workspaceId from multiple sources
+  const workspaceId = req.headers['x-workspace-id'] || req.query?.workspaceId || req.body?.workspaceId;
+  if (workspaceId) {
+    req.workspaceId = workspaceId;
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[TenantMiddleware] Set req.workspaceId:', workspaceId);
+    }
+  }
+
   next();
 };
 

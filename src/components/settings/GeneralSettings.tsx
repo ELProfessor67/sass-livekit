@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Globe, Clock, Building2, Briefcase } from "lucide-react";
+import { Buildings, UploadSimple, Globe, Clock, Briefcase } from "phosphor-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,6 +12,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 
 const workspaceSettingsSchema = z.object({
   workspace_name: z.string().min(1, "Workspace name is required"),
@@ -61,12 +62,16 @@ const industries = [
 ];
 
 export function GeneralSettings() {
+  const { currentWorkspace, refreshWorkspaces, canManageSettings: canEdit } = useWorkspace();
+  const [logoUrl, setLogoUrl] = useState<string>("");
+  const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<WorkspaceSettingsForm>({
     resolver: zodResolver(workspaceSettingsSchema),
     defaultValues: {
-      workspace_name: "My Workspace",
+      workspace_name: "",
       timezone: "UTC",
       company_address: "",
       company_phone: "",
@@ -77,21 +82,78 @@ export function GeneralSettings() {
     },
   });
 
-  const onSubmit = async (data: WorkspaceSettingsForm) => {
-    setIsSaving(true);
+  useEffect(() => {
+    if (currentWorkspace) {
+      form.reset({
+        workspace_name: currentWorkspace.workspace_name,
+        timezone: currentWorkspace.timezone || "UTC",
+        company_address: currentWorkspace.company_address || "",
+        company_phone: currentWorkspace.company_phone || "",
+        company_website: currentWorkspace.company_website || "",
+        company_industry: currentWorkspace.company_industry || "",
+        company_size: currentWorkspace.company_size || "",
+        company_description: currentWorkspace.company_description || "",
+      });
+      setLogoUrl(currentWorkspace.logo_url || "");
+    }
+  }, [currentWorkspace, form]);
+
+  const handleLogoUpload = async (file: File) => {
+    if (!file || !currentWorkspace) return;
+
+    setIsUploading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${currentWorkspace.id}/logo-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('workspace-logos')
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('workspace-logos')
+        .getPublicUrl(fileName);
+
+      setLogoUrl(publicUrl);
+
+      // Update workspace settings directly with logo URL
+      const { error: updateError } = await supabase
+        .from('workspace_settings')
+        .update({ logo_url: publicUrl })
+        .eq('id', currentWorkspace.id);
+
+      if (updateError) throw updateError;
+
+      await refreshWorkspaces();
+      toast.success("Logo uploaded successfully");
+    } catch (error) {
+      console.error("Error uploading logo:", error);
+      toast.error("Failed to upload logo");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const onSubmit = async (data: WorkspaceSettingsForm) => {
+    if (!currentWorkspace) return;
+    setIsSaving(true);
+    try {
       const { error } = await supabase
         .from('workspace_settings')
-        .upsert({
-          user_id: user.id,
+        .update({
           ...data,
-        });
+          logo_url: logoUrl,
+        })
+        .eq('id', currentWorkspace.id);
 
       if (error) throw error;
 
+      await refreshWorkspaces();
       toast.success("Workspace settings saved successfully");
     } catch (error) {
       console.error("Error saving workspace settings:", error);
@@ -106,24 +168,64 @@ export function GeneralSettings() {
       <div>
         <h2 className="text-2xl font-light tracking-[0.2px] text-foreground">General Settings</h2>
         <p className="text-sm text-muted-foreground mt-2">
-          Configure your workspace name, timezone, and business information
+          Configure your workspace logo, name, timezone, and business information
         </p>
       </div>
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          {/* Workspace Information */}
           <Card variant="glass" className="backdrop-blur-xl bg-white/[0.02] border-white/[0.08]">
             <CardHeader>
               <CardTitle className="flex items-center gap-3 text-lg font-medium text-foreground">
-                <Building2 className="w-5 h-5 text-primary" />
-                Workspace Information
+                <Buildings size={20} weight="duotone" className="text-primary" />
+                Workspace Settings
               </CardTitle>
               <CardDescription className="leading-relaxed">
                 Customize your workspace identity and preferences
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              <div className="flex items-start gap-4 pb-4 border-b border-border/30">
+                <div className="flex-shrink-0">
+                  <div className="w-20 h-20 rounded-xl border-2 border-dashed border-white/[0.12] bg-white/[0.02] backdrop-blur-sm flex items-center justify-center overflow-hidden hover:border-white/[0.2] transition-all duration-300 group">
+                    {logoUrl ? (
+                      <img src={logoUrl} alt="Workspace logo" className="w-full h-full object-cover rounded-lg" />
+                    ) : (
+                      <Buildings size={28} weight="duotone" className="text-muted-foreground group-hover:text-foreground transition-colors" />
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleLogoUpload(file);
+                      }}
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploading || !canEdit}
+                      className="backdrop-blur-sm bg-white/[0.05] border-white/[0.12] hover:bg-white/[0.08] hover:border-white/[0.2] transition-all duration-200"
+                    >
+                      <UploadSimple size={16} weight="duotone" className="mr-2" />
+                      {isUploading ? "Uploading..." : "Upload Logo"}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    PNG, JPG or SVG • Max 5MB • Recommended 200x200px
+                  </p>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField
                   control={form.control}
@@ -132,7 +234,7 @@ export function GeneralSettings() {
                     <FormItem>
                       <FormLabel className="text-sm font-medium text-foreground">Workspace Name</FormLabel>
                       <FormControl>
-                        <Input {...field} className="h-9 backdrop-blur-sm" />
+                        <Input {...field} className="backdrop-blur-sm" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -145,16 +247,16 @@ export function GeneralSettings() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm font-medium text-foreground flex items-center gap-2">
-                        <Clock className="w-4 h-4" />
+                        <Clock size={16} weight="duotone" />
                         Timezone
                       </FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value} disabled={!canEdit}>
                         <FormControl>
-                          <SelectTrigger className="h-9 backdrop-blur-sm">
+                          <SelectTrigger className="backdrop-blur-sm">
                             <SelectValue placeholder="Select timezone" />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent>
+                        <SelectContent className="backdrop-blur-xl bg-background/95">
                           {timezones.map((tz) => (
                             <SelectItem key={tz.value} value={tz.value}>
                               {tz.label}
@@ -174,7 +276,7 @@ export function GeneralSettings() {
           <Card variant="glass" className="backdrop-blur-xl bg-white/[0.02] border-white/[0.08]">
             <CardHeader>
               <CardTitle className="flex items-center gap-3 text-lg font-medium text-foreground">
-                <Briefcase className="w-5 h-5 text-primary" />
+                <Briefcase size={20} weight="duotone" className="text-primary" />
                 Business Information
               </CardTitle>
               <CardDescription className="leading-relaxed">
@@ -191,7 +293,7 @@ export function GeneralSettings() {
                     <FormControl>
                       <Textarea
                         {...field}
-                        className="h-9 backdrop-blur-sm min-h-[80px]"
+                        className="resize-none min-h-[80px] backdrop-blur-sm"
                         placeholder="123 Business St, City, State, Country"
                         rows={3}
                       />
@@ -201,115 +303,134 @@ export function GeneralSettings() {
                 )}
               />
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 pt-2">
+                  <div className="h-px flex-1 bg-border/30" />
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Contact Information
+                  </span>
+                  <div className="h-px flex-1 bg-border/30" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="company_phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm font-medium text-foreground">Phone Number</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            className="backdrop-blur-sm"
+                            placeholder="+1 (555) 123-4567"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="company_website"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm font-medium text-foreground">Website</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            className="backdrop-blur-sm"
+                            placeholder="https://www.example.com"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 pt-2">
+                  <div className="h-px flex-1 bg-border/30" />
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Company Details
+                  </span>
+                  <div className="h-px flex-1 bg-border/30" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="company_industry"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm font-medium text-foreground">Industry</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value} disabled={!canEdit}>
+                          <FormControl>
+                            <SelectTrigger className="backdrop-blur-sm">
+                              <SelectValue placeholder="Select industry" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="backdrop-blur-xl bg-background/95">
+                            {industries.map((industry) => (
+                              <SelectItem key={industry.value} value={industry.value}>
+                                {industry.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="company_size"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm font-medium text-foreground">Company Size</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value} disabled={!canEdit}>
+                          <FormControl>
+                            <SelectTrigger className="backdrop-blur-sm">
+                              <SelectValue placeholder="Select company size" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="backdrop-blur-xl bg-background/95">
+                            {companySizes.map((size) => (
+                              <SelectItem key={size.value} value={size.value}>
+                                {size.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
                 <FormField
                   control={form.control}
-                  name="company_phone"
+                  name="company_description"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium text-foreground">Phone Number</FormLabel>
+                      <FormLabel className="text-sm font-medium text-foreground">Company Description</FormLabel>
                       <FormControl>
-                        <Input
+                        <Textarea
                           {...field}
-                          className="h-9 backdrop-blur-sm"
-                          placeholder="+1 (555) 123-4567"
+                          className="resize-none min-h-[100px] backdrop-blur-sm"
+                          placeholder="Brief description of your company and what you do..."
+                          rows={4}
                         />
                       </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="company_website"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium text-foreground">Website</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          className="h-9 backdrop-blur-sm"
-                          placeholder="https://www.example.com"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="company_industry"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium text-foreground">Industry</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger className="h-9 backdrop-blur-sm">
-                            <SelectValue placeholder="Select industry" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {industries.map((industry) => (
-                            <SelectItem key={industry.value} value={industry.value}>
-                              {industry.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="company_size"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium text-foreground">Company Size</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger className="h-9 backdrop-blur-sm">
-                            <SelectValue placeholder="Select company size" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {companySizes.map((size) => (
-                            <SelectItem key={size.value} value={size.value}>
-                              {size.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <FormDescription className="text-xs text-muted-foreground leading-relaxed">
+                        Tell us about your business (optional)
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               </div>
-
-              <FormField
-                control={form.control}
-                name="company_description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm font-medium text-foreground">Company Description</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        {...field}
-                        className="h-9 backdrop-blur-sm min-h-[100px]"
-                        placeholder="Brief description of your company and what you do..."
-                        rows={4}
-                      />
-                    </FormControl>
-                    <FormDescription className="text-xs text-muted-foreground leading-relaxed">
-                      Tell us about your business (optional)
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
             </CardContent>
           </Card>
 
@@ -317,7 +438,7 @@ export function GeneralSettings() {
             <div className="flex justify-end">
               <Button
                 type="submit"
-                disabled={isSaving}
+                disabled={isSaving || !canEdit}
                 className="px-8 backdrop-blur-sm bg-primary/90 hover:bg-primary transition-all duration-200 border border-primary/20"
               >
                 {isSaving ? "Saving..." : "Save Changes"}

@@ -1,6 +1,7 @@
 // server/csv-management.js
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
+import { applyTenantFilterFromRequest } from './utils/applyTenantFilterToQuery.js';
 
 export const csvManagementRouter = express.Router();
 
@@ -18,11 +19,13 @@ csvManagementRouter.delete('/:id', async (req, res) => {
     const { id } = req.params;
 
     // Get CSV file details first to check if it exists
-    const { data: csvFile, error: fetchError } = await supabase
+    let query = supabase
       .from('csv_files')
       .select('id, name, user_id')
-      .eq('id', id)
-      .single();
+      .eq('id', id);
+
+    query = applyTenantFilterFromRequest(req, query);
+    const { data: csvFile, error: fetchError } = await query.single();
 
     if (fetchError || !csvFile) {
       return res.status(404).json({
@@ -32,10 +35,13 @@ csvManagementRouter.delete('/:id', async (req, res) => {
     }
 
     // Check if any campaigns are using this CSV file
-    const { data: campaigns, error: campaignsError } = await supabase
+    let campaignsQuery = supabase
       .from('campaigns')
       .select('id, name, execution_status')
       .eq('csv_file_id', id);
+
+    campaignsQuery = applyTenantFilterFromRequest(req, campaignsQuery);
+    const { data: campaigns, error: campaignsError } = await campaignsQuery;
 
     if (campaignsError) {
       console.error('Error checking campaigns:', campaignsError);
@@ -59,10 +65,13 @@ csvManagementRouter.delete('/:id', async (req, res) => {
     }
 
     // Delete the CSV file (this will cascade delete related csv_contacts due to foreign key constraints)
-    const { error: deleteError } = await supabase
+    let deleteQuery = supabase
       .from('csv_files')
       .delete()
       .eq('id', id);
+
+    deleteQuery = applyTenantFilterFromRequest(req, deleteQuery);
+    const { error: deleteError } = await deleteQuery;
 
     if (deleteError) {
       throw deleteError;
@@ -91,14 +100,16 @@ csvManagementRouter.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const { data: csvFile, error } = await supabase
+    let query = supabase
       .from('csv_files')
       .select(`
         *,
         csv_contacts(count)
       `)
-      .eq('id', id)
-      .single();
+      .eq('id', id);
+
+    query = applyTenantFilterFromRequest(req, query);
+    const { data: csvFile, error } = await query.single();
 
     if (error || !csvFile) {
       return res.status(404).json({

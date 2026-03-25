@@ -22,6 +22,7 @@ export interface SendSMSRequest {
   from: string;
   body: string;
   conversationId?: string;
+  workspaceId: string;
 }
 
 export interface SendSMSResponse {
@@ -32,6 +33,7 @@ export interface SendSMSResponse {
 
 export interface GetSMSMessagesResponse {
   success: boolean;
+  message?: string;
   data: SMSMessage[];
 }
 
@@ -65,12 +67,13 @@ export class SMSService {
           from: request.from,
           body: request.body,
           conversationId: request.conversationId,
-          userId: credentials.user_id
+          userId: credentials.user_id,
+          workspaceId: request.workspaceId
         })
       });
 
       const result = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(result.message || 'Failed to send SMS');
       }
@@ -103,7 +106,7 @@ export class SMSService {
       );
 
       const result: GetSMSMessagesResponse = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(result.message || 'Failed to fetch SMS messages');
       }
@@ -139,7 +142,7 @@ export class SMSService {
       );
 
       const result: GetSMSMessagesResponse = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(result.message || 'Failed to fetch SMS messages');
       }
@@ -157,7 +160,7 @@ export class SMSService {
   static formatPhoneNumber(phoneNumber: string): string {
     // Remove all non-digit characters except + at the beginning
     const cleaned = phoneNumber.replace(/[^\d+]/g, '');
-    
+
     // If it already starts with +, return as is
     if (cleaned.startsWith('+')) {
       return cleaned;

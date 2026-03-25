@@ -16,9 +16,10 @@ import {
 
 interface CallsTableRowProps {
   call: Call;
+  canEdit?: boolean;
 }
 
-export function CallsTableRow({ call }: CallsTableRowProps) {
+export function CallsTableRow({ call, canEdit }: CallsTableRowProps) {
   const { toast } = useToast();
   
   // Check if this is a booked appointment for highlighting
@@ -72,7 +73,7 @@ export function CallsTableRow({ call }: CallsTableRowProps) {
       </TableCell>
       <TableCell>{getOutcomeBadge(call.resolution)}</TableCell>
       <TableCell>
-        <CallRowActions call={call} />
+        <CallRowActions call={call} canEdit={canEdit} />
       </TableCell>
     </TableRow>
   );
@@ -92,7 +93,7 @@ function getCallIcon(call: Call) {
 }
 
 // Extract row actions into a separate component
-function CallRowActions({ call }: { call: Call }) {
+function CallRowActions({ call, canEdit }: { call: Call, canEdit?: boolean }) {
   const { toast } = useToast();
   
   return (
@@ -117,16 +118,18 @@ function CallRowActions({ call }: { call: Call }) {
         >
           Download recording
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => {
-            toast({
-              title: "Call marked as resolved",
-              description: "The call status has been updated to resolved",
-            });
-          }}
-        >
-          Mark as resolved
-        </DropdownMenuItem>
+        {canEdit && (
+          <DropdownMenuItem
+            onClick={() => {
+              toast({
+                title: "Call marked as resolved",
+                description: "The call status has been updated to resolved",
+              });
+            }}
+          >
+            Mark as resolved
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
