@@ -16,6 +16,12 @@ export interface PlanConfig {
   planType?: 'simple' | 'agency' | 'whitelabel';
 }
 
+export interface TrialSettings {
+  free_trial_enabled: boolean;
+  free_trial_minutes: number;
+  free_trial_days: number;
+}
+
 // Default fallback plans (used if database fetch fails)
 const DEFAULT_PLAN_CONFIGS: Record<string, PlanConfig> = {
   starter: {
@@ -262,6 +268,35 @@ export async function getPlanConfigAsync(planKey: string | null | undefined): Pr
 
   const plan = configs[planKey.toLowerCase()];
   return plan ?? configs.free ?? defaultFree;
+}
+
+/**
+ * Get trial settings for the current tenant
+ */
+export async function getTenantTrialSettings(tenant?: string | null): Promise<TrialSettings> {
+  try {
+    const currentTenant = tenant ?? getCurrentTenant();
+    
+    const { data, error } = await (supabase as any)
+      .from('minutes_pricing_config')
+      .select('free_trial_enabled, free_trial_minutes, free_trial_days')
+      .eq('tenant', currentTenant || 'main')
+      .maybeSingle();
+
+    if (error) {
+      console.warn('Error fetching trial settings:', error);
+      return { free_trial_enabled: false, free_trial_minutes: 0, free_trial_days: 0 };
+    }
+
+    return {
+      free_trial_enabled: data?.free_trial_enabled ?? false,
+      free_trial_minutes: data?.free_trial_minutes ?? 0,
+      free_trial_days: data?.free_trial_days ?? 0,
+    };
+  } catch (error) {
+    console.error('Error in getTenantTrialSettings:', error);
+    return { free_trial_enabled: false, free_trial_minutes: 0, free_trial_days: 0 };
+  }
 }
 
 

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.\\(ts|tsx|py\\)$\")",
+      "Bash(xargs grep:*)",
+      "Bash(grep:*)",
+      "Bash(xargs -I {} basename {})",
+      "Bash(ls /c/Users/PMYLS/Desktop/sass-livekit/supabase/migrations/*.sql)"
+    ]
+  }
+}

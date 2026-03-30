@@ -694,60 +694,13 @@ router.post('/minutes/purchase', validateAuth, async (req, res) => {
             });
         }
 
-        // Calculate amount
-        const amount = (minutes * pricing.price_per_minute).toFixed(2);
-
-        // Add minutes to user's account (handled in API, not trigger)
-        const currentLimit = userData.minutes_limit || 0;
-        const newLimit = currentLimit + minutes;
-        const { error: updateError } = await supabase
-            .from('users')
-            .update({ minutes_limit: newLimit })
-            .eq('id', req.userId);
-
-        if (updateError) {
-            console.error('Error updating minutes:', updateError);
-            return res.status(500).json({
-                success: false,
-                error: 'Failed to update minutes'
-            });
-        }
-
-        // Create purchase record for accounting/history (handled in API, not trigger)
-        const { data: purchase, error: purchaseError } = await supabase
-            .from('minutes_purchases')
-            .insert({
-                user_id: req.userId,
-                minutes_purchased: minutes,
-                amount_paid: amount,
-                currency: pricing.currency,
-                payment_method: 'demo', // In production: 'stripe'
-                status: 'completed', // In production: 'pending' until webhook confirms
-                notes: 'Demo purchase - auto-completed'
-            })
-            .select()
-            .single();
-
-        if (purchaseError) {
-            console.error('Error creating purchase record:', purchaseError);
-            // Non-critical - log but don't fail since minutes were already added
-        }
-
-        // Get updated user balance
-        const { data: updatedUser } = await supabase
-            .from('users')
-            .select('minutes_limit, minutes_used')
-            .eq('id', req.userId)
-            .single();
-
-        res.json({
-            success: true,
-            message: `Successfully purchased ${minutes} minutes`,
-            data: {
-                purchase,
-                new_balance: updatedUser?.minutes_limit || 0,
-                minutes_used: updatedUser?.minutes_used || 0
-            }
+        // Regular users and whitelabel admins must pay via Stripe.
+        // This endpoint only handles whitelabel customer purchases (admin pool deduction).
+        // All other flows must go through /minutes/create-payment-intent → Stripe.js → webhook.
+        return res.status(400).json({
+            success: false,
+            error: 'Please use the Stripe payment flow to purchase minutes.',
+            use_stripe: true
         });
     } catch (error) {
         console.error('Error in POST /minutes/purchase:', error);

@@ -39,6 +39,7 @@ import connectionsRouter from './routes/connections.js';
 import ghlWebhookRouter from './routes/ghl-webhook.js';
 import hubspotWebhookRouter from './routes/hubspot-webhook.js';
 import workspaceRouter from './routes/workspace.js';
+import subscriptionRouter from './routes/subscription.js';
 
 
 
@@ -255,8 +256,8 @@ app.post('/api/v1/stripe/webhook', express.raw({
         chargeId,
         metadata,
       });
-      return res.status(404).json({
-        received: true,
+      // Return 500 (not 404) so Stripe retries — user may not be committed yet due to race condition
+      return res.status(500).json({
         error: `User ${userId} not found for minutes credit`,
         userId
       });
@@ -494,6 +495,7 @@ app.use('/api/v1/connections', connectionsRouter);
 app.use('/api/v1/webhooks/gohighlevel', ghlWebhookRouter);
 app.use('/api/v1/webhooks/hubspot', hubspotWebhookRouter);
 app.use('/api/v1/workspaces', workspaceRouter);
+app.use('/api/v1/subscription', subscriptionRouter);
 console.log('Knowledge base routes registered at /api/v1/knowledge-base');
 console.log('Support access routes registered at /api/v1/support-access');
 console.log('Minutes routes registered at /api/v1/minutes');

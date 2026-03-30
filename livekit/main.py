@@ -550,6 +550,20 @@ class CallHandler:
                         remaining = minutes_check.get("remaining_minutes", 0)
                         logger.info(f"MINUTES_CHECK | user={user_id} | remaining={remaining}")
 
+                    # Check workspace minutes if assistant belongs to a workspace
+                    workspace_id = assistant_config.get("workspace_id")
+                    if workspace_id:
+                        ws_check = await db_client.check_workspace_minutes_available(workspace_id)
+                        if not ws_check.get("available", True) and not ws_check.get("unlimited", False):
+                            ws_remaining = ws_check.get("remaining_minutes", 0)
+                            logger.warning(f"WORKSPACE_MINUTES_INSUFFICIENT | workspace={workspace_id} | user={user_id} | remaining={ws_remaining} | call_rejected")
+                            await ctx.room.disconnect()
+                            profiler.finish(success=False, error=f"Workspace minutes exhausted: {ws_remaining} remaining")
+                            return
+                        else:
+                            ws_remaining = ws_check.get("remaining_minutes", 0)
+                            logger.info(f"WORKSPACE_MINUTES_CHECK | workspace={workspace_id} | remaining={'unlimited' if ws_check.get('unlimited') else ws_remaining}")
+
             # Handle outbound calls
             if call_type == "outbound":
                 async with measure_latency_context("outbound_call_handling", call_id):
@@ -1307,7 +1321,24 @@ class CallHandler:
                         if db_client:
                             # Convert seconds to minutes (round up)
                             minutes_used = call_duration / 60.0
-                            deduction_result = await db_client.deduct_minutes(user_id, minutes_used)
+                            max_retries = 3
+                            deduction_result = {"success": False, "error": "not attempted"}
+                            for attempt in range(max_retries):
+                                try:
+                                    deduction_result = await db_client.deduct_minutes(user_id, minutes_used)
+                                    if deduction_result.get("success"):
+                                        break
+                                    if attempt < max_retries - 1:
+                                        wait = 2 ** attempt  # 1s, 2s backoff
+                                        logger.warning(f"MINUTES_DEDUCTION_RETRY | user={user_id} | attempt={attempt + 1} | error={deduction_result.get('error')} | retrying_in={wait}s")
+                                        await asyncio.sleep(wait)
+                                except Exception as deduct_exc:
+                                    if attempt < max_retries - 1:
+                                        wait = 2 ** attempt
+                                        logger.warning(f"MINUTES_DEDUCTION_EXCEPTION_RETRY | user={user_id} | attempt={attempt + 1} | error={str(deduct_exc)} | retrying_in={wait}s")
+                                        await asyncio.sleep(wait)
+                                    else:
+                                        deduction_result = {"success": False, "error": str(deduct_exc)}
                             if deduction_result.get("success"):
                                 remaining = deduction_result.get("remaining_minutes", 0)
                                 exceeded = deduction_result.get("exceeded_limit", False)
@@ -1315,7 +1346,34 @@ class CallHandler:
                                 if exceeded:
                                     logger.warning(f"MINUTES_LIMIT_EXCEEDED | user={user_id} | used={deduction_result.get('minutes_used')} | limit={deduction_result.get('minutes_limit')}")
                             else:
-                                logger.error(f"MINUTES_DEDUCTION_FAILED | user={user_id} | error={deduction_result.get('error')}")
+                                logger.error(f"MINUTES_DEDUCTION_FAILED | user={user_id} | minutes={minutes_used:.2f} | error={deduction_result.get('error')} | all_retries_exhausted=True")
+
+                            # Deduct workspace minutes if assistant belongs to a workspace
+                            workspace_id = assistant_config.get("workspace_id")
+                            if workspace_id:
+                                ws_deduction = {"success": False, "error": "not attempted"}
+                                for ws_attempt in range(max_retries):
+                                    try:
+                                        ws_deduction = await db_client.deduct_workspace_minutes(workspace_id, minutes_used)
+                                        if ws_deduction.get("success"):
+                                            break
+                                        if ws_attempt < max_retries - 1:
+                                            wait = 2 ** ws_attempt
+                                            logger.warning(f"WORKSPACE_MINUTES_DEDUCTION_RETRY | workspace={workspace_id} | attempt={ws_attempt + 1} | retrying_in={wait}s")
+                                            await asyncio.sleep(wait)
+                                    except Exception as ws_exc:
+                                        if ws_attempt < max_retries - 1:
+                                            await asyncio.sleep(2 ** ws_attempt)
+                                        else:
+                                            ws_deduction = {"success": False, "error": str(ws_exc)}
+                                if ws_deduction.get("success"):
+                                    ws_remaining = ws_deduction.get("remaining_minutes", 0)
+                                    ws_exceeded = ws_deduction.get("exceeded_limit", False)
+                                    logger.info(f"WORKSPACE_MINUTES_DEDUCTED | workspace={workspace_id} | minutes={minutes_used:.2f} | remaining={ws_remaining}")
+                                    if ws_exceeded:
+                                        logger.warning(f"WORKSPACE_MINUTES_LIMIT_EXCEEDED | workspace={workspace_id} | used={ws_deduction.get('minutes_used')} | limit={ws_deduction.get('minute_limit')}")
+                                else:
+                                    logger.error(f"WORKSPACE_MINUTES_DEDUCTION_FAILED | workspace={workspace_id} | error={ws_deduction.get('error')} | all_retries_exhausted=True")
                 else:
                     logger.error(f"CALL_HISTORY_SAVE_FAILED | call_id={call_id}")
             except Exception as e:

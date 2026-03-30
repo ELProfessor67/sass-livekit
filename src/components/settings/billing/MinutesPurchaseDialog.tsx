@@ -23,6 +23,7 @@ interface MinutesPurchaseDialogProps {
     onOpenChange: (open: boolean) => void;
     currentBalance: number;
     minutesUsed: number;
+    isUnlimited?: boolean;
     onPurchaseComplete?: () => void;
 }
 
@@ -60,6 +61,7 @@ function MinutesPurchaseDialogInner({
     onOpenChange,
     currentBalance,
     minutesUsed,
+    isUnlimited,
     onPurchaseComplete
 }: MinutesPurchaseDialogProps) {
     const stripe = useStripe();
@@ -282,105 +284,119 @@ function MinutesPurchaseDialogInner({
 
             const backendUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
-            if (showNewCardForm) {
-                // Full Stripe payment flow with new card (minutes credited via Stripe webhook)
-                if (!stripe || !elements) {
-                    throw new Error('Payment system not ready. Please try again in a moment.');
-                }
-
-                const cardElement = elements.getElement(CardElement);
-                if (!cardElement) {
-                    throw new Error('Card element not found');
-                }
-
-                // 1) Create PaymentIntent on backend (Stripe Connect, correct tenant routing)
-                const intentResp = await fetch(`${backendUrl}/api/v1/minutes/create-payment-intent`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${session.access_token}`,
-                    },
-                    body: JSON.stringify({ minutes: minutesToPurchase }),
-                });
-
-                if (!intentResp.ok) {
-                    const errorData = await intentResp.json().catch(() => ({ error: 'Failed to start payment' }));
-                    
-                    // Check if it's a warning about insufficient admin minutes
-                    if (errorData.warning && errorData.message) {
-                        toast.error(errorData.message, {
-                            duration: 8000,
-                            description: `Available: ${errorData.adminAvailable} minutes | Requested: ${errorData.requested} minutes`,
-                        });
-                        throw new Error(errorData.message);
-                    }
-                    
-                    throw new Error(errorData.error || 'Failed to start payment');
-                }
-
-                const intentData = await intentResp.json();
-                if (!intentData.success || !intentData.clientSecret) {
-                    throw new Error(intentData.error || 'Invalid payment intent response');
-                }
-
-                console.log('[Payment] PaymentIntent created:', {
-                    paymentIntentId: intentData.paymentIntentId,
-                    clientSecret: intentData.clientSecret?.substring(0, 20) + '...',
-                    publishableKey: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY?.substring(0, 20) + '...',
-                });
-
-                // 2) Confirm card payment with Stripe.js
-                const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(
-                    intentData.clientSecret,
-                    {
-                        payment_method: {
-                            card: cardElement,
-                        },
-                    }
-                );
-
-                if (confirmError) {
-                    console.error('Stripe confirmCardPayment error:', confirmError);
-                    
-                    // Provide helpful error message for common issues
-                    let errorMessage = confirmError.message || 'Payment failed';
-                    if (confirmError.code === 'resource_missing') {
-                        errorMessage = 'PaymentIntent not found. This usually means your Stripe keys don\'t match. Please ensure VITE_STRIPE_PUBLISHABLE_KEY matches your backend STRIPE_SECRET account.';
-                    }
-                    
-                    setPaymentError(errorMessage);
-                    throw new Error(errorMessage);
-                }
-
-                if (paymentIntent?.status !== 'succeeded') {
-                    throw new Error(`Payment not completed (status: ${paymentIntent?.status || 'unknown'})`);
-                }
-
-                // Minutes will be credited by Stripe webhook handler
-                toast.success(`Payment successful! Your minutes will appear shortly.`);
-            } else {
-                // Existing demo flow for saved cards (no real charge yet)
-                const response = await fetch(`${backendUrl}/api/v1/minutes/purchase`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${session.access_token}`,
-                    },
-                    body: JSON.stringify({ minutes: minutesToPurchase }),
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({ error: 'Failed to purchase minutes' }));
-                    throw new Error(errorData.error || 'Failed to purchase minutes');
-                }
-
-                const result = await response.json();
-                if (!result.success) {
-                    throw new Error(result.error || 'Purchase failed');
-                }
-
-                toast.success(result.message || `Successfully purchased ${minutesToPurchase} minutes`);
+            // All purchases (new card or saved card) go through Stripe for real payment.
+            // Minutes are credited by the Stripe webhook after payment succeeds.
+            if (!stripe || !elements) {
+                throw new Error('Payment system not ready. Please try again in a moment.');
             }
+
+            // 1) Create PaymentIntent on backend (Stripe Connect, correct tenant routing)
+            const intentResp = await fetch(`${backendUrl}/api/v1/minutes/create-payment-intent`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`,
+                },
+                body: JSON.stringify({ minutes: minutesToPurchase }),
+            });
+
+            if (!intentResp.ok) {
+                const errorData = await intentResp.json().catch(() => ({ error: 'Failed to start payment' }));
+
+                if (errorData.warning && errorData.message) {
+                    toast.error(errorData.message, {
+                        duration: 8000,
+                        description: `Available: ${errorData.adminAvailable} minutes | Requested: ${errorData.requested} minutes`,
+                    });
+                    throw new Error(errorData.message);
+                }
+
+                throw new Error(errorData.error || 'Failed to start payment');
+            }
+
+            const intentData = await intentResp.json();
+            if (!intentData.success || !intentData.clientSecret) {
+                throw new Error(intentData.error || 'Invalid payment intent response');
+            }
+
+            // 2) Determine payment method: saved card ID or new card element
+            let paymentMethodParam: string | { card: any };
+            let newPaymentMethod: any = null;
+
+            if (showNewCardForm) {
+                const cardElement = elements.getElement(CardElement);
+                if (!cardElement) throw new Error('Card element not found');
+
+                // Create PM explicitly so we have card details available to save
+                const { paymentMethod: pm, error: pmError } = await stripe.createPaymentMethod({
+                    type: 'card',
+                    card: cardElement,
+                });
+                if (pmError) throw new Error(pmError.message || 'Failed to process card');
+                newPaymentMethod = pm;
+                paymentMethodParam = pm.id;
+            } else {
+                // Use the saved card's Stripe PM ID
+                const savedPm = paymentMethods.find(pm => pm.id === selectedPaymentMethod);
+                if (!savedPm) throw new Error('Selected payment method not found');
+                paymentMethodParam = savedPm.stripe_payment_method_id;
+            }
+
+            // 3) Confirm the payment
+            const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(
+                intentData.clientSecret,
+                { payment_method: paymentMethodParam }
+            );
+
+            if (confirmError) {
+                let errorMessage = confirmError.message || 'Payment failed';
+                if (confirmError.code === 'resource_missing') {
+                    errorMessage = 'PaymentIntent not found. Ensure VITE_STRIPE_PUBLISHABLE_KEY matches your backend STRIPE_SECRET account.';
+                }
+                setPaymentError(errorMessage);
+                throw new Error(errorMessage);
+            }
+
+            if (paymentIntent?.status !== 'succeeded') {
+                throw new Error(`Payment not completed (status: ${paymentIntent?.status || 'unknown'})`);
+            }
+
+            // 4) Save new card to payment_methods for future use
+            if (showNewCardForm && newPaymentMethod?.card) {
+                try {
+                    const { data: { user: currentUser } } = await supabase.auth.getUser();
+                    if (currentUser) {
+                        const isFirstCard = paymentMethods.length === 0;
+                        // If adding a new default card, unset existing defaults first
+                        if (isFirstCard) {
+                            await (supabase as any)
+                                .from('payment_methods')
+                                .update({ is_default: false })
+                                .eq('user_id', currentUser.id)
+                                .eq('is_default', true);
+                        }
+                        await (supabase as any)
+                            .from('payment_methods')
+                            .insert({
+                                user_id: currentUser.id,
+                                stripe_payment_method_id: newPaymentMethod.id,
+                                card_brand: newPaymentMethod.card.brand,
+                                card_last4: newPaymentMethod.card.last4,
+                                card_exp_month: newPaymentMethod.card.exp_month,
+                                card_exp_year: newPaymentMethod.card.exp_year,
+                                is_default: isFirstCard,
+                                is_active: true,
+                            });
+                        await fetchPaymentMethods();
+                    }
+                } catch (saveErr) {
+                    console.error('Failed to save payment method:', saveErr);
+                    // Non-fatal — payment succeeded, card just won't be saved for reuse
+                }
+            }
+
+            // Minutes will be credited by the Stripe webhook handler
+            toast.success(`Payment successful! Your minutes will appear shortly.`);
 
             await fetchPurchaseHistory();
             if (onPurchaseComplete) {
@@ -437,6 +453,7 @@ function MinutesPurchaseDialogInner({
                     </DialogTitle>
                     <DialogDescription>
                         Buy additional minutes for your account. Minutes are used for calls and other services.
+                        {userProfile?.role === 'admin' ? " As an admin, these minutes will be available for you to sell to your customers." : " These minutes will be added to your balance."}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -445,7 +462,9 @@ function MinutesPurchaseDialogInner({
                     <div className="grid grid-cols-2 gap-4">
                         <div className="rounded-lg border border-border/40 bg-muted/10 p-4">
                             <div className="text-sm text-muted-foreground">Current Balance</div>
-                            <div className="text-2xl font-bold text-foreground">{currentBalance.toLocaleString()}</div>
+                            <div className="text-2xl font-bold text-foreground">
+                                {isUnlimited ? 'Unlimited' : currentBalance.toLocaleString()}
+                            </div>
                             <div className="text-xs text-muted-foreground">minutes available</div>
                         </div>
                         <div className="rounded-lg border border-border/40 bg-muted/10 p-4">

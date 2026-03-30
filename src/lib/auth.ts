@@ -388,12 +388,10 @@ export class AuthService {
             }
           }
 
-          await supabase.from("users").upsert({
+          await (supabase as any).from("users").upsert({
             id: data.user.id,
             name,
             tenant: tenant,
-            minutes_limit: 0, // Initialize to 0 for new users
-            minutes_used: 0,  // Initialize to 0 for new users
             contact: {
               email,
               countryCode: metadata?.countryCode ?? null,

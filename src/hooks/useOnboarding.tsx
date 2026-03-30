@@ -20,6 +20,7 @@ export interface OnboardingData {
   cardExpMonth?: number;
   cardExpYear?: number;
   subscriptionStatus?: string;
+  isTrial?: boolean;
 }
 
 export interface OnboardingState {
@@ -63,6 +64,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         notifications: true,
         goals: [],
         plan: "starter",
+        isTrial: false,
       },
     };
 
@@ -140,7 +142,8 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         theme: "glass",
         notifications: true,
         goals: [],
-        plan: "starter"
+        plan: "starter",
+        isTrial: false
       }
     });
   };

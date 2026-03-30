@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Upload, Shield, Link2, Loader2, CreditCard, Paintbrush } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 
 const SLUG_INPUT_REGEX = /[^a-z0-9-]/g;
 const MAIN_DOMAIN = import.meta.env.VITE_MAIN_DOMAIN || window.location.hostname;
@@ -33,6 +34,11 @@ export function WhitelabelSettings() {
     charges_enabled: boolean;
     payouts_enabled: boolean;
   } | null>(null);
+
+  const [trialEnabled, setTrialEnabled] = useState(false);
+  const [trialMinutes, setTrialMinutes] = useState(0);
+  const [trialDays, setTrialDays] = useState(7);
+  const [isTrialLoading, setIsTrialLoading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   // In development, force relative URL to use Vite proxy and preserve Host header
@@ -101,8 +107,34 @@ export function WhitelabelSettings() {
       }
     };
 
+    const fetchTrialSettings = async () => {
+      if (!existingSlug && !slug) return;
+      const tenant = existingSlug || slug;
+      if (!tenant) return;
+
+      try {
+        setIsTrialLoading(true);
+        const { data, error } = await (supabase as any)
+          .from('minutes_pricing_config')
+          .select('free_trial_enabled, free_trial_minutes, free_trial_days')
+          .eq('tenant', tenant)
+          .maybeSingle();
+
+        if (!error && data) {
+          setTrialEnabled(data.free_trial_enabled);
+          setTrialMinutes(data.free_trial_minutes);
+          setTrialDays(data.free_trial_days);
+        }
+      } catch (err) {
+        console.error('Error fetching trial settings:', err);
+      } finally {
+        setIsTrialLoading(false);
+      }
+    };
+
     fetchSettings();
-  }, [apiUrl]);
+    fetchTrialSettings();
+  }, [apiUrl, existingSlug, slug]);
 
   useEffect(() => {
     if (hasWhitelabel) return;
@@ -243,6 +275,58 @@ export function WhitelabelSettings() {
     } catch (error) {
       console.error('Error activating whitelabel:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to activate whitelabel');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveTrialSettings = async () => {
+    const tenant = existingSlug || slug;
+    if (!tenant) {
+      toast.error('Please activate whitelabel first');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      
+      // First check if a row exists
+      const { data: existing } = await (supabase as any)
+        .from('minutes_pricing_config')
+        .select('id')
+        .eq('tenant', tenant)
+        .maybeSingle();
+
+      let error;
+      if (existing) {
+        const { error: updateError } = await (supabase as any)
+          .from('minutes_pricing_config')
+          .update({
+            free_trial_enabled: trialEnabled,
+            free_trial_minutes: trialMinutes,
+            free_trial_days: trialDays,
+            updated_at: new Date().toISOString()
+          })
+          .eq('tenant', tenant);
+        error = updateError;
+      } else {
+        const { error: insertError } = await (supabase as any)
+          .from('minutes_pricing_config')
+          .insert({
+            tenant,
+            free_trial_enabled: trialEnabled,
+            free_trial_minutes: trialMinutes,
+            free_trial_days: trialDays,
+            price_per_minute: 0.01 // Default price if not set
+          });
+        error = insertError;
+      }
+
+      if (error) throw error;
+      toast.success('Trial settings updated successfully');
+    } catch (error: any) {
+      console.error('Error saving trial settings:', error);
+      toast.error(error.message || 'Failed to save trial settings');
     } finally {
       setIsSaving(false);
     }
@@ -546,6 +630,69 @@ export function WhitelabelSettings() {
                   </Button>
                 </div>
               </div>
+
+              {/* Free Trial Configuration Section */}
+              {hasWhitelabel && (
+                <div className="pt-8 mt-8 border-t border-white/[0.08]">
+                  <h4 className="font-medium text-foreground mb-4">Free Trial Configuration</h4>
+                  <div className="grid gap-6 md:grid-cols-3 p-5 rounded-xl bg-white/[0.02] border border-white/[0.08]">
+                    <div className="flex flex-col space-y-2">
+                       <Label htmlFor="trial-enabled" className="text-sm">Enable Free Trial</Label>
+                       <div className="flex items-center space-x-3 h-10">
+                         <Switch
+                           id="trial-enabled"
+                           checked={trialEnabled}
+                           onCheckedChange={setTrialEnabled}
+                           disabled={!canEdit || isSaving}
+                         />
+                         <span className="text-xs text-muted-foreground">
+                           {trialEnabled ? 'Active' : 'Disabled'}
+                         </span>
+                       </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="trial-minutes" className="text-sm">Trial Minutes</Label>
+                      <Input
+                        id="trial-minutes"
+                        type="number"
+                        min="0"
+                        value={trialMinutes}
+                        onChange={(e) => setTrialMinutes(parseInt(e.target.value) || 0)}
+                        disabled={!trialEnabled || !canEdit || isSaving}
+                        className="h-10 backdrop-blur-sm bg-white/[0.02] border-white/[0.08]"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="trial-days" className="text-sm">Trial Duration (Days)</Label>
+                      <Input
+                        id="trial-days"
+                        type="number"
+                        min="1"
+                        value={trialDays}
+                        onChange={(e) => setTrialDays(parseInt(e.target.value) || 0)}
+                        disabled={!trialEnabled || !canEdit || isSaving}
+                        className="h-10 backdrop-blur-sm bg-white/[0.02] border-white/[0.08]"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-3">
+                    New users signing up through your branded domain will receive these trial parameters.
+                  </p>
+                  <div className="mt-4 flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSaveTrialSettings}
+                      disabled={isSaving || !canEdit}
+                      className="text-xs h-8"
+                    >
+                      Update Trial Settings
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {/* Action Button */}
               <div className="flex justify-end pt-4">

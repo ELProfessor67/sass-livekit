@@ -4,16 +4,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { CreditCard, Download, Calendar, Zap, Phone, MessageSquare, Users, Loader2, Clock } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { CreditCard, Download, Calendar, Zap, MessageSquare, Users, Loader2, Clock, Building2 } from "lucide-react";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { getPlanConfig, getPlanConfigs } from "@/lib/plan-config";
 import { supabase } from "@/integrations/supabase/client";
 import { MinutesPurchaseDialog } from "@/components/settings/billing/MinutesPurchaseDialog";
+import { ChangePlanDialog } from "@/components/settings/billing/ChangePlanDialog";
+import { CancelSubscriptionDialog } from "@/components/settings/billing/CancelSubscriptionDialog";
+import { AssignMinutesDialog } from "@/components/settings/billing/AssignMinutesDialog";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 
 interface UsageItem {
   name: string;
   used: number;
-  limit: number;
+  limit: number | 'unlimited';
   icon: React.ComponentType<{ className?: string }>;
 }
 
@@ -27,8 +32,17 @@ interface Invoice {
   description?: string;
 }
 
+interface WorkspaceMinuteRow {
+  id: string;
+  name: string;
+  minuteLimit: number;
+  minutesUsed: number;
+  remaining: number;
+}
+
 export default function Billing() {
   const { user } = useAuth();
+  const { currentWorkspace } = useWorkspace();
   const [loading, setLoading] = useState(true);
   const [usage, setUsage] = useState<UsageItem[]>([]);
   const [currentPlan, setCurrentPlan] = useState<{
@@ -40,12 +54,24 @@ export default function Billing() {
   } | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [planConfigs, setPlanConfigs] = useState<Record<string, any>>({});
-  const [minutesBalance, setMinutesBalance] = useState(0);
+  const [minutesBalance, setMinutesBalance] = useState<number | 'unlimited'>(0);
+  const [isUnlimited, setIsUnlimited] = useState(false);
   const [minutesUsed, setMinutesUsed] = useState(0);
   const [isPurchaseDialogOpen, setIsPurchaseDialogOpen] = useState(false);
+  const [isChangePlanOpen, setIsChangePlanOpen] = useState(false);
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
+  const [isAssignMinutesOpen, setIsAssignMinutesOpen] = useState(false);
+  // Workspace-specific minutes state
+  const [workspaceMinuteLimit, setWorkspaceMinuteLimit] = useState(0);
+  const [workspaceMinutesUsed, setWorkspaceMinutesUsed] = useState(0);
+  // Main account workspace breakdown
+  const [workspaceRows, setWorkspaceRows] = useState<WorkspaceMinuteRow[]>([]);
+  const [totalUserMinutes, setTotalUserMinutes] = useState(0);
 
-  const getUsagePercentage = (used: number, limit: number) => {
-    if (limit === 0) return 0; // Unlimited
+  const isMainAccount = !currentWorkspace?.id;
+
+  const getUsagePercentage = (used: number, limit: number | 'unlimited') => {
+    if (limit === 'unlimited' || limit === 0) return 0;
     return Math.min((used / limit) * 100, 100);
   };
 
@@ -62,7 +88,7 @@ export default function Billing() {
         // Fetch user data for subscription info FIRST (to get real plan from database)
         const { data: userData } = await supabase
           .from('users')
-          .select('is_active, trial_ends_at, plan, minutes_limit, minutes_used, billing, stripe_customer_id, updated_at, tenant, slug_name')
+          .select('is_active, trial_ends_at, plan, minutes_limit, minutes_used, is_unlimited, billing, stripe_customer_id, updated_at, tenant, slug_name')
           .eq('id', user.id)
           .single();
 
@@ -73,7 +99,7 @@ export default function Billing() {
         // For main tenant users, use null (main tenant)
         let planTenant: string | null = null;
         let isWhitelabelAdmin = false;
-        
+
         if (userData?.tenant && userData.tenant !== 'main') {
           // User belongs to a whitelabel tenant
           if (userData?.slug_name) {
@@ -102,7 +128,7 @@ export default function Billing() {
         // Fetch plan configs for the user's tenant (not hostname tenant)
         let configs = await getPlanConfigs(planTenant);
         console.log('[Billing] Fetched plan configs for tenant:', planTenant, 'Available plans:', Object.keys(configs));
-        
+
         // If no plans found for the tenant and user has a plan, try direct database query
         if (Object.keys(configs).length === 0 && userData?.plan && planTenant) {
           console.log('[Billing] No plans found via getPlanConfigs, trying direct database query for tenant:', planTenant);
@@ -111,7 +137,7 @@ export default function Billing() {
             .select('*')
             .eq('tenant', planTenant)
             .eq('is_active', true);
-          
+
           if (!directError && directPlans && directPlans.length > 0) {
             console.log('[Billing] Found plans via direct query:', directPlans.map(p => ({ key: p.plan_key, name: p.name })));
             const directConfigs: Record<string, any> = {};
@@ -121,7 +147,9 @@ export default function Billing() {
                 name: plan.name,
                 price: Number(plan.price),
                 features: Array.isArray(plan.features) ? plan.features : [],
-                whitelabelEnabled: plan.whitelabel_enabled ?? false
+                whitelabelEnabled: plan.whitelabel_enabled ?? false,
+                is_unlimited: plan.is_unlimited ?? false,
+                minutes_limit: plan.minutes_limit ?? 0
               };
             });
             configs = directConfigs;
@@ -129,15 +157,15 @@ export default function Billing() {
             console.warn('[Billing] Direct query also returned no plans. Error:', directError);
           }
         }
-        
+
         setPlanConfigs(configs);
 
         // Use REAL plan from database (not from auth context)
         const userPlan = (userData?.plan?.toLowerCase() || user?.plan?.toLowerCase() || 'free');
-        
+
         // Try to find the plan config - check exact match first, then try case-insensitive
         let planConfig = configs[userPlan];
-        
+
         // If not found, try case-insensitive lookup
         if (!planConfig && userData?.plan) {
           const planKey = Object.keys(configs).find(
@@ -147,20 +175,20 @@ export default function Billing() {
             planConfig = configs[planKey];
           }
         }
-        
+
         // If still not found and user has a plan, try fetching from main tenant as fallback
         // This is especially important for whitelabel admins who may have been assigned plans by super admin
         // We need to explicitly query main tenant (tenant IS NULL) to bypass hostname-based tenant detection
         if (!planConfig && userData?.plan && planTenant && planTenant !== 'main') {
           console.log(`[Billing] Plan "${userPlan}" not found in tenant "${planTenant}", trying main tenant as fallback`);
-          
+
           // Directly query main tenant plans (tenant IS NULL) to bypass hostname tenant detection
           const { data: mainPlans, error: mainError } = await supabase
             .from('plan_configs')
             .select('*')
             .is('tenant', null)
             .eq('is_active', true);
-          
+
           if (!mainError && mainPlans && mainPlans.length > 0) {
             const mainConfigs: Record<string, any> = {};
             mainPlans.forEach((plan: any) => {
@@ -169,10 +197,12 @@ export default function Billing() {
                 name: plan.name,
                 price: Number(plan.price),
                 features: Array.isArray(plan.features) ? plan.features : [],
-                whitelabelEnabled: plan.whitelabel_enabled ?? false
+                whitelabelEnabled: plan.whitelabel_enabled ?? false,
+                is_unlimited: plan.is_unlimited ?? false,
+                minutes_limit: plan.minutes_limit ?? 0
               };
             });
-            
+
             console.log('[Billing] Main tenant plans available:', Object.keys(mainConfigs));
             const mainPlanKey = Object.keys(mainConfigs).find(
               key => key.toLowerCase() === userData.plan.toLowerCase()
@@ -187,7 +217,7 @@ export default function Billing() {
             console.warn('[Billing] Could not fetch main tenant plans. Error:', mainError);
           }
         }
-        
+
         // Final fallback - use the plan name from database if available, otherwise free
         if (!planConfig) {
           console.warn(`[Billing] Plan "${userPlan}" not found in any tenant configs, using fallback. Available plans:`, Object.keys(configs));
@@ -216,7 +246,7 @@ export default function Billing() {
 
         // Calculate next billing date from real subscription data
         let nextBilling: string | null = null;
-        
+
         // Check billing JSON field for subscription info (Stripe subscription data)
         if (userData?.billing && typeof userData.billing === 'object') {
           const billing = userData.billing as any;
@@ -227,11 +257,11 @@ export default function Billing() {
             nextBilling = new Date(billing.next_billing_date).toISOString().split('T')[0];
           }
         }
-        
+
         // Fallback to trial_ends_at if no subscription billing date
         if (!nextBilling && userData?.trial_ends_at) {
           nextBilling = new Date(userData.trial_ends_at).toISOString().split('T')[0];
-        } 
+        }
         // For paid plans without subscription data, don't show dummy date
         // Only show if we have real subscription data
 
@@ -246,9 +276,40 @@ export default function Billing() {
         // Set minutes balance (remaining = limit - used) and usage
         const minutesLimit = userData?.minutes_limit || 0;
         const minutesUsed = userData?.minutes_used || 0;
-        const remainingMinutes = Math.max(0, minutesLimit - minutesUsed);
+        const userIsUnlimited = !!userData?.is_unlimited;
+        const remainingMinutes = userIsUnlimited ? 'unlimited' : Math.max(0, minutesLimit - minutesUsed);
+
+        setIsUnlimited(userIsUnlimited);
         setMinutesBalance(remainingMinutes);
         setMinutesUsed(minutesUsed);
+        setTotalUserMinutes(minutesLimit);
+
+        // Fetch workspace-specific minutes data
+        if (currentWorkspace?.id) {
+          // A real workspace is selected — fetch its own minutes
+          const { data: wsData } = await supabase
+            .from('workspace_settings')
+            .select('minute_limit, minutes_used')
+            .eq('id', currentWorkspace.id)
+            .single();
+          setWorkspaceMinuteLimit(wsData?.minute_limit || 0);
+          setWorkspaceMinutesUsed(wsData?.minutes_used || 0);
+        } else {
+          // Main Account — build workspace breakdown table
+          const { data: allWs } = await supabase
+            .from('workspace_settings')
+            .select('id, workspace_name, minute_limit, minutes_used')
+            .eq('user_id', user.id);
+          if (allWs) {
+            setWorkspaceRows(allWs.map((ws: any) => ({
+              id: ws.id,
+              name: ws.workspace_name,
+              minuteLimit: ws.minute_limit || 0,
+              minutesUsed: ws.minutes_used || 0,
+              remaining: Math.max(0, (ws.minute_limit || 0) - (ws.minutes_used || 0)),
+            })));
+          }
+        }
 
         // Fetch assistants for the user
         const { data: assistantsData } = await supabase
@@ -329,15 +390,24 @@ export default function Billing() {
         const textMessagesCount = textMessagesResult.count || 0;
         const teamMembersCount = teamMembersResult.count || 0;
 
-        // Get limits from plan config (using reasonable defaults if not in plan config)
-        const apiCallsLimit = planConfig.features?.find((f: string) => f.includes('calls'))
-          ? parseInt(planConfig.features.find((f: string) => f.includes('calls'))?.match(/\d+/)?.[0] || '2500')
-          : 2500;
+        // Helper to parse limits from features
+        const parseLimit = (featureKey: string): number | 'unlimited' => {
+          if (planConfig.is_unlimited) return 'unlimited';
+          const feature = planConfig.features?.find((f: string) => f.toLowerCase().includes(featureKey.toLowerCase()));
+          if (!feature) return 'unlimited'; // Default to unlimited if not specified
 
-        const textMessagesLimit = 2000; // Default, could be from plan config
-        const teamMembersLimit = planConfig.features?.find((f: string) => f.includes('team'))
-          ? parseInt(planConfig.features.find((f: string) => f.includes('team'))?.match(/\d+/)?.[0] || '10')
-          : 10;
+          if (feature.toLowerCase().includes('unlimited')) return 'unlimited';
+
+          const match = feature.match(/\d+/);
+          return match ? parseInt(match[0].replace(/,/g, '')) : 'unlimited';
+        };
+
+        const apiCallsLimit = parseLimit('calls');
+        const textMessagesLimit = parseLimit('messages');
+        const teamMembersLimit = parseLimit('team');
+
+        // Note: For now we maintain some defaults for non-unlimited plans if not specified in DB
+        // but we prioritize is_unlimited flag.
 
         setUsage([
           { name: "API Calls", used: apiCallsCount, limit: apiCallsLimit, icon: Zap },
@@ -385,15 +455,15 @@ export default function Billing() {
             purchasesData.forEach((purchase: any) => {
               const purchaseDate = new Date(purchase.created_at);
               // Map status: completed -> paid, pending -> pending, others -> pending
-              const invoiceStatus = purchase.status === 'completed' ? 'paid' : 
-                                   purchase.status === 'pending' ? 'pending' : 'pending';
-              
+              const invoiceStatus = purchase.status === 'completed' ? 'paid' :
+                purchase.status === 'pending' ? 'pending' : 'pending';
+
               // Determine if this is a credit or debit based on payment_method
               const isDebit = purchase.payment_method === 'whitelabel_customer_sale';
               const transactionType = isDebit ? 'debit' : 'credit';
               const minutes = purchase.minutes_purchased || 0;
               const amount = Number(purchase.amount_paid || 0);
-              
+
               // Get description from notes or payment method
               let description = purchase.notes || '';
               if (purchase.payment_method === 'whitelabel_customer_sale') {
@@ -401,7 +471,7 @@ export default function Billing() {
               } else if (purchase.payment_method === 'whitelabel_admin') {
                 description = `Purchased ${minutes} minutes from admin`;
               }
-              
+
               allInvoices.push({
                 id: `MIN-${purchase.id.slice(0, 8)}`,
                 date: purchaseDate.toISOString().split('T')[0],
@@ -429,7 +499,7 @@ export default function Billing() {
     };
 
     fetchBillingData();
-  }, [user?.id, user?.plan]);
+  }, [user?.id, user?.plan, currentWorkspace?.id]);
 
   if (loading) {
     return (
@@ -502,8 +572,15 @@ export default function Billing() {
                   )}
 
                   <div className="flex gap-3 pt-2">
-                    <Button variant="outline">Change Plan</Button>
-                    <Button variant="outline">Cancel Subscription</Button>
+                    <Button variant="outline" onClick={() => setIsChangePlanOpen(true)}>Change Plan</Button>
+                    <Button
+                      variant="outline"
+                      className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                      onClick={() => setIsCancelDialogOpen(true)}
+                      disabled={currentPlan.name.toLowerCase() === "free"}
+                    >
+                      Cancel Subscription
+                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -515,76 +592,172 @@ export default function Billing() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Clock className="h-5 w-5" />
-                Minutes Balance
+                {isMainAccount ? 'Minutes Balance' : `${currentWorkspace?.name} Minutes`}
               </CardTitle>
-              <CardDescription>Your available call minutes</CardDescription>
+              <CardDescription>
+                {isMainAccount ? 'Your total account minutes' : 'Minutes allocated to this workspace'}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Available</span>
-                  <span className="text-2xl font-bold text-foreground">
-                    {minutesBalance.toLocaleString()}
-                  </span>
+              {isMainAccount ? (
+                // Main Account — show user-level balance
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Available</span>
+                    <span className="text-2xl font-bold text-foreground">
+                      {isUnlimited ? 'Unlimited' : (minutesBalance as number).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Used</span>
+                    <span className="text-foreground font-medium">{minutesUsed.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Total</span>
+                    <span className="text-foreground font-medium">
+                      {isUnlimited ? 'Unlimited' : totalUserMinutes.toLocaleString()}
+                    </span>
+                  </div>
+                  {!isUnlimited && totalUserMinutes > 0 && (
+                    <Progress value={Math.min((minutesUsed / totalUserMinutes) * 100, 100)} className="h-1.5 mt-1" />
+                  )}
+                  <Button className="w-full mt-2" onClick={() => setIsPurchaseDialogOpen(true)}>
+                    Purchase Minutes
+                  </Button>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Minutes are purchased separately from your subscription plan
+                  </p>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Used this month</span>
-                  <span className="text-foreground font-medium">
-                    {minutesUsed.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-
-              <Button
-                className="w-full"
-                onClick={() => setIsPurchaseDialogOpen(true)}
-              >
-                Purchase Minutes
-              </Button>
-
-              <p className="text-xs text-muted-foreground text-center">
-                Minutes are purchased separately from your subscription plan
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Usage Overview */}
-          <Card className="border-border/40 bg-card/50 backdrop-blur-sm">
-            <CardHeader>
-              <CardTitle>Usage This Month</CardTitle>
-              <CardDescription>Current usage across all services</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {usage.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No usage data available</p>
               ) : (
-                usage.map((item) => {
-                  const IconComponent = item.icon;
-                  const percentage = getUsagePercentage(item.used, item.limit === Infinity ? 0 : item.limit);
-                  const limitDisplay = item.limit === Infinity ? 'Unlimited' : item.limit.toLocaleString();
-                  return (
-                    <div key={item.name} className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-2">
-                          <IconComponent className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-foreground">{item.name}</span>
-                        </div>
-                        <span className="text-muted-foreground">
-                          {item.used.toLocaleString()} / {limitDisplay}
-                        </span>
-                      </div>
-                      {item.limit !== Infinity && (
-                        <Progress
-                          value={percentage}
-                          className="h-2"
-                        />
-                      )}
-                    </div>
-                  );
-                })
+                // Workspace view — show workspace-level minutes only
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Available</span>
+                    <span className="text-2xl font-bold text-foreground">
+                      {workspaceMinuteLimit === 0
+                        ? 'No limit set'
+                        : Math.max(0, workspaceMinuteLimit - workspaceMinutesUsed).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Used</span>
+                    <span className="text-foreground font-medium">{workspaceMinutesUsed.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Allocated limit</span>
+                    <span className="text-foreground font-medium">
+                      {workspaceMinuteLimit === 0 ? '—' : workspaceMinuteLimit.toLocaleString()}
+                    </span>
+                  </div>
+                  {workspaceMinuteLimit > 0 && (
+                    <Progress
+                      value={Math.min((workspaceMinutesUsed / workspaceMinuteLimit) * 100, 100)}
+                      className="h-1.5 mt-1"
+                    />
+                  )}
+                  <p className="text-xs text-muted-foreground text-center pt-1">
+                    To purchase or adjust minutes, switch to Main Account
+                  </p>
+                </div>
               )}
             </CardContent>
           </Card>
+
+
+
+          {/* Workspace Minutes Overview — Main Account only */}
+          {isMainAccount && workspaceRows.length > 0 && (
+            <div className="lg:col-span-3">
+              <Card className="border-border/40 bg-card/50 backdrop-blur-sm">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <Building2 className="h-5 w-5" />
+                      Workspace Minutes Overview
+                    </CardTitle>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsAssignMinutesOpen(true)}
+                    >
+                      Assign Minutes
+                    </Button>
+                  </div>
+                  <CardDescription>
+                    Minutes allocated and consumed across your workspaces.{' '}
+                    {(() => {
+                      const totalAssigned = workspaceRows.reduce((s, w) => s + w.minuteLimit, 0);
+                      const unassigned = Math.max(0, totalUserMinutes - totalAssigned);
+                      return `${totalAssigned.toLocaleString()} of ${totalUserMinutes.toLocaleString()} minutes assigned · ${unassigned.toLocaleString()} unassigned`;
+                    })()}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-xl border border-border/40 overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/10 hover:bg-transparent">
+                          <TableHead>Workspace</TableHead>
+                          <TableHead className="text-right">Allocated</TableHead>
+                          <TableHead className="text-right">Used</TableHead>
+                          <TableHead className="text-right">Remaining</TableHead>
+                          <TableHead className="text-right">Usage</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {workspaceRows.map((ws) => {
+                          const pct = ws.minuteLimit > 0 ? Math.min((ws.minutesUsed / ws.minuteLimit) * 100, 100) : 0;
+                          const isExceeded = ws.minuteLimit > 0 && ws.minutesUsed > ws.minuteLimit;
+                          return (
+                            <TableRow key={ws.id} className="border-border/30">
+                              <TableCell className="font-medium text-foreground">{ws.name}</TableCell>
+                              <TableCell className="text-right text-muted-foreground">
+                                {ws.minuteLimit === 0 ? '—' : ws.minuteLimit.toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-right text-muted-foreground">
+                                {ws.minutesUsed.toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <span className={isExceeded ? 'text-destructive font-medium' : 'text-foreground'}>
+                                  {ws.minuteLimit === 0 ? '—' : ws.remaining.toLocaleString()}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {ws.minuteLimit === 0 ? (
+                                  <span className="text-xs text-muted-foreground">No limit</span>
+                                ) : (
+                                  <div className="flex items-center justify-end gap-2">
+                                    <Progress value={pct} className="h-1.5 w-20" />
+                                    <span className={`text-xs font-medium w-8 text-right ${isExceeded ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                      {Math.round(pct)}%
+                                    </span>
+                                  </div>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                        {/* Summary row */}
+                        <TableRow className="bg-muted/10 border-border/30 font-semibold">
+                          <TableCell className="text-foreground">Total (all workspaces)</TableCell>
+                          <TableCell className="text-right text-foreground">
+                            {workspaceRows.reduce((s, w) => s + w.minuteLimit, 0).toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right text-foreground">
+                            {workspaceRows.reduce((s, w) => s + w.minutesUsed, 0).toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right text-foreground">
+                            {workspaceRows.reduce((s, w) => s + w.remaining, 0).toLocaleString()}
+                          </TableCell>
+                          <TableCell />
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
           {/* Billing History */}
           <div className="lg:col-span-3">
@@ -604,7 +777,7 @@ export default function Billing() {
                     {invoices.map((invoice) => {
                       const isDebit = invoice.type === 'debit' || invoice.amount?.startsWith('-');
                       const isCredit = invoice.type === 'credit' || (!invoice.type && !isDebit);
-                      
+
                       return (
                         <div key={invoice.id} className="flex items-center justify-between p-3 rounded-lg bg-background/50 border border-border/30">
                           <div className="flex items-center gap-4">
@@ -660,7 +833,8 @@ export default function Billing() {
         <MinutesPurchaseDialog
           open={isPurchaseDialogOpen}
           onOpenChange={setIsPurchaseDialogOpen}
-          currentBalance={minutesBalance}
+          currentBalance={minutesBalance === 'unlimited' ? 0 : minutesBalance}
+          isUnlimited={isUnlimited}
           minutesUsed={minutesUsed}
           onPurchaseComplete={async () => {
             // Refresh minutes balance after purchase
@@ -676,6 +850,48 @@ export default function Billing() {
               const remainingMinutes = Math.max(0, minutesLimit - minutesUsed);
               setMinutesBalance(remainingMinutes);
               setMinutesUsed(minutesUsed);
+            }
+          }}
+        />
+
+        {/* Change Plan Dialog */}
+        <ChangePlanDialog
+          open={isChangePlanOpen}
+          onOpenChange={setIsChangePlanOpen}
+          currentPlan={currentPlan?.name?.toLowerCase() || "free"}
+          onPlanChanged={(newPlan) => {
+            setCurrentPlan(prev => prev ? { ...prev, name: newPlan } : null);
+          }}
+        />
+
+        {/* Cancel Subscription Dialog */}
+        <CancelSubscriptionDialog
+          open={isCancelDialogOpen}
+          onOpenChange={setIsCancelDialogOpen}
+          currentPlan={currentPlan?.name || "Free"}
+          onCancelled={() => {
+            setCurrentPlan(prev => prev ? { ...prev, name: "Free", price: "$0" } : null);
+          }}
+        />
+
+        {/* Assign Minutes to Workspace Dialog */}
+        <AssignMinutesDialog
+          open={isAssignMinutesOpen}
+          onOpenChange={setIsAssignMinutesOpen}
+          onAssigned={async () => {
+            // Refresh workspace rows
+            const { data: allWs } = await supabase
+              .from('workspace_settings')
+              .select('id, workspace_name, minute_limit, minutes_used')
+              .eq('user_id', user?.id);
+            if (allWs) {
+              setWorkspaceRows(allWs.map((ws: any) => ({
+                id: ws.id,
+                name: ws.workspace_name,
+                minuteLimit: ws.minute_limit || 0,
+                minutesUsed: ws.minutes_used || 0,
+                remaining: Math.max(0, (ws.minute_limit || 0) - (ws.minutes_used || 0)),
+              })));
             }
           }}
         />

@@ -42,6 +42,7 @@ interface User {
   is_whitelabel?: boolean;
   slug_name?: string | null;
   tenant?: string | null;
+  is_unlimited?: boolean;
 }
 
 interface UserStats {
@@ -59,6 +60,9 @@ interface MinutePricingConfig {
   currency: string;
   is_active: boolean;
   tenant: string;
+  free_trial_enabled: boolean;
+  free_trial_minutes: number;
+  free_trial_days: number;
 }
 
 
@@ -115,20 +119,22 @@ const AdminPanel = () => {
     return plan.charAt(0).toUpperCase() + plan.slice(1);
   };
 
-  const formatMinutes = (minutes: number | null | undefined, plan: string | null | undefined) => {
-    if (minutes === 0 || minutes === null || minutes === undefined) return 'Unlimited';
+  const formatMinutes = (minutes: number | null | undefined, plan: string | null | undefined, is_unlimited: boolean | null | undefined) => {
+    if (is_unlimited) return 'Unlimited';
+    if (minutes === 0 || minutes === null || minutes === undefined) return '0 min';
     return `${minutes.toLocaleString()} min`;
   };
 
   const getRemainingMinutes = (user: User) => {
-    if (user.minutes_limit === 0 || user.minutes_limit === null || user.minutes_limit === undefined) return 'Unlimited';
+    if (user.is_unlimited) return 'Unlimited';
+    const limit = user.minutes_limit || 0;
     const used = user.minutes_used || 0;
     const remaining = Math.max(0, user.minutes_limit - used);
     return `${remaining.toLocaleString()} min`;
   };
 
   const getUsageStatus = (user: User) => {
-    if (user.minutes_limit === 0 || user.minutes_limit === null || user.minutes_limit === undefined) return 'Unlimited';
+    if (user.is_unlimited) return 'Unlimited';
 
     const used = user.minutes_used || 0;
     const limit = user.minutes_limit;
@@ -262,7 +268,7 @@ const AdminPanel = () => {
       if (error) throw error;
 
       if (data) {
-        setMinutePricing(data);
+        setMinutePricing(data as any);
       } else {
         // Set default if not found
         setMinutePricing({
@@ -271,7 +277,10 @@ const AdminPanel = () => {
           minimum_purchase: 0,
           currency: 'USD',
           is_active: true,
-          tenant: tenant || 'main'
+          tenant: tenant || 'main',
+          free_trial_enabled: false,
+          free_trial_minutes: 0,
+          free_trial_days: 7
         } as any);
       }
     } catch (error) {
@@ -302,7 +311,10 @@ const AdminPanel = () => {
         price_per_minute: parseFloat(minutePricing.price_per_minute.toString()),
         minimum_purchase: parseInt(minutePricing.minimum_purchase.toString()),
         currency: minutePricing.currency,
-        is_active: true
+        is_active: true,
+        free_trial_enabled: !!minutePricing.free_trial_enabled,
+        free_trial_minutes: parseInt(minutePricing.free_trial_minutes.toString()) || 0,
+        free_trial_days: parseInt(minutePricing.free_trial_days.toString()) || 0
       };
 
       const { data, error } = await supabase
@@ -313,7 +325,7 @@ const AdminPanel = () => {
 
       if (error) throw error;
 
-      setMinutePricing(data);
+      setMinutePricing(data as any);
       toast.success('Minute pricing updated successfully');
     } catch (error: any) {
       console.error('Error saving minute pricing:', error);
@@ -336,8 +348,9 @@ const AdminPanel = () => {
           price: plan.price,
           features: [...plan.features],
           whitelabelEnabled: plan.whitelabelEnabled ?? false,
-          planType: plan.planType || 'simple'
-        });
+          planType: plan.planType || 'simple',
+          is_unlimited: !!(plan as any).is_unlimited
+        } as any);
       }
     } else {
       // Creating new plan
@@ -348,7 +361,8 @@ const AdminPanel = () => {
         price: 0,
         features: [],
         whitelabelEnabled: false,
-        planType: 'simple'
+        planType: 'simple',
+        is_unlimited: false
       });
     }
 
@@ -416,6 +430,7 @@ const AdminPanel = () => {
         features: editPlanData.features || [],
         whitelabel_enabled: editPlanData.whitelabelEnabled,
         plan_type: editPlanData.planType || 'simple',
+        is_unlimited: !!editPlanData.is_unlimited,
         tenant: tenant
       };
 
@@ -862,7 +877,10 @@ const AdminPanel = () => {
     try {
       const { error } = await supabase
         .from('users')
-        .update(editUserData)
+        .update({
+          ...editUserData,
+          is_unlimited: !!editUserData.is_unlimited
+        })
         .eq('id', selectedUser.id);
 
       if (error) throw error;
@@ -1236,7 +1254,8 @@ const AdminPanel = () => {
       role: user.role,
       company: user.company,
       industry: user.industry,
-      is_active: user.is_active
+      is_active: user.is_active,
+      is_unlimited: user.is_unlimited
     });
     setIsEditUserOpen(true);
   };
@@ -1380,7 +1399,7 @@ const AdminPanel = () => {
                               </TableCell>
                               <TableCell className="text-center">
                                 <span className="font-medium text-blue-400">
-                                  {formatMinutes(user.minutes_limit, user.plan)}
+                                  {formatMinutes(user.minutes_limit, user.plan, user.is_unlimited)}
                                 </span>
                               </TableCell>
                               <TableCell className="text-center">
@@ -1560,6 +1579,65 @@ const AdminPanel = () => {
                         </div>
                       </div>
                     )}
+                    
+                    {!loadingMinutePricing && (
+                      <div className="mt-8 pt-8 border-t border-border/20">
+                        <h4 className="text-lg font-medium mb-4">Free Trial Configuration</h4>
+                        <div className="grid gap-6 md:grid-cols-4">
+                          <div className="flex flex-col space-y-2">
+                            <Label htmlFor="trial-enabled">Enable Free Trial</Label>
+                            <div className="flex items-center space-x-2 h-10">
+                              <Switch
+                                id="trial-enabled"
+                                checked={minutePricing?.free_trial_enabled ?? false}
+                                onCheckedChange={(checked) => setMinutePricing(prev => prev ? ({ ...prev, free_trial_enabled: checked }) : null)}
+                              />
+                              <span className="text-sm text-muted-foreground">
+                                {minutePricing?.free_trial_enabled ? 'Active' : 'Disabled'}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label htmlFor="trial-minutes">Trial Minutes</Label>
+                            <Input
+                              id="trial-minutes"
+                              type="number"
+                              min="0"
+                              disabled={!minutePricing?.free_trial_enabled}
+                              value={minutePricing?.free_trial_minutes ?? 0}
+                              onChange={(e) => setMinutePricing(prev => prev ? ({ ...prev, free_trial_minutes: parseInt(e.target.value) || 0 }) : null)}
+                            />
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label htmlFor="trial-days">Trial Duration (Days)</Label>
+                            <Input
+                              id="trial-days"
+                              type="number"
+                              min="1"
+                              disabled={!minutePricing?.free_trial_enabled}
+                              value={minutePricing?.free_trial_days ?? 7}
+                              onChange={(e) => setMinutePricing(prev => prev ? ({ ...prev, free_trial_days: parseInt(e.target.value) || 0 }) : null)}
+                            />
+                          </div>
+                          
+                          <div className="flex items-end">
+                            <Button
+                              onClick={handleSaveMinutePricing}
+                              disabled={savingMinutePricing}
+                              variant="secondary"
+                              className="w-full"
+                            >
+                              {savingMinutePricing ? 'Saving...' : 'Update Trial Settings'}
+                            </Button>
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-4">
+                          New users will receive these settings upon signup if a trial is enabled for this tenant.
+                        </p>
+                      </div>
+                    )}
                   </CardContent>
                 </ThemeCard>
 
@@ -1693,6 +1771,19 @@ const AdminPanel = () => {
                         <SelectItem value="inactive">Inactive</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="edit-unlimited" className="text-right">Unlimited</Label>
+                    <div className="col-span-3 flex items-center space-x-2">
+                      <Switch
+                        id="edit-unlimited"
+                        checked={editUserData.is_unlimited || false}
+                        onCheckedChange={(checked) => setEditUserData({ ...editUserData, is_unlimited: checked })}
+                      />
+                      <span className="text-sm text-muted-foreground">
+                        {editUserData.is_unlimited ? 'Infinite Minutes' : 'Subject to Limit'}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <DialogFooter>
@@ -2064,6 +2155,19 @@ const AdminPanel = () => {
                       />
                     </div>
                   )}
+
+                  <div className="flex items-center justify-between rounded-lg border border-border/40 bg-muted/10 p-4">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Unlimited Minutes</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Subscribers on this plan will have infinite calling minutes (Enterprise).
+                      </p>
+                    </div>
+                    <Switch
+                      checked={!!editPlanData.is_unlimited}
+                      onCheckedChange={(checked) => setEditPlanData({ ...editPlanData, is_unlimited: checked })}
+                    />
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => {

@@ -31,7 +31,7 @@ const steps = [
 ];
 
 export function OnboardingLayout() {
-  const { currentStep, totalSteps, getProgress, prevStep, isCompleted } = useOnboarding();
+  const { currentStep, totalSteps, getProgress, goToStep, data, isCompleted } = useOnboarding();
   const { user, loading: isLoading } = useAuth();
   const isAuthenticated = !!user;
   const profile = user;
@@ -78,6 +78,15 @@ export function OnboardingLayout() {
     }
     // @ts-expect-error - profile type might not have onboarding_completed explicitly defined in all contexts
   }, [isAuthenticated, isLoading, isProfileLoading, navigate, isCompleted, profile?.onboarding_completed]);
+
+  // Handle trial step skipping
+  React.useEffect(() => {
+    // If we reach Payment step (8) but user selected a trial, skip to Complete (9)
+    if (currentStep === 8 && data.isTrial) {
+      console.log('OnboardingLayout: Trial selected, skipping Payment step');
+      goToStep(9);
+    }
+  }, [currentStep, data.isTrial, goToStep]);
 
   const CurrentStepComponent = steps[currentStep]?.component;
   const progress = getProgress();

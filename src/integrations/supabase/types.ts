@@ -777,6 +777,7 @@ export type Database = {
           trial_ends_at: string | null
           minutes_limit: number | null
           minutes_used: number | null
+          is_unlimited: boolean | null
         }
         Insert: {
           access_token?: string | null
@@ -815,6 +816,7 @@ export type Database = {
           trial_ends_at?: string | null
           minutes_limit?: number | null
           minutes_used?: number | null
+          is_unlimited?: boolean | null
         }
         Update: {
           access_token?: string | null
@@ -853,6 +855,7 @@ export type Database = {
           trial_ends_at?: string | null
           minutes_limit?: number | null
           minutes_used?: number | null
+          is_unlimited?: boolean | null
         }
         Relationships: [
           {
@@ -860,6 +863,181 @@ export type Database = {
             columns: ["agency_id"]
             isOneToOne: false
             referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_configs: {
+        Row: {
+          created_at: string | null
+          display_order: number
+          features: Json
+          id: string
+          is_active: boolean
+          is_unlimited: boolean
+          minutes_limit: number
+          name: string
+          plan_key: string
+          price: number
+          tenant: string | null
+          updated_at: string | null
+          whitelabel_enabled: boolean | null
+          plan_type: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          display_order?: number
+          features?: Json
+          id?: string
+          is_active?: boolean
+          is_unlimited?: boolean
+          minutes_limit?: number
+          name: string
+          plan_key: string
+          price?: number
+          tenant?: string | null
+          updated_at?: string | null
+          whitelabel_enabled?: boolean | null
+          plan_type?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          display_order?: number
+          features?: Json
+          id?: string
+          is_active?: boolean
+          is_unlimited?: boolean
+          minutes_limit?: number
+          name?: string
+          plan_key?: string
+          price?: number
+          tenant?: string | null
+          updated_at?: string | null
+          whitelabel_enabled?: boolean | null
+          plan_type?: string | null
+        }
+        Relationships: []
+      }
+      minutes_purchases: {
+        Row: {
+          amount_paid: number
+          created_at: string | null
+          currency: string | null
+          id: string
+          minutes_purchased: number
+          notes: string | null
+          payment_id: string | null
+          payment_method: string | null
+          status: string | null
+          stripe_session_id: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          amount_paid: number
+          created_at?: string | null
+          currency?: string | null
+          id?: string
+          minutes_purchased: number
+          notes?: string | null
+          payment_id?: string | null
+          payment_method?: string | null
+          status?: string | null
+          stripe_session_id?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          amount_paid?: number
+          created_at?: string | null
+          currency?: string | null
+          id?: string
+          minutes_purchased?: number
+          notes?: string | null
+          payment_id?: string | null
+          payment_method?: string | null
+          status?: string | null
+          stripe_session_id?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "minutes_purchases_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      minutes_pricing_config: {
+        Row: {
+          created_at: string | null
+          free_trial_days: number | null
+          free_trial_enabled: boolean | null
+          free_trial_minutes: number | null
+          id: string
+          price_per_minute: number
+          tenant: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          free_trial_days?: number | null
+          free_trial_enabled?: boolean | null
+          free_trial_minutes?: number | null
+          id?: string
+          price_per_minute: number
+          tenant: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          free_trial_days?: number | null
+          free_trial_enabled?: boolean | null
+          free_trial_minutes?: number | null
+          id?: string
+          price_per_minute?: number
+          tenant?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      invoices: {
+        Row: {
+          id: string
+          user_id: string
+          amount: number
+          status: string
+          created_at: string
+          invoice_number: string | null
+          date: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          amount: number
+          status?: string
+          created_at?: string
+          invoice_number?: string | null
+          date?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          amount?: number
+          status?: string
+          created_at?: string
+          invoice_number?: string | null
+          date?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]

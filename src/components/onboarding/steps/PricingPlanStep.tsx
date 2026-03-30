@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { Button } from "@/components/ui/button";
-import { getPlanConfigs, PLAN_CONFIGS } from "@/lib/plan-config";
+import { getPlanConfigs, PLAN_CONFIGS, getTenantTrialSettings, TrialSettings } from "@/lib/plan-config";
 import { extractTenantFromHostname } from "@/lib/tenant-utils";
 import { useToast } from "@/hooks/use-toast";
 import { Rocket, Buildings, Crown, Check, Sparkle } from "phosphor-react";
@@ -21,14 +21,20 @@ export function PricingPlanStep() {
     features: string[];
   }>>([]);
   const [loadingPlans, setLoadingPlans] = useState(true);
+  const [trialSettings, setTrialSettings] = useState<TrialSettings | null>(null);
 
   useEffect(() => {
-    const fetchPlans = async () => {
+    const fetchPlansAndTrial = async () => {
       try {
         setLoadingPlans(true);
         const tenant = extractTenantFromHostname();
         const tenantSlug = tenant === "main" ? null : tenant;
-        const planConfigs = await getPlanConfigs(tenantSlug);
+        
+        // Fetch plans and trial settings in parallel
+        const [planConfigs, trial] = await Promise.all([
+          getPlanConfigs(tenantSlug),
+          getTenantTrialSettings(tenantSlug)
+        ]);
 
         const plansList = Object.values(planConfigs)
           .filter(plan => plan.key !== "free")
@@ -40,6 +46,7 @@ export function PricingPlanStep() {
           }));
 
         setPlans(plansList);
+        setTrialSettings(trial);
       } catch (error) {
         const fallback = Object.values(PLAN_CONFIGS)
           .filter(plan => plan.key !== "free")
@@ -54,12 +61,36 @@ export function PricingPlanStep() {
         setLoadingPlans(false);
       }
     };
-    fetchPlans();
+    fetchPlansAndTrial();
   }, []);
 
   const handleContinue = () => {
-    updateData({ plan: selected });
+    updateData({ plan: selected, isTrial: false });
     nextStep();
+  };
+
+  const handleStartTrial = () => {
+    if (!trialSettings?.free_trial_enabled) return;
+    
+    updateData({ 
+      plan: selected || "starter", 
+      isTrial: true 
+    });
+    
+    toast({
+      title: "Trial activated",
+      description: `You've started your ${trialSettings.free_trial_days}-day free trial with ${trialSettings.free_trial_minutes} minutes!`,
+    });
+    
+    // Skip to Step 9 (OnboardingComplete)
+    // The current index of PaymentStep is 8, OnboardingComplete is 9.
+    // The useOnboarding goToStep uses 0-based indexing.
+    const COMPLETE_STEP_INDEX = 9;
+    nextStep(); // This usually goes to Payment (8)
+    // Let's use the explicit goToStep instead to be sure
+    setTimeout(() => {
+       // We'll let the layout handle the jump based on data.isTrial
+    }, 0);
   };
 
   const getPlanIcon = (key: string) => {
@@ -254,21 +285,35 @@ export function PricingPlanStep() {
       </div>
 
       {/* Main Navigation */}
-      <div className="flex gap-4 pt-8">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={prevStep}
-          className="h-14 px-10 rounded-2xl text-gray-500 hover:text-gray-900 font-medium"
-        >
-          Back
-        </Button>
-        <Button
-          onClick={handleContinue}
-          className="h-14 flex-1 rounded-2xl bg-[#668cff] hover:bg-[#5a7ee6] text-white shadow-xl shadow-[#668cff]/20 transition-all duration-300 font-bold text-lg"
-        >
-          Continue
-        </Button>
+      <div className="flex flex-col gap-4 pt-8">
+        {trialSettings?.free_trial_enabled && (
+          <Button
+            onClick={handleStartTrial}
+            variant="outline"
+            className="h-16 w-full rounded-2xl border-2 border-[#668cff] text-[#668cff] hover:bg-[#668cff]/5 transition-all duration-300 font-bold text-lg flex items-center justify-center gap-3 group"
+          >
+            <Sparkle weight="fill" className="text-[#EAB308] group-hover:scale-110 transition-transform" />
+            Start {trialSettings.free_trial_days}-Day Free Trial
+            <Sparkle weight="fill" className="text-[#EAB308] group-hover:scale-110 transition-transform" />
+          </Button>
+        )}
+        
+        <div className="flex gap-4 w-full">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={prevStep}
+            className="h-14 px-10 rounded-2xl text-gray-500 hover:text-gray-900 font-medium"
+          >
+            Back
+          </Button>
+          <Button
+            onClick={handleContinue}
+            className="h-14 flex-1 rounded-2xl bg-[#668cff] hover:bg-[#5a7ee6] text-white shadow-xl shadow-[#668cff]/20 transition-all duration-300 font-bold text-lg"
+          >
+            Continue with {plans.find(p => p.key === selected)?.name || "Plan"}
+          </Button>
+        </div>
       </div>
     </div>
   );

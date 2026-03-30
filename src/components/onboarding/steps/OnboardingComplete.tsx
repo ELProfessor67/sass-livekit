@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { CheckCircle, Sparkles } from "lucide-react";
 import { extractTenantFromHostname } from "@/lib/tenant-utils";
 import { ensureUserExists } from "@/lib/supabase-retry";
+import { getTenantTrialSettings } from "@/lib/plan-config";
 
 export function OnboardingComplete() {
   const { data, complete } = useOnboarding();
@@ -50,6 +51,27 @@ export function OnboardingComplete() {
         // This addresses the "user not created" concern
         await ensureUserExists(user.id, signupData.name || data.name);
 
+        // Allocate trial minutes if user chose a free trial
+        if (data.isTrial) {
+          try {
+            const tenant = extractTenantFromHostname();
+            const tenantSlug = tenant === "main" ? null : tenant;
+            const trialSettings = await getTenantTrialSettings(tenantSlug);
+            if (trialSettings?.free_trial_enabled && trialSettings.free_trial_minutes > 0) {
+              await supabase
+                .from("users")
+                .update({
+                  minutes_limit: trialSettings.free_trial_minutes,
+                  plan: data.plan || "starter",
+                } as any)
+                .eq("id", user.id);
+            }
+          } catch (trialError) {
+            console.error("Failed to allocate trial minutes:", trialError);
+            // Non-fatal — user can still proceed, admin can allocate minutes manually
+          }
+        }
+
         // Validate signup data
         if (!signupData.email || !signupData.password) {
           console.error("Invalid signup data:", signupData);
@@ -67,12 +89,15 @@ export function OnboardingComplete() {
           notifications: data.notifications,
           goals: data.goals,
           plan: data.plan,
-          stripePaymentMethodId: data.paymentMethodId,
-          cardBrand: data.cardBrand,
-          cardLast4: data.cardLast4,
-          cardExpMonth: data.cardExpMonth,
-          cardExpYear: data.cardExpYear,
-          onboarding_completed: true
+          onboarding_completed: true,
+          // Only include payment info if not a trial
+          ...(data.isTrial ? {} : {
+            stripePaymentMethodId: data.paymentMethodId,
+            cardBrand: data.cardBrand,
+            cardLast4: data.cardLast4,
+            cardExpMonth: data.cardExpMonth,
+            cardExpYear: data.cardExpYear,
+          })
         };
 
         const updateOptions: any = { data: updateDataParams };
@@ -156,7 +181,8 @@ export function OnboardingComplete() {
     { title: "Business Profile", description: `${data.companyName} in ${data.industry}` },
     { title: "Use Case", description: "Customized dashboard and terminology" },
     { title: "Preferences", description: `${data.theme} UI with notifications ${data.notifications ? 'enabled' : 'disabled'}` },
-  ];
+    data.isTrial ? { title: "Trial Plan", description: "Free trial activated with minutes included" } : null,
+  ].filter(Boolean) as { title: string; description: string }[];
 
   return (
     <div className="text-center space-y-[var(--space-2xl)]">

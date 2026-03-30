@@ -475,6 +475,179 @@ router.post('/deduct', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/v1/minutes/workspace/:workspaceId
+ * Get minutes info for a specific workspace (owner or admin only)
+ */
+router.get('/workspace/:workspaceId', validateAuth, async (req, res) => {
+  try {
+    const { workspaceId } = req.params;
+    const supabase = getSupabaseClient();
+
+    // Verify caller owns the workspace or is an admin
+    const { data: workspace, error } = await supabase
+      .from('workspace_settings')
+      .select('id, workspace_name, minute_limit, minutes_used, user_id')
+      .eq('id', workspaceId)
+      .single();
+
+    if (error || !workspace) {
+      return res.status(404).json({ success: false, error: 'Workspace not found' });
+    }
+
+    if (workspace.user_id !== req.userId) {
+      // Allow if user is an admin member of the workspace
+      const { data: membership } = await supabase
+        .from('workspace_members')
+        .select('role')
+        .eq('workspace_id', workspaceId)
+        .eq('user_id', req.userId)
+        .single();
+
+      if (!membership || !['owner', 'admin', 'manager'].includes(membership.role)) {
+        return res.status(403).json({ success: false, error: 'Access denied' });
+      }
+    }
+
+    const minuteLimit = workspace.minute_limit || 0;
+    const minutesUsed = workspace.minutes_used || 0;
+    const remaining = Math.max(0, minuteLimit - minutesUsed);
+
+    res.json({
+      success: true,
+      data: {
+        workspaceId,
+        workspaceName: workspace.workspace_name,
+        minuteLimit,
+        minutesUsed,
+        remainingMinutes: remaining,
+        percentageUsed: minuteLimit > 0 ? Math.round((minutesUsed / minuteLimit) * 100) : 0,
+      }
+    });
+  } catch (error) {
+    console.error('Error in GET /minutes/workspace/:workspaceId:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/v1/minutes/workspace/:workspaceId/assign
+ * Assign (set) the minute limit for a workspace.
+ * Only the workspace owner or an admin can do this.
+ */
+router.post('/workspace/:workspaceId/assign', validateAuth, async (req, res) => {
+  try {
+    const { workspaceId } = req.params;
+    const { minutes } = req.body;
+
+    if (minutes === undefined || typeof minutes !== 'number' || minutes < 0) {
+      return res.status(400).json({ success: false, error: 'minutes must be a non-negative number' });
+    }
+
+    const supabase = getSupabaseClient();
+
+    // Verify workspace exists and caller owns it
+    const { data: workspace, error: wsError } = await supabase
+      .from('workspace_settings')
+      .select('id, workspace_name, minute_limit, minutes_used, user_id')
+      .eq('id', workspaceId)
+      .single();
+
+    if (wsError || !workspace) {
+      return res.status(404).json({ success: false, error: 'Workspace not found' });
+    }
+
+    if (workspace.user_id !== req.userId) {
+      return res.status(403).json({ success: false, error: 'Only the workspace owner can assign minutes' });
+    }
+
+    // Validate the new limit against the owner's own minutes_limit (can't allocate more than they own)
+    const { data: ownerData } = await supabase
+      .from('users')
+      .select('minutes_limit, is_unlimited')
+      .eq('id', req.userId)
+      .single();
+
+    const ownerLimit = ownerData?.minutes_limit || 0;
+    const isUnlimited = ownerData?.is_unlimited || false;
+
+    if (!isUnlimited && ownerLimit > 0 && minutes > ownerLimit) {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot allocate ${minutes} minutes — your account only has ${ownerLimit} minutes total.`,
+      });
+    }
+
+    const { error: updateError } = await supabase
+      .from('workspace_settings')
+      .update({ minute_limit: minutes })
+      .eq('id', workspaceId);
+
+    if (updateError) {
+      console.error('Error updating workspace minute_limit:', updateError);
+      return res.status(500).json({ success: false, error: 'Failed to update workspace minutes' });
+    }
+
+    res.json({
+      success: true,
+      message: `Workspace minute limit set to ${minutes}`,
+      data: {
+        workspaceId,
+        workspaceName: workspace.workspace_name,
+        previousLimit: workspace.minute_limit || 0,
+        newLimit: minutes,
+        minutesUsed: workspace.minutes_used || 0,
+      }
+    });
+  } catch (error) {
+    console.error('Error in POST /minutes/workspace/:workspaceId/assign:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/v1/minutes/workspace/:workspaceId/reset
+ * Reset minutes_used to 0 for a workspace (e.g. monthly reset). Owner only.
+ */
+router.post('/workspace/:workspaceId/reset', validateAuth, async (req, res) => {
+  try {
+    const { workspaceId } = req.params;
+    const supabase = getSupabaseClient();
+
+    const { data: workspace, error: wsError } = await supabase
+      .from('workspace_settings')
+      .select('id, workspace_name, user_id, minutes_used')
+      .eq('id', workspaceId)
+      .single();
+
+    if (wsError || !workspace) {
+      return res.status(404).json({ success: false, error: 'Workspace not found' });
+    }
+
+    if (workspace.user_id !== req.userId) {
+      return res.status(403).json({ success: false, error: 'Only the workspace owner can reset minutes' });
+    }
+
+    const { error: updateError } = await supabase
+      .from('workspace_settings')
+      .update({ minutes_used: 0 })
+      .eq('id', workspaceId);
+
+    if (updateError) {
+      return res.status(500).json({ success: false, error: 'Failed to reset workspace minutes' });
+    }
+
+    res.json({
+      success: true,
+      message: `Workspace minutes usage reset to 0`,
+      data: { workspaceId, previousUsed: workspace.minutes_used || 0, minutesUsed: 0 }
+    });
+  } catch (error) {
+    console.error('Error in POST /minutes/workspace/:workspaceId/reset:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 export default router;
 
 

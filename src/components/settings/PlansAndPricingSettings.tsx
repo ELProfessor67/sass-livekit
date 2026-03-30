@@ -8,6 +8,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { getPlanConfig, getPlanConfigs, type PlanConfig } from "@/lib/plan-config";
+import { MinutesPurchaseDialog } from "@/components/settings/billing/MinutesPurchaseDialog";
+import { ChangePlanDialog } from "@/components/settings/billing/ChangePlanDialog";
 import {
   Check,
   Zap,
@@ -19,7 +21,10 @@ import {
   Users,
   Phone,
   BarChart3,
-  Shield
+  Shield,
+  Clock,
+  History,
+  Plus
 } from "lucide-react";
 
 // Plans will be generated from PLAN_CONFIGS
@@ -47,9 +52,12 @@ export function PlansAndPricingSettings() {
     calls: { used: number; limit: number; label: string };
     storage: { used: number; limit: number; label: string };
     users: { used: number; limit: number; label: string };
+    minutes: { used: number; limit: number; label: string };
   } | null>(null);
   const [loadingUsage, setLoadingUsage] = useState(true);
   const [plans, setPlans] = useState<Record<string, PlanConfig>>({});
+  const [isPurchaseDialogOpen, setIsPurchaseDialogOpen] = useState(false);
+  const [isChangePlanOpen, setIsChangePlanOpen] = useState(false);
   const [loadingPlans, setLoadingPlans] = useState(true);
 
   useEffect(() => {
@@ -99,7 +107,7 @@ export function PlansAndPricingSettings() {
         // Fetch user data for limits
         const { data: userData } = await supabase
           .from('users')
-          .select('minutes_limit, plan')
+          .select('minutes_limit, minutes_used, is_unlimited, plan')
           .eq('id', user.id)
           .single();
 
@@ -186,6 +194,11 @@ export function PlansAndPricingSettings() {
             used: teamMembersUsed,
             limit: teamMembersLimit,
             label: "Team Members"
+          },
+          minutes: {
+            used: userData?.minutes_used || 0,
+            limit: userData?.is_unlimited ? -1 : (userData?.minutes_limit || 0),
+            label: "Available Minutes"
           }
         });
       } catch (error) {
@@ -194,7 +207,8 @@ export function PlansAndPricingSettings() {
         setUsageStats({
           calls: { used: 0, limit: 2500, label: "API Calls" },
           storage: { used: 0, limit: 10, label: "Storage (GB)" },
-          users: { used: 0, limit: 10, label: "Team Members" }
+          users: { used: 0, limit: 10, label: "Team Members" },
+          minutes: { used: 0, limit: 0, label: "Available Minutes" }
         });
       } finally {
         setLoadingUsage(false);
@@ -289,6 +303,17 @@ export function PlansAndPricingSettings() {
               <p className="text-sm text-muted-foreground">Your usage for this billing period</p>
             </div>
           </div>
+          <div className="flex gap-2">
+            <Button 
+                variant="outline" 
+                size="sm" 
+                className="rounded-xl border-primary/20 hover:border-primary/40"
+                onClick={() => setIsPurchaseDialogOpen(true)}
+            >
+                <Plus className="h-4 w-4 mr-2" />
+                Purchase Minutes
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {loadingUsage ? (
@@ -307,16 +332,16 @@ export function PlansAndPricingSettings() {
                     <span className="text-sm text-muted-foreground">
                       {typeof stat.used === 'number' && stat.used % 1 !== 0
                         ? stat.used.toFixed(1)
-                        : stat.used.toLocaleString()} / {stat.limit.toLocaleString()}
+                        : stat.used.toLocaleString()} / {stat.limit === -1 ? '∞' : stat.limit.toLocaleString()}
                     </span>
                   </div>
                   <Progress
-                    value={percentage}
-                    className={`h-2 ${isNearLimit ? 'bg-orange-200' : 'bg-secondary'}`}
+                    value={stat.limit === -1 ? 0 : percentage}
+                    className={`h-2 ${isNearLimit && stat.limit !== -1 ? 'bg-orange-200' : 'bg-secondary'}`}
                   />
                   <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{percentage.toFixed(1)}% used</span>
-                    {isNearLimit && <span className="text-orange-500">Approaching limit</span>}
+                    <span>{stat.limit === -1 ? 'Unlimited' : `${percentage.toFixed(1)}% used`}</span>
+                    {isNearLimit && stat.limit !== -1 && <span className="text-orange-500">Approaching limit</span>}
                   </div>
                 </div>
               );
@@ -395,10 +420,10 @@ export function PlansAndPricingSettings() {
                   <Button
                     className="w-full"
                     variant={isCurrent ? "secondary" : isPopular ? "default" : "outline"}
-                    onClick={() => !isCurrent && canEdit && handleUpgrade(planConfig.key)}
-                    disabled={isCurrent || isUpgrading || !canEdit}
+                    onClick={() => !isCurrent && canEdit && setIsChangePlanOpen(true)}
+                    disabled={isCurrent || !canEdit}
                   >
-                    {!canEdit ? "View Only" : (isUpgrading ? "Processing..." : isCurrent ? "Current Plan" : `Upgrade to ${planConfig.name}`)}
+                    {!canEdit ? "View Only" : isCurrent ? "Current Plan" : `Switch to ${planConfig.name}`}
                   </Button>
                 </CardContent>
               </Card>
@@ -425,14 +450,14 @@ export function PlansAndPricingSettings() {
             <Button
               variant="outline"
               className="justify-start h-auto p-4"
-              onClick={() => canEdit && handleBillingPortal()}
+              onClick={() => canEdit && setIsChangePlanOpen(true)}
               disabled={!canEdit}
             >
               <div className="flex items-center gap-3">
                 <Calendar className="h-5 w-5 text-muted-foreground" />
                 <div className="text-left">
-                  <p className="font-medium">Billing Portal</p>
-                  <p className="text-xs text-muted-foreground">View invoices, update payment methods</p>
+                  <p className="font-medium">Change Plan</p>
+                  <p className="text-xs text-muted-foreground">Upgrade or downgrade your subscription</p>
                 </div>
               </div>
             </Button>
@@ -452,6 +477,32 @@ export function PlansAndPricingSettings() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Change Plan Dialog */}
+      <ChangePlanDialog
+          open={isChangePlanOpen}
+          onOpenChange={setIsChangePlanOpen}
+          currentPlan={selectedPlan}
+          onPlanChanged={(newPlan) => {
+              setSelectedPlan(newPlan);
+              updateProfile?.({ plan: newPlan });
+          }}
+      />
+
+      {/* Minutes Purchase Dialog */}
+      <MinutesPurchaseDialog
+          open={isPurchaseDialogOpen}
+          onOpenChange={setIsPurchaseDialogOpen}
+          currentBalance={usageStats?.minutes.limit === -1 ? 0 : (usageStats?.minutes.limit || 0) - (usageStats?.minutes.used || 0)}
+          isUnlimited={usageStats?.minutes.limit === -1}
+          minutesUsed={usageStats?.minutes.used || 0}
+          onPurchaseComplete={async () => {
+              // Refresh usage stats after purchase
+              setLoadingUsage(true);
+              // The useEffect with user?.id dependency will re-fetch
+              // or we can manually call it
+          }}
+      />
     </div>
   );
 }

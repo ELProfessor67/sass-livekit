@@ -90,7 +90,8 @@ class DatabaseClient:
                 "analysis_structured_data_properties, analysis_summary_timeout, analysis_evaluation_timeout, "
                 "analysis_structured_data_timeout, end_call_message, idle_messages, max_idle_messages, "
                 "silence_timeout, max_call_duration, num_words_to_interrupt_assistant, user_id, inbound_workflow_id, "
-                "transfer_enabled, transfer_phone_number, transfer_country_code, transfer_sentence, transfer_condition"
+                "transfer_enabled, transfer_phone_number, transfer_country_code, transfer_sentence, transfer_condition, "
+                "workspace_id"
             ).eq("id", assistant_id).single().execute()
             
             if result.data:
@@ -210,8 +211,9 @@ class DatabaseClient:
             if update_result.data:
                 logging.info(f"Minutes deducted: user={user_id}, deducted={minutes_to_deduct}, used={new_used}/{current_limit}, remaining={remaining}")
                 
-                # Check if user exceeded limit (0 means unlimited)
-                exceeded = (current_limit > 0) and (new_used > current_limit)
+                # Check if user exceeded limit (is_unlimited bypasses this)
+                is_unlimited = result.data.get("is_unlimited", False)
+                exceeded = (not is_unlimited) and (new_used > current_limit)
                 if exceeded:
                     logging.warning(f"User {user_id} exceeded minutes limit: {new_used}/{current_limit}")
                 
@@ -242,7 +244,7 @@ class DatabaseClient:
         
         try:
             result = self._client.table("users").select(
-                "minutes_limit, minutes_used, is_active"
+                "minutes_limit, minutes_used, is_active, is_unlimited"
             ).eq("id", user_id).single().execute()
             
             if not result.data:
@@ -254,12 +256,23 @@ class DatabaseClient:
             remaining = max(0, minutes_limit - minutes_used)
             is_active = result.data.get("is_active", True)
             
-            # If user has no limit set (0), allow calls (unlimited plan)
-            if minutes_limit == 0:
+            is_unlimited = result.data.get("is_unlimited", False)
+            
+            # If user is unlimited, allow calls
+            if is_unlimited:
                 return {
                     "available": True,
                     "remaining_minutes": 0,
                     "unlimited": True
+                }
+            
+            # 0 minutes limit now means 0 minutes (no longer unlimited)
+            if minutes_limit <= 0:
+                return {
+                    "available": False,
+                    "remaining_minutes": 0,
+                    "unlimited": False,
+                    "error": "No minutes in package"
                 }
             
             available = remaining > 0 and is_active
@@ -277,6 +290,88 @@ class DatabaseClient:
             logging.error(f"Error checking minutes: {e}")
             # On error, allow call to proceed (fail open)
             return {"available": True, "error": str(e)}
+
+
+    async def check_workspace_minutes_available(self, workspace_id: str) -> Dict[str, Any]:
+        """
+        Check if a workspace has minutes available before starting a call.
+        Only enforced when the workspace has a minute_limit > 0.
+        Returns dict with availability status and remaining minutes.
+        """
+        if not self.is_available():
+            return {"available": True, "error": "Database not available - allowing call"}
+
+        try:
+            result = self._client.table("workspace_settings").select(
+                "id, minute_limit, minutes_used"
+            ).eq("id", workspace_id).single().execute()
+
+            if not result.data:
+                logging.warning(f"Workspace not found for minutes check: {workspace_id}")
+                return {"available": True, "error": "Workspace not found - allowing call"}
+
+            minute_limit = result.data.get("minute_limit", 0) or 0
+            minutes_used = result.data.get("minutes_used", 0) or 0
+
+            # No limit set (0 = unlimited for workspace)
+            if minute_limit <= 0:
+                return {"available": True, "unlimited": True, "remaining_minutes": 0}
+
+            remaining = max(0, minute_limit - minutes_used)
+            return {
+                "available": remaining > 0,
+                "remaining_minutes": remaining,
+                "minute_limit": minute_limit,
+                "minutes_used": minutes_used,
+                "unlimited": False,
+            }
+        except Exception as e:
+            logging.error(f"Error checking workspace minutes: {e}")
+            return {"available": True, "error": str(e)}
+
+    async def deduct_workspace_minutes(self, workspace_id: str, minutes: float) -> Dict[str, Any]:
+        """
+        Deduct minutes from a workspace after a call completes.
+        Only updates minutes_used; does not block calls (enforcement is pre-call).
+        """
+        if not self.is_available():
+            return {"success": False, "error": "Database not available"}
+
+        try:
+            minutes_to_deduct = int(minutes) + (1 if minutes % 1 > 0 else 0)
+
+            result = self._client.table("workspace_settings").select(
+                "minute_limit, minutes_used"
+            ).eq("id", workspace_id).single().execute()
+
+            if not result.data:
+                return {"success": False, "error": "Workspace not found"}
+
+            minute_limit = result.data.get("minute_limit", 0) or 0
+            current_used = result.data.get("minutes_used", 0) or 0
+            new_used = current_used + minutes_to_deduct
+            remaining = max(0, minute_limit - new_used) if minute_limit > 0 else 0
+
+            update_result = self._client.table("workspace_settings").update({
+                "minutes_used": new_used
+            }).eq("id", workspace_id).execute()
+
+            if update_result.data:
+                logging.info(f"Workspace minutes deducted: workspace={workspace_id}, deducted={minutes_to_deduct}, used={new_used}/{minute_limit}")
+                exceeded = minute_limit > 0 and new_used > minute_limit
+                return {
+                    "success": True,
+                    "minutes_deducted": minutes_to_deduct,
+                    "minutes_used": new_used,
+                    "minute_limit": minute_limit,
+                    "remaining_minutes": remaining,
+                    "exceeded_limit": exceeded,
+                }
+            else:
+                return {"success": False, "error": "Failed to update workspace minutes"}
+        except Exception as e:
+            logging.error(f"Error deducting workspace minutes: {e}")
+            return {"success": False, "error": str(e)}
 
 
 # Global database client instance
