@@ -33,11 +33,13 @@ export default function AuthCallback() {
         .eq("id", currentUser.id)
         .single();
 
-      // Check localStorage as fallback
+      // Only use localStorage as fallback when the DB query itself fails (network/timeout),
+      // not when it succeeds but returns a new user with onboarding_completed = false/null.
       const localCompleted = localStorage.getItem("onboarding-completed") === "true";
+      const dbCompleted = (userData as any)?.onboarding_completed === true;
 
-      // Determine if onboarding is completed
-      const onboardingCompleted = (userData as any)?.onboarding_completed === true || localCompleted;
+      // If the DB query had an error (not just missing data), fall back to localStorage
+      const onboardingCompleted = error ? localCompleted : dbCompleted;
 
       // Redirect based on onboarding status
       const savedReturnTo = sessionStorage.getItem("returnTo");
