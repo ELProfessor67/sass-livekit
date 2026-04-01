@@ -14,6 +14,9 @@ export interface PlanConfig {
   features: string[];
   whitelabelEnabled?: boolean;
   planType?: 'simple' | 'agency' | 'whitelabel';
+  maxAssistants?: number | null;   // null = unlimited
+  workspacesEnabled?: boolean;     // false = workspace tab hidden entirely
+  maxWorkspaces?: number | null;   // null = unlimited
 }
 
 export interface TrialSettings {
@@ -145,7 +148,10 @@ async function fetchPlanConfigsFromDB(tenant?: string | null): Promise<Record<st
           price: Number(plan.price),
           features: Array.isArray(plan.features) ? plan.features : [],
           whitelabelEnabled: plan.whitelabel_enabled ?? false,
-          planType: plan.plan_type || 'simple'
+          planType: plan.plan_type || 'simple',
+          maxAssistants: plan.max_assistants ?? null,
+          workspacesEnabled: plan.workspaces_enabled ?? true,
+          maxWorkspaces: plan.max_workspaces ?? null,
         };
       });
 
@@ -176,7 +182,10 @@ async function fetchPlanConfigsFromDB(tenant?: string | null): Promise<Record<st
           price: Number(plan.price),
           features: Array.isArray(plan.features) ? plan.features : [],
           whitelabelEnabled: plan.whitelabel_enabled ?? false,
-          planType: plan.plan_type || 'simple'
+          planType: plan.plan_type || 'simple',
+          maxAssistants: plan.max_assistants ?? null,
+          workspacesEnabled: plan.workspaces_enabled ?? true,
+          maxWorkspaces: plan.max_workspaces ?? null,
         };
       });
 

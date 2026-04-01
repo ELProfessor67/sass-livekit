@@ -50,9 +50,10 @@ interface SMTPAuthDialogProps {
     onSuccess?: () => void;
     children?: React.ReactNode;
     initialData?: UserSMTPCredentials | null;
+    workspaceId?: string | null;
 }
 
-export function SMTPAuthDialog({ onSuccess, children, initialData }: SMTPAuthDialogProps) {
+export function SMTPAuthDialog({ onSuccess, children, initialData, workspaceId }: SMTPAuthDialogProps) {
     const { toast } = useToast();
     const [open, setOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -88,7 +89,7 @@ export function SMTPAuthDialog({ onSuccess, children, initialData }: SMTPAuthDia
     async function onSubmit(data: SMTPFormValues) {
         try {
             setIsLoading(true);
-            await SMTPCredentialsService.saveCredentials(data as SMTPCredentialsInput);
+            await SMTPCredentialsService.saveCredentials(data as SMTPCredentialsInput, workspaceId);
 
             toast({
                 title: "Success",

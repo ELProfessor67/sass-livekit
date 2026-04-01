@@ -14,7 +14,7 @@ const integrations = [
     name: "Twilio",
     description: "Voice and SMS communication platform",
     icon: Phone,
-    status: "connected",
+    status: "available",
     category: "Communication"
   },
   {
@@ -38,7 +38,7 @@ const integrations = [
     name: "Webhooks",
     description: "Custom HTTP callbacks for real-time events",
     icon: Webhook,
-    status: "configured",
+    status: "available",
     category: "Developer"
   },
   {
@@ -54,7 +54,7 @@ const integrations = [
     name: "REST API",
     description: "Direct API access to all platform features",
     icon: Globe,
-    status: "active",
+    status: "available",
     category: "Developer"
   }
 ];

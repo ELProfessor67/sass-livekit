@@ -820,6 +820,7 @@ router.get('/users', validateAdminAccess, async (req, res) => {
         role: profile?.role,
         is_active: profile?.is_active,
         created_on: profile?.created_on || user.created_at,
+        updated_at: profile?.updated_at,
         tenant: profile?.tenant,
         slug_name: profile?.slug_name,
         company: profile?.company,
@@ -827,7 +828,11 @@ router.get('/users', validateAdminAccess, async (req, res) => {
         contact: profile?.contact || {},
         email_confirmed: user.email_confirmed_at !== null,
         last_sign_in: user.last_sign_in_at,
-        plan: profile?.plan
+        plan: profile?.plan,
+        minutes_limit: profile?.minutes_limit,
+        minutes_used: profile?.minutes_used,
+        is_unlimited: profile?.is_unlimited,
+        is_whitelabel: !!profile?.slug_name
       };
     });
 

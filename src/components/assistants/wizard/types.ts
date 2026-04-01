@@ -22,6 +22,13 @@ export interface ModelData {
   calEventTypeSlug?: string;
   calTimezone?: string;
   timezoneFormat: 'US-based' | 'International';
+  transcriber: {
+    model: string;
+    language: string;
+  };
+  whatsappCredentialsId?: string;
+  whatsappNumber?: string;
+  whatsappKey?: string;
 }
 
 export interface VoiceData {
@@ -99,6 +106,15 @@ export interface AdvancedData {
   transferCountryCode: string;
   transferSentence: string;
   transferCondition: string;
+  endCallMessage: string;
+  firstSms?: string;
+  smsPrompt?: string;
+  whatsappNumber?: string;
+  whatsappKey?: string;
+  maxCallDuration: number;
+  idleMessages: string[];
+  idleMessageMaxSpokenCount: number;
+  silenceTimeoutSeconds: number;
 }
 
 export interface SMSData {

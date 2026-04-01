@@ -109,7 +109,8 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
         if (!user?.id) return;
         setIsLoadingConnections(true);
         try {
-            const res = await fetch(`/api/v1/connections?provider=slack&userId=${user.id}`);
+            const workspaceIdParam = currentWorkspace?.id ? `&workspaceId=${currentWorkspace.id}` : '';
+            const res = await fetch(`/api/v1/connections?provider=slack&userId=${user.id}${workspaceIdParam}`);
             const data = await res.json();
             setSlackConnections(data.connections || []);
         } catch (error) {
@@ -123,7 +124,8 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
         if (!user?.id) return;
         setIsLoadingConnections(true);
         try {
-            const res = await fetch(`/api/v1/connections?provider=hubspot&userId=${user.id}`);
+            const workspaceIdParam = currentWorkspace?.id ? `&workspaceId=${currentWorkspace.id}` : '';
+            const res = await fetch(`/api/v1/connections?provider=hubspot&userId=${user.id}${workspaceIdParam}`);
             const fetchedData = await res.json();
             const connections = fetchedData.connections || [];
             setHubspotConnections(connections);
@@ -143,7 +145,8 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, customVariables = []
         if (!user?.id) return;
         setIsLoadingConnections(true);
         try {
-            const res = await fetch(`/api/v1/connections?provider=gohighlevel&userId=${user.id}`);
+            const workspaceIdParam = currentWorkspace?.id ? `&workspaceId=${currentWorkspace.id}` : '';
+            const res = await fetch(`/api/v1/connections?provider=gohighlevel&userId=${user.id}${workspaceIdParam}`);
             const fetchedData = await res.json();
             const connections = fetchedData.connections || [];
             setGhlConnections(connections);

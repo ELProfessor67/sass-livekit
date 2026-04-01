@@ -24,6 +24,7 @@ import {
 
 interface Invoice {
   id: string;
+  originalId?: string;
   date: string;
   amount: string;
   status: "paid" | "pending";
@@ -44,6 +45,64 @@ export function InvoiceHistoryCard({ invoices }: InvoiceHistoryCardProps) {
   const totalPages = Math.ceil(sortedInvoices.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const paginatedInvoices = sortedInvoices.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  const handleDownload = (invoice: Invoice) => {
+    const formattedDate = new Date(invoice.date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const receiptHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Receipt ${invoice.id}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: #111; padding: 60px; max-width: 600px; margin: 0 auto; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 48px; }
+    .brand { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+    .badge { display: inline-block; background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; border-radius: 999px; font-size: 11px; font-weight: 700; padding: 3px 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+    h1 { font-size: 28px; font-weight: 300; margin-bottom: 8px; }
+    .invoice-id { color: #6b7280; font-size: 14px; margin-bottom: 32px; }
+    .divider { border: none; border-top: 1px solid #e5e7eb; margin: 28px 0; }
+    .row { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 12px; }
+    .label { color: #6b7280; }
+    .value { font-weight: 500; }
+    .total-row { display: flex; justify-content: space-between; font-size: 18px; font-weight: 600; margin-top: 8px; }
+    .footer { margin-top: 48px; font-size: 12px; color: #9ca3af; text-align: center; }
+    @media print { body { padding: 40px; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+   
+    <span class="badge">${invoice.status}</span>
+  </div>
+  <h1>Receipt</h1>
+  <p class="invoice-id">Invoice #${invoice.id}</p>
+  <hr class="divider" />
+  <div class="row"><span class="label">Date</span><span class="value">${formattedDate}</span></div>
+  <div class="row"><span class="label">Invoice ID</span><span class="value">${invoice.id}</span></div>
+  <div class="row"><span class="label">Status</span><span class="value">${invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}</span></div>
+  <hr class="divider" />
+  <div class="total-row"><span>Total</span><span>${invoice.amount}</span></div>
+  <div class="footer">
+    <p>Thank you for your business.</p>
+    <p style="margin-top:6px">This is an official receipt generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.</p>
+  </div>
+  <script>window.onload = () => window.print();<\/script>
+</body>
+</html>`;
+
+    const blob = new Blob([receiptHtml], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (win) {
+      win.addEventListener('afterprint', () => URL.revokeObjectURL(url));
+    }
+  };
 
   const handlePreviousPage = () => {
     setCurrentPage((prev) => Math.max(prev - 1, 1));
@@ -105,8 +164,8 @@ export function InvoiceHistoryCard({ invoices }: InvoiceHistoryCardProps) {
                     </TableCell>
                     <TableCell className="py-4">
                       <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold border ${invoice.status === "paid"
-                          ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                          : "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                        ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                        : "bg-amber-500/10 text-amber-500 border-amber-500/20"
                         }`}>
                         <div className={`w-1 h-1 rounded-full mr-1.5 ${invoice.status === "paid" ? "bg-emerald-500" : "bg-amber-500"}`} />
                         {invoice.status === "paid" ? "PAID" : "PENDING"}
@@ -117,7 +176,8 @@ export function InvoiceHistoryCard({ invoices }: InvoiceHistoryCardProps) {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-primary/10 hover:text-primary"
+                        className="h-8 w-8 rounded-lg transition-all hover:bg-primary/10 hover:text-primary"
+                        onClick={() => handleDownload(invoice)}
                       >
                         <DownloadSimple size={14} weight="bold" />
                       </Button>

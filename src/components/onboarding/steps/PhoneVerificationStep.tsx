@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Phone, ShieldCheck } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 const countryCodes = [
     { code: "+1", country: "United States", flag: "🇺🇸" },
@@ -124,15 +124,6 @@ export function PhoneVerificationStep() {
                 transition={{ duration: 0.6 }}
                 className="space-y-4"
             >
-                <div className="flex justify-center mb-4">
-                    <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
-                        {isOtpSent ? (
-                            <ShieldCheck className="w-8 h-8 text-primary" />
-                        ) : (
-                            <Phone className="w-8 h-8 text-primary" />
-                        )}
-                    </div>
-                </div>
                 <h1 className="text-4xl font-semibold text-gray-900 tracking-tight">
                     {isOtpSent ? "Enter verification code" : "Verify your phone"}
                 </h1>

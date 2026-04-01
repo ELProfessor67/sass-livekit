@@ -3,84 +3,67 @@ import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { supabase } from "@/integrations/supabase/client";
 
 interface AccountMinutes {
+  totalMinutes: number;
+  usedMinutes: number;
   remainingMinutes: number;
   planName: string;
   percentageUsed: number;
   isLoading: boolean;
 }
 
-// Get backend URL from environment or use default
-const getBackendUrl = () => {
-  return import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000';
-};
-
 export function useAccountMinutes(): AccountMinutes {
   const { user } = useAuth();
-  const [remainingMinutes, setRemainingMinutes] = useState(0);
+  const [totalMinutes, setTotalMinutes] = useState(0);
+  const [usedMinutes, setUsedMinutes] = useState(0);
   const [planName, setPlanName] = useState("Free Plan");
-  const [percentageUsed, setPercentageUsed] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (!user) {
-      // Reset to defaults when no user
-      setRemainingMinutes(0);
+      setTotalMinutes(0);
+      setUsedMinutes(0);
       setPlanName("Free Plan");
-      setPercentageUsed(0);
       setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
-    
-    const fetchAccountMinutes = async () => {
+
+    const fetchMinutes = async () => {
       try {
-        // Get auth token from Supabase
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.access_token) {
-          throw new Error('No authentication token available');
-        }
+        const { data, error } = await supabase
+          .from("users")
+          .select("minutes_limit, minutes_used, plan")
+          .eq("id", user.id)
+          .single();
 
-        // Fetch real minutes data from API
-        const response = await fetch(`${getBackendUrl()}/api/v1/minutes`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
-          }
-        });
+        if (error) throw error;
 
-        if (!response.ok) {
-          throw new Error(`Failed to fetch minutes: ${response.statusText}`);
-        }
-
-        const result = await response.json();
-        
-        if (result.success && result.data) {
-          setRemainingMinutes(result.data.remainingMinutes || 0);
-          setPlanName(result.data.planName || user.plan || "Free Plan");
-          setPercentageUsed(result.data.percentageUsed || 0);
-        } else {
-          throw new Error(result.error || 'Failed to fetch minutes data');
-        }
+        setTotalMinutes(data?.minutes_limit || 0);
+        setUsedMinutes(data?.minutes_used || 0);
+        setPlanName(data?.plan || user.plan || "Free Plan");
       } catch (error) {
-        console.error('Error fetching account minutes:', error);
-        // On error, set defaults but don't show mock data
-        setRemainingMinutes(0);
+        console.error("Error fetching account minutes:", error);
+        setTotalMinutes(0);
+        setUsedMinutes(0);
         setPlanName(user.plan || "Free Plan");
-        setPercentageUsed(0);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchAccountMinutes();
+    fetchMinutes();
   }, [user]);
 
+  const remainingMinutes = Math.max(0, totalMinutes - usedMinutes);
+  const percentageUsed = totalMinutes > 0 ? Math.min((usedMinutes / totalMinutes) * 100, 100) : 0;
+
   return {
+    totalMinutes,
+    usedMinutes,
     remainingMinutes,
     planName,
     percentageUsed,
-    isLoading
+    isLoading,
   };
 }

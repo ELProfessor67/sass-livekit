@@ -517,14 +517,24 @@ app.get('/api/v1/calls/:callSid/recordings', authenticateToken, async (req, res)
     if (!callSid) {
       return res.status(400).json({ success: false, message: 'callSid is required' });
     }
-    const { data: credentials, error: credError } = await supabaseAdmin
+    const workspaceId = req.workspaceId || req.headers['x-workspace-id'];
+    const isMain = !workspaceId || workspaceId === 'main' || workspaceId === 'null' || workspaceId === 'undefined';
+
+    let query = supabaseAdmin
       .from('user_twilio_credentials')
       .select('*')
       .eq('user_id', userId)
-      .eq('is_active', true)
-      .single();
+      .eq('is_active', true);
+
+    if (!isMain) {
+      query = query.eq('workspace_id', workspaceId);
+    } else {
+      query = query.is('workspace_id', null);
+    }
+
+    const { data: credentials, error: credError } = await query.single();
     if (credError || !credentials) {
-      return res.status(400).json({ success: false, message: 'No Twilio credentials found' });
+      return res.status(400).json({ success: false, message: 'No Twilio credentials found for this workspace' });
     }
     const result = await getCallRecordingInfo({
       accountSid: credentials.account_sid,
@@ -549,14 +559,24 @@ app.get('/api/v1/calls/recording/:recordingSid/audio', authenticateToken, async 
     if (!recordingSid) {
       return res.status(400).json({ success: false, message: 'recordingSid is required' });
     }
-    const { data: credentials, error: credError } = await supabaseAdmin
+    const workspaceId = req.workspaceId || req.headers['x-workspace-id'];
+    const isMain = !workspaceId || workspaceId === 'main' || workspaceId === 'null' || workspaceId === 'undefined';
+
+    let query = supabaseAdmin
       .from('user_twilio_credentials')
       .select('*')
       .eq('user_id', userId)
-      .eq('is_active', true)
-      .single();
+      .eq('is_active', true);
+
+    if (!isMain) {
+      query = query.eq('workspace_id', workspaceId);
+    } else {
+      query = query.is('workspace_id', null);
+    }
+
+    const { data: credentials, error: credError } = await query.single();
     if (credError || !credentials) {
-      return res.status(400).json({ success: false, message: 'No Twilio credentials found' });
+      return res.status(400).json({ success: false, message: 'No Twilio credentials found for this workspace' });
     }
     const accountSid = credentials.account_sid;
     const authToken = credentials.auth_token;

@@ -26,17 +26,27 @@ export interface SMTPCredentialsInput {
 
 export class SMTPCredentialsService {
     /**
-     * Fetch all SMTP credentials for the current user
+     * Fetch SMTP credentials for the current user, optionally scoped to a workspace.
+     * workspaceId = null → main account (workspace_id IS NULL)
+     * workspaceId = string → specific workspace
+     * workspaceId = undefined → no workspace filter (backward compat)
      */
-    static async getCredentials(): Promise<UserSMTPCredentials | null> {
+    static async getCredentials(workspaceId?: string | null): Promise<UserSMTPCredentials | null> {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error("No authenticated user");
 
-        const { data, error } = await supabase
+        let query = supabase
             .from('user_smtp_credentials')
             .select('*')
-            .eq('user_id', user.id)
-            .maybeSingle();
+            .eq('user_id', user.id);
+
+        if (workspaceId !== undefined) {
+            query = workspaceId === null
+                ? query.is('workspace_id', null)
+                : query.eq('workspace_id', workspaceId);
+        }
+
+        const { data, error } = await query.maybeSingle();
 
         if (error) {
             console.error('Error fetching SMTP credentials:', error);
@@ -47,17 +57,24 @@ export class SMTPCredentialsService {
     }
 
     /**
-     * Save or update SMTP credentials for the current user
+     * Save or update SMTP credentials for the current user, optionally scoped to a workspace.
      */
-    static async saveCredentials(credentials: SMTPCredentialsInput): Promise<UserSMTPCredentials> {
+    static async saveCredentials(credentials: SMTPCredentialsInput, workspaceId?: string | null): Promise<UserSMTPCredentials> {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error("No authenticated user");
 
-        const { data: existing, error: fetchError } = await supabase
+        let existingQuery = supabase
             .from('user_smtp_credentials')
             .select('id')
-            .eq('user_id', user.id)
-            .maybeSingle();
+            .eq('user_id', user.id);
+
+        if (workspaceId !== undefined) {
+            existingQuery = workspaceId === null
+                ? existingQuery.is('workspace_id', null)
+                : existingQuery.eq('workspace_id', workspaceId);
+        }
+
+        const { data: existing, error: fetchError } = await existingQuery.maybeSingle();
 
         if (fetchError) throw fetchError;
 
@@ -81,6 +98,7 @@ export class SMTPCredentialsService {
                 .from('user_smtp_credentials')
                 .insert({
                     user_id: user.id,
+                    workspace_id: workspaceId ?? null,
                     ...credentials
                 })
                 .select()

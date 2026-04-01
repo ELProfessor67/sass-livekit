@@ -24,9 +24,10 @@ interface WhatsAppIntegration {
 interface WhatsAppIntegrationCardProps {
   integrations: WhatsAppIntegration[];
   onIntegrationsChange: (integrations: WhatsAppIntegration[]) => void;
+  workspaceId?: string | null;
 }
 
-export function WhatsAppIntegrationCard({ integrations, onIntegrationsChange }: WhatsAppIntegrationCardProps) {
+export function WhatsAppIntegrationCard({ integrations, onIntegrationsChange, workspaceId }: WhatsAppIntegrationCardProps) {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -51,7 +52,7 @@ export function WhatsAppIntegrationCard({ integrations, onIntegrationsChange }: 
         return;
       }
 
-      await WhatsAppCredentialsService.saveCredentials(formData);
+      await WhatsAppCredentialsService.saveCredentials(formData, workspaceId);
       
       toast({
         title: "Success",

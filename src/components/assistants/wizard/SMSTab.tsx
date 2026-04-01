@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -18,6 +19,8 @@ interface SMSTabProps {
 }
 
 export const SMSTab: React.FC<SMSTabProps> = ({ data, onChange }) => {
+  const { currentWorkspace } = useWorkspace();
+  const workspaceId = currentWorkspace?.id ?? null;
   const [isComplianceOpen, setIsComplianceOpen] = React.useState(false);
 
   // Knowledge Base state
@@ -50,7 +53,7 @@ export const SMSTab: React.FC<SMSTabProps> = ({ data, onChange }) => {
     const fetchCalendarCredentials = async () => {
       try {
         setLoadingCalendarCredentials(true);
-        const credentials = await CalendarCredentialsService.getAllCredentials();
+        const credentials = await CalendarCredentialsService.getAllCredentials(workspaceId);
         console.log("Loaded calendar credentials:", credentials);
         setCalendarCredentials(credentials);
       } catch (error) {

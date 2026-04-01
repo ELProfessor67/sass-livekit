@@ -21,10 +21,10 @@ const steps = [
   { component: WelcomeScreen, title: "Welcome" },
   { component: NameStep, title: "Name" },
   { component: PersonalizedGreeting, title: "Greeting" },
-  { component: PhoneVerificationStep, title: "Phone Verification" },
   { component: UseCaseSelectionStep, title: "Use Case" },
   { component: BusinessProfileStep, title: "Business Profile" },
   { component: PreferencesStep, title: "Preferences" },
+  { component: PhoneVerificationStep, title: "Phone Verification" },
   { component: PricingPlanStep, title: "Pricing" },
   { component: PaymentStep, title: "Payment" },
   { component: OnboardingComplete, title: "Complete" }

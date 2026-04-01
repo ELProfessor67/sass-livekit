@@ -5,7 +5,12 @@
       "Bash(xargs grep:*)",
       "Bash(grep:*)",
       "Bash(xargs -I {} basename {})",
-      "Bash(ls /c/Users/PMYLS/Desktop/sass-livekit/supabase/migrations/*.sql)"
+      "Bash(ls /c/Users/PMYLS/Desktop/sass-livekit/supabase/migrations/*.sql)",
+      "Bash(for f:*)",
+      "Bash(do echo:*)",
+      "Read(//c/Users/PMYLS/Desktop/sass-livekit/**)",
+      "Bash(done)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

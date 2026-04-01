@@ -11,6 +11,7 @@ export interface UserCalendarCredentials {
   timezone: string;
   label: string;
   is_active: boolean;
+  workspace_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -29,18 +30,25 @@ export interface CalendarCredentialsInput {
  */
 export class CalendarCredentialsService {
   /**
-   * Get the active calendar credentials for the current user
+   * Get the active calendar credentials for the current user, optionally filtered by workspace.
    */
-  static async getActiveCredentials(): Promise<UserCalendarCredentials | null> {
+  static async getActiveCredentials(workspaceId?: string | null): Promise<UserCalendarCredentials | null> {
     try {
       const userId = await getCurrentUserIdAsync();
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("user_calendar_credentials")
         .select("*")
         .eq("user_id", userId)
-        .eq("is_active", true)
-        .single();
+        .eq("is_active", true);
+
+      if (workspaceId !== undefined) {
+        query = workspaceId === null
+          ? query.is("workspace_id", null)
+          : query.eq("workspace_id", workspaceId);
+      }
+
+      const { data, error } = await query.single();
 
       if (error) {
         if (error.code === 'PGRST116') {
@@ -58,20 +66,27 @@ export class CalendarCredentialsService {
   }
 
   /**
-   * Get active calendar credentials by provider
+   * Get active calendar credentials by provider, optionally filtered by workspace.
    */
-  static async getActiveCredentialsByProvider(provider: string): Promise<UserCalendarCredentials | null> {
+  static async getActiveCredentialsByProvider(provider: string, workspaceId?: string | null): Promise<UserCalendarCredentials | null> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("user_calendar_credentials")
         .select("*")
         .eq("user_id", user.id)
         .eq("provider", provider)
-        .eq("is_active", true)
-        .single();
+        .eq("is_active", true);
+
+      if (workspaceId !== undefined) {
+        query = workspaceId === null
+          ? query.is("workspace_id", null)
+          : query.eq("workspace_id", workspaceId);
+      }
+
+      const { data, error } = await query.single();
 
       if (error) {
         if (error.code === 'PGRST116') {
@@ -91,7 +106,7 @@ export class CalendarCredentialsService {
   /**
    * Save new calendar credentials for the current user
    */
-  static async saveCredentials(credentials: CalendarCredentialsInput): Promise<UserCalendarCredentials> {
+  static async saveCredentials(credentials: CalendarCredentialsInput, workspaceId?: string | null): Promise<UserCalendarCredentials> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated");
@@ -102,12 +117,20 @@ export class CalendarCredentialsService {
         throw new Error("Invalid calendar credentials");
       }
 
-      // Deactivate all existing credentials for this provider
-      await supabase
+      // Deactivate all existing credentials for this provider (scoped to workspace)
+      let deactivateQuery = supabase
         .from("user_calendar_credentials")
         .update({ is_active: false })
         .eq("user_id", user.id)
         .eq("provider", credentials.provider);
+
+      if (workspaceId !== undefined) {
+        deactivateQuery = workspaceId === null
+          ? deactivateQuery.is("workspace_id", null)
+          : deactivateQuery.eq("workspace_id", workspaceId);
+      }
+
+      await deactivateQuery;
 
       // Insert new credentials (simplified - no event type fields needed)
       const { data, error } = await supabase
@@ -120,7 +143,8 @@ export class CalendarCredentialsService {
           event_type_slug: null, // Will be set during assistant creation
           timezone: credentials.timezone,
           label: credentials.label,
-          is_active: true
+          is_active: true,
+          workspace_id: workspaceId ?? null
         })
         .select()
         .single();
@@ -192,17 +216,28 @@ export class CalendarCredentialsService {
   }
 
   /**
-   * Get all calendar credentials for the current user
+   * Get all calendar credentials for the current user, optionally filtered by workspace.
+   * workspaceId = null → main account (workspace_id IS NULL)
+   * workspaceId = string → specific workspace
+   * workspaceId = undefined → all credentials (no workspace filter)
    */
-  static async getAllCredentials(): Promise<UserCalendarCredentials[]> {
+  static async getAllCredentials(workspaceId?: string | null): Promise<UserCalendarCredentials[]> {
     try {
       const userId = await getCurrentUserIdAsync();
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("user_calendar_credentials")
         .select("*")
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
+
+      if (workspaceId !== undefined) {
+        query = workspaceId === null
+          ? query.is("workspace_id", null)
+          : query.eq("workspace_id", workspaceId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -290,9 +325,10 @@ export class CalendarCredentialsService {
 }
 
 // Export convenience functions
-export const getActiveCalendarCredentials = () => CalendarCredentialsService.getActiveCredentials();
-export const getActiveCalendarCredentialsByProvider = (provider: string) => 
-  CalendarCredentialsService.getActiveCredentialsByProvider(provider);
+export const getActiveCalendarCredentials = (workspaceId?: string | null) => 
+  CalendarCredentialsService.getActiveCredentials(workspaceId);
+export const getActiveCalendarCredentialsByProvider = (provider: string, workspaceId?: string | null) => 
+  CalendarCredentialsService.getActiveCredentialsByProvider(provider, workspaceId);
 export const saveCalendarCredentials = (credentials: CalendarCredentialsInput) => 
   CalendarCredentialsService.saveCredentials(credentials);
 export const updateCalendarCredentials = (id: string, credentials: Partial<CalendarCredentialsInput>) => 

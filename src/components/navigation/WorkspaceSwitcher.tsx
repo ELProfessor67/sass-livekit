@@ -117,12 +117,12 @@ export const WorkspaceSwitcher = ({ variant = 'default' }: WorkspaceSwitcherProp
                         placeholder="Search workspaces..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="h-8 bg-transparent border-0 focus-visible:ring-0 text-sm placeholder:text-muted-foreground/50"
-                        iconClassName="h-3.5 w-3.5 text-muted-foreground/50"
+                        className="h-8 bg-white/5 border-white/10 focus-visible:ring-primary/20 text-sm placeholder:text-foreground/50"
+                        iconClassName="h-3.5 w-3.5 text-foreground/50"
                     />
                 </div>
 
-                <Separator className="bg-border/20" />
+                <Separator className="bg-border/40" />
 
                 {/* Workspace List */}
                 <ScrollArea className="max-h-64">
@@ -138,8 +138,8 @@ export const WorkspaceSwitcher = ({ variant = 'default' }: WorkspaceSwitcherProp
                                     }}
                                     className={cn(
                                         "w-full flex items-center gap-2.5 px-2 py-2 rounded-xl transition-all duration-200",
-                                        "hover:bg-muted/30 group",
-                                        isActive && "bg-muted/40"
+                                        "hover:bg-white/5 group",
+                                        isActive && "bg-white/10"
                                     )}
                                 >
                                     <Avatar className="h-8 w-8 ring-1 ring-border/20 transition-all group-hover:ring-primary/20">
@@ -151,7 +151,7 @@ export const WorkspaceSwitcher = ({ variant = 'default' }: WorkspaceSwitcherProp
                                         </AvatarFallback>
                                     </Avatar>
                                     <div className="flex-1 text-left min-w-0">
-                                        <p className="text-sm text-foreground truncate">
+                                        <p className="text-sm font-medium text-foreground truncate">
                                             {workspace.workspace_name}
                                         </p>
                                         <p className="text-xs text-muted-foreground/70">
@@ -172,14 +172,14 @@ export const WorkspaceSwitcher = ({ variant = 'default' }: WorkspaceSwitcherProp
                     </div>
                 </ScrollArea>
 
-                <Separator className="bg-border/20" />
+                <Separator className="bg-border/40" />
 
                 {/* Footer Actions - Only for Owners who can edit */}
                 {canEdit && currentWorkspace.role === 'owner' && (
                     <div className="p-1">
                         <Button
                             variant="ghost"
-                            className="w-full justify-start text-sm text-muted-foreground hover:text-foreground py-1.5 h-auto rounded-xl"
+                            className="w-full justify-start text-sm text-foreground/80 hover:text-foreground py-1.5 h-auto rounded-xl"
                             onClick={() => {
                                 setOpen(false);
                                 toast.info("Navigate to settings to create a workspace");
@@ -190,7 +190,7 @@ export const WorkspaceSwitcher = ({ variant = 'default' }: WorkspaceSwitcherProp
                         </Button>
                         <Button
                             variant="ghost"
-                            className="w-full justify-start text-sm text-muted-foreground hover:text-foreground py-1.5 h-auto rounded-xl"
+                            className="w-full justify-start text-sm text-foreground/80 hover:text-foreground py-1.5 h-auto rounded-xl"
                             onClick={() => {
                                 setOpen(false);
                                 navigate('/settings?tab=workspace');

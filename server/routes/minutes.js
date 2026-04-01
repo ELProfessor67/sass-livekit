@@ -1,7 +1,9 @@
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
+import { stripe } from '../stripe.js';
 
 const router = express.Router();
+console.log('Minutes Router Loading...');
 
 // Initialize Supabase client
 const getSupabaseClient = () => {
@@ -471,6 +473,77 @@ router.post('/deduct', async (req, res) => {
     res.status(500).json({ 
       success: false, 
       error: 'Internal server error' 
+    });
+  }
+});
+
+/**
+ * GET /api/v1/minutes/purchase/:purchaseId/receipt
+ * Get a Stripe receipt/invoice URL for a minute purchase
+ */
+router.get('/purchase/:purchaseId/receipt', validateAuth, async (req, res) => {
+  console.log(`Receipt request received for purchaseId: ${req.params.purchaseId}`);
+  try {
+    const { purchaseId } = req.params;
+    const supabase = getSupabaseClient();
+
+    // Fetch the purchase record
+    const { data: purchase, error: purchaseError } = await supabase
+      .from('minutes_purchases')
+      .select('*')
+      .eq('id', purchaseId)
+      .eq('user_id', req.userId)
+      .single();
+
+    if (purchaseError || !purchase) {
+      console.error('Error fetching purchase:', purchaseError);
+      return res.status(404).json({
+        success: false,
+        error: 'Purchase record not found'
+      });
+    }
+
+    // Only Stripe payments have a receipt URL
+    // payment_id should be a PaymentIntent ID (starting with pi_)
+    if (!purchase.payment_id || !purchase.payment_id.startsWith('pi_')) {
+      // If it's not a Stripe payment, we don't have a receipt URL
+      // We could generate a simple one, but for now we'll return an error
+      return res.status(400).json({
+        success: false,
+        error: 'No Stripe receipt available for this transaction type'
+      });
+    }
+
+    if (!stripe) {
+      return res.status(500).json({
+        success: false,
+        error: 'Stripe is not configured on the server'
+      });
+    }
+
+    // Fetch the PaymentIntent from Stripe to get the receipt URL from the charge
+    const paymentIntent = await stripe.paymentIntents.retrieve(purchase.payment_id, {
+      expand: ['latest_charge']
+    });
+
+    const receiptUrl = paymentIntent.latest_charge?.receipt_url;
+
+    if (!receiptUrl) {
+      return res.status(404).json({
+        success: false,
+        error: 'Stripe receipt URL not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      receiptUrl
+    });
+  } catch (error) {
+    console.error('Error fetching receipt URL:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error while fetching receipt'
     });
   }
 });

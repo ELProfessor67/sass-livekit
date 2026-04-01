@@ -75,13 +75,23 @@ twilioAdminRouter.get('/phone-numbers', async (req, res) => {
             return res.status(401).json({ success: false, message: 'User ID required' });
         }
 
-        // Get user's active credentials
-        const { data: credentials, error: credError } = await supa
+        // Get user's active credentials for this workspace
+        const workspaceId = req.workspaceId || req.headers['x-workspace-id'];
+        const isMain = !workspaceId || workspaceId === 'main' || workspaceId === 'null' || workspaceId === 'undefined';
+
+        let query = supa
             .from('user_twilio_credentials')
             .select('*')
             .eq('user_id', userId)
-            .eq('is_active', true)
-            .single();
+            .eq('is_active', true);
+
+        if (!isMain) {
+            query = query.eq('workspace_id', workspaceId);
+        } else {
+            query = query.is('workspace_id', null);
+        }
+
+        const { data: credentials, error: credError } = await query.single();
 
         if (credError) {
             if (credError.code === 'PGRST116') {
@@ -160,13 +170,23 @@ twilioAdminRouter.post('/assign', async (req, res) => {
             return res.status(400).json({ success: false, message: 'phoneSid and assistantId are required' });
         }
 
-        // Get user's active credentials
-        const { data: credentials, error: credError } = await supa
+        // Get user's active credentials for this workspace
+        const workspaceId = req.workspaceId || req.headers['x-workspace-id'];
+        const isMain = !workspaceId || workspaceId === 'main' || workspaceId === 'null' || workspaceId === 'undefined';
+
+        let query = supa
             .from('user_twilio_credentials')
             .select('*')
             .eq('user_id', userId)
-            .eq('is_active', true)
-            .single();
+            .eq('is_active', true);
+
+        if (!isMain) {
+            query = query.eq('workspace_id', workspaceId);
+        } else {
+            query = query.is('workspace_id', null);
+        }
+
+        const { data: credentials, error: credError } = await query.single();
 
         if (credError) {
             if (credError.code === 'PGRST116') {
@@ -243,13 +263,23 @@ twilioAdminRouter.get('/trunks', async (req, res) => {
             return res.status(401).json({ success: false, message: 'User ID required' });
         }
 
-        // Get user's active credentials
-        const { data: credentials, error: credError } = await supa
+        // Get user's active credentials for this workspace
+        const workspaceId = req.workspaceId || req.headers['x-workspace-id'];
+        const isMain = !workspaceId || workspaceId === 'main' || workspaceId === 'null' || workspaceId === 'undefined';
+
+        let query = supa
             .from('user_twilio_credentials')
             .select('*')
             .eq('user_id', userId)
-            .eq('is_active', true)
-            .single();
+            .eq('is_active', true);
+
+        if (!isMain) {
+            query = query.eq('workspace_id', workspaceId);
+        } else {
+            query = query.is('workspace_id', null);
+        }
+
+        const { data: credentials, error: credError } = await query.single();
 
         if (credError) {
             if (credError.code === 'PGRST116') {
@@ -302,13 +332,23 @@ twilioAdminRouter.post('/trunk/attach', async (req, res) => {
                 .status(400)
                 .json({ success: false, message: 'trunkSid is required' });
 
-        // Get user's active credentials
-        const { data: credentials, error: credError } = await supa
+        // Get user's active credentials for this workspace
+        const workspaceId = req.workspaceId || req.headers['x-workspace-id'];
+        const isMain = !workspaceId || workspaceId === 'main' || workspaceId === 'null' || workspaceId === 'undefined';
+
+        let query = supa
             .from('user_twilio_credentials')
             .select('*')
             .eq('user_id', userId)
-            .eq('is_active', true)
-            .single();
+            .eq('is_active', true);
+
+        if (!isMain) {
+            query = query.eq('workspace_id', workspaceId);
+        } else {
+            query = query.is('workspace_id', null);
+        }
+
+        const { data: credentials, error: credError } = await query.single();
 
         if (credError) {
             if (credError.code === 'PGRST116') {
@@ -354,13 +394,23 @@ twilioAdminRouter.post('/map', async (req, res) => {
 
         console.log(`Mapping phone ${phoneSid || phoneNumber} to assistant ${assistantId} for user ${userId}`);
 
-        // Get user's active credentials
-        const { data: credentials, error: credError } = await supa
+        // Get user's active credentials for this workspace
+        const workspaceId = req.workspaceId || req.headers['x-workspace-id'];
+        const isMain = !workspaceId || workspaceId === 'main' || workspaceId === 'null' || workspaceId === 'undefined';
+
+        let query = supa
             .from('user_twilio_credentials')
             .select('*')
             .eq('user_id', userId)
-            .eq('is_active', true)
-            .single();
+            .eq('is_active', true);
+
+        if (!isMain) {
+            query = query.eq('workspace_id', workspaceId);
+        } else {
+            query = query.is('workspace_id', null);
+        }
+
+        const { data: credentials, error: credError } = await query.single();
 
         if (credError) {
             if (credError.code === 'PGRST116') {

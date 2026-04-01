@@ -14,6 +14,7 @@ import { ChangePlanDialog } from "@/components/settings/billing/ChangePlanDialog
 import { CancelSubscriptionDialog } from "@/components/settings/billing/CancelSubscriptionDialog";
 import { AssignMinutesDialog } from "@/components/settings/billing/AssignMinutesDialog";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { useToast } from "@/hooks/use-toast";
 
 interface UsageItem {
   name: string;
@@ -24,6 +25,8 @@ interface UsageItem {
 
 interface Invoice {
   id: string;
+  originalId?: string;
+  paymentId?: string;
   date: string;
   amount: string;
   status: string;
@@ -43,6 +46,7 @@ interface WorkspaceMinuteRow {
 export default function Billing() {
   const { user } = useAuth();
   const { currentWorkspace } = useWorkspace();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [usage, setUsage] = useState<UsageItem[]>([]);
   const [currentPlan, setCurrentPlan] = useState<{
@@ -432,6 +436,7 @@ export default function Billing() {
               const invoiceDate = new Date(inv.created_at || inv.date);
               allInvoices.push({
                 id: inv.id || inv.invoice_number || `INV-${inv.id?.slice(0, 8)}`,
+                originalId: inv.id,
                 date: invoiceDate.toISOString().split('T')[0],
                 amount: `$${Number(inv.amount || 0).toFixed(2)}`,
                 status: (inv.status || 'paid') as string
@@ -474,6 +479,8 @@ export default function Billing() {
 
               allInvoices.push({
                 id: `MIN-${purchase.id.slice(0, 8)}`,
+                originalId: purchase.id,
+                paymentId: purchase.payment_id,
                 date: purchaseDate.toISOString().split('T')[0],
                 amount: isDebit ? `-$${amount.toFixed(2)}` : `$${amount.toFixed(2)}`,
                 status: invoiceStatus,
@@ -500,6 +507,77 @@ export default function Billing() {
 
     fetchBillingData();
   }, [user?.id, user?.plan, currentWorkspace?.id]);
+
+  const handleDownloadInvoice = (invoice: Invoice) => {
+    const formattedDate = new Date(invoice.date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const descriptionRow = invoice.description
+      ? `<div class="row"><span class="label">Description</span><span class="value">${invoice.description}</span></div>`
+      : '';
+    const minutesRow = invoice.minutes
+      ? `<div class="row"><span class="label">Minutes</span><span class="value">${invoice.minutes}</span></div>`
+      : '';
+
+    const receiptHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Receipt ${invoice.id}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: #111; padding: 60px; max-width: 600px; margin: 0 auto; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 48px; }
+    .brand { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+    .badge { display: inline-block; background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; border-radius: 999px; font-size: 11px; font-weight: 700; padding: 3px 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+    h1 { font-size: 28px; font-weight: 300; margin-bottom: 8px; }
+    .invoice-id { color: #6b7280; font-size: 14px; margin-bottom: 32px; }
+    .divider { border: none; border-top: 1px solid #e5e7eb; margin: 28px 0; }
+    .row { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 12px; }
+    .label { color: #6b7280; }
+    .value { font-weight: 500; }
+    .total-row { display: flex; justify-content: space-between; font-size: 18px; font-weight: 600; margin-top: 8px; }
+    .footer { margin-top: 48px; font-size: 12px; color: #9ca3af; text-align: center; }
+    @media print { body { padding: 40px; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="badge">${invoice.status}</span>
+  </div>
+  <h1>Receipt</h1>
+  <p class="invoice-id">Invoice #${invoice.id}</p>
+  <hr class="divider" />
+  <div class="row"><span class="label">Date</span><span class="value">${formattedDate}</span></div>
+  <div class="row"><span class="label">Invoice ID</span><span class="value">${invoice.id}</span></div>
+  <div class="row"><span class="label">Status</span><span class="value">${invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}</span></div>
+  ${descriptionRow}
+  ${minutesRow}
+  <hr class="divider" />
+  <div class="total-row"><span>Total</span><span>${invoice.amount}</span></div>
+  <div class="footer">
+    <p>Thank you for your business.</p>
+    <p style="margin-top:6px">This is an official receipt generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.</p>
+  </div>
+  <script>window.onload = () => window.print();<\/script>
+</body>
+</html>`;
+
+    const blob = new Blob([receiptHtml], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (win) {
+      win.addEventListener('afterprint', () => URL.revokeObjectURL(url));
+    }
+
+    toast({
+      title: "Receipt ready",
+      description: "Your receipt has been opened for printing/saving.",
+    });
+  };
 
   if (loading) {
     return (
@@ -814,7 +892,12 @@ export default function Billing() {
                             >
                               {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
                             </Badge>
-                            <Button variant="ghost" size="sm" className="gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="gap-2"
+                              onClick={() => handleDownloadInvoice(invoice)}
+                            >
                               <Download className="h-4 w-4" />
                               Download
                             </Button>

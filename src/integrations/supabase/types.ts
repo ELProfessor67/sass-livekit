@@ -227,6 +227,7 @@ export type Database = {
           backchanneling_enabled: boolean | null
           background_denoising_enabled: boolean | null
           background_sound_setting: string | null
+          calendar: string | null
           calendar_id: string | null
           cal_api_key: string | null
           cal_event_type_id: string | null
@@ -237,7 +238,7 @@ export type Database = {
           company_id: string | null
           created_at: string | null
           end_call_message: string | null
-          end_call_phrases: string | null
+          end_call_phrases: Json | null
           filler_injection_enabled: boolean | null
           first_message: string | null
           first_message_mode: string | null
@@ -246,6 +247,9 @@ export type Database = {
           groq_max_tokens: number | null
           groq_model: string | null
           groq_temperature: number | null
+          cerebras_max_tokens: number | null
+          cerebras_model: string | null
+          cerebras_temperature: number | null
           hipaa_compliance: boolean | null
           id: string
           idle_messages: Json | null
@@ -283,7 +287,33 @@ export type Database = {
           voice_style_exaggeration: number | null
           voicemail_detection: boolean | null
           wait_seconds: number | null
-        }
+          workspace_id: string | null
+          inbound_workflow_id: string | null
+          max_token_setting: number | null
+          maximum_duration: number | null
+          max_idle_messages: number | null
+          transcriber_model: string | null
+          transcriber_language: string | null
+          timezone_format: string | null
+          voicemail_detection_enabled: boolean | null
+          response_style: number | null
+          character_limit: number | null
+          response_delay_seconds: number | null
+          llm_request_delay_seconds: number | null
+          num_words_to_interrupt_assistant: number | null
+          max_duration_seconds: number | null
+          transfer_enabled: boolean | null
+          transfer_phone_number: string | null
+          transfer_country_code: string | null
+          transfer_sentence: string | null
+          transfer_condition: string | null
+          whatsapp_credentials_id: string | null
+          whatsapp_number: string | null
+          whatsapp_key: string | null
+          n8n_webhook_url: string | null
+          n8n_webhook_fields: Json | null
+          sms_calendar_booking_enabled: boolean | null
+        },
         Insert: {
           agency_id?: string | null
           analysis_evaluation_prompt?: string | null
@@ -301,6 +331,7 @@ export type Database = {
           backchanneling_enabled?: boolean | null
           background_denoising_enabled?: boolean | null
           background_sound_setting?: string | null
+          calendar?: string | null
           calendar_id?: string | null
           cal_api_key?: string | null
           cal_event_type_id?: string | null
@@ -311,7 +342,7 @@ export type Database = {
           company_id?: string | null
           created_at?: string | null
           end_call_message?: string | null
-          end_call_phrases?: string | null
+          end_call_phrases?: Json | null
           filler_injection_enabled?: boolean | null
           first_message?: string | null
           first_message_mode?: string | null
@@ -362,7 +393,30 @@ export type Database = {
           voice_style_exaggeration?: number | null
           voicemail_detection?: boolean | null
           wait_seconds?: number | null
-        }
+          workspace_id?: string | null
+          inbound_workflow_id?: string | null
+          timezone_format?: string | null
+          voicemail_detection_enabled?: boolean | null
+          response_style?: number | null
+          character_limit?: number | null
+          response_delay_seconds?: number | null
+          llm_request_delay_seconds?: number | null
+          num_words_to_interrupt_assistant?: number | null
+          max_duration_seconds?: number | null
+          transfer_enabled?: boolean | null
+          transfer_phone_number?: string | null
+          transfer_country_code?: string | null
+          transfer_sentence?: string | null
+          transfer_condition?: string | null
+          whatsapp_credentials_id?: string | null
+          whatsapp_number?: string | null
+          whatsapp_key?: string | null
+          n8n_webhook_url?: string | null
+          n8n_webhook_fields?: Json | null
+          sms_calendar_booking_enabled?: boolean | null
+          transcriber_model?: string | null
+          transcriber_language?: string | null
+        },
         Update: {
           agency_id?: string | null
           analysis_evaluation_prompt?: string | null
@@ -380,6 +434,7 @@ export type Database = {
           backchanneling_enabled?: boolean | null
           background_denoising_enabled?: boolean | null
           background_sound_setting?: string | null
+          calendar?: string | null
           calendar_id?: string | null
           cal_api_key?: string | null
           cal_event_type_id?: string | null
@@ -390,7 +445,7 @@ export type Database = {
           company_id?: string | null
           created_at?: string | null
           end_call_message?: string | null
-          end_call_phrases?: string | null
+          end_call_phrases?: Json | null
           filler_injection_enabled?: boolean | null
           first_message?: string | null
           first_message_mode?: string | null
@@ -441,6 +496,29 @@ export type Database = {
           voice_style_exaggeration?: number | null
           voicemail_detection?: boolean | null
           wait_seconds?: number | null
+          workspace_id?: string | null
+          inbound_workflow_id?: string | null
+          timezone_format?: string | null
+          voicemail_detection_enabled?: boolean | null
+          response_style?: number | null
+          character_limit?: number | null
+          response_delay_seconds?: number | null
+          llm_request_delay_seconds?: number | null
+          num_words_to_interrupt_assistant?: number | null
+          max_duration_seconds?: number | null
+          transfer_enabled?: boolean | null
+          transfer_phone_number?: string | null
+          transfer_country_code?: string | null
+          transfer_sentence?: string | null
+          transfer_condition?: string | null
+          whatsapp_credentials_id?: string | null
+          whatsapp_number?: string | null
+          whatsapp_key?: string | null
+          n8n_webhook_url?: string | null
+          n8n_webhook_fields?: Json | null
+          sms_calendar_booking_enabled?: boolean | null
+          transcriber_model?: string | null
+          transcriber_language?: string | null
         }
         Relationships: [
           {
@@ -1652,6 +1730,7 @@ export type Database = {
           smtp_secure: boolean
           from_email: string
           from_name: string | null
+          workspace_id: string | null
           created_at: string
           updated_at: string
         }
@@ -1688,9 +1767,13 @@ export type Database = {
           id: string
           user_id: string
           provider: string
-          access_token: string
-          refresh_token: string | null
-          expires_at: string | null
+          api_key: string
+          event_type_id: string | null
+          event_type_slug: string | null
+          timezone: string
+          label: string
+          is_active: boolean
+          workspace_id: string | null
           created_at: string
           updated_at: string
         }
@@ -1698,9 +1781,13 @@ export type Database = {
           id?: string
           user_id: string
           provider: string
-          access_token: string
-          refresh_token?: string | null
-          expires_at?: string | null
+          api_key: string
+          event_type_id?: string | null
+          event_type_slug?: string | null
+          timezone?: string
+          label: string
+          is_active?: boolean
+          workspace_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -1708,9 +1795,13 @@ export type Database = {
           id?: string
           user_id?: string
           provider?: string
-          access_token?: string
-          refresh_token?: string | null
-          expires_at?: string | null
+          api_key?: string
+          event_type_id?: string | null
+          event_type_slug?: string | null
+          timezone?: string
+          label?: string
+          is_active?: boolean
+          workspace_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -1723,6 +1814,7 @@ export type Database = {
           phone_number_id: string
           waba_id: string
           access_token: string
+          workspace_id: string | null
           created_at: string
           updated_at: string
         }
@@ -1752,6 +1844,10 @@ export type Database = {
           user_id: string
           account_sid: string
           auth_token: string
+          trunk_sid: string | null
+          label: string | null
+          is_active: boolean
+          workspace_id: string | null
           created_at: string
           updated_at: string
         }
@@ -1760,6 +1856,10 @@ export type Database = {
           user_id: string
           account_sid: string
           auth_token: string
+          trunk_sid?: string | null
+          label?: string | null
+          is_active?: boolean
+          workspace_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -1768,6 +1868,10 @@ export type Database = {
           user_id?: string
           account_sid?: string
           auth_token?: string
+          trunk_sid?: string | null
+          label?: string | null
+          is_active?: boolean
+          workspace_id?: string | null
           created_at?: string
           updated_at?: string
         }

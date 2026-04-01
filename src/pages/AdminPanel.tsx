@@ -129,7 +129,7 @@ const AdminPanel = () => {
     if (user.is_unlimited) return 'Unlimited';
     const limit = user.minutes_limit || 0;
     const used = user.minutes_used || 0;
-    const remaining = Math.max(0, user.minutes_limit - used);
+    const remaining = Math.max(0, limit - used);
     return `${remaining.toLocaleString()} min`;
   };
 
@@ -137,8 +137,9 @@ const AdminPanel = () => {
     if (user.is_unlimited) return 'Unlimited';
 
     const used = user.minutes_used || 0;
-    const limit = user.minutes_limit;
+    const limit = user.minutes_limit || 0;
 
+    if (limit === 0) return used > 0 ? 'Exceeded' : 'OK';
     if (used >= limit) return 'Exceeded';
 
     const percentage = used / limit;
@@ -349,7 +350,10 @@ const AdminPanel = () => {
           features: [...plan.features],
           whitelabelEnabled: plan.whitelabelEnabled ?? false,
           planType: plan.planType || 'simple',
-          is_unlimited: !!(plan as any).is_unlimited
+          is_unlimited: !!(plan as any).is_unlimited,
+          maxAssistants: (plan as any).maxAssistants ?? null,
+          workspacesEnabled: (plan as any).workspacesEnabled ?? true,
+          maxWorkspaces: (plan as any).maxWorkspaces ?? null,
         } as any);
       }
     } else {
@@ -362,7 +366,10 @@ const AdminPanel = () => {
         features: [],
         whitelabelEnabled: false,
         planType: 'simple',
-        is_unlimited: false
+        is_unlimited: false,
+        maxAssistants: null,
+        workspacesEnabled: true,
+        maxWorkspaces: null,
       });
     }
 
@@ -431,6 +438,9 @@ const AdminPanel = () => {
         whitelabel_enabled: editPlanData.whitelabelEnabled,
         plan_type: editPlanData.planType || 'simple',
         is_unlimited: !!editPlanData.is_unlimited,
+        max_assistants: (editPlanData as any).maxAssistants ?? null,
+        workspaces_enabled: (editPlanData as any).workspacesEnabled ?? true,
+        max_workspaces: (editPlanData as any).workspacesEnabled ? ((editPlanData as any).maxWorkspaces ?? null) : null,
         tenant: tenant
       };
 
@@ -1366,7 +1376,7 @@ const AdminPanel = () => {
                           {filteredUsers.map((user) => (
                             <TableRow key={user.id}>
                               <TableCell className="font-medium">{user.name || 'N/A'}</TableCell>
-                              <TableCell>{user.contact?.email || 'N/A'}</TableCell>
+                              <TableCell>{user.contact?.email || user?.email || 'N/A'}</TableCell>
                               <TableCell>
                                 <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
                                   {user.role || 'user'}
@@ -1579,7 +1589,7 @@ const AdminPanel = () => {
                         </div>
                       </div>
                     )}
-                    
+
                     {!loadingMinutePricing && (
                       <div className="mt-8 pt-8 border-t border-border/20">
                         <h4 className="text-lg font-medium mb-4">Free Trial Configuration</h4>
@@ -1597,7 +1607,7 @@ const AdminPanel = () => {
                               </span>
                             </div>
                           </div>
-                          
+
                           <div className="space-y-2">
                             <Label htmlFor="trial-minutes">Trial Minutes</Label>
                             <Input
@@ -1609,7 +1619,7 @@ const AdminPanel = () => {
                               onChange={(e) => setMinutePricing(prev => prev ? ({ ...prev, free_trial_minutes: parseInt(e.target.value) || 0 }) : null)}
                             />
                           </div>
-                          
+
                           <div className="space-y-2">
                             <Label htmlFor="trial-days">Trial Duration (Days)</Label>
                             <Input
@@ -1621,7 +1631,7 @@ const AdminPanel = () => {
                               onChange={(e) => setMinutePricing(prev => prev ? ({ ...prev, free_trial_days: parseInt(e.target.value) || 0 }) : null)}
                             />
                           </div>
-                          
+
                           <div className="flex items-end">
                             <Button
                               onClick={handleSaveMinutePricing}
@@ -1688,7 +1698,7 @@ const AdminPanel = () => {
                                   {formatPlanName(user.plan)}
                                 </Badge>
                               </TableCell>
-                              <TableCell>{formatMinutes(user.minutes_limit, user.plan)}</TableCell>
+                              <TableCell>{formatMinutes(user.minutes_limit, user.plan, user.is_unlimited)}</TableCell>
                               <TableCell>{user.minutes_used?.toLocaleString() || 0} min</TableCell>
                               <TableCell>{getRemainingMinutes(user)}</TableCell>
                               <TableCell>
@@ -2168,6 +2178,54 @@ const AdminPanel = () => {
                       onCheckedChange={(checked) => setEditPlanData({ ...editPlanData, is_unlimited: checked })}
                     />
                   </div>
+
+                  {/* Assistants limit */}
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-max-assistants">Max Assistants</Label>
+                    <Input
+                      id="edit-max-assistants"
+                      type="number"
+                      min={0}
+                      value={(editPlanData as any).maxAssistants ?? ''}
+                      onChange={(e) => setEditPlanData({ ...editPlanData, maxAssistants: e.target.value === '' ? null : Number(e.target.value) } as any)}
+                      placeholder="Leave empty for unlimited"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Maximum number of assistants a user can create. Leave empty for unlimited.
+                    </p>
+                  </div>
+
+                  {/* Workspaces enabled toggle */}
+                  <div className="flex items-center justify-between rounded-lg border border-border/40 bg-muted/10 p-4">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Workspaces Enabled</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        When disabled, users on this plan will not see workspace creation or settings.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={(editPlanData as any).workspacesEnabled ?? true}
+                      onCheckedChange={(checked) => setEditPlanData({ ...editPlanData, workspacesEnabled: checked, maxWorkspaces: checked ? (editPlanData as any).maxWorkspaces : null } as any)}
+                    />
+                  </div>
+
+                  {/* Max workspaces — only shown when workspaces are enabled */}
+                  {((editPlanData as any).workspacesEnabled ?? true) && (
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-max-workspaces">Max Workspaces</Label>
+                      <Input
+                        id="edit-max-workspaces"
+                        type="number"
+                        min={0}
+                        value={(editPlanData as any).maxWorkspaces ?? ''}
+                        onChange={(e) => setEditPlanData({ ...editPlanData, maxWorkspaces: e.target.value === '' ? null : Number(e.target.value) } as any)}
+                        placeholder="Leave empty for unlimited"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Maximum workspaces a user can create. Leave empty for unlimited.
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => {

@@ -84,7 +84,7 @@ export const MAIN_WORKSPACE: Workspace = {
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     minutesUsed: 0,
-    minuteLimit: 1400,
+    minuteLimit: 0,
     isOwner: true,
     status: 'active',
     memberCount: 1,
@@ -106,7 +106,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         logoUrl: dbWorkspace.logo_url || undefined,
         description: dbWorkspace.company_description || undefined,
         minutesUsed: dbWorkspace.minutes_used || 0,
-        minuteLimit: dbWorkspace.minute_limit || 1400,
+        minuteLimit: dbWorkspace.minute_limit || 0,
         isOwner: dbWorkspace.user_id === userId,
         role: role || (dbWorkspace.user_id === userId ? 'owner' : 'member'),
         status: 'active',
@@ -269,7 +269,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 workspace_name: workspace.name,
                 company_description: workspace.description || null,
                 logo_url: workspace.logoUrl || null,
-                minute_limit: workspace.minuteLimit || 1400,
+                minute_limit: workspace.minuteLimit || 0,
                 workspace_type: isAgency ? 'client' : 'simple',
             };
 

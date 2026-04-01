@@ -54,17 +54,25 @@ export class WhatsAppCredentialsService {
   /**
    * Save new WhatsApp credentials for the current user
    */
-  static async saveCredentials(input: WhatsAppCredentialsInput): Promise<UserWhatsAppCredentials> {
+  static async saveCredentials(input: WhatsAppCredentialsInput, workspaceId?: string | null): Promise<UserWhatsAppCredentials> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated");
 
-      // First, deactivate any existing active credentials
-      await supabase
+      // Deactivate existing active credentials scoped to the same workspace
+      let deactivateQuery = supabase
         .from("user_whatsapp_credentials")
         .update({ is_active: false })
         .eq("user_id", user.id)
         .eq("is_active", true);
+
+      if (workspaceId !== undefined) {
+        deactivateQuery = workspaceId === null
+          ? deactivateQuery.is("workspace_id", null)
+          : deactivateQuery.eq("workspace_id", workspaceId);
+      }
+
+      await deactivateQuery;
 
       // Insert new credentials as active
       const { data, error } = await supabase
@@ -74,7 +82,8 @@ export class WhatsAppCredentialsService {
           whatsapp_number: input.whatsapp_number,
           whatsapp_key: input.whatsapp_key,
           label: input.label,
-          is_active: true
+          is_active: true,
+          workspace_id: workspaceId ?? null
         })
         .select()
         .single();
@@ -135,18 +144,29 @@ export class WhatsAppCredentialsService {
   }
 
   /**
-   * Get all WhatsApp credentials for the current user
+   * Get all WhatsApp credentials for the current user, optionally filtered by workspace.
+   * workspaceId = null → main account (workspace_id IS NULL)
+   * workspaceId = string → specific workspace
+   * workspaceId = undefined → all credentials (no workspace filter)
    */
-  static async getAllCredentials(): Promise<UserWhatsAppCredentials[]> {
+  static async getAllCredentials(workspaceId?: string | null): Promise<UserWhatsAppCredentials[]> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("user_whatsapp_credentials")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
+
+      if (workspaceId !== undefined) {
+        query = workspaceId === null
+          ? query.is("workspace_id", null)
+          : query.eq("workspace_id", workspaceId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 

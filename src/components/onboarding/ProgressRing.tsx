@@ -1,24 +1,16 @@
 import React from "react";
 import { motion } from "framer-motion";
 import {
-    Building2,
-    Settings,
-    CreditCard,
-    Lock,
-    Sparkles
-} from "lucide-react";
-import {
     HandWaving,
     Star,
+    Phone,
     Rocket,
     Buildings,
-    Globe,
-    AddressBook,
-    Phone,
-    CalendarCheck,
-    PaintBrush,
-    ShieldCheck,
+    Sliders,
+    CreditCard,
+    Lock,
     CheckCircle,
+    ShieldCheck,
 } from "phosphor-react";
 
 interface ProgressRingProps {
@@ -26,16 +18,18 @@ interface ProgressRingProps {
     totalSteps: number;
 }
 
+// Matches steps array in OnboardingLayout.tsx (indices 0–9)
 const stepIcons = [
-    null, // Welcome (step 0) - no progress ring shown
-    HandWaving, // Name Step
-    Star, // Greeting Step
-    Rocket, // Use Case
-    Building2, // Business Profile
-    Settings, // Preferences 
-    CreditCard, // Pricing
-    Lock, // Payment
-    CheckCircle, // Complete
+    null,          // 0: Welcome — no ring shown
+    HandWaving,    // 1: Name
+    Star,          // 2: Greeting
+    Rocket,        // 3: Use Case
+    Buildings,     // 4: Business Profile
+    Sliders,       // 5: Preferences
+    Phone,         // 6: Phone Verification
+    CreditCard,    // 7: Pricing
+    Lock,          // 8: Payment
+    CheckCircle,   // 9: Complete
 ];
 
 export function ProgressRing({ currentStep, totalSteps }: ProgressRingProps) {
@@ -51,10 +45,7 @@ export function ProgressRing({ currentStep, totalSteps }: ProgressRingProps) {
     const circumference = 2 * Math.PI * radius;
     const offset = circumference - (progress / 100) * circumference;
 
-    // Get current step icon
-    const iconValue = stepIcons[currentStep] || Star;
-    const isEmoji = typeof iconValue === "string";
-    const IconComponent = !isEmoji ? iconValue : null;
+    const IconComponent = stepIcons[currentStep] || Star;
 
     return (
         <motion.div
@@ -123,11 +114,7 @@ export function ProgressRing({ currentStep, totalSteps }: ProgressRingProps) {
                     className="absolute inset-0 flex items-center justify-center"
                 >
                     <div className="w-10 h-10 rounded-full bg-white/80 backdrop-blur-sm flex items-center justify-center shadow-sm">
-                        {isEmoji ? (
-                            <span className="text-xl">{iconValue}</span>
-                        ) : (
-                            IconComponent && <IconComponent className="w-6 h-6 text-[#668cff]" />
-                        )}
+                        <IconComponent className="w-6 h-6 text-[#668cff]" weight="duotone" />
                     </div>
                 </motion.div>
             </div>
@@ -138,7 +125,7 @@ export function ProgressRing({ currentStep, totalSteps }: ProgressRingProps) {
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3 }}
-                className="text-sm text-theme-secondary font-medium"
+                className="text-sm text-gray-500 font-medium"
             >
                 Step {currentStep} of {adjustedTotal}
             </motion.p>

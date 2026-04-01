@@ -19,6 +19,7 @@ interface PaymentMethod {
 
 interface Invoice {
   id: string;
+  originalId?: string;
   date: string;
   amount: string;
   status: "paid" | "pending";
@@ -80,6 +81,7 @@ export function BillingSettings() {
               const invoiceDate = new Date(inv.created_at || inv.date);
               allInvoices.push({
                 id: inv.id || inv.invoice_number || `INV-${inv.id?.slice(0, 8)}`,
+                originalId: inv.id,
                 date: invoiceDate.toISOString().split('T')[0],
                 amount: `$${Number(inv.amount || 0).toFixed(2)}`,
                 status: (inv.status || 'paid') as "paid" | "pending"
@@ -108,6 +110,7 @@ export function BillingSettings() {
               
               allInvoices.push({
                 id: `MIN-${purchase.id.slice(0, 8)}`,
+                originalId: purchase.id,
                 date: purchaseDate.toISOString().split('T')[0],
                 amount: `$${Number(purchase.amount_paid || 0).toFixed(2)}`,
                 status: invoiceStatus as "paid" | "pending"

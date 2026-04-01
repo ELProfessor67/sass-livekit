@@ -592,13 +592,22 @@ class WorkflowService {
 
         console.log(`[WorkflowService] Sending SMS to ${targetNumber} (Node: ${node.id})`);
 
-        // Fetch user Twilio credentials
-        const { data: credentials, error: credError } = await supabase
+        // Fetch user Twilio credentials for this workspace
+        const workflowWorkspaceId = workflow.workspace_id || null;
+        
+        let query = supabase
             .from('user_twilio_credentials')
             .select('*')
             .eq('user_id', workflow.user_id)
-            .eq('is_active', true)
-            .single();
+            .eq('is_active', true);
+
+        if (workflowWorkspaceId) {
+            query = query.eq('workspace_id', workflowWorkspaceId);
+        } else {
+            query = query.is('workspace_id', null);
+        }
+
+        const { data: credentials, error: credError } = await query.single();
 
         if (credError || !credentials) {
             console.error('[WorkflowService] Twilio credentials missing for user:', workflow.user_id);
@@ -856,7 +865,7 @@ class WorkflowService {
             return;
         }
 
-        // Fetch connection
+        // Fetch connection and verify workspace isolation
         const { data: connection, error: connError } = await supabase
             .from('connections')
             .select('*')
@@ -866,6 +875,15 @@ class WorkflowService {
         if (connError || !connection) {
             console.error('[WorkflowService] HubSpot connection not found:', connError);
             return;
+        }
+
+        // Verify workspace isolation: workflow workspace must match connection gateway workspace
+        const workflowWorkspaceId = workflow.workspace_id || null;
+        const connectionWorkspaceId = connection.tenant_workspace_id || null;
+
+        if (workflowWorkspaceId !== connectionWorkspaceId) {
+            console.error(`[WorkflowService] HubSpot Connection Space mismatch: Workflow is in ${workflowWorkspaceId}, but connection is in ${connectionWorkspaceId}`);
+            throw new Error('Unauthorized: Integration connection does not belong to this workspace');
         }
 
         let accessToken = connection.access_token;
@@ -1029,7 +1047,7 @@ class WorkflowService {
             return;
         }
 
-        // Fetch connection
+        // Fetch connection and verify workspace isolation
         const { data: connection, error: connError } = await supabase
             .from('connections')
             .select('*')
@@ -1039,6 +1057,15 @@ class WorkflowService {
         if (connError || !connection) {
             console.error('[WorkflowService] GoHighLevel connection not found:', connError);
             return;
+        }
+
+        // Verify workspace isolation: workflow workspace must match connection gateway workspace
+        const workflowWorkspaceId = workflow.workspace_id || null;
+        const connectionWorkspaceId = connection.tenant_workspace_id || null;
+
+        if (workflowWorkspaceId !== connectionWorkspaceId) {
+            console.error(`[WorkflowService] GHL Connection Space mismatch: Workflow is in ${workflowWorkspaceId}, but connection is in ${connectionWorkspaceId}`);
+            throw new Error('Unauthorized: Integration connection does not belong to this workspace');
         }
 
         let accessToken = connection.access_token;
@@ -1129,18 +1156,26 @@ class WorkflowService {
             throw new Error('Slack connection not configured');
         }
 
-        // Fetch connection from database
+        // Fetch connection from database and verify workspace isolation
         const { data: connection, error: connError } = await supabase
             .from('connections')
             .select('*')
             .eq('id', connectionId)
-            .eq('user_id', workflow.user_id)
             .eq('is_active', true)
             .single();
 
         if (connError || !connection) {
-            console.error('[WorkflowService] Slack connection not found:', connectionId);
+            console.error('[WorkflowService] Slack connection not found or inactive:', connectionId);
             throw new Error('Slack connection not found or inactive');
+        }
+
+        // Verify workspace isolation: workflow workspace must match connection gateway workspace
+        const workflowWorkspaceId = workflow.workspace_id || null;
+        const connectionWorkspaceId = connection.tenant_workspace_id || null;
+
+        if (workflowWorkspaceId !== connectionWorkspaceId) {
+            console.error(`[WorkflowService] Slack Connection Space mismatch: Workflow is in ${workflowWorkspaceId}, but connection is in ${connectionWorkspaceId}`);
+            throw new Error('Unauthorized: Integration connection does not belong to this workspace');
         }
 
         const flatContext = this.flattenContext(context);

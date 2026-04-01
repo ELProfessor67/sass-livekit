@@ -256,7 +256,7 @@ const CreateAssistant = () => {
           let calendarValue: string = data.calendar || "None";
           if ((!data.calendar || data.calendar === "None") && data.cal_api_key) {
             try {
-              const credentials = await CalendarCredentialsService.getAllCredentials();
+              const credentials = await CalendarCredentialsService.getAllCredentials(currentWorkspace?.id ?? null);
               const matching = credentials.find((c) => c.api_key === data.cal_api_key);
               if (matching) {
                 calendarValue = matching.id;
@@ -298,7 +298,7 @@ const CreateAssistant = () => {
               calEventTypeId: data.cal_event_type_id || "",
               calEventTypeSlug: data.cal_event_type_slug || "",
               calTimezone: data.cal_timezone || "UTC",
-              timezoneFormat: data.timezone_format || "US-based"
+              timezoneFormat: (data.timezone_format as any) || "US-based"
             },
             voice: {
               provider: data.voice_provider_setting || "ElevenLabs",
@@ -360,7 +360,7 @@ const CreateAssistant = () => {
               }
             },
             analysis: {
-              structuredData: data.structured_data_fields || [],
+              structuredData: (data.structured_data_fields as any) || [],
               callSummary: data.analysis_summary_prompt || "",
               successEvaluation: true,
               customSuccessPrompt: data.analysis_evaluation_prompt || "",
@@ -480,7 +480,6 @@ const CreateAssistant = () => {
       voice_optimize_streaming_latency: formData.voice.optimizeStreaming,
       voice_seconds: formData.voice.voiceSeconds,
       voice_backoff_seconds: formData.voice.backOffSeconds,
-      silence_timeout: formData.voice.silenceTimeout,
       maximum_duration: formData.voice.maxDuration,
       smart_endpointing: String(formData.voice.smartEndpointing).toLowerCase() === "enabled",
 

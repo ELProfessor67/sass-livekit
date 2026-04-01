@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from "framer-motion";
 import { GeneralSettings } from "./GeneralSettings";
 import { WorkspacesManagement } from "./workspace/WorkspacesManagement";
@@ -9,8 +9,8 @@ import { WhitelabelSettings } from "./WhitelabelSettings";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useAuth } from '@/contexts/SupportAccessAuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { useMemo } from 'react';
 import { getPlanConfigs } from '@/lib/plan-config';
+import { usePlanLimits } from '@/hooks/usePlanLimits';
 
 const tabVariants = {
   initial: { opacity: 0, y: 10 },
@@ -25,6 +25,7 @@ interface WorkspaceSettingsProps {
 export function WorkspaceSettings({ initialSubTab }: WorkspaceSettingsProps) {
   const { user } = useAuth();
   const { canViewMembers, canViewBilling, canManageWorkspace } = useWorkspace();
+  const { workspacesEnabled, loading: planLimitsLoading } = usePlanLimits();
   const [activeSubTab, setActiveSubTab] = useState(() => {
     const allowedTabs = ['general', 'workspaces', 'members', 'billing', 'business', 'whitelabel'];
     if (initialSubTab && allowedTabs.includes(initialSubTab)) {
@@ -79,14 +80,20 @@ export function WorkspaceSettings({ initialSubTab }: WorkspaceSettingsProps) {
     }
   }, [whitelabelAvailable, activeSubTab]);
 
+  useEffect(() => {
+    if (!workspacesEnabled && activeSubTab === 'workspaces') {
+      setActiveSubTab('general');
+    }
+  }, [workspacesEnabled, activeSubTab]);
+
   const subTabs = useMemo(() => [
     { id: "general", label: "General" },
-    ...(canManageWorkspace ? [{ id: "workspaces", label: "Workspaces" }] : []),
+    ...(canManageWorkspace && workspacesEnabled ? [{ id: "workspaces", label: "Workspaces" }] : []),
     ...(canViewMembers ? [{ id: "members", label: "Members" }] : []),
     ...(canViewBilling ? [{ id: "billing", label: "Billing" }] : []),
     { id: "business", label: "Business Use Case" },
     ...(whitelabelAvailable ? [{ id: "whitelabel", label: "Whitelabel" }] : [])
-  ], [canViewMembers, canViewBilling, canManageWorkspace, whitelabelAvailable]);
+  ], [canViewMembers, canViewBilling, canManageWorkspace, whitelabelAvailable, workspacesEnabled]);
 
   return (
     <div className="space-y-8">

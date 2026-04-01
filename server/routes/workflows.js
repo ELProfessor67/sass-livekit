@@ -17,11 +17,21 @@ router.use(authenticateToken);
  */
 router.get('/', async (req, res) => {
     try {
-        const { data, error } = await supabase
+        const workspaceId = req.workspaceId;
+        const isMain = !workspaceId || workspaceId === 'main' || workspaceId === 'null' || workspaceId === 'undefined';
+
+        let query = supabase
             .from('workflows')
             .select('*')
-            .eq('user_id', req.user.id)
-            .order('created_at', { ascending: false });
+            .eq('user_id', req.user.id);
+
+        if (!isMain) {
+            query = query.eq('workspace_id', workspaceId);
+        } else {
+            query = query.is('workspace_id', null);
+        }
+
+        const { data, error } = await query.order('created_at', { ascending: false });
 
         if (error) throw error;
         res.json({ success: true, data });
@@ -38,6 +48,8 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
     try {
         const { name, nodes, edges, assistant_id, is_active } = req.body;
+        const workspaceId = req.workspaceId;
+        const isMain = !workspaceId || workspaceId === 'main' || workspaceId === 'null' || workspaceId === 'undefined';
 
         if (!name) {
             return res.status(400).json({ success: false, message: 'Name is required' });
@@ -47,6 +59,7 @@ router.post('/', async (req, res) => {
             .from('workflows')
             .insert({
                 user_id: req.user.id,
+                workspace_id: isMain ? null : workspaceId,
                 assistant_id: assistant_id || null,
                 name,
                 nodes: nodes || [],
@@ -73,16 +86,26 @@ router.patch('/:id', async (req, res) => {
         const { id } = req.params;
         const updates = req.body;
 
-        // Ensure user owns the workflow
-        const { data: workflow, error: fetchError } = await supabase
+        const workspaceId = req.workspaceId;
+        const isMain = !workspaceId || workspaceId === 'main' || workspaceId === 'null' || workspaceId === 'undefined';
+
+        // Ensure user owns the workflow and it's in the correct workspace
+        let query = supabase
             .from('workflows')
             .select('id')
             .eq('id', id)
-            .eq('user_id', req.user.id)
-            .single();
+            .eq('user_id', req.user.id);
+
+        if (!isMain) {
+            query = query.eq('workspace_id', workspaceId);
+        } else {
+            query = query.is('workspace_id', null);
+        }
+
+        const { data: workflow, error: fetchError } = await query.single();
 
         if (fetchError || !workflow) {
-            return res.status(404).json({ success: false, message: 'Workflow not found' });
+            return res.status(404).json({ success: false, message: 'Workflow not found in this workspace' });
         }
 
         const { data, error } = await supabase
@@ -107,11 +130,22 @@ router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
 
-        const { error } = await supabase
+        const workspaceId = req.workspaceId;
+        const isMain = !workspaceId || workspaceId === 'main' || workspaceId === 'null' || workspaceId === 'undefined';
+
+        let query = supabase
             .from('workflows')
             .delete()
             .eq('id', id)
             .eq('user_id', req.user.id);
+
+        if (!isMain) {
+            query = query.eq('workspace_id', workspaceId);
+        } else {
+            query = query.is('workspace_id', null);
+        }
+
+        const { error } = await query;
 
         if (error) throw error;
         res.json({ success: true, message: 'Workflow deleted' });

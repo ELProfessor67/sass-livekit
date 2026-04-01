@@ -52,7 +52,7 @@ const getFrontendUrl = () => {
 
 // List user's connections
 router.get('/', async (req, res) => {
-  const { userId, provider } = req.query;
+  const { userId, provider, workspaceId } = req.query;
 
   if (!userId) {
     return res.status(400).json({ error: 'userId is required' });
@@ -67,6 +67,17 @@ router.get('/', async (req, res) => {
 
     if (provider) {
       query = query.eq('provider', provider);
+    }
+
+    // Scope by tenant workspace:
+    // prioritized order: req.workspaceId (from middleware), then query param
+    const effectiveWorkspaceId = req.workspaceId || workspaceId;
+    const isMain = !effectiveWorkspaceId || effectiveWorkspaceId === 'main' || effectiveWorkspaceId === 'null' || effectiveWorkspaceId === 'undefined';
+    
+    if (!isMain) {
+        query = query.eq('tenant_workspace_id', effectiveWorkspaceId);
+    } else {
+        query = query.is('tenant_workspace_id', null);
     }
 
     const { data, error } = await query.order('created_at', { ascending: false });
@@ -85,7 +96,7 @@ router.get('/', async (req, res) => {
 
 // Slack OAuth initiation
 router.get('/slack/auth', (req, res) => {
-  const { userId } = req.query;
+  const { userId, workspaceId } = req.query;
 
   if (!userId) {
     return res.status(400).send('userId is required');
@@ -97,7 +108,8 @@ router.get('/slack/auth', (req, res) => {
     return res.status(500).send('Slack Client ID is not configured on the server.');
   }
 
-  const state = Buffer.from(JSON.stringify({ userId })).toString('base64');
+  const tenantWorkspaceId = workspaceId && workspaceId !== 'main' ? workspaceId : null;
+  const state = Buffer.from(JSON.stringify({ userId, tenantWorkspaceId })).toString('base64');
   const scopes = 'chat:write,channels:read,users:read,team:read';
   const redirectUri = `${process.env.BACKEND_URL}/api/v1/connections/slack/callback`;
 
@@ -117,7 +129,7 @@ router.get('/slack/callback', async (req, res) => {
 
   try {
     // Decode state
-    const { userId } = JSON.parse(Buffer.from(state, 'base64').toString());
+    const { userId, tenantWorkspaceId } = JSON.parse(Buffer.from(state, 'base64').toString());
 
     if (!userId) {
       throw new Error('Missing userId in state');
@@ -168,6 +180,7 @@ router.get('/slack/callback', async (req, res) => {
         refresh_token: tokenData.refresh_token || null,
         workspace_id: tokenData.team.id,
         workspace_name: teamData.team.name,
+        tenant_workspace_id: tenantWorkspaceId || null,
         is_active: true,
         metadata: {
           team: teamData.team,
@@ -208,7 +221,7 @@ router.get('/slack/callback', async (req, res) => {
 
 // Facebook OAuth initiation - Phase 1: Login only
 router.get('/facebook/auth', (req, res) => {
-  const { userId } = req.query;
+  const { userId, workspaceId } = req.query;
 
   if (!userId) {
     return res.status(400).send('userId is required');
@@ -220,7 +233,8 @@ router.get('/facebook/auth', (req, res) => {
     return res.status(500).send('Facebook App ID is not configured on the server.');
   }
 
-  const state = Buffer.from(JSON.stringify({ userId, phase: 'login' })).toString('base64');
+  const tenantWorkspaceId = workspaceId && workspaceId !== 'main' ? workspaceId : null;
+  const state = Buffer.from(JSON.stringify({ userId, phase: 'login', tenantWorkspaceId })).toString('base64');
   // Phase 1: Only request basic login scopes
   const scopes = 'email,public_profile';
 
@@ -234,7 +248,7 @@ router.get('/facebook/auth', (req, res) => {
 
 // Facebook OAuth initiation - Phase 2: Page permissions
 router.get('/facebook/pages/auth', (req, res) => {
-  const { userId, connectionId } = req.query;
+  const { userId, connectionId, workspaceId } = req.query;
 
   if (!userId || !connectionId) {
     return res.status(400).send('userId and connectionId are required');
@@ -246,7 +260,8 @@ router.get('/facebook/pages/auth', (req, res) => {
     return res.status(500).send('Facebook App ID is not configured on the server.');
   }
 
-  const state = Buffer.from(JSON.stringify({ userId, connectionId, phase: 'pages' })).toString('base64');
+  const tenantWorkspaceId = workspaceId && workspaceId !== 'main' ? workspaceId : null;
+  const state = Buffer.from(JSON.stringify({ userId, connectionId, phase: 'pages', tenantWorkspaceId })).toString('base64');
   // Phase 2: Request page permissions
   const scopes = 'pages_show_list,pages_read_engagement';
 
@@ -269,7 +284,7 @@ router.get('/facebook/callback', async (req, res) => {
   try {
     // Decode state
     const stateData = JSON.parse(Buffer.from(state, 'base64').toString());
-    const { userId, phase } = stateData;
+    const { userId, phase, tenantWorkspaceId } = stateData;
 
     if (!userId || phase !== 'login') {
       throw new Error('Invalid state or phase');
@@ -317,6 +332,7 @@ router.get('/facebook/callback', async (req, res) => {
       label: `Facebook Account (${userData.name || userData.id})`,
       access_token: accessToken,
       refresh_token: tokenData.refresh_token || null,
+      tenant_workspace_id: tenantWorkspaceId || null,
       token_expires_at: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString() : null,
       workspace_id: userData.id, // Facebook user ID
       is_active: true,
@@ -493,7 +509,7 @@ router.get('/facebook/pages/callback', async (req, res) => {
 
 // GoHighLevel OAuth initiation
 router.get('/gohighlevel/auth', async (req, res) => {
-  const { userId } = req.query;
+  const { userId, workspaceId } = req.query;
 
   if (!userId) {
     return res.status(400).send('userId is required');
@@ -505,10 +521,12 @@ router.get('/gohighlevel/auth', async (req, res) => {
     return res.status(500).send('GoHighLevel Client ID is not configured on the server.');
   }
 
+  const tenantWorkspaceId = workspaceId && workspaceId !== 'main' ? workspaceId : null;
+
   // Generate a nonce to track this session since GHL drops the state parameter
   const nonce = crypto.randomUUID();
 
-  // Store the userId keyed by nonce (use normalized IP so callback can match)
+  // Store the userId (and tenantWorkspaceId) keyed by nonce
   const clientIp = getClientIp(req);
   const { error: stateError } = await supabase
     .from('oauth_states')
@@ -516,7 +534,8 @@ router.get('/gohighlevel/auth', async (req, res) => {
       nonce,
       user_id: userId,
       provider: 'gohighlevel',
-      ip_address: clientIp
+      ip_address: clientIp,
+      tenant_workspace_id: tenantWorkspaceId
     });
 
   if (stateError) {
@@ -524,7 +543,7 @@ router.get('/gohighlevel/auth', async (req, res) => {
     // Continue anyway as fallback, though it might fail if state is dropped
   }
 
-  const state = Buffer.from(JSON.stringify({ userId })).toString('base64');
+  const state = Buffer.from(JSON.stringify({ userId, tenantWorkspaceId })).toString('base64');
   // Scopes needed for contacts and webhooks
   // Scopes must match what's configured in GHL app marketplace (invalid: locations.readonly, webhooks.write, webhooks.readonly)
   const scopes = 'contacts.readonly oauth.readonly users.readonly opportunities.readonly opportunities.write contacts.write oauth.write forms.readonly calendars.readonly calendars/groups.readonly calendars/events.readonly calendars/resources.readonly calendars/events.write calendars/resources.write';
@@ -565,19 +584,21 @@ router.get('/gogo/callback', async (req, res) => {
 
   try {
     let userId;
+    let tenantWorkspaceId = null;
     // Use nonce from query (if GHL returned it) or from cookie (when GHL strips query params)
     const nonceToUse = nonce || getCookie(req, 'ghl_oauth_nonce');
     if (nonceToUse) {
       console.log('[GHL Callback] Attempting to retrieve userId using nonce (query or cookie):', nonceToUse ? 'present' : 'missing');
       const { data: stateData, error: stateFetchError } = await supabase
         .from('oauth_states')
-        .select('user_id')
+        .select('user_id, tenant_workspace_id')
         .eq('nonce', nonceToUse)
         .eq('provider', 'gohighlevel')
         .single();
 
       if (stateData) {
         userId = stateData.user_id;
+        tenantWorkspaceId = stateData.tenant_workspace_id || null;
         console.log('[GHL Callback] Successfully retrieved userId from nonce:', userId);
 
         // Clean up the nonce
@@ -593,6 +614,7 @@ router.get('/gogo/callback', async (req, res) => {
       try {
         const decodedState = JSON.parse(Buffer.from(state, 'base64').toString());
         userId = decodedState.userId;
+        if (!tenantWorkspaceId) tenantWorkspaceId = decodedState.tenantWorkspaceId || null;
       } catch (e) {
         console.error('[GHL Callback] Error decoding state:', e);
       }
@@ -698,8 +720,9 @@ router.get('/gogo/callback', async (req, res) => {
         label: `GoHighLevel: ${locationName}`,
         access_token: access_token,
         refresh_token: refresh_token,
-        workspace_id: locationId, // Use locationId as workspace_id
+        workspace_id: locationId, // Use locationId as workspace_id (provider identifier)
         workspace_name: locationName,
+        tenant_workspace_id: tenantWorkspaceId || null,
         is_active: true,
         token_expires_at: new Date(Date.now() + expires_in * 1000).toISOString(),
         metadata: {
@@ -768,7 +791,7 @@ router.get('/gogo/callback', async (req, res) => {
 
 // HubSpot OAuth initiation
 router.get('/hubspot/auth', (req, res) => {
-  const { userId } = req.query;
+  const { userId, workspaceId } = req.query;
 
   if (!userId) {
     return res.status(400).send('userId is required');
@@ -780,13 +803,11 @@ router.get('/hubspot/auth', (req, res) => {
     return res.status(500).send('HubSpot Client ID is not configured on the server.');
   }
 
+  const tenantWorkspaceId = workspaceId && workspaceId !== 'main' ? workspaceId : null;
   const scopes = 'crm.objects.contacts.read crm.objects.contacts.write crm.objects.companies.read crm.objects.companies.write crm.objects.deals.read crm.objects.deals.write crm.objects.leads.read crm.objects.leads.write crm.objects.line_items.read crm.objects.products.read crm.objects.appointments.read crm.lists.read crm.lists.write tickets conversations.read oauth';
   const redirectUri = `${process.env.BACKEND_URL}/api/v1/connections/hubspot/callback`;
 
-  // Note: HubSpot doesn't strictly require state but it's good practice. We can pass userId in state.
-  // HubSpot state does not support base64 encoded JSON well sometimes if too long? 
-  // But generally it's fine.
-  const state = Buffer.from(JSON.stringify({ userId })).toString('base64');
+  const state = Buffer.from(JSON.stringify({ userId, tenantWorkspaceId })).toString('base64');
 
   const authUrl = `https://app.hubspot.com/oauth/authorize?client_id=${HUBSPOT_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}&state=${state}`;
 
@@ -804,7 +825,7 @@ router.get('/hubspot/callback', async (req, res) => {
 
   try {
     // Decode state
-    const { userId } = JSON.parse(Buffer.from(state, 'base64').toString());
+    const { userId, tenantWorkspaceId } = JSON.parse(Buffer.from(state, 'base64').toString());
 
     if (!userId) {
       throw new Error('Missing userId in state');
@@ -865,6 +886,7 @@ router.get('/hubspot/callback', async (req, res) => {
         refresh_token: refresh_token,
         workspace_id: String(hubId),
         workspace_name: hubDomain || `HubSpot ${hubId}`,
+        tenant_workspace_id: tenantWorkspaceId || null,
         is_active: true,
         token_expires_at: new Date(Date.now() + expires_in * 1000).toISOString(),
         metadata: {

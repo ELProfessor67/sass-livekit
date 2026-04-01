@@ -1,19 +1,30 @@
 import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, Variants } from "framer-motion";
 import { useOnboarding } from "@/hooks/useOnboarding";
-import { Button } from "@/components/ui/button";
 import { getPlanConfigs, PLAN_CONFIGS, getTenantTrialSettings, TrialSettings } from "@/lib/plan-config";
 import { extractTenantFromHostname } from "@/lib/tenant-utils";
 import { useToast } from "@/hooks/use-toast";
-import { Rocket, Buildings, Crown, Check, Sparkle } from "phosphor-react";
-import { cn } from "@/lib/utils";
+import { Rocket, Buildings, Crown, Check, ArrowRight, Globe } from "phosphor-react";
+
+// ✏️ Replace with your actual calendar booking URL
+const CALENDAR_BOOKING_URL = "https://cal.com/waverunner/enterprise";
+
+const containerVariants: Variants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.1, delayChildren: 0.1 } },
+};
+
+const itemVariants: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
+};
 
 export function PricingPlanStep() {
-  const { data, updateData, nextStep, prevStep } = useOnboarding();
+  const { data, updateData, nextStep, prevStep, goToStep } = useOnboarding();
   const { toast } = useToast();
 
-  const [selected, setSelected] = useState<string>(data.plan || "starter");
-  const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("yearly");
+  const [billingInterval, setBillingInterval] = useState<"monthly" | "yearly">("yearly");
+  const [selectedPlanId, setSelectedPlanId] = useState<string>(data.plan || "");
   const [plans, setPlans] = useState<Array<{
     key: string;
     name: string;
@@ -29,34 +40,42 @@ export function PricingPlanStep() {
         setLoadingPlans(true);
         const tenant = extractTenantFromHostname();
         const tenantSlug = tenant === "main" ? null : tenant;
-        
-        // Fetch plans and trial settings in parallel
+
         const [planConfigs, trial] = await Promise.all([
           getPlanConfigs(tenantSlug),
-          getTenantTrialSettings(tenantSlug)
+          getTenantTrialSettings(tenantSlug),
         ]);
 
+        // Cards: non-free, non-enterprise plans
         const plansList = Object.values(planConfigs)
-          .filter(plan => plan.key !== "free")
+          .filter(plan => plan.key !== "free" && plan.key !== "enterprise")
           .map(plan => ({
             key: plan.key,
             name: plan.name,
             price: plan.price,
-            features: plan.features
+            features: plan.features,
           }));
 
         setPlans(plansList);
         setTrialSettings(trial);
+
+        // Default select first paid plan if nothing selected
+        if (!data.plan && plansList.length > 0) {
+          setSelectedPlanId(plansList[1]?.key || plansList[0].key);
+        }
       } catch (error) {
         const fallback = Object.values(PLAN_CONFIGS)
-          .filter(plan => plan.key !== "free")
+          .filter(plan => plan.key !== "free" && plan.key !== "enterprise")
           .map(plan => ({
             key: plan.key,
             name: plan.name,
             price: plan.price,
-            features: plan.features
+            features: plan.features,
           }));
         setPlans(fallback);
+        if (!data.plan && fallback.length > 0) {
+          setSelectedPlanId(fallback[1]?.key || fallback[0].key);
+        }
       } finally {
         setLoadingPlans(false);
       }
@@ -64,257 +83,220 @@ export function PricingPlanStep() {
     fetchPlansAndTrial();
   }, []);
 
-  const handleContinue = () => {
-    updateData({ plan: selected, isTrial: false });
+  const getPlanIcon = (key: string) => {
+    switch (key.toLowerCase()) {
+      case "starter": return { Icon: Rocket, className: "text-amber-400/70" };
+      case "professional": return { Icon: Buildings, className: "text-rose-400/70" };
+      default: return { Icon: Crown, className: "text-violet-400/70" };
+    }
+  };
+
+  const isPopular = (key: string) => key === "professional";
+
+  const confirmPlan = (planKey: string) => {
+    updateData({ plan: planKey, isTrial: false });
     nextStep();
   };
 
-  const handleStartTrial = () => {
+  const handleContinueWithFree = () => {
     if (!trialSettings?.free_trial_enabled) return;
-    
-    updateData({ 
-      plan: selected || "starter", 
-      isTrial: true 
-    });
-    
+    updateData({ plan: "starter", isTrial: true });
     toast({
-      title: "Trial activated",
+      title: "Free trial activated",
       description: `You've started your ${trialSettings.free_trial_days}-day free trial with ${trialSettings.free_trial_minutes} minutes!`,
     });
-    
-    // Skip to Step 9 (OnboardingComplete)
-    // The current index of PaymentStep is 8, OnboardingComplete is 9.
-    // The useOnboarding goToStep uses 0-based indexing.
-    const COMPLETE_STEP_INDEX = 9;
-    nextStep(); // This usually goes to Payment (8)
-    // Let's use the explicit goToStep instead to be sure
-    setTimeout(() => {
-       // We'll let the layout handle the jump based on data.isTrial
-    }, 0);
+    goToStep(9);
   };
 
-  const getPlanIcon = (key: string) => {
-    switch (key.toLowerCase()) {
-      case "starter": return <Rocket size={24} color="#EAB308" weight="duotone" />;
-      case "professional": return <Buildings size={24} color="#F43F5E" weight="duotone" />;
-      case "enterprise": return <Crown size={24} color="#8B5CF6" weight="duotone" />;
-      default: return <Sparkle size={24} color="#668CFF" weight="duotone" />;
-    }
-  };
-
-  const getPlanSubtitle = (key: string) => {
-    switch (key.toLowerCase()) {
-      case "starter": return "For startups & small teams";
-      case "professional": return "For growing agencies";
-      case "enterprise": return "For white-label resellers";
-      default: return "Custom features for you";
-    }
-  };
-
-  // Helper to handle plan selection
-  const handlePlanSelect = (planKey: string) => {
-    setSelected(planKey);
+  const handleScheduleCall = () => {
+    window.open(CALENDAR_BOOKING_URL, "_blank", "noopener,noreferrer");
   };
 
   if (loadingPlans) {
     return (
-      <div className="w-full max-w-5xl mx-auto py-12 flex flex-col items-center justify-center min-h-[400px]">
+      <div className="w-full max-w-4xl mx-auto py-12 flex flex-col items-center justify-center min-h-[400px]">
         <div className="w-12 h-12 border-4 border-[#668cff]/20 border-t-[#668cff] rounded-full animate-spin mb-4" />
-        <p className="text-gray-500 font-medium">Loading premium plans...</p>
+        <p className="text-gray-500 font-medium">Loading plans...</p>
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-6xl mx-auto px-4 space-y-12">
-      {/* Header & Toggle */}
-      <div className="flex flex-col items-center text-center space-y-8">
-        <div className="space-y-3">
-          <motion.h2
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-4xl md:text-5xl font-light text-gray-900 tracking-tight"
-          >
-            Choose your plan
-          </motion.h2>
-          <motion.p
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="text-gray-500 text-lg"
-          >
-            Pick a plan now; you can change it anytime.
-          </motion.p>
-        </div>
-
-        {/* Billing Toggle */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.2 }}
-          className="flex items-center p-1.5 bg-gray-100 rounded-full"
+    <div className="w-full max-w-4xl mx-auto">
+      {/* Header */}
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="text-center mb-8"
+      >
+        <motion.h1
+          variants={itemVariants}
+          className="text-3xl md:text-4xl font-light text-gray-900 mb-3"
         >
+          Choose your plan
+        </motion.h1>
+        <motion.p variants={itemVariants} className="text-gray-500 text-lg">
+          Start with a 7-day free trial. Cancel anytime.
+        </motion.p>
+      </motion.div>
+
+      {/* Billing Toggle */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="flex justify-center mb-8"
+      >
+        <div className="inline-flex items-center bg-gray-100 rounded-full p-1">
           <button
-            onClick={() => setBillingCycle("yearly")}
-            className={cn(
-              "px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 flex items-center gap-2",
-              billingCycle === "yearly"
-                ? "bg-[#668cff] text-white shadow-md shadow-[#668cff]/20"
+            onClick={() => setBillingInterval("yearly")}
+            className={`px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 ${billingInterval === "yearly"
+                ? "bg-[#668cff] text-white shadow-md"
                 : "text-gray-500 hover:text-gray-700"
-            )}
+              }`}
           >
-            Yearly
-            <span className={cn(
-              "text-[10px] px-1.5 py-0.5 rounded-full",
-              billingCycle === "yearly" ? "bg-white/20 text-white" : "bg-[#668cff]/10 text-[#668cff]"
-            )}>
+            Yearly{" "}
+            <span className={`ml-1 text-xs ${billingInterval === "yearly" ? "text-white/80" : "text-green-500"}`}>
               Save 20%
             </span>
           </button>
           <button
-            onClick={() => setBillingCycle("monthly")}
-            className={cn(
-              "px-6 py-2 rounded-full text-sm font-medium transition-all duration-300",
-              billingCycle === "monthly"
-                ? "bg-[#668cff] text-white shadow-md shadow-[#668cff]/20"
+            onClick={() => setBillingInterval("monthly")}
+            className={`px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 ${billingInterval === "monthly"
+                ? "bg-[#668cff] text-white shadow-md"
                 : "text-gray-500 hover:text-gray-700"
-            )}
+              }`}
           >
             Monthly
           </button>
-        </motion.div>
-      </div>
+        </div>
+      </motion.div>
 
-      {/* Pricing Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {plans.map((plan, index) => {
-          const isSelected = selected === plan.key;
-          const isPopular = plan.key === "professional";
-
-          // Apply 20% discount for yearly display if requested (or just show raw value)
-          // Since user said "don't change values", I'll show the monthly value but add subtext
-          const displayPrice = plan.price;
-          const yearlyTotal = plan.price * 12 * 0.8; // Example calculation for subtext
-          const perMinPrice = plan.key === "starter" ? "0.20" : plan.key === "professional" ? "0.15" : "0.10";
+      {/* Plan Cards */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+        className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6"
+      >
+        {plans.map((plan) => {
+          const yearlyPrice = Math.floor(plan.price * 0.8);
+          const price = billingInterval === "yearly" ? yearlyPrice : plan.price;
+          const popular = isPopular(plan.key);
+          const isSelected = selectedPlanId === plan.key;
+          const { Icon, className: iconClass } = getPlanIcon(plan.key);
+          const perMinPrice = plan.key === "starter" ? "$0.20" : plan.key === "professional" ? "$0.15" : "$0.10";
 
           return (
-            <motion.div
+            <div
               key={plan.key}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 * index + 0.3 }}
-              className="relative"
+              onClick={() => setSelectedPlanId(plan.key)}
+              className={`relative bg-white rounded-2xl border p-6 flex flex-col transition-all duration-200 cursor-pointer ${isSelected
+                  ? "border-[#668cff] ring-2 ring-[#668cff]/30 shadow-lg scale-[1.02]"
+                  : "border-gray-200 hover:border-gray-300 hover:shadow-md"
+                }`}
             >
-              {isPopular && (
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-20">
-                  <span className="bg-[#668cff] text-white text-[10px] font-bold uppercase tracking-wider px-4 py-1.5 rounded-full shadow-lg shadow-[#668cff]/20">
+              {popular && (
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                  <span className="bg-[#668cff] text-white text-xs font-semibold px-3 py-1 rounded-full">
                     Most Popular
                   </span>
                 </div>
               )}
 
-              <div
-                onClick={() => handlePlanSelect(plan.key)}
-                className={cn(
-                  "h-full p-8 rounded-[2rem] border-2 transition-all duration-500 cursor-pointer flex flex-col bg-white",
-                  isSelected
-                    ? "border-[#668cff] shadow-2xl shadow-[#668cff]/10 ring-4 ring-[#668cff]/5"
-                    : isPopular
-                      ? "border-[#668cff]/30 shadow-xl"
-                      : "border-gray-100 hover:border-gray-200"
+              <div className="mb-5">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <Icon size={20} weight="duotone" className={iconClass} />
+                  <h3 className="text-lg font-semibold text-gray-900">{plan.name}</h3>
+                </div>
+                <p className="text-sm text-gray-500 mb-2">
+                  {plan.key === "starter"
+                    ? "For startups & small teams"
+                    : plan.key === "professional"
+                      ? "For growing agencies"
+                      : "Custom features for you"}
+                </p>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl font-bold text-gray-900">${price}</span>
+                  <span className="text-gray-500 text-sm">/mo</span>
+                </div>
+                {billingInterval === "yearly" && (
+                  <p className="text-xs text-gray-400 mt-0.5">${price * 12}/yr billed annually</p>
                 )}
-              >
-                {/* Plan Header */}
-                <div className="space-y-4 mb-8">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-gray-50">
-                      {getPlanIcon(plan.key)}
-                    </div>
-                    <h3 className="text-2xl font-bold text-gray-900">{plan.name}</h3>
-                  </div>
-                  <p className="text-gray-500 text-sm">{getPlanSubtitle(plan.key)}</p>
-                </div>
-
-                {/* Price */}
-                <div className="space-y-1 mb-8">
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-4xl font-bold text-gray-900">${displayPrice}</span>
-                    <span className="text-gray-500 text-sm">/mo</span>
-                  </div>
-                  <div className="text-xs font-medium text-gray-400">
-                    ${billingCycle === "yearly" ? Math.floor(yearlyTotal) : plan.price * 12}/yr billed annually
-                  </div>
-                  <div className="text-xs text-[#668cff]/70">
-                    ${perMinPrice}/min usage
-                  </div>
-                </div>
-
-                {/* Features */}
-                <div className="flex-1 space-y-4 mb-8">
-                  {plan.features.map((feature, fIndex) => (
-                    <div key={fIndex} className="flex items-start gap-3">
-                      <div className="mt-0.5 p-0.5 rounded-full bg-green-50">
-                        <Check size={12} color="#22C55E" weight="bold" />
-                      </div>
-                      <span className="text-sm text-gray-600 leading-tight">{feature}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Selection Button */}
-                <Button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handlePlanSelect(plan.key);
-                  }}
-                  className={cn(
-                    "w-full py-6 rounded-2xl font-semibold transition-all duration-300",
-                    isPopular
-                      ? "bg-[#668cff] hover:bg-[#5a7ee6] text-white shadow-lg shadow-[#668cff]/20"
-                      : isSelected
-                        ? "bg-[#668cff]/10 text-[#668cff] hover:bg-[#668cff]/20"
-                        : "bg-gray-50 text-gray-600 hover:bg-gray-100"
-                  )}
-                >
-                  {isSelected ? "Selected" : "Select plan"}
-                </Button>
+                <p className="text-xs text-gray-400 mt-1">{perMinPrice}/min usage</p>
               </div>
-            </motion.div>
+
+              <ul className="space-y-2.5 mb-6 flex-1">
+                {plan.features.map((feature) => (
+                  <li key={feature} className="flex items-start gap-2 text-sm text-gray-600">
+                    <Check size={16} weight="bold" className="text-green-500 mt-0.5 shrink-0" />
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+
+              <button
+                onClick={(e) => { e.stopPropagation(); confirmPlan(plan.key); }}
+                className={`w-full h-11 rounded-xl text-sm font-medium transition-all duration-300 ${isSelected
+                    ? "bg-[#668cff] text-white shadow-lg shadow-[#668cff]/25 hover:shadow-xl hover:shadow-[#668cff]/35 hover:bg-[#5a7ee6]"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+              >
+                Select plan
+              </button>
+            </div>
           );
         })}
-      </div>
+      </motion.div>
 
-      {/* Main Navigation */}
-      <div className="flex flex-col gap-4 pt-8">
-        {trialSettings?.free_trial_enabled && (
-          <Button
-            onClick={handleStartTrial}
-            variant="outline"
-            className="h-16 w-full rounded-2xl border-2 border-[#668cff] text-[#668cff] hover:bg-[#668cff]/5 transition-all duration-300 font-bold text-lg flex items-center justify-center gap-3 group"
-          >
-            <Sparkle weight="fill" className="text-[#EAB308] group-hover:scale-110 transition-transform" />
-            Start {trialSettings.free_trial_days}-Day Free Trial
-            <Sparkle weight="fill" className="text-[#EAB308] group-hover:scale-110 transition-transform" />
-          </Button>
-        )}
-        
-        <div className="flex gap-4 w-full">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={prevStep}
-            className="h-14 px-10 rounded-2xl text-gray-500 hover:text-gray-900 font-medium"
-          >
-            Back
-          </Button>
-          <Button
-            onClick={handleContinue}
-            className="h-14 flex-1 rounded-2xl bg-[#668cff] hover:bg-[#5a7ee6] text-white shadow-xl shadow-[#668cff]/20 transition-all duration-300 font-bold text-lg"
-          >
-            Continue with {plans.find(p => p.key === selected)?.name || "Plan"}
-          </Button>
+      {/* Enterprise Row */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+        className="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 mb-6"
+      >
+        <div className="flex items-center gap-3">
+          <Globe size={20} weight="duotone" className="text-sky-400/70" />
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Enterprise</h3>
+            <p className="text-sm text-gray-500">Custom pricing for large organizations</p>
+          </div>
         </div>
-      </div>
+        <button
+          onClick={handleScheduleCall}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
+        >
+          Schedule a call
+          <ArrowRight size={14} />
+        </button>
+      </motion.div>
+
+      {/* Continue with Free + Go back */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.6 }}
+        className="text-center space-y-3"
+      >
+        {trialSettings?.free_trial_enabled && (
+          <button
+            onClick={handleContinueWithFree}
+            className="text-sm text-gray-500 hover:text-gray-700 transition-colors underline-offset-2 hover:underline"
+          >
+            Continue with Free
+          </button>
+        )}
+        <div>
+          <button
+            onClick={prevStep}
+            className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
+          >
+            Go back
+          </button>
+        </div>
+      </motion.div>
     </div>
   );
 }

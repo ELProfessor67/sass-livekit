@@ -11,6 +11,7 @@ import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { fetchAssistants } from "@/lib/api/assistants/fetchAssistants";
 import {
   ThemedDialog,
@@ -203,6 +204,8 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
   const { user } = useAuth();
   const { currentWorkspace, canCreateAssistants } = useWorkspace();
   const { toast } = useToast();
+  const { maxAssistants } = usePlanLimits();
+  const atAssistantLimit = maxAssistants !== null && assistants.length >= maxAssistants;
 
   const loadAssistantsForUser = async () => {
     if (!user?.id) {
@@ -351,17 +354,26 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
           </p>
         </div>
         {canCreateAssistants && (
-          <Button
-            variant="default"
-            className="font-medium"
-            onClick={(e) => {
-              console.log("Add Assistant button clicked", e);
-              setCreateDialogOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Assistant
-          </Button>
+          <div className="flex flex-col items-end gap-1">
+            <Button
+              variant="default"
+              className="font-medium"
+              onClick={(e) => {
+                console.log("Add Assistant button clicked", e);
+                setCreateDialogOpen(true);
+              }}
+              disabled={atAssistantLimit}
+              title={atAssistantLimit ? `Your plan allows a maximum of ${maxAssistants} assistant${maxAssistants === 1 ? '' : 's'}` : undefined}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Assistant
+            </Button>
+            {maxAssistants !== null && (
+              <p className="text-xs text-muted-foreground">
+                {assistants.length} / {maxAssistants} assistants used
+              </p>
+            )}
+          </div>
         )}
       </div>
 
@@ -412,7 +424,7 @@ export function AssistantsTab({ tabChangeTrigger = 0 }: AssistantsTabProps) {
                     : "Get started by creating your first AI assistant"
                   }
                 </p>
-                {!searchQuery && canCreateAssistants && (
+                {!searchQuery && canCreateAssistants && !atAssistantLimit && (
                   <Button
                     variant="default"
                     className="font-medium"

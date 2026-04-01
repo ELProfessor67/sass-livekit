@@ -2,15 +2,21 @@ import { supabase } from "@/integrations/supabase/client";
 import type { TwilioCredentials } from "@/components/settings/integrations/types";
 
 export interface UserTwilioCredentials {
-  id: string;
+  id?: string;
   user_id: string;
   account_sid: string;
   auth_token: string;
-  trunk_sid: string;
-  label: string;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  trunk_sid?: string | null;
+  label?: string | null;
+  is_active?: boolean;
+  workspace_id?: string | null;
+  domain_name?: string;
+  domain_prefix?: string;
+  credential_list_sid?: string;
+  sip_username?: string;
+  sip_password?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface TwilioCredentialsInput {
@@ -61,21 +67,28 @@ export class TwilioCredentialsService {
   }
 
   /**
-   * Get the active Twilio credentials for the current user
-   * Since there's no is_active column, we'll get the credential for the current user
+   * Get the active Twilio credentials for the current user, optionally filtered by workspace.
    */
-  static async getActiveCredentials(): Promise<UserTwilioCredentials | null> {
+  static async getActiveCredentials(workspaceId?: string | null): Promise<UserTwilioCredentials | null> {
     try {
       const user = await this.getCurrentUser();
       if (!user) return null;
 
-      console.log('Fetching credentials for user:', user.id);
+      console.log('Fetching credentials for user:', user.id, 'workspace:', workspaceId);
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("user_twilio_credentials")
         .select("*")
         .eq("user_id", user.id)
-        .single();
+        .eq("is_active", true);
+
+      if (workspaceId !== undefined) {
+        query = workspaceId === null
+          ? query.is("workspace_id", null)
+          : query.eq("workspace_id", workspaceId);
+      }
+
+      const { data, error } = await (query as any).single();
 
       if (error) {
         if (error.code === 'PGRST116') {
@@ -99,7 +112,7 @@ export class TwilioCredentialsService {
    * Save new Twilio credentials for the current user
    * This will automatically create a main trunk for the user
    */
-  static async saveCredentials(credentials: TwilioCredentialsInput): Promise<UserTwilioCredentials> {
+  static async saveCredentials(credentials: TwilioCredentialsInput, workspaceId?: string | null): Promise<UserTwilioCredentials> {
     try {
       const user = await this.getCurrentUser();
       if (!user) throw new Error("User not authenticated");
@@ -110,12 +123,14 @@ export class TwilioCredentialsService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': user.id
+          'x-user-id': user.id,
+          ...(workspaceId ? { 'x-workspace-id': workspaceId } : {})
         },
         body: JSON.stringify({
           accountSid: credentials.accountSid,
           authToken: credentials.authToken,
-          label: credentials.label
+          label: credentials.label,
+          workspaceId: workspaceId ?? null
         })
       });
 
@@ -161,13 +176,13 @@ export class TwilioCredentialsService {
       if (credentials.authToken) updateData.auth_token = credentials.authToken;
       if (credentials.label) updateData.label = credentials.label;
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase
         .from("user_twilio_credentials")
         .update(updateData)
         .eq("id", credentialsId)
         .eq("user_id", user.id)
         .select()
-        .single();
+        .single() as any);
 
       if (error) throw error;
 
@@ -200,18 +215,29 @@ export class TwilioCredentialsService {
   }
 
   /**
-   * Get all Twilio credentials for the current user
+   * Get all Twilio credentials for the current user, optionally filtered by workspace.
+   * workspaceId = null → main account (workspace_id IS NULL)
+   * workspaceId = string → specific workspace
+   * workspaceId = undefined → all credentials (no workspace filter)
    */
-  static async getAllCredentials(): Promise<UserTwilioCredentials[]> {
+  static async getAllCredentials(workspaceId?: string | null): Promise<UserTwilioCredentials[]> {
     try {
       const user = await this.getCurrentUser();
       if (!user) return [];
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("user_twilio_credentials")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
+
+      if (workspaceId !== undefined) {
+        query = workspaceId === null
+          ? query.is("workspace_id", null)
+          : query.eq("workspace_id", workspaceId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -237,13 +263,13 @@ export class TwilioCredentialsService {
         .eq("user_id", user.id);
 
       // Then activate the specified credentials
-      const { data, error } = await supabase
+      const { data, error } = await (supabase
         .from("user_twilio_credentials")
         .update({ is_active: true })
         .eq("id", credentialsId)
         .eq("user_id", user.id)
         .select()
-        .single();
+        .single() as any);
 
       if (error) throw error;
 
@@ -276,7 +302,8 @@ export class TwilioCredentialsService {
 }
 
 // Export convenience functions
-export const getActiveTwilioCredentials = () => TwilioCredentialsService.getActiveCredentials();
+export const getActiveTwilioCredentials = (workspaceId?: string | null) => 
+  TwilioCredentialsService.getActiveCredentials(workspaceId);
 export const saveTwilioCredentials = (credentials: TwilioCredentialsInput) => 
   TwilioCredentialsService.saveCredentials(credentials);
 export const updateTwilioCredentials = (id: string, credentials: Partial<TwilioCredentialsInput>) => 
