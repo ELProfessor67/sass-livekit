@@ -58,11 +58,16 @@ export function OnboardingComplete() {
             const tenantSlug = tenant === "main" ? null : tenant;
             const trialSettings = await getTenantTrialSettings(tenantSlug);
             if (trialSettings?.free_trial_enabled && trialSettings.free_trial_minutes > 0) {
+              const trialDays = trialSettings.free_trial_days || 7;
+              const trialEndsAt = new Date();
+              trialEndsAt.setDate(trialEndsAt.getDate() + trialDays);
+
               await supabase
                 .from("users")
                 .update({
                   minutes_limit: trialSettings.free_trial_minutes,
                   plan: data.plan || "starter",
+                  trial_ends_at: trialEndsAt.toISOString(),
                 } as any)
                 .eq("id", user.id);
             }

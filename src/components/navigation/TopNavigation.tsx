@@ -11,6 +11,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
+import { Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useWebsiteSettings } from "@/contexts/WebsiteSettingsContext";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
@@ -82,6 +84,12 @@ export default function TopNavigation() {
                 <h1 className="font-sans font-light text-xl tracking-tight text-foreground hidden sm:block">
                   {websiteSettings?.website_name || "AI Call Center"}
                 </h1>
+                {user?.trialEndsAt && new Date(user.trialEndsAt) > new Date() && (
+                  <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 border-amber-500/20 px-2 py-0 h-5 text-[10px] font-bold tracking-widest uppercase flex items-center gap-1">
+                    <Sparkles className="w-2.5 h-2.5" />
+                    Free Trial
+                  </Badge>
+                )}
               </div>
             ) : (
               <>

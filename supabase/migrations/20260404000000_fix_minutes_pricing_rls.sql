@@ -30,3 +30,37 @@ ON CONFLICT (tenant) DO UPDATE SET
   free_trial_days = EXCLUDED.free_trial_days;
 
 COMMENT ON POLICY "Public can view trial settings" ON public.minutes_pricing_config IS 'Allows anyone to view active pricing and trial configurations.';
+
+-- 3. Trigger to automatically allocate trial minutes when a user is created with trial_ends_at
+CREATE OR REPLACE FUNCTION public.handle_trial_minutes_allocation()
+RETURNS TRIGGER AS $$
+DECLARE
+  trial_minutes INTEGER;
+BEGIN
+  -- If trial_ends_at is being set for the first time and minutes_limit is 0 or NULL
+  IF NEW.trial_ends_at IS NOT NULL AND (OLD.trial_ends_at IS NULL OR OLD IS NULL) AND (NEW.minutes_limit IS NULL OR NEW.minutes_limit = 0) THEN
+    -- Fetch trial minutes for the user's tenant
+    SELECT free_trial_minutes INTO trial_minutes
+    FROM public.minutes_pricing_config
+    WHERE tenant = COALESCE(NEW.tenant, 'main')
+    LIMIT 1;
+
+    -- Default to 30 if not found
+    IF trial_minutes IS NULL OR trial_minutes = 0 THEN
+      trial_minutes := 30;
+    END IF;
+
+    -- Allocate the minutes
+    NEW.minutes_limit := trial_minutes;
+    NEW.minutes_used := 0;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_user_trial_allocation ON public.users;
+CREATE TRIGGER on_user_trial_allocation
+  BEFORE INSERT OR UPDATE OF trial_ends_at ON public.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_trial_minutes_allocation();

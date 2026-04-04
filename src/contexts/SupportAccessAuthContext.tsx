@@ -333,6 +333,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             bio: (userData as any)?.bio || null,
             createdAt: (userData as any).created_on || userFromAuth.createdAt,
             updatedAt: (userData as any).updated_at || userFromAuth.updatedAt,
+            trialEndsAt: (userData as any).trial_ends_at || null,
           };
 
           console.log('Enhanced user profile with database data:', enhancedUser);
@@ -658,7 +659,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       // Map frontend fields (e.g., fullName) to backend fields (e.g., name)
       const dbUpdates: any = { ...updates };
-      
+
       if (updates.fullName !== undefined) {
         dbUpdates.name = updates.fullName;
         delete dbUpdates.fullName;
