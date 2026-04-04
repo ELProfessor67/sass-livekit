@@ -4,6 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 
+// Use a module-level variable to prevent redundant processing across remounts in the same session
+// (e.g. React 18 Strict Mode double-mounting)
+let isProcessingGlobal = false;
+
 export default function AuthCallback() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -23,6 +27,7 @@ export default function AuthCallback() {
 
       if (!currentUser) {
         // If no user, go to login
+        console.log("AuthCallback: No user found after exchange, redirecting to login");
         setTimeout(() => navigate("/login"), 1500);
         return;
       }
@@ -68,49 +73,49 @@ export default function AuthCallback() {
       const savedReturnTo = sessionStorage.getItem("returnTo");
       const isInvitation = savedReturnTo?.includes("/accept-invitation");
 
-      setTimeout(async () => {
-        if (onboardingCompleted || isInvitation) {
-          // If it's an invitation, proactively mark onboarding as complete in DB
-          if (isInvitation && !onboardingCompleted) {
-            console.log('AuthCallback: Invitation detected, marking onboarding as complete in DB');
-            try {
-              await supabase
-                .from("users")
-                .update({ onboarding_completed: true } as any)
-                .eq("id", currentUser.id);
-              localStorage.setItem("onboarding-completed", "true");
-            } catch (dbError) {
-              console.error("Error auto-completing onboarding for invitee:", dbError);
-            }
+      if (onboardingCompleted || isInvitation) {
+        // If it's an invitation, proactively mark onboarding as complete in DB
+        if (isInvitation && !onboardingCompleted) {
+          console.log('AuthCallback: Invitation detected, marking onboarding as complete in DB');
+          try {
+            await supabase
+              .from("users")
+              .update({ onboarding_completed: true } as any)
+              .eq("id", currentUser.id);
+            localStorage.setItem("onboarding-completed", "true");
+          } catch (dbError) {
+            console.error("Error auto-completing onboarding for invitee:", dbError);
           }
-
-          if (savedReturnTo) {
-            console.log('AuthCallback: Redirecting to saved returnTo:', savedReturnTo);
-            sessionStorage.removeItem("returnTo");
-            navigate(savedReturnTo);
-          } else {
-            navigate("/dashboard");
-          }
-        } else {
-          // Clear any stale localStorage flag
-          localStorage.removeItem("onboarding-completed");
-          navigate("/onboarding");
         }
-      }, 1500);
+
+        if (savedReturnTo) {
+          console.log('AuthCallback: Redirecting to saved returnTo:', savedReturnTo);
+          sessionStorage.removeItem("returnTo");
+          navigate(savedReturnTo);
+        } else {
+          navigate("/dashboard");
+        }
+      } else {
+        // Clear any stale localStorage flag
+        localStorage.removeItem("onboarding-completed");
+        navigate("/onboarding");
+      }
     } catch (error) {
       console.error("Error checking onboarding status:", error);
       // On error, default to onboarding to be safe
-      setTimeout(() => {
-        localStorage.removeItem("onboarding-completed");
-        navigate("/onboarding");
-      }, 1500);
+      localStorage.removeItem("onboarding-completed");
+      navigate("/onboarding");
     }
   }, [navigate]);
 
   useEffect(() => {
     // Guard against multiple executions (common in React Strict Mode or due to dependency updates)
-    if (processed.current) return;
+    if (processed.current || isProcessingGlobal) {
+      console.log("AuthCallback: Already processing, skipping redundant execution");
+      return;
+    }
     processed.current = true;
+    isProcessingGlobal = true;
 
     const handleAuthCallback = async () => {
       try {
@@ -118,10 +123,36 @@ export default function AuthCallback() {
         const code = url.searchParams.get("code");
 
         if (code) {
-          console.log("Exchanging code for session...");
+          console.log("AuthCallback: Detecting auth code, checking current session...");
+
+          // Check if we already have a session (might have been handled by another mount/listener)
+          const { data: { session } } = await supabase.auth.getSession();
+
+          if (session) {
+            console.log("AuthCallback: Session already exists, skipping exchange");
+            setStatus("success");
+            await checkOnboardingAndRedirect();
+            return;
+          }
+
+          console.log("AuthCallback: Exchanging code for session...");
           const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+
           if (exchangeError) {
-            console.error("Exchange error:", exchangeError);
+            // Handle the specific PKCE "both auth code and code verifier should be non-empty" error
+            // which often happens in race conditions if the verifier was already consumed.
+            if (exchangeError.message.includes("both auth code and code verifier should be non-empty")) {
+              console.warn("AuthCallback: PKCE verifier already consumed or missing. Checking if session was established anyway...");
+              const { data: { session: retrySession } } = await supabase.auth.getSession();
+              if (retrySession) {
+                console.log("AuthCallback: Session found after PKCE error, proceeding.");
+                setStatus("success");
+                await checkOnboardingAndRedirect();
+                return;
+              }
+            }
+
+            console.error("AuthCallback: Exchange error:", exchangeError);
             throw exchangeError;
           }
 
@@ -134,6 +165,7 @@ export default function AuthCallback() {
           await checkOnboardingAndRedirect();
           return;
         }
+
 
         // Check for error in URL hash (Supabase puts errors in hash)
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
@@ -329,4 +361,5 @@ export default function AuthCallback() {
     </div>
   );
 }
+
 
