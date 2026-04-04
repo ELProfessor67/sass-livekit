@@ -285,25 +285,38 @@ export async function getPlanConfigAsync(planKey: string | null | undefined): Pr
 export async function getTenantTrialSettings(tenant?: string | null): Promise<TrialSettings> {
   try {
     const currentTenant = tenant ?? getCurrentTenant();
-    
+    const queryTenant = currentTenant || 'main';
+
+    console.log('[TrialSettings] Fetching for tenant:', queryTenant);
+
     const { data, error } = await (supabase as any)
       .from('minutes_pricing_config')
       .select('free_trial_enabled, free_trial_minutes, free_trial_days')
-      .eq('tenant', currentTenant || 'main')
+      .eq('tenant', queryTenant)
       .maybeSingle();
 
     if (error) {
-      console.warn('Error fetching trial settings:', error);
+      console.warn('[TrialSettings] Error fetching trial settings:', error);
       return { free_trial_enabled: false, free_trial_minutes: 0, free_trial_days: 0 };
     }
 
+    if (!data) {
+      console.log('[TrialSettings] No settings found for tenant:', queryTenant);
+      // If we're on a whitelabel but no specific settings found, we might want to fallback to main
+      // but only if the whitelabel isn't supposed to have its own. 
+      // For now, return false to match existing behavior but with better logging.
+      return { free_trial_enabled: false, free_trial_minutes: 0, free_trial_days: 0 };
+    }
+
+    console.log('[TrialSettings] Found settings:', data);
+
     return {
-      free_trial_enabled: data?.free_trial_enabled ?? false,
-      free_trial_minutes: data?.free_trial_minutes ?? 0,
-      free_trial_days: data?.free_trial_days ?? 0,
+      free_trial_enabled: data.free_trial_enabled ?? false,
+      free_trial_minutes: data.free_trial_minutes ?? 0,
+      free_trial_days: data.free_trial_days ?? 0,
     };
   } catch (error) {
-    console.error('Error in getTenantTrialSettings:', error);
+    console.error('[TrialSettings] Unexpected error:', error);
     return { free_trial_enabled: false, free_trial_minutes: 0, free_trial_days: 0 };
   }
 }

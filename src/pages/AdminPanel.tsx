@@ -1651,73 +1651,7 @@ const AdminPanel = () => {
                   </CardContent>
                 </ThemeCard>
 
-                {/* User Plans & Minutes */}
-                <ThemeCard>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle>User Plans & Minutes</CardTitle>
-                        <CardDescription>Track user subscriptions and usage</CardDescription>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="relative">
-                          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            placeholder="Search by name, email, or plan..."
-                            value={planSearchTerm}
-                            onChange={(e) => setPlanSearchTerm(e.target.value)}
-                            className="pl-8 w-72"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>User</TableHead>
-                          <TableHead>Email</TableHead>
-                          <TableHead>Plan</TableHead>
-                          <TableHead>Minutes Limit</TableHead>
-                          <TableHead>Used</TableHead>
-                          <TableHead>Remaining</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredPlanUsers.map((user) => {
-                          const status = getUsageStatus(user);
-                          return (
-                            <TableRow key={`plan-${user.id}`}>
-                              <TableCell className="font-medium">{user.name || 'N/A'}</TableCell>
-                              <TableCell className="text-muted-foreground">{user.contact?.email || 'N/A'}</TableCell>
-                              <TableCell>
-                                <Badge variant="outline">
-                                  {formatPlanName(user.plan)}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>{formatMinutes(user.minutes_limit, user.plan, user.is_unlimited)}</TableCell>
-                              <TableCell>{user.minutes_used?.toLocaleString() || 0} min</TableCell>
-                              <TableCell>{getRemainingMinutes(user)}</TableCell>
-                              <TableCell>
-                                <Badge className={getStatusBadgeClasses(status)}>
-                                  {status}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <Button variant="ghost" size="sm" onClick={() => openPlanDialog(user)}>
-                                  Change Plan
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </ThemeCard>
+
               </TabsContent>
             </Tabs>
 
