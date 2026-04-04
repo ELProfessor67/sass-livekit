@@ -1,65 +1,57 @@
-import { GlassCard } from "@/components/sections/glass-card"
 import { Button } from "@/components/ui/button"
 import { Zap, Mic, Clock } from "lucide-react"
 import {
-  siSlack,
-  siHubspot,
-  siSalesforce,
-  siGooglecalendar,
-  siZapier,
-  siCalendly,
-  siMake
-} from 'simple-icons'
+  SlackIcon,
+  HubSpotIcon,
+  ZapierIcon,
+  SalesforceIcon,
+  GoogleCalendarIcon,
+  CalcomIcon,
+  MakeIcon,
+  GoHighLevelIcon
+} from "@/components/composer/nodes/IntegrationIcons"
 
 const IntegrationsSection = () => {
   const integrationApps = [
     {
       name: "Slack",
       position: "top-6 left-6",
-      icon: siSlack,
-      color: "#E01E5A"
+      icon: SlackIcon,
     },
     {
       name: "HubSpot",
       position: "top-6 right-6",
-      icon: siHubspot,
-      color: "#FF7A59"
+      icon: HubSpotIcon,
     },
     {
       name: "Zapier",
       position: "right-6 top-1/2 -translate-y-1/2",
-      icon: siZapier,
-      color: "#FF4A00"
+      icon: ZapierIcon,
     },
     {
       name: "Salesforce",
       position: "bottom-6 right-6",
-      icon: siSalesforce,
-      color: "#00A1E0"
+      icon: SalesforceIcon,
     },
     {
       name: "Google Calendar",
       position: "bottom-6 left-6",
-      icon: siGooglecalendar,
-      color: "#4285F4"
+      icon: GoogleCalendarIcon,
     },
     {
       name: "Cal.com",
       position: "left-6 top-1/2 -translate-y-1/2",
-      icon: siCalendly,
-      color: "#006BFF"
+      icon: CalcomIcon,
     },
     {
       name: "Make",
       position: "top-6 left-1/2 -translate-x-1/2",
-      icon: siMake,
-      color: "#6B46C1"
+      icon: MakeIcon,
     },
     {
       name: "GoHighLevel",
       position: "bottom-6 left-1/2 -translate-x-1/2",
-      icon: null,
-      color: "#7C3AED"
+      icon: GoHighLevelIcon,
     }
   ]
 
@@ -131,20 +123,7 @@ const IntegrationsSection = () => {
                 className={`absolute ${app.position} transform -translate-x-1/2 -translate-y-1/2`}
               >
                 <div className="rounded-2xl border border-[#d8d9e8]/30 bg-[#d8d9e8]/10 backdrop-blur-md shadow-xl transition-all duration-300 hover:shadow-2xl hover:shadow-[#b7aaff]/5 w-16 h-16 flex items-center justify-center hover:scale-110 transition-transform cursor-pointer p-0 overflow-hidden">
-                  {app.icon ? (
-                    <svg
-                      role="img"
-                      viewBox="0 0 24 24"
-                      className="w-10 h-10"
-                      fill={app.color}
-                    >
-                      <path d={app.icon.path} />
-                    </svg>
-                  ) : (
-                    <span className="text-sm font-bold" style={{ color: app.color }}>
-                      GHL
-                    </span>
-                  )}
+                  <app.icon size={40} />
                 </div>
               </div>
             ))}

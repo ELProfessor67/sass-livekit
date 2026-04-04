@@ -101,15 +101,15 @@ function RequireOnboarding() {
 
           if (error) {
             console.error("Error checking onboarding status:", error);
-            // If we can't check the database, assume onboarding is completed for existing users
-            setOnboardingStatus(true);
+            // If we can't check the database, default to false (require onboarding) to be safe for new users
+            setOnboardingStatus(false);
           } else {
             setOnboardingStatus(data?.onboarding_completed || false);
           }
         } catch (error) {
           console.error("Error checking onboarding status:", error);
-          // If there's any error (including timeout), assume onboarding is completed
-          setOnboardingStatus(true);
+          // If there's any error (including timeout), default to false to be safe
+          setOnboardingStatus(false);
         }
       };
 

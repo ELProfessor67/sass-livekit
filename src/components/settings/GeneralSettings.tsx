@@ -122,18 +122,15 @@ export function GeneralSettings() {
 
       setLogoUrl(publicUrl);
 
-      // If this is a virtual workspace (id is null), we should not try to update it directly.
-      // The user will need to click "Save Changes" which will now handle creating the workspace.
-      if (currentWorkspace.id) {
-        const { error: updateError } = await supabase
-          .from('workspace_settings')
-          .update({ logo_url: publicUrl })
-          .eq('id', currentWorkspace.id);
+      // Update the database with the new logo URL
+      const { error: updateError } = await supabase
+        .from('workspace_settings')
+        .update({ logo_url: publicUrl })
+        .eq('id', currentWorkspace.id);
 
-        if (updateError) throw updateError;
-        await refreshWorkspaces();
-      }
-      
+      if (updateError) throw updateError;
+      await refreshWorkspaces();
+
       toast.success("Logo uploaded successfully");
     } catch (error) {
       console.error("Error uploading logo:", error);
@@ -150,30 +147,16 @@ export function GeneralSettings() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      if (currentWorkspace.id) {
-        // Update existing workspace
-        const { error } = await supabase
-          .from('workspace_settings')
-          .update({
-            ...data,
-            logo_url: logoUrl,
-          })
-          .eq('id', currentWorkspace.id);
+      // Update existing workspace
+      const { error } = await supabase
+        .from('workspace_settings')
+        .update({
+          ...data,
+          logo_url: logoUrl,
+        })
+        .eq('id', currentWorkspace.id);
 
-        if (error) throw error;
-      } else {
-        // Create new workspace from virtual Main Account
-        const { error } = await supabase
-          .from('workspace_settings')
-          .insert({
-            ...data,
-            logo_url: logoUrl,
-            user_id: user.id,
-            workspace_type: 'simple'
-          });
-
-        if (error) throw error;
-      }
+      if (error) throw error;
 
       await refreshWorkspaces();
       toast.success("Workspace settings saved successfully");

@@ -174,33 +174,7 @@ export const WorkspaceSwitcher = ({ variant = 'default' }: WorkspaceSwitcherProp
 
                 <Separator className="bg-border/40" />
 
-                {/* Footer Actions - Only for Owners who can edit */}
-                {canEdit && currentWorkspace.role === 'owner' && (
-                    <div className="p-1">
-                        <Button
-                            variant="ghost"
-                            className="w-full justify-start text-sm text-foreground/80 hover:text-foreground py-1.5 h-auto rounded-xl"
-                            onClick={() => {
-                                setOpen(false);
-                                toast.info("Navigate to settings to create a workspace");
-                            }}
-                        >
-                            <Plus className="mr-2 h-3.5 w-3.5" />
-                            New workspace
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            className="w-full justify-start text-sm text-foreground/80 hover:text-foreground py-1.5 h-auto rounded-xl"
-                            onClick={() => {
-                                setOpen(false);
-                                navigate('/settings?tab=workspace');
-                            }}
-                        >
-                            <GearSix className="mr-2 h-3.5 w-3.5" />
-                            Workspace settings
-                        </Button>
-                    </div>
-                )}
+
             </PopoverContent>
         </Popover>
     );

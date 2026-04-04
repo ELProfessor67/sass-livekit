@@ -77,21 +77,6 @@ interface WorkspaceContextType {
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
 
-export const MAIN_WORKSPACE: Workspace = {
-    id: null,
-    name: "Main Account",
-    workspace_name: "Main Account",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    minutesUsed: 0,
-    minuteLimit: 0,
-    isOwner: true,
-    status: 'active',
-    memberCount: 1,
-    workspace_type: 'simple',
-    role: 'owner',
-    user_id: '', // Will be populated when used
-};
 
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -125,12 +110,29 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             }
 
             // 1. Get workspaces owned by user
-            const { data: ownedData, error: ownedError } = await supabase
+            let { data: ownedData, error: ownedError } = await supabase
                 .from('workspace_settings')
                 .select('*, members:workspace_members(count)')
                 .eq('user_id', user.id);
 
             if (ownedError) throw ownedError;
+
+            // Auto-create "Main Account" if no owned workspaces exist
+            if (!ownedData || ownedData.length === 0) {
+                const { data: newWorkspace, error: insertError } = await supabase
+                    .from('workspace_settings')
+                    .insert({
+                        workspace_name: 'Main Account',
+                        user_id: user.id,
+                        workspace_type: 'simple'
+                    })
+                    .select('*, members:workspace_members(count)')
+                    .maybeSingle();
+
+                if (!insertError && newWorkspace) {
+                    ownedData = [newWorkspace];
+                }
+            }
 
             // 1.5. Get user profile for total minutes
             const { data: userData, error: userError } = await supabase
@@ -201,15 +203,8 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             }
 
             const allWorkspaces = [...mappedInitial, ...clientWorkspaces.filter(cw => !mappedInitial.some(iw => iw.id === cw.id))];
-            
-            // If user has other workspaces and is not an owner, hide the virtual Main Account
-            const hasOwned = allWorkspaces.some(w => w.role === 'owner');
-            const shouldHideMain = allWorkspaces.length > 0 && !hasOwned;
-            
-            const mappedWorkspaces = shouldHideMain ? allWorkspaces : [
-                { ...MAIN_WORKSPACE, user_id: user.id },
-                ...allWorkspaces
-            ];
+
+            const mappedWorkspaces = allWorkspaces;
             setWorkspaces(mappedWorkspaces);
 
             const savedId = localStorage.getItem('current_workspace_id');
@@ -355,51 +350,51 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const isViewer = role === 'viewer';
 
     const canEdit = !isViewer;
-    
+
     // Billing/Plans
     const canViewBilling = isOwner || isManager;
     const canManageBilling = isOwner;
-    
+
     // Members
     const canViewMembers = isOwner || isManager || isMember;
     const canManageMembers = isOwner || isManager;
-    
+
     // Assistants
     const canViewAssistants = isOwner || isManager || isMember || isViewer;
     const canCreateAssistants = isOwner || isManager || isMember;
     const canManageAssistants = isOwner || isManager;
     const canDeleteAssistants = isOwner || isManager;
-    
+
     // Composer (Workflows)
     const canViewWorkflows = isOwner || isManager || isMember || isViewer;
     const canCreateWorkflows = isOwner || isManager || isMember;
     const canManageWorkflows = isOwner || isManager || isMember; // TODO: Implement "Own" restriction
-    
+
     // Deploy to Client
     const canDeploy = isOwner || isManager;
-    
+
     // Calls/Convos
     const canViewCalls = isOwner || isManager || isMember;
     const canManageCalls = isOwner || isManager;
-    
+
     // Contacts
     const canViewContacts = isOwner || isManager || isMember;
     const canCreateContacts = isOwner || isManager || isMember;
     const canManageContacts = isOwner || isManager;
-    
+
     // Campaigns
     const canViewCampaigns = isOwner || isManager || isMember;
     const canCreateCampaigns = isOwner || isManager || isMember;
     const canManageCampaigns = isOwner || isManager;
-    
+
     // Integrations
     const canViewIntegrations = isOwner || isManager || isMember;
     const canManageIntegrations = isOwner || isManager;
-    
+
     // White Label
     const canViewWhitelabel = isOwner || isManager;
     const canManageWhitelabel = isOwner || isManager;
-    
+
     // Workspace Settings
     const canViewSettings = isOwner || isManager || isMember;
     const canManageSettings = isOwner || isManager;

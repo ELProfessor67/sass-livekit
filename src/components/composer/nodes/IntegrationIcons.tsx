@@ -6,10 +6,8 @@ interface IconProps {
 }
 
 export const GoHighLevelIcon = ({ size = 24, className }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
-        <path d="M3 20V10L7 5L11 10V20H8V12H6V20H3Z" fill="#FFD100" />
-        <path d="M10 20V14L12 11L14 14V20H12.5V15.5H11.5V20H10Z" fill="#00B4E6" />
-        <path d="M13 20V12L17 7L21 12V20H18V14H16V20H13Z" fill="#00D764" />
+    <svg width={size} height={size} viewBox="0 0 25 25" fill="none" className={className}>
+        <path d="M12.556 7.15c-0.344-0.558-0.77-1.064-1.27-1.505-0.894-0.772-2.122-1.216-3.45-1.216-1.301 0-2.491 0.438-3.411 1.184-0.971 0.779-1.767 1.866-2.274 3.108-0.504 1.24-0.681 2.557-0.504 3.844 0.169 1.216 0.646 2.399 1.4 3.39 0.681 0.895 1.588 1.618 2.647 2.1 1.06 0.483 2.235 0.724 3.443 0.724 1.134 0 2.218-0.228 3.185-0.67 0.931-0.429 1.756-1.055 2.425-1.833V13.35H9.418v2.77h1.647c-0.266 0.354-0.578 0.678-0.932 0.965-0.634 0.514-1.413 0.795-2.218 0.795-0.67 0-1.319-0.181-1.88-0.52-0.561-0.338-1.02-0.832-1.324-1.423-0.304-0.591-0.464-1.245-0.464-1.912 0-0.67 0.16-1.324 0.464-1.911 0.304-0.591 0.762-1.085 1.324-1.424 0.564-0.342 1.212-0.523 1.88-0.523 0.876 0 1.714 0.304 2.375 0.862 0.476 0.404 0.871 0.907 1.163 1.47l2.48-1.353z" fill="#24A1DE" />
     </svg>
 );
 
@@ -28,8 +26,11 @@ export const ShopifyIcon = ({ size = 24, className }: IconProps) => (
 );
 
 export const SlackIcon = ({ size = 24, className }: IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
-        <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z" fill="#E01E5A" />
+    <svg width={size} height={size} viewBox="0 0 122.8 122.8" fill="none" className={className}>
+        <path d="M25.8 77.6c0 7.1-5.8 12.9-12.9 12.9S0 84.7 0 77.6s5.8-12.9 12.9-12.9h12.9v12.9zm6.4 0c0-7.1 5.8-12.9 12.9-12.9s12.9 5.8 12.9 12.9v32.3c0 7.1-5.8 12.9-12.9 12.9s-12.9-5.8-12.9-12.9V77.6z" fill="#E01E5A" />
+        <path d="M45.2 25.8c-7.1 0-12.9-5.8-12.9-12.9S38.1 0 45.2 0s12.9 5.8 12.9 12.9v12.9H45.2zm0 6.4c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9H12.9C5.8 58 0 52.2 0 45.2s5.8-12.9 12.9-12.9h32.3z" fill="#36C5F0" />
+        <path d="M97 45.2c0-7.1 5.8-12.9 12.9-12.9s12.9 5.8 12.9 12.9-5.8 12.9-12.9 12.9H97V45.2zm-6.4 0c0 7.1-5.8 12.9-12.9 12.9s-12.9-5.8-12.9-12.9V12.9C77.7 5.8 83.5 0 90.6 0s12.9 5.8 12.9 12.9v32.3z" fill="#2EB67D" />
+        <path d="M77.6 97c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9-12.9-5.8-12.9-12.9V97h12.9zm0-6.4c-7.1 0-12.9-5.8-12.9-12.9s5.8-12.9 12.9-12.9h32.3c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9H77.6z" fill="#ECB22E" />
     </svg>
 );
 
@@ -151,6 +152,29 @@ export const WhatsAppIcon = ({ size = 24, className }: IconProps) => (
     </svg>
 );
 
+export const SalesforceIcon = ({ size = 24, className }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+        <path d="M23.6 13.9c-.3-2.8-2.6-4.9-5.4-4.9-.4 0-.8.1-1.2.2-1.1-2.6-3.7-4.4-6.7-4.4-3.4 0-6.3 2.3-7.2 5.5-.5-.1-1-.2-1.5-.2-2.9 0-5.3 2.3-5.6 5.2C.5 15.6 0 16.3 0 17c0 2.2 1.8 4 4 4h15.5c2.5 0 4.5-2 4.5-4.5 0-.9-.3-1.8-.4-2.6" fill="#00A1E0" />
+    </svg>
+);
+
+export const ZohoIcon = ({ size = 24, className }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+        <path d="M4 4h7v7H4V4z" fill="#E42527" />
+        <path d="M13 4h7v7h-7V4z" fill="#2EBC2F" />
+        <path d="M4 13h7v7H4v-7z" fill="#008FD3" />
+        <path d="M13 13h7v7h-7v-7z" fill="#FFC90E" />
+    </svg>
+);
+
+export const GoogleAdsIcon = ({ size = 24, className }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+        <path d="M15.5 4.5l-9 15.5c-.3.5-.1 1.1.4 1.4.2.1.4.1.6 0l9-5.2c.5-.3.7-.9.4-1.4l-1.4-2.4 2.5-4.3c.3-.5.1-1.1-.4-1.4s-1.1-.1-1.4.4l-1.7 2.9" fill="#4285F4" />
+        <path d="M15.5 4.5l-9 15.5c.3-.5.9-.7 1.4-.4l9 5.2c.5.3.7.9.4 1.4s-.9.7-1.4.4l-9-5.2c-.5-.3-.7-.9-.4-1.4l1.4-2.4 1.4 2.4" fill="#FBBC05" />
+        <path d="M13.5 16.5l2.4 4.1c.3.5.9.7 1.4.4s.7-.9.4-1.4l-2.4-4.1-1.8 1z" fill="#34A853" />
+    </svg>
+);
+
 export const CalcomIcon = ({ size = 24, className }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
         <rect x="3" y="4" width="18" height="17" rx="2" fill="#292929" />
@@ -173,22 +197,57 @@ export const DelayIcon = ({ size = 24, className }: IconProps) => (
     </svg>
 );
 
+export const ZapierIcon = ({ size = 24, className }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+        <path d="M18.8 11.4H5.2c-.7 0-1.2.5-1.2 1.2v1.4c0 .7.5 1.2 1.2 1.2h13.6c.7 0 1.2-.5 1.2-1.2v-1.4c0-.7-.5-1.2-1.2-1.2z" fill="#FF4F00" />
+        <path d="M12 4.6c-.7 0-1.2.5-1.2 1.2V19.4c0 .7.5 1.2 1.2 1.2s1.2-.5 1.2-1.2V5.8c0-.7-.5-1.2-1.2-1.2z" fill="#FF4F00" />
+    </svg>
+);
+
+export const GoogleCalendarIcon = ({ size = 24, className }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+        <path d="M21.5 6.5h-5.5v-5h5.5v5z" fill="#EA4335" />
+        <path d="M21.5 21.5h-5.5v-15h5.5v15z" fill="#4285F4" />
+        <path d="M16 21.5h-13.5v-13.5h13.5v13.5z" fill="#FBBC05" />
+        <path d="M16 8h-13.5v-6.5h8v5.5h5.5v1z" fill="#34A853" />
+        <path d="M10.5 1.5h-8v6.5h8v-6.5z" fill="#EA4335" />
+    </svg>
+);
+
+export const MakeIcon = ({ size = 24, className }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+        <path d="M21.8 12c0 5.4-4.4 9.8-9.8 9.8s-9.8-4.4-9.8-9.8 4.4-9.8 9.8-9.8 9.8 4.4 9.8 9.8z" fill="#6B46C1" />
+        <path d="M12 7.5L14.5 10H9.5L12 7.5z" fill="white" />
+        <path d="M12 16.5L9.5 14H14.5L12 16.5z" fill="white" />
+        <path d="M7.5 12L10 9.5V14.5L7.5 12z" fill="white" />
+        <path d="M16.5 12L14 14.5V9.5L16.5 12z" fill="white" />
+    </svg>
+);
+
+export const CalendlyIcon = ({ size = 24, className }: IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+        <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z" fill="#006BFF" />
+        <path d="M16.5 7.5h-9v9h9v-9z" fill="white" />
+        <path d="M15 9h-6v6h6V9z" fill="#006BFF" />
+    </svg>
+);
+
 export const AnthropicIcon = ({ size = 24, className }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
-        <path d="M13.827 3.52h3.603L24 20h-3.603l-6.57-16.48zm-7.258 0h3.767L16.906 20h-3.674l-1.343-3.461H5.017L3.674 20H0L6.569 3.52zm4.132 9.959L9.021 7.624l-2.68 5.855h5.36z" fill="#D97757"/>
+        <path d="M13.827 3.52h3.603L24 20h-3.603l-6.57-16.48zm-7.258 0h3.767L16.906 20h-3.674l-1.343-3.461H5.017L3.674 20H0L6.569 3.52zm4.132 9.959L9.021 7.624l-2.68 5.855h5.36z" fill="#D97757" />
     </svg>
 );
 
 export const FacebookLeadsIcon = ({ size = 24, className }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
-        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" fill="#1877F2" />
-        <path d="M16.671 13.843l.532-3.47h-3.328V8.123c0-.949.465-1.874 1.956-1.874h1.516V3.296s-1.374-.235-2.686-.235c-2.741 0-4.533 1.662-4.533 4.67v2.642H7.078v3.47h3.047v8.385a12.09 12.09 0 001.953.159c.683 0 1.353-.056 2.01-.164v-8.38H16.67z" fill="white" />
+        <circle cx="12" cy="12" r="12" fill="#1877F2" />
+        <path d="M15.12 12.32H13V19h-2.75v-6.68H8.81V9.92h1.44v-1.7c0-1.2 0.57-3.08 3.08-3.08l2.26 0.01v2.33h-1.64c-0.27 0-0.65 0.13-0.65 0.71v1.73h2.32l-0.3 2.4z" fill="white" />
     </svg>
 );
 
 export const FacebookIcon = ({ size = 24, className }: IconProps) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
-        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" fill="#1877F2" />
-        <path d="M16.671 13.843l.532-3.47h-3.328V8.123c0-.949.465-1.874 1.956-1.874h1.516V3.296s-1.374-.235-2.686-.235c-2.741 0-4.533 1.662-4.533 4.67v2.642H7.078v3.47h3.047v8.385a12.09 12.09 0 001.953.159c.683 0 1.353-.056 2.01-.164v-8.38H16.67z" fill="white" />
+        <circle cx="12" cy="12" r="12" fill="#1877F2" />
+        <path d="M15.12 12.32H13V19h-2.75v-6.68H8.81V9.92h1.44v-1.7c0-1.2 0.57-3.08 3.08-3.08l2.26 0.01v2.33h-1.64c-0.27 0-0.65 0.13-0.65 0.71v1.73h2.32l-0.3 2.4z" fill="white" />
     </svg>
 );

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -9,6 +9,7 @@ export default function AuthCallback() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
+  const processed = useRef(false);
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
 
   // Function to check onboarding status and redirect appropriately
@@ -26,19 +27,41 @@ export default function AuthCallback() {
         return;
       }
 
-      // Check onboarding status from database
-      const { data: userData, error } = await supabase
-        .from("users")
-        .select("onboarding_completed")
-        .eq("id", currentUser.id)
-        .single();
+      // Check onboarding status from database with a few retries for first-time users
+      let userData = null;
+      let error = null;
+      let attempts = 0;
+      const maxAttempts = 3;
 
-      // Only use localStorage as fallback when the DB query itself fails (network/timeout),
-      // not when it succeeds but returns a new user with onboarding_completed = false/null.
+      while (attempts < maxAttempts) {
+        const { data, error: queryError } = await supabase
+          .from("users")
+          .select("onboarding_completed")
+          .eq("id", currentUser.id)
+          .single();
+
+        userData = data;
+        error = queryError;
+
+        // If we found the user or it's a non-retriable error, break
+        if (userData || (error && error.code !== 'PGRST116')) {
+          break;
+        }
+
+        console.log(`AuthCallback: User profile not found, attempt ${attempts + 1}/${maxAttempts}. Waiting...`);
+        attempts++;
+        if (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      // Only use localStorage as fallback when the DB query itself fails (network/timeout/not found after retries),
+      // not when it succeeds but returns a user with onboarding_completed = false/null.
       const localCompleted = localStorage.getItem("onboarding-completed") === "true";
       const dbCompleted = (userData as any)?.onboarding_completed === true;
 
-      // If the DB query had an error (not just missing data), fall back to localStorage
+      // If the DB query had an error (including missing row after retries), fall back to localStorage
+      // For a new user, both will likely be false, which correctly leads to /onboarding
       const onboardingCompleted = error ? localCompleted : dbCompleted;
 
       // Redirect based on onboarding status
@@ -85,6 +108,10 @@ export default function AuthCallback() {
   }, [navigate]);
 
   useEffect(() => {
+    // Guard against multiple executions (common in React Strict Mode or due to dependency updates)
+    if (processed.current) return;
+    processed.current = true;
+
     const handleAuthCallback = async () => {
       try {
         const url = new URL(window.location.href);
@@ -139,8 +166,8 @@ export default function AuthCallback() {
         const type = hashParams.get("type");
 
         // Also check query params (some flows use query params)
-        const token = searchParams.get("token");
-        const typeParam = searchParams.get("type");
+        const token = url.searchParams.get("token");
+        const typeParam = url.searchParams.get("type");
 
         if (type === "recovery" || typeParam === "recovery") {
           // Password reset flow
@@ -245,7 +272,7 @@ export default function AuthCallback() {
     };
 
     handleAuthCallback();
-  }, [searchParams, navigate, toast, user, checkOnboardingAndRedirect]);
+  }, [navigate, toast, checkOnboardingAndRedirect]);
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">

@@ -28,6 +28,10 @@ import {
   WhatsAppIcon,
   CalcomIcon,
   FacebookLeadsIcon,
+  SalesforceIcon,
+  ZohoIcon,
+  GoogleAdsIcon,
+  TelnyxIcon,
 } from "@/components/composer/nodes/IntegrationIcons";
 
 interface Integration {
@@ -55,7 +59,7 @@ const integrationList: Integration[] = [
     id: "google_ads",
     name: "Google Ads",
     description: "Capture leads from Google campaigns",
-    icon: Globe,
+    icon: GoogleAdsIcon,
     status: "available",
     category: "Leads",
     brandColor: "#4285F4",
@@ -74,7 +78,7 @@ const integrationList: Integration[] = [
     id: "salesforce",
     name: "Salesforce",
     description: "Connect your Salesforce CRM to sync contacts and opportunities",
-    icon: Database,
+    icon: SalesforceIcon,
     status: "available",
     category: "CRM",
     brandColor: "#00a1e0",
@@ -83,7 +87,7 @@ const integrationList: Integration[] = [
     id: "zoho",
     name: "Zoho CRM",
     description: "Integrate with Zoho CRM for seamless contact management",
-    icon: Users,
+    icon: ZohoIcon,
     status: "available",
     category: "CRM",
     brandColor: "#e42527",
@@ -120,7 +124,7 @@ const integrationList: Integration[] = [
     id: "telnyx",
     name: "Telnyx",
     description: "Global connectivity platform for voice and messaging",
-    icon: MessageSquare,
+    icon: TelnyxIcon,
     status: "available",
     category: "Communication",
     brandColor: "#00d9ff",
@@ -401,15 +405,15 @@ export function ApiIntegrations() {
 
   const isConnected = (id: string) => {
     switch (id) {
-      case "twilio":     return twilioIntegrations.length > 0;
-      case "calcom":     return calendarIntegrations.length > 0;
-      case "whatsapp":   return whatsappIntegrations.length > 0;
-      case "slack":      return slackConnections.length > 0;
-      case "facebook":   return facebookConnections.length > 0;
-      case "hubspot":    return hubspotConnections.length > 0;
-      case "gohighlevel":return ghlConnections.length > 0;
-      case "smtp":       return smtpCredentials !== null;
-      default:           return false;
+      case "twilio": return twilioIntegrations.length > 0;
+      case "calcom": return calendarIntegrations.length > 0;
+      case "whatsapp": return whatsappIntegrations.length > 0;
+      case "slack": return slackConnections.length > 0;
+      case "facebook": return facebookConnections.length > 0;
+      case "hubspot": return hubspotConnections.length > 0;
+      case "gohighlevel": return ghlConnections.length > 0;
+      case "smtp": return smtpCredentials !== null;
+      default: return false;
     }
   };
 
@@ -519,10 +523,10 @@ export function ApiIntegrations() {
     if (id === "smtp") { setShowSmtpDetails(p => !p); return; }
     if (!user?.id) return;
     const oauthMap: Record<string, string> = {
-      slack:        `/api/v1/connections/slack/auth?userId=${user.id}${buildWorkspaceParam()}`,
-      facebook:     `/api/v1/connections/facebook/auth?userId=${user.id}${buildWorkspaceParam()}`,
-      gohighlevel:  `/api/v1/connections/gohighlevel/auth?userId=${user.id}${buildWorkspaceParam()}`,
-      hubspot:      `/api/v1/connections/hubspot/auth?userId=${user.id}${buildWorkspaceParam()}`,
+      slack: `/api/v1/connections/slack/auth?userId=${user.id}${buildWorkspaceParam()}`,
+      facebook: `/api/v1/connections/facebook/auth?userId=${user.id}${buildWorkspaceParam()}`,
+      gohighlevel: `/api/v1/connections/gohighlevel/auth?userId=${user.id}${buildWorkspaceParam()}`,
+      hubspot: `/api/v1/connections/hubspot/auth?userId=${user.id}${buildWorkspaceParam()}`,
     };
     if (oauthMap[id]) { window.location.href = oauthMap[id]; return; }
     toast({ title: "Coming Soon", description: `${id} integration is coming soon!` });
