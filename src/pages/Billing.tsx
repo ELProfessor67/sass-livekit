@@ -77,7 +77,9 @@ export default function Billing() {
   const [workspaceRows, setWorkspaceRows] = useState<WorkspaceMinuteRow[]>([]);
   const [totalUserMinutes, setTotalUserMinutes] = useState(0);
 
-  const isMainAccount = !currentWorkspace?.id;
+  // The auto-created "Main Account" workspace is a real DB row with an ID but represents the user's root account.
+  // Treat it as main account so user-level minutes are shown instead of workspace-level (which are always 0).
+  const isMainAccount = !currentWorkspace?.id || currentWorkspace?.workspace_name === 'Main Account';
 
   // Auto-open the upgrade dialog when redirected due to trial expiry
   useEffect(() => {
@@ -302,7 +304,9 @@ export default function Billing() {
         setTotalUserMinutes(minutesLimit);
 
         // Fetch workspace-specific minutes data
-        if (currentWorkspace?.id) {
+        // "Main Account" workspace (auto-created) is treated as main account — show user-level breakdown
+        const isMainAccountCtx = !currentWorkspace?.id || currentWorkspace?.workspace_name === 'Main Account';
+        if (currentWorkspace?.id && !isMainAccountCtx) {
           // A real workspace is selected — fetch its own minutes
           const { data: wsData } = await supabase
             .from('workspace_settings')
@@ -312,11 +316,12 @@ export default function Billing() {
           setWorkspaceMinuteLimit(wsData?.minute_limit || 0);
           setWorkspaceMinutesUsed(wsData?.minutes_used || 0);
         } else {
-          // Main Account — build workspace breakdown table
+          // Main Account — build workspace breakdown table (exclude "Main Account" itself)
           const { data: allWs } = await supabase
             .from('workspace_settings')
             .select('id, workspace_name, minute_limit, minutes_used')
-            .eq('user_id', user.id);
+            .eq('user_id', user.id)
+            .neq('workspace_name', 'Main Account');
           if (allWs) {
             setWorkspaceRows(allWs.map((ws: any) => ({
               id: ws.id,

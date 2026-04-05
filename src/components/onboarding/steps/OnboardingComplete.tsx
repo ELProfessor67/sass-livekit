@@ -57,20 +57,25 @@ export function OnboardingComplete() {
             const tenant = extractTenantFromHostname();
             const tenantSlug = tenant === "main" ? null : tenant;
             const trialSettings = await getTenantTrialSettings(tenantSlug);
+
+            // Always update plan for trial users
+            const trialUpdate: any = {
+              plan: data.plan || "starter",
+            };
+
+            // Only set minutes/expiry if the tenant has trial minutes configured
             if (trialSettings?.free_trial_enabled && trialSettings.free_trial_minutes > 0) {
               const trialDays = trialSettings.free_trial_days || 7;
               const trialEndsAt = new Date();
               trialEndsAt.setDate(trialEndsAt.getDate() + trialDays);
-
-              await supabase
-                .from("users")
-                .update({
-                  minutes_limit: trialSettings.free_trial_minutes,
-                  plan: data.plan || "starter",
-                  trial_ends_at: trialEndsAt.toISOString(),
-                } as any)
-                .eq("id", user.id);
+              trialUpdate.minutes_limit = trialSettings.free_trial_minutes;
+              trialUpdate.trial_ends_at = trialEndsAt.toISOString();
             }
+
+            await supabase
+              .from("users")
+              .update(trialUpdate as any)
+              .eq("id", user.id);
           } catch (trialError) {
             console.error("Failed to allocate trial minutes:", trialError);
             // Non-fatal — user can still proceed, admin can allocate minutes manually
