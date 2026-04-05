@@ -293,9 +293,37 @@ export default function Billing() {
         });
 
         // Set minutes balance (remaining = limit - used) and usage
-        const minutesLimit = userData?.minutes_limit || 0;
+        let minutesLimit = userData?.minutes_limit || 0;
         const minutesUsed = userData?.minutes_used || 0;
         const userIsUnlimited = !!userData?.is_unlimited;
+
+        // Auto-apply trial minutes if user has 0 minutes and hasn't used any yet
+        if (!userIsUnlimited && minutesLimit === 0 && minutesUsed === 0) {
+          try {
+            const trialTenant = userData?.slug_name ? userData.slug_name : (userData?.tenant && userData.tenant !== 'main' ? userData.tenant : 'main');
+            const { data: trialConfig } = await (supabase as any)
+              .from('minutes_pricing_config')
+              .select('free_trial_enabled, free_trial_minutes, free_trial_days')
+              .eq('tenant', trialTenant)
+              .maybeSingle();
+
+            if (trialConfig?.free_trial_enabled && trialConfig.free_trial_minutes > 0) {
+              const trialEndsAt = new Date();
+              trialEndsAt.setDate(trialEndsAt.getDate() + (trialConfig.free_trial_days || 7));
+              await supabase
+                .from('users')
+                .update({
+                  minutes_limit: trialConfig.free_trial_minutes,
+                  trial_ends_at: trialEndsAt.toISOString(),
+                } as any)
+                .eq('id', user.id);
+              minutesLimit = trialConfig.free_trial_minutes;
+            }
+          } catch (trialErr) {
+            console.warn('[Billing] Could not auto-apply trial minutes:', trialErr);
+          }
+        }
+
         const remainingMinutes = userIsUnlimited ? 'unlimited' : Math.max(0, minutesLimit - minutesUsed);
 
         setIsUnlimited(userIsUnlimited);

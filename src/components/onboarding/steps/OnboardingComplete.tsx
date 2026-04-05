@@ -63,12 +63,13 @@ export function OnboardingComplete() {
               plan: data.plan || "starter",
             };
 
-            // Only set minutes/expiry if the tenant has trial minutes configured
-            if (trialSettings?.free_trial_enabled && trialSettings.free_trial_minutes > 0) {
+            // Set trial minutes/expiry — use configured value or fall back to 30 minutes default
+            if (trialSettings?.free_trial_enabled) {
               const trialDays = trialSettings.free_trial_days || 7;
+              const trialMinutes = trialSettings.free_trial_minutes > 0 ? trialSettings.free_trial_minutes : 30;
               const trialEndsAt = new Date();
               trialEndsAt.setDate(trialEndsAt.getDate() + trialDays);
-              trialUpdate.minutes_limit = trialSettings.free_trial_minutes;
+              trialUpdate.minutes_limit = trialMinutes;
               trialUpdate.trial_ends_at = trialEndsAt.toISOString();
             }
 
