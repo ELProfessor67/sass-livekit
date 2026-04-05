@@ -9,6 +9,7 @@ import { ThemeProvider } from "./components/ThemeProvider";
 import { BusinessUseCaseProvider } from "./components/BusinessUseCaseProvider";
 import { AuthProvider, useAuth } from "./contexts/SupportAccessAuthContext";
 import { WorkspaceProvider } from "./contexts/WorkspaceContext";
+import { useAccountMinutes } from "./hooks/useAccountMinutes";
 import { WebsiteSettingsProvider } from "./contexts/WebsiteSettingsContext";
 import { supabase } from "./integrations/supabase/client";
 import Index from "./pages/Index";
@@ -74,6 +75,37 @@ function ProtectedAuthPage({ children }: { children: React.ReactNode }) {
 
   // If not authenticated, show the auth page
   return <>{children}</>;
+}
+
+// Routes that remain accessible even when trial is expired
+const TRIAL_ALLOWED_PATHS = ["/billing", "/settings", "/profile", "/admin"];
+
+function TrialExpiredGuard() {
+  const location = useLocation();
+  const { user } = useAuth();
+  const { remainingMinutes, isLoading: minutesLoading } = useAccountMinutes();
+
+  // Admins and non-trial users always pass
+  if (!user || user.role === 'admin') return <Outlet />;
+
+  const trialEndsAt = user.trialEndsAt;
+  if (!trialEndsAt) return <Outlet />;
+
+  // Don't block while minutes are still loading (avoid false redirect flash)
+  if (minutesLoading) return <Outlet />;
+
+  const isDateExpired = new Date(trialEndsAt) <= new Date();
+  const isMinutesExhausted = remainingMinutes <= 0;
+
+  // Block when either the trial period has ended OR the trial minutes ran out
+  const isBlocked = isDateExpired || isMinutesExhausted;
+  if (!isBlocked) return <Outlet />;
+
+  // Allow access to billing and settings so user can upgrade
+  const isAllowed = TRIAL_ALLOWED_PATHS.some(p => location.pathname.startsWith(p));
+  if (isAllowed) return <Outlet />;
+
+  return <Navigate to="/billing?trial_expired=true" replace />;
 }
 
 function RequireOnboarding() {
@@ -170,24 +202,26 @@ function AnimatedRoutes() {
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route element={<RequireOnboarding />}>
-        <Route path="/dashboard" element={<Index />} />
-        <Route path="/assistants" element={<Assistants />} />
-        <Route path="/assistants/create" element={<CreateAssistant />} />
-        <Route path="/assistants/edit/:id" element={<CreateAssistant />} />
-        <Route path="/assistants/knowledge-base/:id/edit" element={<KnowledgeBaseEditor />} />
-        <Route path="/calls" element={<Calls />} />
-        <Route path="/calls/:id" element={<CallDetails />} />
-        <Route path="/voiceagent" element={<VoiceAgent />} />
-        <Route path="/admin" element={<AdminPanel />} />
-        <Route path="/conversations" element={<Conversations />} />
-        <Route path="/contacts" element={<Contacts />} />
-        <Route path="/campaigns" element={<Campaigns />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/workflows" element={<Composer />} />
-        <Route path="/workflows/:id" element={<ComposerBuilder />} />
-        <Route path="/integrations" element={<Integrations />} />
-        <Route path="/billing" element={<Billing />} />
+        <Route element={<TrialExpiredGuard />}>
+          <Route path="/dashboard" element={<Index />} />
+          <Route path="/assistants" element={<Assistants />} />
+          <Route path="/assistants/create" element={<CreateAssistant />} />
+          <Route path="/assistants/edit/:id" element={<CreateAssistant />} />
+          <Route path="/assistants/knowledge-base/:id/edit" element={<KnowledgeBaseEditor />} />
+          <Route path="/calls" element={<Calls />} />
+          <Route path="/calls/:id" element={<CallDetails />} />
+          <Route path="/voiceagent" element={<VoiceAgent />} />
+          <Route path="/admin" element={<AdminPanel />} />
+          <Route path="/conversations" element={<Conversations />} />
+          <Route path="/contacts" element={<Contacts />} />
+          <Route path="/campaigns" element={<Campaigns />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/workflows" element={<Composer />} />
+          <Route path="/workflows/:id" element={<ComposerBuilder />} />
+          <Route path="/integrations" element={<Integrations />} />
+          <Route path="/billing" element={<Billing />} />
+        </Route>
       </Route>
       {/* Landing page for unauthenticated users */}
       <Route path="/" element={<LandingPage />} />

@@ -44,7 +44,7 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ data, onChange }) => {
         isUniversal: field.isUniversal,
         origin: field.origin
       }));
-      
+
       onChange({
         structuredData: universalFields,
         structuredDataProperties: generateStructuredDataProperties(universalFields),
@@ -60,7 +60,7 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ data, onChange }) => {
       description: field.description,
       origin: field.origin || 'Custom'
     };
-    
+
     const updatedFields = [...data.structuredData, newStructuredField];
     onChange({
       structuredData: updatedFields,
@@ -71,19 +71,19 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ data, onChange }) => {
 
   const addStructuredDataField = () => {
     if (newField.name && newField.description) {
-      const updatedFields = [...data.structuredData, { 
+      const updatedFields = [...data.structuredData, {
         name: newField.name,
         type: newField.type,
-        description: newField.description 
+        description: newField.description
       }];
       onChange({
         structuredData: updatedFields,
         structuredDataProperties: generateStructuredDataProperties(updatedFields),
         structuredDataPrompt: data.structuredDataPrompt || generateStructuredDataPrompt(updatedFields)
       });
-      setNewField({ 
-        name: "", 
-        type: "string", 
+      setNewField({
+        name: "",
+        type: "string",
         description: "",
         required: false,
         enumValues: []
@@ -93,7 +93,7 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ data, onChange }) => {
 
   const removeStructuredDataField = (index: number) => {
     const updatedFields = data.structuredData.filter((_, i) => i !== index);
-    onChange({ 
+    onChange({
       structuredData: updatedFields,
       structuredDataProperties: generateStructuredDataProperties(updatedFields),
       structuredDataPrompt: data.structuredDataPrompt || generateStructuredDataPrompt(updatedFields)
@@ -114,11 +114,11 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ data, onChange }) => {
 
   const generateStructuredDataPrompt = (fields: StructuredDataField[]) => {
     if (fields.length === 0) return "";
-    
-    const fieldDescriptions = fields.map(field => 
+
+    const fieldDescriptions = fields.map(field =>
       `- ${field.name}: ${field.description}`
     ).join('\n');
-    
+
     return `Extract the following structured data from the conversation:\n\n${fieldDescriptions}\n\nFor each field, provide the most relevant information mentioned during the call. If a field is not mentioned or not applicable, use null. Return the data in a structured format.`;
   };
 
@@ -198,154 +198,154 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ data, onChange }) => {
           </CardContent>
         </Card>
 
-      {/* What to Track Card */}
-      <Card variant="default">
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <div>
-            <div className="flex items-center gap-2">
-              <Database className="h-5 w-5 text-primary" />
-              <h3 className="text-lg font-medium">What to Track</h3>
+        {/* What to Track Card */}
+        <Card variant="default">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <Database className="h-5 w-5 text-primary" />
+                <h3 className="text-lg font-medium">What to Track</h3>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Choose what information to capture from your calls
+              </p>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Choose what information to capture from your calls
-            </p>
-          </div>
-          <ChevronDown className="h-5 w-5 text-muted-foreground" />
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Natural Language Input */}
-          <IntelligentDataField 
-            onAdd={addDataField}
-          />
+            <ChevronDown className="h-5 w-5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Natural Language Input */}
+            <IntelligentDataField
+              onAdd={addDataField}
+            />
 
-          {/* Current Fields Display */}
-          {data.structuredData.length > 0 && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-medium">Currently Tracking</h4>
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="text-xs">
-                    {data.structuredData.length} item{data.structuredData.length !== 1 ? 's' : ''}
-                  </Badge>
+            {/* Current Fields Display */}
+            {data.structuredData.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-medium">Currently Tracking</h4>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="text-xs">
+                      {data.structuredData.length} item{data.structuredData.length !== 1 ? 's' : ''}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                  {data.structuredData.map((field, index) => (
+                    <Card key={index} className="group relative p-3 bg-card border border-border/60 hover:border-border hover:shadow-sm transition-all duration-200 rounded-lg min-h-[100px] flex flex-col">
+                      {/* Remove button in top-right corner */}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => removeStructuredDataField(index)}
+                        className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 h-5 w-5 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all duration-200 z-10"
+                        aria-label={`Remove ${field.name} field`}
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </Button>
+
+                      {/* Main content */}
+                      <div className="flex-1 flex flex-col justify-center space-y-2 pr-4 pb-6">
+                        <h5 className="font-medium text-sm leading-tight">{field.name}</h5>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 cursor-help">
+                              {field.description}
+                            </p>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p className="text-sm">{field.description}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+
+                      {/* Type badge in bottom-left corner */}
+                      <div className="absolute bottom-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <Badge
+                          variant="secondary"
+                          className={cn("text-[9px] px-1 py-0.5 leading-none", getTypeColor(field.type))}
+                        >
+                          {field.type}
+                        </Badge>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* Quick Actions */}
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Add Business-Specific Fields
+                  </Button>
                 </div>
               </div>
-              
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                {data.structuredData.map((field, index) => (
-                  <Card key={index} className="group relative p-3 bg-card border border-border/60 hover:border-border hover:shadow-sm transition-all duration-200 rounded-lg min-h-[100px] flex flex-col">
-                    {/* Remove button in top-right corner */}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => removeStructuredDataField(index)}
-                      className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 h-5 w-5 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all duration-200 z-10"
-                      aria-label={`Remove ${field.name} field`}
-                    >
-                      <X className="h-2.5 w-2.5" />
-                    </Button>
-                    
-                    {/* Main content */}
-                    <div className="flex-1 flex flex-col justify-center space-y-2 pr-4 pb-6">
-                      <h5 className="font-medium text-sm leading-tight">{field.name}</h5>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 cursor-help">
-                            {field.description}
-                          </p>
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <p className="text-sm">{field.description}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    
-                    {/* Type badge in bottom-left corner */}
-                    <div className="absolute bottom-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                      <Badge 
-                        variant="secondary"
-                        className={cn("text-[9px] px-1 py-0.5 leading-none", getTypeColor(field.type))}
-                      >
-                        {field.type}
-                      </Badge>
-                    </div>
-                  </Card>
-                ))}
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Analysis Timeout Settings */}
+        <Card variant="default">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div>
+              <h3 className="text-lg font-medium">Analysis Timeout Settings</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Configure how long the AI should wait for analysis responses
+              </p>
+            </div>
+            <ChevronDown className="h-5 w-5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Call Summary Timeout</Label>
+                <Input
+                  type="number"
+                  placeholder="30"
+                  value={data.summaryTimeout || 30}
+                  onChange={(e) => onChange({ summaryTimeout: parseInt(e.target.value) || 30 })}
+                  className="h-10"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Seconds to wait for call summary generation
+                </p>
               </div>
-
-              {/* Quick Actions */}
-              <div className="flex gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  Add Business-Specific Fields
-                </Button>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Success Evaluation Timeout</Label>
+                <Input
+                  type="number"
+                  placeholder="15"
+                  value={data.evaluationTimeout || 15}
+                  onChange={(e) => onChange({ evaluationTimeout: parseInt(e.target.value) || 15 })}
+                  className="h-10"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Seconds to wait for success evaluation
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Structured Data Timeout</Label>
+                <Input
+                  type="number"
+                  placeholder="20"
+                  value={data.structuredDataTimeout || 20}
+                  onChange={(e) => onChange({ structuredDataTimeout: parseInt(e.target.value) || 20 })}
+                  className="h-10"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Seconds to wait for structured data extraction
+                </p>
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* Analysis Timeout Settings */}
-      <Card variant="default">
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <div>
-            <h3 className="text-lg font-medium">Analysis Timeout Settings</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Configure how long the AI should wait for analysis responses
-            </p>
-          </div>
-          <ChevronDown className="h-5 w-5 text-muted-foreground" />
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Call Summary Timeout</Label>
-              <Input
-                type="number"
-                placeholder="30"
-                value={data.summaryTimeout || 30}
-                onChange={(e) => onChange({ summaryTimeout: parseInt(e.target.value) || 30 })}
-                className="h-10"
-              />
-              <p className="text-xs text-muted-foreground">
-                Seconds to wait for call summary generation
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Success Evaluation Timeout</Label>
-              <Input
-                type="number"
-                placeholder="15"
-                value={data.evaluationTimeout || 15}
-                onChange={(e) => onChange({ evaluationTimeout: parseInt(e.target.value) || 15 })}
-                className="h-10"
-              />
-              <p className="text-xs text-muted-foreground">
-                Seconds to wait for success evaluation
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Structured Data Timeout</Label>
-              <Input
-                type="number"
-                placeholder="20"
-                value={data.structuredDataTimeout || 20}
-                onChange={(e) => onChange({ structuredDataTimeout: parseInt(e.target.value) || 20 })}
-                className="h-10"
-              />
-              <p className="text-xs text-muted-foreground">
-                Seconds to wait for structured data extraction
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Structured Data Prompt Configuration */}
-      <Card variant="default">
+        {/* Structured Data Prompt Configuration */}
+        {/* <Card variant="default">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <div>
             <h3 className="text-lg font-medium">Structured Data Extraction Prompt</h3>
@@ -389,7 +389,7 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ data, onChange }) => {
             </div>
           </div>
         </CardContent>
-      </Card>
+      </Card> */}
       </div>
     </TooltipProvider>
   );

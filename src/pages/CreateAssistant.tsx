@@ -60,7 +60,7 @@ const CreateAssistant = () => {
   const tabs = [
     { id: "model", label: "Model" },
     { id: "voice", label: "Voice" },
-    { id: "sms", label: "Messages" },
+    // { id: "sms", label: "Messages" },
     { id: "analysis", label: "Analysis" },
     { id: "advanced", label: "Advanced" }
   ];

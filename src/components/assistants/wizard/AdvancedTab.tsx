@@ -61,7 +61,7 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
   return (
     <div className="max-w-4xl space-y-[var(--space-2xl)]">
       {/* Privacy & Security */}
-      <Card variant="default">
+      {/* <Card variant="default">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <div>
             <h3 className="text-lg font-medium">Privacy & Security</h3>
@@ -75,54 +75,52 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
           <div className="space-y-[var(--space-lg)]">
 
 
-            {/* Audio Recording */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-[var(--space-md)]">
-                <Mic className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <Label className="text-sm font-medium">Audio Recording</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Records audio for all calls to enable call monitoring, quality assurance, and compliance purposes.
-                  </p>
-                </div>
-              </div>
-              <Switch
-                checked={data.recordingEnabled}
-                onCheckedChange={(checked) => onChange({ recordingEnabled: checked })}
-              />
-            </div>
-
-            {/* Audio Recording Format */}
-            {data.recordingEnabled && (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-[var(--space-md)]">
-                  <Music className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <Label className="text-sm font-medium">Audio Recording Format</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Select the audio format for recorded calls. WAV provides highest quality while MP3 saves storage space.
-                    </p>
-                  </div>
-                </div>
-                <Select
-                  value={data.audioRecordingFormat}
-                  onValueChange={(value) => onChange({ audioRecordingFormat: value })}
-                >
-                  <SelectTrigger className="w-24">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="wav">WAV</SelectItem>
-                    <SelectItem value="mp3">MP3</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-[var(--space-md)]">
+          <Mic className="h-5 w-5 text-muted-foreground" />
+          <div>
+            <Label className="text-sm font-medium">Audio Recording</Label>
+            <p className="text-xs text-muted-foreground">
+              Records audio for all calls to enable call monitoring, quality assurance, and compliance purposes.
+            </p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+        <Switch
+          checked={data.recordingEnabled}
+          onCheckedChange={(checked) => onChange({ recordingEnabled: checked })}
+        />
+      </div>
+
+      {data.recordingEnabled && (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-[var(--space-md)]">
+            <Music className="h-5 w-5 text-muted-foreground" />
+            <div>
+              <Label className="text-sm font-medium">Audio Recording Format</Label>
+              <p className="text-xs text-muted-foreground">
+                Select the audio format for recorded calls. WAV provides highest quality while MP3 saves storage space.
+              </p>
+            </div>
+          </div>
+          <Select
+            value={data.audioRecordingFormat}
+            onValueChange={(value) => onChange({ audioRecordingFormat: value })}
+          >
+            <SelectTrigger className="w-24">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="wav">WAV</SelectItem>
+              <SelectItem value="mp3">MP3</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+
+    </div>
+        </CardContent >
+      </Card > */}
 
 
 
@@ -263,7 +261,7 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
 
 
       {/* Response Settings */}
-      <Card variant="default">
+      {/* <Card variant="default">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <div>
             <h3 className="text-lg font-medium">Response Settings</h3>
@@ -276,7 +274,6 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
         <CardContent className="space-y-[var(--space-xl)]">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-xl)]">
             <div className="space-y-[var(--space-xl)]">
-              {/* Response Delay */}
               <div className="space-y-[var(--space-md)]">
                 <Label className="text-sm font-medium">Response Delay (seconds)</Label>
                 <WizardSlider
@@ -290,7 +287,6 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
                 />
               </div>
 
-              {/* LLM Request Delay */}
               <div className="space-y-[var(--space-md)]">
                 <Label className="text-sm font-medium">LLM Request Delay (seconds)</Label>
                 <WizardSlider
@@ -306,7 +302,6 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
             </div>
 
             <div className="space-y-[var(--space-xl)]">
-              {/* Words to Interrupt */}
               <div className="space-y-[var(--space-md)]">
                 <Label className="text-sm font-medium">Words to Interrupt Assistant</Label>
                 <WizardSlider
@@ -321,7 +316,6 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
                 />
               </div>
 
-              {/* Max Duration */}
               <div className="space-y-[var(--space-md)]">
                 <Label className="text-sm font-medium">Max Duration (seconds)</Label>
                 <Input
@@ -331,9 +325,9 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({ data, onChange }) => {
                 />
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+          </div >
+        </CardContent >
+      </Card > */}
+    </div >
   );
 };

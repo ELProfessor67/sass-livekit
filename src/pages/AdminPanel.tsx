@@ -354,6 +354,7 @@ const AdminPanel = () => {
           maxAssistants: (plan as any).maxAssistants ?? null,
           workspacesEnabled: (plan as any).workspacesEnabled ?? true,
           maxWorkspaces: (plan as any).maxWorkspaces ?? null,
+          price_per_minute: (plan as any).price_per_minute ?? null,
         } as any);
       }
     } else {
@@ -370,6 +371,7 @@ const AdminPanel = () => {
         maxAssistants: null,
         workspacesEnabled: true,
         maxWorkspaces: null,
+        price_per_minute: null,
       });
     }
 
@@ -441,6 +443,9 @@ const AdminPanel = () => {
         max_assistants: (editPlanData as any).maxAssistants ?? null,
         workspaces_enabled: (editPlanData as any).workspacesEnabled ?? true,
         max_workspaces: (editPlanData as any).workspacesEnabled ? ((editPlanData as any).maxWorkspaces ?? null) : null,
+        price_per_minute: (editPlanData as any).price_per_minute != null && (editPlanData as any).price_per_minute !== ''
+          ? parseFloat((editPlanData as any).price_per_minute)
+          : null,
         tenant: tenant
       };
 
@@ -2160,6 +2165,23 @@ const AdminPanel = () => {
                       </p>
                     </div>
                   )}
+
+                  {/* Per-plan price per minute override */}
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-price-per-minute">Price Per Minute (Pay-as-you-go)</Label>
+                    <Input
+                      id="edit-price-per-minute"
+                      type="number"
+                      min={0}
+                      step="0.0001"
+                      value={(editPlanData as any).price_per_minute ?? ''}
+                      onChange={(e) => setEditPlanData({ ...editPlanData, price_per_minute: e.target.value === '' ? null : e.target.value } as any)}
+                      placeholder="Leave empty to use global rate"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Overrides the global pay-as-you-go rate for users on this plan. Leave empty to use the global rate set in the Pricing tab.
+                    </p>
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => {

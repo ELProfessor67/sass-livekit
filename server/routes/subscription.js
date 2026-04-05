@@ -93,9 +93,12 @@ router.post('/change-plan', validateAuth, async (req, res) => {
             };
         }
 
+        // Clear trial_ends_at when user upgrades to a paid plan so the trial gate is lifted
+        const trialUpdate = newPlan !== 'free' ? { trial_ends_at: null } : {};
+
         const { error: updateError } = await supabase
             .from('users')
-            .update({ plan: newPlan, ...billingUpdate })
+            .update({ plan: newPlan, ...billingUpdate, ...trialUpdate })
             .eq('id', req.userId);
 
         if (updateError) {

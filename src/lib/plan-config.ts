@@ -17,6 +17,7 @@ export interface PlanConfig {
   maxAssistants?: number | null;   // null = unlimited
   workspacesEnabled?: boolean;     // false = workspace tab hidden entirely
   maxWorkspaces?: number | null;   // null = unlimited
+  price_per_minute?: number | null; // null = use global rate from minutes_pricing_config
 }
 
 export interface TrialSettings {
@@ -152,6 +153,7 @@ async function fetchPlanConfigsFromDB(tenant?: string | null): Promise<Record<st
           maxAssistants: plan.max_assistants ?? null,
           workspacesEnabled: plan.workspaces_enabled ?? true,
           maxWorkspaces: plan.max_workspaces ?? null,
+          price_per_minute: plan.price_per_minute != null ? Number(plan.price_per_minute) : null,
         };
       });
 
@@ -186,6 +188,7 @@ async function fetchPlanConfigsFromDB(tenant?: string | null): Promise<Record<st
           maxAssistants: plan.max_assistants ?? null,
           workspacesEnabled: plan.workspaces_enabled ?? true,
           maxWorkspaces: plan.max_workspaces ?? null,
+          price_per_minute: plan.price_per_minute != null ? Number(plan.price_per_minute) : null,
         };
       });
 

@@ -239,10 +239,10 @@ router.get('/minutes-pricing', validateAuth, async (req, res) => {
     try {
         const supabase = getSupabaseClient();
 
-        // Get user's tenant and role
+        // Get user's tenant, role, and plan
         const { data: userData, error: userError } = await supabase
             .from('users')
-            .select('tenant, role, slug_name')
+            .select('tenant, role, slug_name, plan')
             .eq('id', req.userId)
             .single();
 
@@ -255,12 +255,12 @@ router.get('/minutes-pricing', validateAuth, async (req, res) => {
 
         const tenant = userData.tenant || 'main';
         const isWhitelabelAdmin = userData.role === 'admin' && userData.slug_name;
-        
+
         // Whitelabel admins buy at main tenant pricing (set by main admin)
         // Whitelabel customers buy at their whitelabel admin's tenant pricing (set by whitelabel admin)
         const pricingTenant = isWhitelabelAdmin ? 'main' : tenant;
 
-        // Get pricing config
+        // Get global pricing config
         const { data: pricingConfig, error: pricingError } = await supabase
             .from('minutes_pricing_config')
             .select('price_per_minute, minimum_purchase, currency')
@@ -276,12 +276,26 @@ router.get('/minutes-pricing', validateAuth, async (req, res) => {
             });
         }
 
-        // Return default if no config exists
+        // Start with global default / config
         const pricing = pricingConfig || {
             price_per_minute: 0.01,
             minimum_purchase: 0,
             currency: 'USD'
         };
+
+        // Check if the user's plan has a per-plan price override
+        if (userData.plan) {
+            const { data: planConfig } = await supabase
+                .from('plan_configs')
+                .select('price_per_minute')
+                .eq('plan_key', userData.plan)
+                .eq('is_active', true)
+                .maybeSingle();
+
+            if (planConfig?.price_per_minute != null) {
+                pricing.price_per_minute = planConfig.price_per_minute;
+            }
+        }
 
         res.json({
             success: true,
@@ -322,10 +336,10 @@ router.post('/minutes/create-payment-intent', validateAuth, async (req, res) => 
 
         const supabase = getSupabaseClient();
 
-        // Get user and their tenant/role
+        // Get user and their tenant/role/plan
         const { data: userData, error: userError } = await supabase
             .from('users')
-            .select('tenant, role, slug_name')
+            .select('tenant, role, slug_name, plan')
             .eq('id', req.userId)
             .single();
 
@@ -358,6 +372,20 @@ router.post('/minutes/create-payment-intent', validateAuth, async (req, res) => 
             minimum_purchase: 0,
             currency: 'USD',
         };
+
+        // Apply per-plan price override if set for the user's plan
+        if (userData.plan) {
+            const { data: planConfig } = await supabase
+                .from('plan_configs')
+                .select('price_per_minute')
+                .eq('plan_key', userData.plan)
+                .eq('is_active', true)
+                .maybeSingle();
+
+            if (planConfig?.price_per_minute != null) {
+                pricing.price_per_minute = planConfig.price_per_minute;
+            }
+        }
 
         if (pricing.minimum_purchase > 0 && minutes < pricing.minimum_purchase) {
             return res.status(400).json({

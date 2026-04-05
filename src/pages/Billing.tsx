@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import DashboardLayout from "@/layout/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CreditCard, Download, Calendar, Zap, MessageSquare, Users, Loader2, Clock, Building2 } from "lucide-react";
+import { CreditCard, Download, Calendar, Zap, MessageSquare, Users, Loader2, Clock, Building2, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { getPlanConfig, getPlanConfigs } from "@/lib/plan-config";
 import { supabase } from "@/integrations/supabase/client";
@@ -44,9 +45,13 @@ interface WorkspaceMinuteRow {
 }
 
 export default function Billing() {
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const { currentWorkspace } = useWorkspace();
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isTrialExpired = searchParams.get("trial_expired") === "true";
+  const autoOpenedRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [usage, setUsage] = useState<UsageItem[]>([]);
   const [currentPlan, setCurrentPlan] = useState<{
@@ -73,6 +78,14 @@ export default function Billing() {
   const [totalUserMinutes, setTotalUserMinutes] = useState(0);
 
   const isMainAccount = !currentWorkspace?.id;
+
+  // Auto-open the upgrade dialog when redirected due to trial expiry
+  useEffect(() => {
+    if (isTrialExpired && !loading && !autoOpenedRef.current) {
+      autoOpenedRef.current = true;
+      setIsChangePlanOpen(true);
+    }
+  }, [isTrialExpired, loading]);
 
   const getUsagePercentage = (used: number, limit: number | 'unlimited') => {
     if (limit === 'unlimited' || limit === 0) return 0;
@@ -612,6 +625,25 @@ export default function Billing() {
   return (
     <DashboardLayout>
       <div className="container mx-auto px-6 py-8">
+        {isTrialExpired && (
+          <div className="mb-6 flex items-start gap-4 rounded-xl border border-destructive/40 bg-destructive/10 p-5">
+            <AlertTriangle className="h-6 w-6 shrink-0 text-destructive mt-0.5" />
+            <div className="flex-1">
+              <p className="text-base font-semibold text-destructive">Your free trial has ended</p>
+              <p className="text-sm text-destructive/80 mt-0.5">
+                Your access to the platform has been paused. Upgrade to a paid plan to restore full access.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              className="shrink-0"
+              onClick={() => setIsChangePlanOpen(true)}
+            >
+              Upgrade Now
+            </Button>
+          </div>
+        )}
+
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground mb-2">Billing</h1>
           <p className="text-muted-foreground">Manage your subscription, usage, and billing information</p>
@@ -942,8 +974,13 @@ export default function Billing() {
           open={isChangePlanOpen}
           onOpenChange={setIsChangePlanOpen}
           currentPlan={currentPlan?.name?.toLowerCase() || "free"}
-          onPlanChanged={(newPlan) => {
+          onPlanChanged={async (newPlan) => {
             setCurrentPlan(prev => prev ? { ...prev, name: newPlan } : null);
+            // Refresh auth context so TrialExpiredGuard re-evaluates with cleared trial_ends_at
+            await refreshProfile();
+            if (isTrialExpired) {
+              navigate('/dashboard');
+            }
           }}
         />
 

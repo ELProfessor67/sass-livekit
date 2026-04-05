@@ -28,7 +28,7 @@ export function CreateWorkspaceDialog({
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
     const [logoUrl, setLogoUrl] = useState("");
-    const [minuteLimit, setMinuteLimit] = useState(1400);
+    const [minuteLimit, setMinuteLimit] = useState(0);
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -44,7 +44,7 @@ export function CreateWorkspaceDialog({
         setName("");
         setDescription("");
         setLogoUrl("");
-        setMinuteLimit(1400);
+        setMinuteLimit(0);
         onOpenChange(false);
     };
 
@@ -53,7 +53,7 @@ export function CreateWorkspaceDialog({
         setName("");
         setDescription("");
         setLogoUrl("");
-        setMinuteLimit(1400);
+        setMinuteLimit(0);
         onOpenChange(false);
     };
 

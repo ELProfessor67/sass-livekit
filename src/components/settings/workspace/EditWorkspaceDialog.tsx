@@ -27,7 +27,7 @@ export function EditWorkspaceDialog({
 }: EditWorkspaceDialogProps) {
     const [name, setName] = useState(workspace.name);
     const [description, setDescription] = useState(workspace.description || "");
-    const [minuteLimit, setMinuteLimit] = useState(workspace.minuteLimit || 1400);
+    const [minuteLimit, setMinuteLimit] = useState(workspace.minuteLimit || 0);
     const [logoUrl, setLogoUrl] = useState(workspace.logoUrl || "");
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -36,7 +36,7 @@ export function EditWorkspaceDialog({
         if (open) {
             setName(workspace.name);
             setDescription(workspace.description || "");
-            setMinuteLimit(workspace.minuteLimit || 1400);
+            setMinuteLimit(workspace.minuteLimit || 0);
             setLogoUrl(workspace.logoUrl || "");
         }
     }, [open, workspace]);
@@ -54,7 +54,7 @@ export function EditWorkspaceDialog({
     const handleCancel = () => {
         setName(workspace.name);
         setDescription(workspace.description || "");
-        setMinuteLimit(workspace.minuteLimit || 1400);
+        setMinuteLimit(workspace.minuteLimit || 0);
         setLogoUrl(workspace.logoUrl || "");
         onOpenChange(false);
     };

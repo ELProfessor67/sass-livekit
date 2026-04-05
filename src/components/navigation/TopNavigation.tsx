@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
@@ -12,11 +12,55 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Clock, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { useWebsiteSettings } from "@/contexts/WebsiteSettingsContext";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
+
+function useTrialCountdown(trialEndsAt: string | null | undefined) {
+  const [countdown, setCountdown] = useState<{ label: string; isExpired: boolean; isUrgent: boolean } | null>(null);
+
+  useEffect(() => {
+    if (!trialEndsAt) {
+      setCountdown(null);
+      return;
+    }
+
+    const update = () => {
+      const now = new Date();
+      const end = new Date(trialEndsAt);
+      const diffMs = end.getTime() - now.getTime();
+
+      if (diffMs <= 0) {
+        setCountdown({ label: "Trial expired", isExpired: true, isUrgent: true });
+        return;
+      }
+
+      const totalMinutes = Math.floor(diffMs / 60000);
+      const days = Math.floor(totalMinutes / 1440);
+      const hours = Math.floor((totalMinutes % 1440) / 60);
+      const minutes = totalMinutes % 60;
+
+      let label: string;
+      if (days > 0) {
+        label = `Trial ends in ${days}d ${hours}h`;
+      } else if (hours > 0) {
+        label = `Trial ends in ${hours}h ${minutes}m`;
+      } else {
+        label = `Trial ends in ${minutes}m`;
+      }
+
+      setCountdown({ label, isExpired: false, isUrgent: days === 0 });
+    };
+
+    update();
+    const interval = setInterval(update, 60000); // update every minute
+    return () => clearInterval(interval);
+  }, [trialEndsAt]);
+
+  return countdown;
+}
 
 export default function TopNavigation() {
   const location = useLocation();
@@ -28,6 +72,7 @@ export default function TopNavigation() {
   const { remainingMinutes, percentageUsed, isLoading: minutesLoading } = useAccountMinutes();
   const { websiteSettings } = useWebsiteSettings();
   const { isOwner, isManager, isViewer } = useWorkspace();
+  const trialCountdown = useTrialCountdown(user?.trialEndsAt);
 
   const navItems = [{
     icon: <ChartBar size={18} weight="bold" />,
@@ -84,11 +129,29 @@ export default function TopNavigation() {
                 <h1 className="font-sans font-light text-xl tracking-tight text-foreground hidden sm:block">
                   {websiteSettings?.website_name || "AI Call Center"}
                 </h1>
-                {user?.trialEndsAt && new Date(user.trialEndsAt) > new Date() && (
-                  <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 border-amber-500/20 px-2 py-0 h-5 text-[10px] font-bold tracking-widest uppercase flex items-center gap-1">
-                    <Sparkles className="w-2.5 h-2.5" />
-                    Free Trial
-                  </Badge>
+                {trialCountdown && (
+                  <Link to="/billing">
+                    <Badge
+                      variant="secondary"
+                      className={cn(
+                        "px-2 py-0 h-5 text-[10px] font-bold tracking-widest uppercase flex items-center gap-1 cursor-pointer transition-opacity hover:opacity-80",
+                        trialCountdown.isExpired
+                          ? "bg-destructive/10 text-destructive border-destructive/30"
+                          : trialCountdown.isUrgent
+                          ? "bg-orange-500/10 text-orange-600 border-orange-500/20"
+                          : "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                      )}
+                    >
+                      {trialCountdown.isExpired ? (
+                        <AlertTriangle className="w-2.5 h-2.5" />
+                      ) : trialCountdown.isUrgent ? (
+                        <Clock className="w-2.5 h-2.5" />
+                      ) : (
+                        <Sparkles className="w-2.5 h-2.5" />
+                      )}
+                      {trialCountdown.label}
+                    </Badge>
+                  </Link>
                 )}
               </div>
             ) : (

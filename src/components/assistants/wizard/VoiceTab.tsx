@@ -548,7 +548,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, language = "en", onCha
           </div>
 
           {/* Voice Sliders */}
-          <div className="space-y-8">
+          {/* <div className="space-y-8">
             <div className="flex items-center justify-between">
               <div className="w-[60%]">
                 <Label className="text-[16px] font-semibold tracking-[0.2px] text-gray-700 dark:text-gray-200">Voice Stability</Label>
@@ -633,7 +633,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, language = "en", onCha
                 <span className="text-primary font-mono w-12 text-right">{data.latency || 0}</span>
               </div>
             </div>
-          </div>
+          </div> */}
         </CardContent>
       </Card>
 
@@ -662,7 +662,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, language = "en", onCha
               </Select>
             </div>
 
-            <div className="flex items-center justify-between">
+            {/* <div className="flex items-center justify-between">
               <Label className="text-[16px] font-semibold tracking-[0.2px]">Input Min Characters</Label>
               <div className="w-[300px]">
                 <Input
@@ -674,13 +674,13 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, language = "en", onCha
                   max={100}
                 />
               </div>
-            </div>
+            </div> */}
           </div>
 
           {/* Provider Settings Section */}
           {data.provider === "ElevenLabs" && (
             <>
-              <div className="pt-2 border-t border-border">
+              {/* <div className="pt-2 border-t border-border">
                 <div className="space-y-8">
                   <div className="flex items-center justify-between">
                     <div className="w-[60%]">
@@ -778,14 +778,14 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, language = "en", onCha
                     />
                   </div>
                 </div>
-              </div>
+              </div> */}
             </>
           )}
 
           {/* Rime Provider Settings */}
           {data.provider === "Rime" && (
             <>
-              <div className="pt-2 border-t border-border">
+              {/* <div className="pt-2 border-t border-border">
                 <div className="space-y-8">
                   <div className="flex items-center justify-between">
                     <div className="w-[60%]">
@@ -815,14 +815,14 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, language = "en", onCha
                     />
                   </div>
                 </div>
-              </div>
+              </div> */}
             </>
           )}
 
           {/* Hume Provider Settings */}
           {data.provider === "Hume" && (
             <>
-              <div className="pt-2 border-t border-border">
+              {/* <div className="pt-2 border-t border-border">
                 <div className="space-y-8">
                   <div className="space-y-3">
                     <Label className="text-[16px] font-semibold tracking-[0.2px]">Voice Description</Label>
@@ -864,14 +864,14 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, language = "en", onCha
                     />
                   </div>
                 </div>
-              </div>
+              </div> */}
             </>
           )}
 
           {/* Cartesia Provider Settings */}
           {data.provider === "Cartesia" && (
             <>
-              <div className="pt-2 border-t border-border">
+              {/* <div className="pt-2 border-t border-border">
                 <div className="space-y-8">
                   <div className="flex items-center justify-between">
                     <div className="w-[60%]">
@@ -926,29 +926,30 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, language = "en", onCha
                     />
                   </div>
                 </div>
-              </div>
+              </div> */}
             </>
           )}
 
           {/* Info Box for Non-ElevenLabs */}
           {data.provider !== "ElevenLabs" && data.provider !== "Rime" && data.provider !== "Hume" && data.provider !== "Cartesia" && (
-            <div className="py-3 bg-muted rounded-md px-4 flex gap-3">
-              <Info className="h-[18px] w-[18px] text-muted-foreground mt-0.5 flex-shrink-0" />
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  Enhanced voice customization features are available with ElevenLabs, Rime, Hume, and Cartesia providers.
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Switch to ElevenLabs for advanced voice stability and clarity controls, Rime for speed optimization, Hume for emotional AI voice synthesis, or Cartesia for Sonic 3 TTS.
-                </p>
-              </div>
-            </div>
+            // <div className="py-3 bg-muted rounded-md px-4 flex gap-3">
+            //   <Info className="h-[18px] w-[18px] text-muted-foreground mt-0.5 flex-shrink-0" />
+            //   <div className="space-y-2">
+            //     <p className="text-sm text-muted-foreground">
+            //       Enhanced voice customization features are available with ElevenLabs, Rime, Hume, and Cartesia providers.
+            //     </p>
+            //     <p className="text-sm text-muted-foreground">
+            //       Switch to ElevenLabs for advanced voice stability and clarity controls, Rime for speed optimization, Hume for emotional AI voice synthesis, or Cartesia for Sonic 3 TTS.
+            //     </p>
+            //   </div>
+            // </div>
+            ""
           )}
         </CardContent>
       </Card>
 
       {/* Card 3 - Start Speaking Plan */}
-      <Card>
+      {/* <Card>
         <CardHeader>
           <CardTitle className="text-[20px] font-medium tracking-[0.2px]">Start Speaking Plan</CardTitle>
           <CardDescription>This is the plan for when the assistant should start talking.</CardDescription>
@@ -1048,10 +1049,10 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, language = "en", onCha
             </CollapsibleContent>
           </Collapsible>
         </CardContent>
-      </Card>
+      </Card> */}
 
       {/* Card 4 - Stop Speaking Plan */}
-      <Card>
+      {/* <Card>
         <CardHeader>
           <CardTitle className="text-[20px] font-medium tracking-[0.2px]">Stop Speaking Plan</CardTitle>
           <CardDescription>This is the plan for when the assistant should stop talking.</CardDescription>
@@ -1115,7 +1116,7 @@ export const VoiceTab: React.FC<VoiceTabProps> = ({ data, language = "en", onCha
             </CollapsibleContent>
           </Collapsible>
         </CardContent>
-      </Card>
+      </Card> */}
 
     </div>
   );

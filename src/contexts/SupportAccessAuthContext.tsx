@@ -50,6 +50,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<{ success: boolean; message: string }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<void>;
+  refreshProfile: () => Promise<void>;
   // Impersonation functions
   impersonateUser: (userId: string) => Promise<{ success: boolean; message: string }>;
   exitImpersonation: () => Promise<void>;
@@ -686,6 +687,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const refreshProfile = async () => {
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        await loadUserProfile(authUser);
+      }
+    } catch (error) {
+      console.error('Refresh profile error:', error);
+    }
+  };
+
   const value: AuthContextType = {
     user,
     loading,
@@ -694,6 +706,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signInWithGoogle,
     signOut,
     updateProfile,
+    refreshProfile,
     impersonateUser,
     exitImpersonation,
     isImpersonating,

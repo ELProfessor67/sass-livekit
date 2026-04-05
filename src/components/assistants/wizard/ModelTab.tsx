@@ -529,7 +529,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
 
 
             {/* Conversation Start */}
-            <div>
+            {/* <div>
               <Label className="block text-sm font-medium mb-2">Conversation Initiation</Label>
               <Select value={data.conversationStart} onValueChange={(value) => onChange({ conversationStart: value })}>
                 <SelectTrigger className="h-10">
@@ -541,10 +541,10 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                   <SelectItem value="custom-greeting">Custom Greeting</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
+            </div> */}
 
             {/* Temperature */}
-            <div>
+            {/* <div>
               <Label className="block text-sm font-medium mb-2">Temperature</Label>
               <WizardSlider
                 value={data.temperature}
@@ -555,10 +555,10 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                 leftLabel="Focused"
                 rightLabel="Creative"
               />
-            </div>
+            </div> */}
 
             {/* Max Tokens */}
-            <div>
+            {/* <div>
               <Label className="block text-sm font-medium mb-2">Max Tokens</Label>
               <Input
                 type="number"
@@ -567,7 +567,7 @@ export const ModelTab: React.FC<ModelTabProps> = ({ data, onChange }) => {
                 className="h-10 text-center"
                 placeholder="2048"
               />
-            </div>
+            </div> */}
 
             {/* Language */}
             <div>
