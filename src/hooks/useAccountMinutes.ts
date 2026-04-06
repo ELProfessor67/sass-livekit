@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -9,6 +9,7 @@ interface AccountMinutes {
   planName: string;
   percentageUsed: number;
   isLoading: boolean;
+  refetch: () => void;
 }
 
 export function useAccountMinutes(): AccountMinutes {
@@ -18,7 +19,7 @@ export function useAccountMinutes(): AccountMinutes {
   const [planName, setPlanName] = useState("Free Plan");
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
+  const fetchMinutes = useCallback(async () => {
     if (!user) {
       setTotalMinutes(0);
       setUsedMinutes(0);
@@ -28,32 +29,70 @@ export function useAccountMinutes(): AccountMinutes {
     }
 
     setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .select("minutes_limit, minutes_used, plan")
+        .eq("id", user.id)
+        .single();
 
-    const fetchMinutes = async () => {
-      try {
-        const { data, error } = await supabase
-          .from("users")
-          .select("minutes_limit, minutes_used, plan")
-          .eq("id", user.id)
-          .single();
+      if (error) throw error;
 
-        if (error) throw error;
+      setTotalMinutes(data?.minutes_limit || 0);
+      setUsedMinutes(data?.minutes_used || 0);
+      setPlanName(data?.plan || user.plan || "Free Plan");
+    } catch (error) {
+      console.error("Error fetching account minutes:", error);
+      setTotalMinutes(0);
+      setUsedMinutes(0);
+      setPlanName(user.plan || "Free Plan");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
 
-        setTotalMinutes(data?.minutes_limit || 0);
-        setUsedMinutes(data?.minutes_used || 0);
-        setPlanName(data?.plan || user.plan || "Free Plan");
-      } catch (error) {
-        console.error("Error fetching account minutes:", error);
-        setTotalMinutes(0);
-        setUsedMinutes(0);
-        setPlanName(user.plan || "Free Plan");
-      } finally {
-        setIsLoading(false);
+  useEffect(() => {
+    fetchMinutes();
+  }, [fetchMinutes]);
+
+  // Refetch when the user returns to the tab
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchMinutes();
       }
     };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [fetchMinutes]);
 
-    fetchMinutes();
-  }, [user]);
+  // Realtime subscription — update instantly when minutes_limit or minutes_used changes in DB
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`account-minutes-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "users",
+          filter: `id=eq.${user.id}`,
+        },
+        (payload) => {
+          const row = payload.new as any;
+          if (row.minutes_limit !== undefined) setTotalMinutes(row.minutes_limit || 0);
+          if (row.minutes_used !== undefined) setUsedMinutes(row.minutes_used || 0);
+          if (row.plan !== undefined) setPlanName(row.plan || "Free Plan");
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   const remainingMinutes = Math.max(0, totalMinutes - usedMinutes);
   const percentageUsed = totalMinutes > 0 ? Math.min((usedMinutes / totalMinutes) * 100, 100) : 0;
@@ -65,5 +104,6 @@ export function useAccountMinutes(): AccountMinutes {
     planName,
     percentageUsed,
     isLoading,
+    refetch: fetchMinutes,
   };
 }
