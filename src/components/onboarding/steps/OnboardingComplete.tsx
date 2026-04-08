@@ -96,10 +96,16 @@ export function OnboardingComplete() {
               }
             }
 
-            await supabase
+            const { error: trialUpdateError } = await supabase
               .from("users")
               .update(trialUpdate as any)
               .eq("id", user.id);
+
+            if (trialUpdateError) {
+              console.error("Failed to set trial_ends_at on user:", trialUpdateError);
+            } else {
+              console.log("Trial activated successfully:", trialUpdate);
+            }
           } catch (trialError) {
             console.error("Failed to allocate trial minutes:", trialError);
             // Non-fatal — user can still proceed, admin can allocate minutes manually
