@@ -294,18 +294,29 @@ export default function Billing() {
         });
 
         // Set minutes balance — read from Main Account workspace (the source of truth)
-        const { data: mainAccountWs } = await supabase
+        // Use array query + order to safely handle 0 or multiple rows (avoid .single() errors)
+        const { data: mainAccountWsRows } = await supabase
           .from('workspace_settings')
           .select('id, minute_limit, minutes_used')
           .eq('user_id', user.id)
           .eq('workspace_name', 'Main Account')
-          .single();
+          .order('minute_limit', { ascending: false });
+
+        // Deduplicate: if multiple "Main Account" rows exist, keep the one with most minutes and delete the rest
+        let mainAccountWs = mainAccountWsRows?.[0] || null;
+        if (mainAccountWsRows && mainAccountWsRows.length > 1) {
+          const duplicateIds = mainAccountWsRows.slice(1).map((r: any) => r.id);
+          await supabase
+            .from('workspace_settings')
+            .delete()
+            .in('id', duplicateIds);
+        }
 
         let minutesLimit = mainAccountWs?.minute_limit || 0;
         const minutesUsed = mainAccountWs?.minutes_used || 0;
         const userIsUnlimited = !!userData?.is_unlimited;
 
-        // Auto-apply trial minutes if user has 0 minutes and hasn't used any yet
+        // Auto-apply trial minutes only if user has NO Main Account workspace yet (prevents duplicate inserts)
         if (!userIsUnlimited && minutesLimit === 0 && minutesUsed === 0) {
           try {
             const trialTenant = userData?.slug_name ? userData.slug_name : (userData?.tenant && userData.tenant !== 'main' ? userData.tenant : 'main');
@@ -320,13 +331,13 @@ export default function Billing() {
               trialEndsAt.setDate(trialEndsAt.getDate() + (trialConfig.free_trial_days || 7));
 
               if (mainAccountWs?.id) {
-                // Workspace exists — just update the minute limit
+                // Workspace exists with 0 minutes — update it
                 await supabase
                   .from('workspace_settings')
                   .update({ minute_limit: trialConfig.free_trial_minutes } as any)
                   .eq('id', mainAccountWs.id);
               } else {
-                // Workspace missing — create it with trial minutes
+                // No workspace at all — create one (only runs once since next load will find it)
                 await supabase
                   .from('workspace_settings')
                   .insert({

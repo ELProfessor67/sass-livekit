@@ -76,14 +76,14 @@ export function useAccountMinutes(): AccountMinutes {
       .on(
         "postgres_changes",
         {
-          event: "UPDATE",
+          event: "*",
           schema: "public",
           table: "workspace_settings",
           filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
           const row = payload.new as any;
-          if (row.workspace_name === "Main Account") {
+          if (row?.workspace_name === "Main Account") {
             if (row.minute_limit !== undefined) setTotalMinutes(row.minute_limit || 0);
             if (row.minutes_used !== undefined) setUsedMinutes(row.minutes_used || 0);
           }
