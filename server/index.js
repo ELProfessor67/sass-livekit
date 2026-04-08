@@ -720,6 +720,37 @@ app.get('/api/health', (_req, res) => {
 });
 
 /**
+ * Fetch assistant details publicly (no auth required)
+ * GET /api/v1/assistants/public/:id
+ */
+app.get('/api/v1/assistants/public/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Assistant ID is required' });
+    }
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ success: false, message: 'Database client not initialized' });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('assistant')
+      .select('id, name, description, status')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ success: false, message: 'Assistant not found' });
+
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error('Error fetching public assistant:', err);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+/**
  * Dispatch an agent to a LiveKit room
  * POST /api/v1/livekit/dispatch
  */

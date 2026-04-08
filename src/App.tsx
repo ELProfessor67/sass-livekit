@@ -35,6 +35,7 @@ import AdminPanel from "./pages/AdminPanel";
 import AuthCallback from "./pages/AuthCallback";
 import Composer from "./pages/Composer";
 import ComposerBuilder from "./pages/ComposerBuilder";
+import PublicAgent from "./pages/PublicAgent";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import { AcceptInvitation } from "./pages/AcceptInvitation";
@@ -227,6 +228,7 @@ function AnimatedRoutes() {
         </Route>
       </Route>
       {/* Landing page for unauthenticated users */}
+      <Route path="/agent/:assistantId" element={<PublicAgent />} />
       <Route path="/" element={<LandingPage />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />

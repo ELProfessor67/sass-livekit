@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { Phone, Users, TrendingUp, Settings, Play, GitBranch, Save } from "lucide-react";
+import { Phone, Users, TrendingUp, Settings, Play, GitBranch, Save, Share, Copy, Check } from "lucide-react";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -83,7 +83,22 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const { workflows } = useWorkflows();
+
+  const shareUrl = `${window.location.origin}/agent/${assistant?.id}`;
+  const iframeEmbed = `<iframe src="${shareUrl}" width="100%" height="600px" style="border:none; border-radius:12px;" allow="microphone"></iframe>`;
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(iframeEmbed);
+    setCopied(true);
+    toast({
+      title: "Copied to clipboard",
+      description: "You can now paste the iframe code into your website.",
+    });
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const activeWorkflows = workflows?.filter(w => w.status === 'active') || [];
 
@@ -183,8 +198,16 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
           description={assistant.description}
         />
 
-        {/* Start Call Button */}
-        <div className="flex justify-end pb-4 border-b border-border">
+        {/* Action Buttons */}
+        <div className="flex justify-end pb-4 border-b border-border gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setIsShareOpen(true)}
+            className="gap-2 border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 hover:text-indigo-300"
+          >
+            <Share className="h-4 w-4" />
+            Share
+          </Button>
           <Button
             onClick={handleStartCall}
             className="gap-2"
@@ -404,6 +427,60 @@ export function AssistantDetailsDialog({ assistant, isOpen, onClose }: Assistant
           </div>
         </div>
       </ThemedDialogContent>
+      {/* Share Dialog */}
+      <ThemedDialog open={isShareOpen} onOpenChange={setIsShareOpen}>
+        <ThemedDialogContent className="max-w-xl">
+          <ThemedDialogHeader
+            title="Share Assistant"
+            description="Embed this assistant on your website using a basic iframe."
+          />
+
+          <div className="space-y-6 py-4">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-medium text-white">Basic Iframe</h4>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={copyToClipboard}
+                  className="h-8 gap-2 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-400/10"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4" />
+                      Copy Code
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              <div className="relative group">
+                <pre className="p-4 bg-muted/30 rounded-lg border border-border overflow-x-auto text-xs font-mono text-zinc-400 whitespace-pre-wrap leading-relaxed">
+                  {iframeEmbed}
+                </pre>
+              </div>
+
+              <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-lg p-3">
+                <p className="text-xs text-indigo-300 flex gap-2">
+                  <span className="font-bold">Note:</span>
+                  The <code>allow="microphone"</code> attribute is required for the iframe to access the user's microphone.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-border flex justify-end">
+              <Button onClick={() => setIsShareOpen(false)} variant="secondary">
+                Close
+              </Button>
+            </div>
+          </div>
+        </ThemedDialogContent>
+      </ThemedDialog>
     </ThemedDialog>
   );
 }
