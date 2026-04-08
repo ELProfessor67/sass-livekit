@@ -23,6 +23,17 @@ router.post('/invite', authenticateToken, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Workspace ID and email are required' });
         }
 
+        // Block trial users from inviting members
+        const { data: inviterData } = await supabaseAdmin
+            .from('users')
+            .select('trial_ends_at')
+            .eq('id', inviterId)
+            .single();
+
+        if (inviterData?.trial_ends_at) {
+            return res.status(403).json({ success: false, message: 'You must upgrade to a paid plan before inviting members.' });
+        }
+
         // 0. Fetch SMTP credentials for the inviter
         const { data: smtpCredentials, error: smtpError } = await supabaseAdmin
             .from('user_smtp_credentials')

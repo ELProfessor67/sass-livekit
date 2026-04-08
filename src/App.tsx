@@ -38,6 +38,7 @@ import ComposerBuilder from "./pages/ComposerBuilder";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import { AcceptInvitation } from "./pages/AcceptInvitation";
+import PaymentCallback from "./pages/PaymentCallback";
 
 
 // Create a client with better error handling and retry limits
@@ -228,6 +229,7 @@ function AnimatedRoutes() {
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
       <Route path="/accept-invitation" element={<AcceptInvitation />} />
+      <Route path="/payment-callback" element={<PaymentCallback />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

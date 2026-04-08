@@ -11,6 +11,7 @@ import { EditWorkspaceDialog } from "./EditWorkspaceDialog";
 import { CreateWorkspaceDialog } from "./CreateWorkspaceDialog";
 import { toast } from "sonner";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 
 export function WorkspacesManagement() {
     const {
@@ -30,6 +31,8 @@ export function WorkspacesManagement() {
 
     const { maxWorkspaces } = usePlanLimits();
     const atWorkspaceLimit = maxWorkspaces !== null && workspaces.length >= maxWorkspaces;
+    const { currentUser } = useAuth();
+    const isOnTrial = !!(currentUser as any)?.trialEndsAt;
 
     const allocatedMinutes = workspaces.reduce((sum, ws) => sum + (ws.minuteLimit || 0), 0);
     const remainingMinutes = totalMinutes - allocatedMinutes;
@@ -152,8 +155,8 @@ export function WorkspacesManagement() {
                                 size="sm"
                                 className="rounded-xl px-5 shadow-lg shadow-primary/10"
                                 onClick={() => setShowCreateDialog(true)}
-                                disabled={!canEdit || atWorkspaceLimit}
-                                title={atWorkspaceLimit ? `Your plan allows a maximum of ${maxWorkspaces} workspace${maxWorkspaces === 1 ? '' : 's'}` : undefined}
+                                disabled={!canEdit || atWorkspaceLimit || isOnTrial}
+                                title={isOnTrial ? "Upgrade to a paid plan to create workspaces" : atWorkspaceLimit ? `Your plan allows a maximum of ${maxWorkspaces} workspace${maxWorkspaces === 1 ? '' : 's'}` : undefined}
                             >
                                 <Plus size={16} weight="bold" className="mr-2" />
                                 New Workspace

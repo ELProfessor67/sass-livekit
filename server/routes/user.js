@@ -844,6 +844,7 @@ router.post('/change-password', authenticateToken, async (req, res) => {
 
 /**
  * Delete user account
+ * Explicitly removes all user data across every table before deleting the auth user.
  */
 router.post('/delete-account', authenticateToken, async (req, res) => {
   try {
@@ -856,28 +857,109 @@ router.post('/delete-account', authenticateToken, async (req, res) => {
 
     const userId = req.user.id;
 
-    // Get user email before deletion for notification
-    const { data: userData } = await supabase
-      .from('users')
-      .select('contact')
-      .eq('id', userId)
-      .maybeSingle();
+    // ── Step 1: Collect workspace IDs owned by this user ─────────────────────
+    const { data: workspaces } = await supabase
+      .from('workspace_settings')
+      .select('id')
+      .eq('user_id', userId);
 
-    const userEmail = userData?.contact?.email;
+    const workspaceIds = (workspaces || []).map(w => w.id);
 
-    // Delete user from Supabase Auth
-    const { error: deleteError } = await supabase.auth.admin.deleteUser(userId);
-
-    if (deleteError) {
-      console.error('Error deleting user:', deleteError);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to delete account'
-      });
+    // ── Step 2: Collect assistant IDs (needed to delete phone_numbers) ────────
+    let assistantIds = [];
+    if (workspaceIds.length > 0) {
+      const { data: assistants } = await supabase
+        .from('assistant')
+        .select('id')
+        .in('workspace_id', workspaceIds);
+      assistantIds = (assistants || []).map(a => a.id);
     }
 
-    // User profile will be deleted via cascade or trigger
-    // TODO: Send deletion confirmation email
+    // Also fetch assistants tied directly to user_id (fallback for older rows)
+    const { data: userAssistants } = await supabase
+      .from('assistant')
+      .select('id')
+      .eq('user_id', userId);
+    const userAssistantIds = (userAssistants || []).map(a => a.id);
+    const allAssistantIds = [...new Set([...assistantIds, ...userAssistantIds])];
+
+    // ── Step 3: Delete phone numbers linked to this user's assistants ─────────
+    if (allAssistantIds.length > 0) {
+      await supabase
+        .from('phone_number')
+        .delete()
+        .in('inbound_assistant_id', allAssistantIds);
+    }
+
+    // ── Step 4: Delete workspace membership & invitation records ──────────────
+    if (workspaceIds.length > 0) {
+      await supabase.from('workspace_invitations').delete().in('workspace_id', workspaceIds);
+      await supabase.from('workspace_members').delete().in('workspace_id', workspaceIds);
+    }
+    // Also remove this user from any workspaces they are merely a member of
+    await supabase.from('workspace_members').delete().eq('user_id', userId);
+
+    // ── Step 5: Delete knowledge bases & documents ────────────────────────────
+    if (workspaceIds.length > 0) {
+      const { data: knowledgeBases } = await supabase
+        .from('knowledge_bases')
+        .select('id')
+        .in('workspace_id', workspaceIds);
+      const kbIds = (knowledgeBases || []).map(k => k.id);
+      if (kbIds.length > 0) {
+        await supabase.from('knowledge_documents').delete().in('knowledge_base_id', kbIds);
+        await supabase.from('knowledge_bases').delete().in('id', kbIds);
+      }
+    }
+    // Also by user_id
+    const { data: userKbs } = await supabase
+      .from('knowledge_bases')
+      .select('id')
+      .eq('user_id', userId);
+    const userKbIds = (userKbs || []).map(k => k.id);
+    if (userKbIds.length > 0) {
+      await supabase.from('knowledge_documents').delete().in('knowledge_base_id', userKbIds);
+      await supabase.from('knowledge_bases').delete().in('id', userKbIds);
+    }
+
+    // ── Step 6: Delete workspace_settings (cascades to assistant, campaigns,  ─
+    //            contact_lists, contacts, csv_files, call_history, workflows,   ─
+    //            sms_messages, etc. that use workspace_id FK ON DELETE CASCADE) ─
+    if (workspaceIds.length > 0) {
+      await supabase.from('workspace_settings').delete().eq('user_id', userId);
+    }
+
+    // ── Step 7: Delete remaining rows tied directly to user_id in public.users─
+    //            (contact_lists, contacts, csv_files, campaigns cascade from    ─
+    //            public.users, but we clean up explicitly for safety)           ─
+    const tablesLinkedToPublicUser = [
+      'campaigns', 'contact_lists', 'csv_files', 'contacts',
+      'appointments', 'scheduled_sms',
+    ];
+    for (const table of tablesLinkedToPublicUser) {
+      await supabase.from(table).delete().eq('user_id', userId);
+    }
+
+    // ── Step 8: Delete public.users row ──────────────────────────────────────
+    await supabase.from('users').delete().eq('id', userId);
+
+    // ── Step 9: Delete from auth.users — this cascades to all tables that     ─
+    //            reference auth.users(id) ON DELETE CASCADE:                   ─
+    //            user_twilio_credentials, user_calendar_credentials,           ─
+    //            user_whatsapp_credentials, user_smtp_credentials,             ─
+    //            verification_tokens, password_reset_tokens,                   ─
+    //            minutes_purchases, payment_methods,                           ─
+    //            workflow_folders, facebook_integrations,                      ─
+    //            connections, oauth_states, webhooks, workflows (user_id col)  ─
+    const { error: deleteAuthError } = await supabase.auth.admin.deleteUser(userId);
+
+    if (deleteAuthError) {
+      console.error('Error deleting auth user:', deleteAuthError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to delete account from authentication'
+      });
+    }
 
     return res.status(200).json({
       success: true,

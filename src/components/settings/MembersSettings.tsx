@@ -29,6 +29,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { AlertTriangle } from "lucide-react";
+import { useAuth } from "@/contexts/SupportAccessAuthContext";
 
 interface WorkspaceMember {
   id: string;
@@ -62,6 +63,8 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api
 
 export function MembersSettings() {
   const { currentWorkspace, canManageMembers } = useWorkspace();
+  const { currentUser } = useAuth();
+  const isOnTrial = !!(currentUser as any)?.trialEndsAt;
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [invitations, setInvitations] = useState<WorkspaceInvitation[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -316,6 +319,8 @@ export function MembersSettings() {
           <Button
             onClick={() => { setInviteEmail(""); setInviteRole("member"); setInviteEmailError(""); setShowInviteDialog(true); }}
             className="backdrop-blur-sm bg-primary/90 hover:bg-primary transition-all duration-200 border border-primary/20"
+            disabled={isOnTrial}
+            title={isOnTrial ? "Upgrade to a paid plan to invite members" : undefined}
           >
             <Plus size={16} weight="bold" className="mr-2" />
             Invite Member

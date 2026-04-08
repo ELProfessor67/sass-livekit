@@ -2,74 +2,44 @@ import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
   CreditCard,
-  Lock,
   Check,
   ArrowLeft,
   Tag,
   Info,
   ShieldCheck,
-  Globe
+  ExternalLink,
+  Loader2,
 } from "lucide-react";
-import { loadStripe } from "@stripe/stripe-js";
-import {
-  Elements,
-  CardElement,
-  useStripe,
-  useElements
-} from "@stripe/react-stripe-js";
 import { getPlanConfigs, PlanConfig } from "@/lib/plan-config";
 import { extractTenantFromHostname } from "@/lib/tenant-utils";
-import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
-// Initialize Stripe
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "");
-
-const cardElementOptions = {
-  style: {
-    base: {
-      fontSize: '16px',
-      color: '#32325d',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      '::placeholder': {
-        color: '#aab7c4',
-      },
-    },
-    invalid: {
-      color: '#fa755a',
-      iconColor: '#fa755a',
-    },
-  },
-  hidePostalCode: true,
-};
-
-function PaymentForm() {
+export function PaymentStep() {
   const { data, updateData, nextStep, prevStep } = useOnboarding();
-  const stripe = useStripe();
-  const elements = useElements();
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [waitingForPayment, setWaitingForPayment] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<PlanConfig | null>(null);
   const [loadingPlan, setLoadingPlan] = useState(true);
-  const [billingEmail, setBillingEmail] = useState(data.email || "");
-  const [cardholderName, setCardholderName] = useState(data.name || "");
 
+  // Fetch plan config
   useEffect(() => {
     const fetchPlan = async () => {
       try {
         setLoadingPlan(true);
         const tenant = extractTenantFromHostname();
-        const tenantSlug = tenant === 'main' ? null : tenant;
+        const tenantSlug = tenant === "main" ? null : tenant;
         const planConfigs = await getPlanConfigs(tenantSlug);
-        const plan = planConfigs[data.plan?.toLowerCase() || 'starter'] || planConfigs.starter;
+        const plan =
+          planConfigs[data.plan?.toLowerCase() || "starter"] ||
+          planConfigs.starter;
         setSelectedPlan(plan);
-      } catch (error) {
-        console.error('Error fetching plan config:', error);
+      } catch (err) {
+        console.error("Error fetching plan config:", err);
         setSelectedPlan(null);
       } finally {
         setLoadingPlan(false);
@@ -79,57 +49,77 @@ function PaymentForm() {
     fetchPlan();
   }, [data.plan]);
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  // Listen for payment result from the Stripe-hosted tab via BroadcastChannel
+  useEffect(() => {
+    const channel = new BroadcastChannel("stripe-payment");
 
-    if (!stripe || !elements) return;
+    channel.onmessage = (event) => {
+      if (event.data?.type === "payment_success") {
+        setWaitingForPayment(false);
+        setPaymentSuccess(true);
+        updateData({ subscriptionStatus: "active" });
+        setTimeout(() => nextStep(), 1500);
+      } else if (event.data?.type === "payment_cancelled") {
+        setWaitingForPayment(false);
+        setError("Payment was cancelled. You can try again.");
+      }
+    };
 
-    setIsProcessing(true);
-    setPaymentError(null);
+    return () => channel.close();
+  }, [nextStep, updateData]);
+
+  const handleOpenStripe = async () => {
+    if (!selectedPlan) return;
+
+    setIsLoading(true);
+    setError(null);
 
     try {
-      const cardElement = elements.getElement(CardElement);
-      if (!cardElement) {
-        setPaymentError("Card element not found");
-        setIsProcessing(false);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setError("You must be logged in to subscribe.");
+        setIsLoading(false);
         return;
       }
 
-      const { error, paymentMethod } = await stripe.createPaymentMethod({
-        type: 'card',
-        card: cardElement,
-        billing_details: {
-          email: billingEmail,
-          name: cardholderName,
-        },
-      });
+      const successUrl = `${window.location.origin}/payment-callback?success=true`;
+      const cancelUrl = `${window.location.origin}/payment-callback?success=false`;
 
-      if (error) {
-        setPaymentError(error.message || "Payment failed");
-        setIsProcessing(false);
+      const response = await fetch(
+        "/api/v1/subscription/create-checkout-session",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            plan: selectedPlan.key,
+            planName: selectedPlan.name,
+            planPrice: selectedPlan.price,
+            successUrl,
+            cancelUrl,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!result.success || !result.url) {
+        setError(result.error || "Failed to create checkout session.");
+        setIsLoading(false);
         return;
       }
 
-      setPaymentSuccess(true);
-
-      updateData({
-        paymentMethodId: paymentMethod.id,
-        cardBrand: paymentMethod.card?.brand,
-        cardLast4: paymentMethod.card?.last4,
-        cardExpMonth: paymentMethod.card?.exp_month,
-        cardExpYear: paymentMethod.card?.exp_year,
-        email: billingEmail,
-        subscriptionStatus: 'active'
-      });
-
-      setTimeout(() => {
-        nextStep();
-      }, 1500);
-
+      // Open Stripe Checkout in a new tab
+      window.open(result.url, "_blank");
+      setWaitingForPayment(true);
     } catch (err) {
-      setPaymentError("An unexpected error occurred.");
+      setError("An unexpected error occurred. Please try again.");
     } finally {
-      setIsProcessing(false);
+      setIsLoading(false);
     }
   };
 
@@ -152,8 +142,12 @@ function PaymentForm() {
           <Check className="h-10 w-10 text-green-500" strokeWidth={3} />
         </div>
         <div className="space-y-2">
-          <h3 className="text-3xl font-bold text-gray-900 tracking-tight">Payment Successful</h3>
-          <p className="text-gray-500 text-lg">Activating your {selectedPlan.name} plan...</p>
+          <h3 className="text-3xl font-bold text-gray-900 tracking-tight">
+            Payment Successful
+          </h3>
+          <p className="text-gray-500 text-lg">
+            Activating your {selectedPlan.name} plan...
+          </p>
         </div>
       </motion.div>
     );
@@ -161,7 +155,6 @@ function PaymentForm() {
 
   return (
     <div className="w-full max-w-6xl mx-auto overflow-hidden bg-white shadow-2xl rounded-[2.5rem] flex flex-col md:flex-row border border-gray-100">
-
       {/* Sidebar (Order Summary) */}
       <div className="w-full md:w-[42%] bg-[#668cff] p-8 md:p-12 text-white flex flex-col relative overflow-hidden">
         {/* Background Decorative Circles */}
@@ -178,9 +171,13 @@ function PaymentForm() {
 
         <div className="relative z-10 flex-1 flex flex-col">
           <div className="space-y-2 mb-8">
-            <p className="text-white/70 font-medium">Subscribe to {selectedPlan.name}</p>
+            <p className="text-white/70 font-medium">
+              Subscribe to {selectedPlan.name}
+            </p>
             <div className="flex items-baseline gap-2">
-              <span className="text-5xl font-bold tracking-tight">${selectedPlan.price}.00</span>
+              <span className="text-5xl font-bold tracking-tight">
+                ${selectedPlan.price}.00
+              </span>
               <span className="text-white/60 text-lg">per month</span>
             </div>
           </div>
@@ -200,7 +197,10 @@ function PaymentForm() {
             </div>
 
             <button className="flex items-center gap-2 text-white/80 hover:text-white text-sm font-medium py-1 group">
-              <Tag size={16} className="group-hover:rotate-12 transition-transform" />
+              <Tag
+                size={16}
+                className="group-hover:rotate-12 transition-transform"
+              />
               Add promotion code
             </button>
 
@@ -209,14 +209,20 @@ function PaymentForm() {
                 <span>Tax</span>
                 <Info size={14} />
               </div>
-              <span className="text-white/50 text-right">Enter address to calculate</span>
+              <span className="text-white/50 text-right">
+                Enter address to calculate
+              </span>
             </div>
 
             <Separator className="bg-white/10 my-6" />
 
             <div className="flex justify-between items-center pt-2">
-              <p className="text-xl font-medium text-white/90">Total due today</p>
-              <p className="text-3xl font-bold tracking-tighter">${selectedPlan.price}.00</p>
+              <p className="text-xl font-medium text-white/90">
+                Total due today
+              </p>
+              <p className="text-3xl font-bold tracking-tighter">
+                ${selectedPlan.price}.00
+              </p>
             </div>
           </div>
 
@@ -227,143 +233,106 @@ function PaymentForm() {
         </div>
       </div>
 
-      {/* Main Payment Section */}
-      <div className="flex-1 bg-white p-8 md:p-12 lg:p-16">
-        <form onSubmit={handleSubmit} className="max-w-md mx-auto space-y-12">
-
-          {/* Contact Info Section */}
-          <div className="space-y-6">
-            <h4 className="text-lg font-bold text-gray-900 tracking-tight">Contact information</h4>
-            <div className="space-y-2">
-              <div className="relative group">
-                <Input
-                  type="email"
-                  value={billingEmail}
-                  onChange={(e) => setBillingEmail(e.target.value)}
-                  placeholder="name@email.com"
-                  className="h-14 pl-4 pr-32 bg-gray-50/50 border-gray-200 focus:border-[#668cff] focus:ring-4 focus:ring-[#668cff]/5 transition-all rounded-xl text-gray-900 text-base"
-                  required
-                />
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 border-l border-gray-200 pl-4">
-                  <span className="text-sm font-medium text-[#668cff] cursor-pointer hover:underline">
-                    Continue with Link
-                  </span>
-                </div>
-              </div>
-            </div>
+      {/* Main Section */}
+      <div className="flex-1 bg-white p-8 md:p-12 lg:p-16 flex flex-col justify-center">
+        <div className="max-w-md mx-auto w-full space-y-10">
+          <div className="space-y-3">
+            <h4 className="text-2xl font-bold text-gray-900 tracking-tight">
+              Complete your payment
+            </h4>
+            <p className="text-gray-500 leading-relaxed">
+              You'll be securely redirected to Stripe to enter your payment
+              details. Once complete, you'll be brought back here automatically.
+            </p>
           </div>
 
-          {/* Payment Method Section */}
-          <div className="space-y-8">
-            <div className="space-y-2">
-              <h4 className="text-lg font-bold text-gray-900 tracking-tight">Payment method</h4>
-              <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 w-fit px-3 py-1.5 rounded-full border border-gray-100">
-                <CreditCard size={14} className="text-[#668cff]" />
-                <span className="font-semibold">Bank card</span>
+          <div className="bg-gray-50 rounded-2xl p-6 space-y-4 border border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#668cff]/10 flex items-center justify-center">
+                <CreditCard size={20} className="text-[#668cff]" />
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900">Stripe Checkout</p>
+                <p className="text-sm text-gray-500">
+                  Industry-leading payment security
+                </p>
               </div>
             </div>
-
-            <div className="p-6 bg-white border-2 border-gray-100 rounded-[1.5rem] shadow-sm space-y-6">
-              <div className="space-y-3">
-                <Label className="text-sm font-bold text-gray-900 tracking-tight">Card information</Label>
-                <div className="p-4 bg-gray-50/50 border border-gray-200 rounded-xl focus-within:border-[#668cff] focus-within:ring-4 focus-within:ring-[#668cff]/5 transition-all">
-                  <CardElement options={cardElementOptions} />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <Label className="text-sm font-bold text-gray-900 tracking-tight">Cardholder name</Label>
-                <Input
-                  value={cardholderName}
-                  onChange={(e) => setCardholderName(e.target.value)}
-                  placeholder="Full name on card"
-                  className="h-14 bg-gray-50/50 border-gray-200 focus:border-[#668cff] focus:ring-4 focus:ring-[#668cff]/5 transition-all rounded-xl text-gray-900 text-base"
-                  required
-                />
-              </div>
-
-              <div className="space-y-3">
-                <Label className="text-sm font-bold text-gray-900 tracking-tight">Billing address</Label>
-                <div className="space-y-3">
-                  <div className="relative">
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                      <Globe size={18} />
-                    </div>
-                    <select className="flex h-14 w-full rounded-xl border border-gray-200 bg-gray-50/50 px-11 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus:outline-none focus:ring-4 focus:ring-[#668cff]/5 focus:border-[#668cff] disabled:cursor-not-allowed disabled:opacity-50 appearance-none text-gray-900 font-medium">
-                      <option>United States</option>
-                      <option>United Kingdom</option>
-                      <option>Canada</option>
-                      <option>Germany</option>
-                      <option>France</option>
-                    </select>
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </div>
-                  </div>
-                  <Input
-                    placeholder="Address"
-                    className="h-14 bg-gray-50/50 border-gray-200 focus:border-[#668cff] focus:ring-4 focus:ring-[#668cff]/5 transition-all rounded-xl text-gray-900 text-base"
-                  />
-                  <button type="button" className="text-sm font-medium text-[#668cff] hover:underline pl-1 transition-colors">
-                    Enter address manually
-                  </button>
-                </div>
-              </div>
-            </div>
+            <ul className="space-y-2 text-sm text-gray-600">
+              <li className="flex items-center gap-2">
+                <Check size={14} className="text-green-500 shrink-0" />
+                All major credit &amp; debit cards accepted
+              </li>
+              <li className="flex items-center gap-2">
+                <Check size={14} className="text-green-500 shrink-0" />
+                256-bit SSL encryption
+              </li>
+              <li className="flex items-center gap-2">
+                <Check size={14} className="text-green-500 shrink-0" />
+                Cancel anytime from your billing settings
+              </li>
+            </ul>
           </div>
 
-          {/* Action Footer */}
-          <div className="space-y-6 text-center">
-            {paymentError && (
-              <div className="p-4 bg-red-50 text-red-600 rounded-xl text-sm font-medium border border-red-100 animate-shake">
-                {paymentError}
-              </div>
-            )}
+          {error && (
+            <div className="p-4 bg-red-50 text-red-600 rounded-xl text-sm font-medium border border-red-100">
+              {error}
+            </div>
+          )}
 
+          {waitingForPayment ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-100 rounded-xl text-blue-700">
+                <Loader2 size={18} className="animate-spin shrink-0" />
+                <p className="text-sm font-medium">
+                  Waiting for payment confirmation from Stripe...
+                </p>
+              </div>
+              <button
+                onClick={() => setWaitingForPayment(false)}
+                className="text-sm text-gray-400 hover:text-gray-600 underline transition-colors"
+              >
+                Cancel and try again
+              </button>
+            </div>
+          ) : (
             <Button
-              type="submit"
-              disabled={!stripe || isProcessing}
+              onClick={handleOpenStripe}
+              disabled={isLoading}
               className="w-full h-16 rounded-[1.25rem] bg-[#668cff] hover:bg-[#5a7ee6] text-white font-bold text-xl shadow-xl shadow-[#668cff]/20 hover:shadow-2xl hover:shadow-[#668cff]/30 transition-all duration-300 transform active:scale-[0.98]"
             >
-              {isProcessing ? (
+              {isLoading ? (
                 <div className="flex items-center gap-3">
                   <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                  <span>Processing...</span>
+                  <span>Loading...</span>
                 </div>
               ) : (
-                `Subscribe`
+                <div className="flex items-center gap-3">
+                  <ExternalLink size={22} />
+                  <span>Pay with Stripe</span>
+                </div>
               )}
             </Button>
+          )}
 
-            <div className="space-y-4">
-              <p className="text-xs text-gray-400 leading-relaxed px-4">
-                By subscribing, you authorize SupportAccess to charge you according to the terms until you cancel.
-              </p>
-
-              <div className="flex items-center justify-center gap-4 text-xs font-semibold text-gray-400 pt-2 grayscale opacity-70">
-                <div className="flex items-center gap-1.5 border-r border-gray-200 pr-4">
-                  <span>Powered by</span>
-                  <span className="text-gray-600 font-bold tracking-tighter text-lg -mt-1">stripe</span>
-                </div>
-                <div className="flex gap-4 uppercase tracking-widest">
-                  <button type="button" className="hover:text-gray-600 transition-colors">Terms</button>
-                  <button type="button" className="hover:text-gray-600 transition-colors">Privacy</button>
-                </div>
-              </div>
+          <div className="flex items-center justify-center gap-4 text-xs font-semibold text-gray-400 grayscale opacity-70">
+            <div className="flex items-center gap-1.5 border-r border-gray-200 pr-4">
+              <span>Powered by</span>
+              <span className="text-gray-600 font-bold tracking-tighter text-lg -mt-1">
+                stripe
+              </span>
+            </div>
+            <div className="flex gap-4 uppercase tracking-widest">
+              <button type="button" className="hover:text-gray-600 transition-colors">
+                Terms
+              </button>
+              <button type="button" className="hover:text-gray-600 transition-colors">
+                Privacy
+              </button>
             </div>
           </div>
-        </form>
+        </div>
       </div>
     </div>
-  );
-}
-
-export function PaymentStep() {
-  return (
-    <Elements stripe={stripePromise}>
-      <PaymentForm />
-    </Elements>
   );
 }

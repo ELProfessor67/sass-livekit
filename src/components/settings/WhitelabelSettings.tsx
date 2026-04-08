@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { useAuth } from '@/contexts/SupportAccessAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,8 @@ const MAIN_DOMAIN = import.meta.env.VITE_MAIN_DOMAIN || window.location.hostname
 
 export function WhitelabelSettings() {
   const { canEdit } = useWorkspace();
+  const { currentUser } = useAuth();
+  const isOnTrial = !!(currentUser as any)?.trialEndsAt;
   const [slug, setSlug] = useState('');
   const [brandName, setBrandName] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
@@ -702,8 +705,10 @@ export function WhitelabelSettings() {
                     isSaving ||
                     isUploadingLogo ||
                     !canEdit ||
+                    isOnTrial ||
                     (!hasWhitelabel && (!slug || !brandName.trim()))
                   }
+                  title={isOnTrial ? "Upgrade to a paid plan to use whitelabel" : undefined}
                   className="px-10 h-11 backdrop-blur-sm bg-primary/90 hover:bg-primary transition-all duration-300 border border-primary/20 shadow-lg shadow-primary/10 font-medium"
                 >
                   {isSaving ? (

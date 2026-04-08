@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useLocation, useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 import { useTheme } from "@/components/ThemeProvider";
 import { useAccountMinutes } from "@/hooks/useAccountMinutes";
@@ -12,11 +13,21 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Clock, AlertTriangle } from "lucide-react";
+import { Sparkles, Clock, AlertTriangle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useWebsiteSettings } from "@/contexts/WebsiteSettingsContext";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 function useTrialCountdown(trialEndsAt: string | null | undefined) {
   const [countdown, setCountdown] = useState<{ label: string; isExpired: boolean; isUrgent: boolean } | null>(null);
@@ -71,8 +82,45 @@ export default function TopNavigation() {
   const { uiStyle } = useTheme();
   const { remainingMinutes, percentageUsed, isLoading: minutesLoading } = useAccountMinutes();
   const { websiteSettings } = useWebsiteSettings();
-  const { isOwner, isManager, isViewer } = useWorkspace();
+  const { workspaces, isOwner, isManager, isViewer } = useWorkspace();
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const trialCountdown = useTrialCountdown(user?.trialEndsAt);
+
+  const showDeleteAccount = !websiteSettings?.slug_name &&
+    workspaces.length === 1 &&
+    workspaces[0]?.name === "Main Account";
+
+  const handleDeleteAccount = async () => {
+    try {
+      setIsDeleting(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      const apiUrl = import.meta.env.DEV ? '' : (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '');
+
+      const response = await fetch(`${apiUrl}/api/v1/user/delete-account`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        }
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        toast.success("Account deleted successfully");
+        await signOut();
+        navigate("/");
+      } else {
+        toast.error(data.message || "Failed to delete account");
+      }
+    } catch (error) {
+      console.error("Error deleting account:", error);
+      toast.error("An error occurred while deleting account");
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
+    }
+  };
 
   const navItems = [{
     icon: <ChartBar size={18} weight="bold" />,
@@ -138,8 +186,8 @@ export default function TopNavigation() {
                         trialCountdown.isExpired
                           ? "bg-destructive/10 text-destructive border-destructive/30"
                           : trialCountdown.isUrgent
-                          ? "bg-orange-500/10 text-orange-600 border-orange-500/20"
-                          : "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                            ? "bg-orange-500/10 text-orange-600 border-orange-500/20"
+                            : "bg-amber-500/10 text-amber-600 border-amber-500/20"
                       )}
                     >
                       {trialCountdown.isExpired ? (
@@ -304,6 +352,18 @@ export default function TopNavigation() {
                     </div>
 
                     <div className="border-t border-border/40 p-2">
+                      {showDeleteAccount && (
+                        <DropdownMenuItem
+                          className="cursor-pointer flex items-center gap-3 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl mb-1"
+                          onSelect={(e) => {
+                            e.preventDefault();
+                            setShowDeleteDialog(true);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          <span>Delete Account</span>
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem
                         className="cursor-pointer flex items-center gap-3 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl"
                         onClick={() => {
@@ -315,6 +375,30 @@ export default function TopNavigation() {
                         <span>Log out</span>
                       </DropdownMenuItem>
                     </div>
+
+                    <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                      <AlertDialogContent className="bg-[#1C1C1C] border-white/10 text-white rounded-2xl">
+                        <AlertDialogHeader>
+                          <AlertDialogTitle className="text-xl font-medium">Are you absolutely sure?</AlertDialogTitle>
+                          <AlertDialogDescription className="text-white/60">
+                            This action cannot be undone. This will permanently delete your account
+                            and remove all your data from our servers.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10 hover:text-white rounded-xl">
+                            Cancel
+                          </AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={handleDeleteAccount}
+                            disabled={isDeleting}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-xl"
+                          >
+                            {isDeleting ? "Deleting..." : "Delete Account"}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </>

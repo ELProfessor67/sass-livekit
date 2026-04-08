@@ -856,19 +856,92 @@ router.get('/users', validateAdminAccess, async (req, res) => {
 
 /**
  * DELETE user
+ * Performs a full account wipe: removes all data across every table then deletes auth user.
  */
 router.delete('/users/:userId', validateAdminAccess, async (req, res) => {
   try {
     const { userId } = req.params;
-
     const supabase = getSupabaseClient();
 
-    await supabase.auth.admin.deleteUser(userId);
-    await supabase.from("users").delete().eq("id", userId);
+    // 1. Collect workspace IDs owned by this user
+    const { data: workspaces } = await supabase
+      .from('workspace_settings')
+      .select('id')
+      .eq('user_id', userId);
+    const workspaceIds = (workspaces || []).map(w => w.id);
 
-    res.json({ success: true, message: "User deleted successfully" });
+    // 2. Collect all assistant IDs (by workspace and by direct user_id)
+    let assistantIds = [];
+    if (workspaceIds.length > 0) {
+      const { data: wsAssistants } = await supabase
+        .from('assistant')
+        .select('id')
+        .in('workspace_id', workspaceIds);
+      assistantIds = (wsAssistants || []).map(a => a.id);
+    }
+    const { data: userAssistants } = await supabase
+      .from('assistant')
+      .select('id')
+      .eq('user_id', userId);
+    const allAssistantIds = [...new Set([...assistantIds, ...(userAssistants || []).map(a => a.id)])];
+
+    // 3. Delete phone numbers linked to those assistants
+    if (allAssistantIds.length > 0) {
+      await supabase.from('phone_number').delete().in('inbound_assistant_id', allAssistantIds);
+    }
+
+    // 4. Delete workspace invitations & members
+    if (workspaceIds.length > 0) {
+      await supabase.from('workspace_invitations').delete().in('workspace_id', workspaceIds);
+      await supabase.from('workspace_members').delete().in('workspace_id', workspaceIds);
+    }
+    await supabase.from('workspace_members').delete().eq('user_id', userId);
+
+    // 5. Delete knowledge bases & documents
+    if (workspaceIds.length > 0) {
+      const { data: kbs } = await supabase.from('knowledge_bases').select('id').in('workspace_id', workspaceIds);
+      const kbIds = (kbs || []).map(k => k.id);
+      if (kbIds.length > 0) {
+        await supabase.from('knowledge_documents').delete().in('knowledge_base_id', kbIds);
+        await supabase.from('knowledge_bases').delete().in('id', kbIds);
+      }
+    }
+    const { data: userKbs } = await supabase.from('knowledge_bases').select('id').eq('user_id', userId);
+    const userKbIds = (userKbs || []).map(k => k.id);
+    if (userKbIds.length > 0) {
+      await supabase.from('knowledge_documents').delete().in('knowledge_base_id', userKbIds);
+      await supabase.from('knowledge_bases').delete().in('id', userKbIds);
+    }
+
+    // 6. Delete workspace_settings (cascades: assistant, call_history, campaigns,
+    //    contact_lists, contacts, csv_files, sms_messages, workflows, etc.)
+    if (workspaceIds.length > 0) {
+      await supabase.from('workspace_settings').delete().eq('user_id', userId);
+    }
+
+    // 7. Explicitly clean up remaining user-owned rows
+    for (const table of ['campaigns', 'contact_lists', 'csv_files', 'contacts', 'appointments', 'scheduled_sms']) {
+      await supabase.from(table).delete().eq('user_id', userId);
+    }
+
+    // 8. Delete public.users row
+    await supabase.from('users').delete().eq('id', userId);
+
+    // 9. Delete from auth.users (cascades to all tables with auth.users FK:
+    //    user_twilio_credentials, user_calendar_credentials, user_whatsapp_credentials,
+    //    user_smtp_credentials, verification_tokens, password_reset_tokens,
+    //    minutes_purchases, payment_methods, workflow_folders, facebook_integrations,
+    //    connections, oauth_states, webhooks, workflows)
+    const { error: authError } = await supabase.auth.admin.deleteUser(userId);
+    if (authError) {
+      console.error('Error deleting auth user (admin):', authError);
+      return res.status(500).json({ success: false, error: 'Failed to delete user from authentication' });
+    }
+
+    res.json({ success: true, message: 'User deleted successfully' });
   } catch (err) {
-    res.status(500).json({ success: false, error: "Internal server error" });
+    console.error('Error in DELETE /admin/users/:userId:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 

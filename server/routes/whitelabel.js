@@ -274,7 +274,7 @@ router.post('/activate', async (req, res) => {
 
     let { data: userData, error: userError } = await supabase
       .from('users')
-      .select('id, slug_name, tenant, role, plan, name')
+      .select('id, slug_name, tenant, role, plan, name, trial_ends_at')
       .eq('id', authUser.id)
       .maybeSingle();
 
@@ -322,6 +322,13 @@ router.post('/activate', async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Whitelabel has already been activated for this account.'
+      });
+    }
+
+    if (userData.trial_ends_at) {
+      return res.status(403).json({
+        success: false,
+        message: 'You must upgrade to a paid plan before activating whitelabel.'
       });
     }
 

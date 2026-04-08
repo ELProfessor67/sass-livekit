@@ -339,7 +339,7 @@ router.post('/minutes/create-payment-intent', validateAuth, async (req, res) => 
         // Get user and their tenant/role/plan
         const { data: userData, error: userError } = await supabase
             .from('users')
-            .select('tenant, role, slug_name, plan')
+            .select('tenant, role, slug_name, plan, trial_ends_at')
             .eq('id', req.userId)
             .single();
 
@@ -347,6 +347,14 @@ router.post('/minutes/create-payment-intent', validateAuth, async (req, res) => 
             return res.status(404).json({
                 success: false,
                 error: 'User profile not found',
+            });
+        }
+
+        // Block trial users from purchasing minutes
+        if (userData.trial_ends_at) {
+            return res.status(403).json({
+                success: false,
+                error: 'You must upgrade to a paid plan before purchasing additional minutes.',
             });
         }
 

@@ -27,6 +27,79 @@ const validateAuth = async (req, res, next) => {
 };
 
 /**
+ * POST /api/v1/subscription/create-checkout-session
+ * Create a Stripe Checkout Session and return the URL to redirect to.
+ */
+router.post('/create-checkout-session', validateAuth, async (req, res) => {
+    try {
+        const { plan, planName, planPrice, successUrl, cancelUrl } = req.body;
+
+        if (!plan || !planPrice || !successUrl || !cancelUrl) {
+            return res.status(400).json({ success: false, error: 'plan, planPrice, successUrl, and cancelUrl are required' });
+        }
+
+        if (!stripe) {
+            return res.status(500).json({ success: false, error: 'Stripe is not configured' });
+        }
+
+        const supabase = getSupabaseClient();
+
+        // Fetch or create Stripe customer
+        const { data: userData } = await supabase
+            .from('users')
+            .select('stripe_customer_id, email')
+            .eq('id', req.userId)
+            .single();
+
+        let customerId = userData?.stripe_customer_id;
+
+        if (!customerId) {
+            const customer = await stripe.customers.create({
+                email: userData?.email || req.user.email,
+                metadata: { userId: req.userId }
+            });
+            customerId = customer.id;
+
+            await supabase
+                .from('users')
+                .update({ stripe_customer_id: customerId })
+                .eq('id', req.userId);
+        }
+
+        const session = await stripe.checkout.sessions.create({
+            customer: customerId,
+            payment_method_types: ['card'],
+            mode: 'subscription',
+            line_items: [
+                {
+                    price_data: {
+                        currency: 'usd',
+                        product_data: {
+                            name: planName || plan,
+                            description: `${planName || plan} Plan - Monthly Subscription`,
+                        },
+                        unit_amount: Math.round(planPrice * 100),
+                        recurring: { interval: 'month' },
+                    },
+                    quantity: 1,
+                },
+            ],
+            success_url: successUrl,
+            cancel_url: cancelUrl,
+            metadata: {
+                userId: req.userId,
+                plan: plan.toLowerCase(),
+            },
+        });
+
+        return res.json({ success: true, url: session.url, sessionId: session.id });
+    } catch (error) {
+        console.error('Error in POST /subscription/create-checkout-session:', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+/**
  * POST /api/v1/subscription/change-plan
  * Change user's plan. Updates DB and cancels/creates Stripe subscription if applicable.
  */

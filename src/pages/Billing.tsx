@@ -67,6 +67,7 @@ export default function Billing() {
   const [isUnlimited, setIsUnlimited] = useState(false);
   const [minutesUsed, setMinutesUsed] = useState(0);
   const [isPurchaseDialogOpen, setIsPurchaseDialogOpen] = useState(false);
+  const [isOnTrial, setIsOnTrial] = useState(false);
   const [isChangePlanOpen, setIsChangePlanOpen] = useState(false);
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
   const [isAssignMinutesOpen, setIsAssignMinutesOpen] = useState(false);
@@ -330,6 +331,7 @@ export default function Billing() {
         setMinutesBalance(remainingMinutes);
         setMinutesUsed(minutesUsed);
         setTotalUserMinutes(minutesLimit);
+        setIsOnTrial(!!(userData as any)?.trial_ends_at);
 
         // Fetch workspace-specific minutes data
         // "Main Account" workspace (auto-created) is treated as main account — show user-level breakdown
@@ -764,12 +766,23 @@ export default function Billing() {
                   {!isUnlimited && totalUserMinutes > 0 && (
                     <Progress value={Math.min((minutesUsed / totalUserMinutes) * 100, 100)} className="h-1.5 mt-1" />
                   )}
-                  <Button className="w-full mt-2" onClick={() => setIsPurchaseDialogOpen(true)}>
+                  <Button
+                    className="w-full mt-2"
+                    onClick={() => setIsPurchaseDialogOpen(true)}
+                    disabled={isOnTrial}
+                    title={isOnTrial ? "Upgrade to a paid plan to purchase additional minutes" : undefined}
+                  >
                     Purchase Minutes
                   </Button>
-                  <p className="text-xs text-muted-foreground text-center">
-                    Minutes are purchased separately from your subscription plan
-                  </p>
+                  {isOnTrial ? (
+                    <p className="text-xs text-amber-500 text-center">
+                      You must upgrade to a paid plan before purchasing minutes
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground text-center">
+                      Minutes are purchased separately from your subscription plan
+                    </p>
+                  )}
                 </div>
               ) : (
                 // Workspace view — show workspace-level minutes only
