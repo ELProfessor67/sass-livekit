@@ -306,7 +306,7 @@ export default function Billing() {
         const userIsUnlimited = !!userData?.is_unlimited;
 
         // Auto-apply trial minutes if user has 0 minutes and hasn't used any yet
-        if (!userIsUnlimited && minutesLimit === 0 && minutesUsed === 0 && mainAccountWs?.id) {
+        if (!userIsUnlimited && minutesLimit === 0 && minutesUsed === 0) {
           try {
             const trialTenant = userData?.slug_name ? userData.slug_name : (userData?.tenant && userData.tenant !== 'main' ? userData.tenant : 'main');
             const { data: trialConfig } = await (supabase as any)
@@ -318,10 +318,26 @@ export default function Billing() {
             if (trialConfig?.free_trial_enabled && trialConfig.free_trial_minutes > 0) {
               const trialEndsAt = new Date();
               trialEndsAt.setDate(trialEndsAt.getDate() + (trialConfig.free_trial_days || 7));
-              await supabase
-                .from('workspace_settings')
-                .update({ minute_limit: trialConfig.free_trial_minutes } as any)
-                .eq('id', mainAccountWs.id);
+
+              if (mainAccountWs?.id) {
+                // Workspace exists — just update the minute limit
+                await supabase
+                  .from('workspace_settings')
+                  .update({ minute_limit: trialConfig.free_trial_minutes } as any)
+                  .eq('id', mainAccountWs.id);
+              } else {
+                // Workspace missing — create it with trial minutes
+                await supabase
+                  .from('workspace_settings')
+                  .insert({
+                    user_id: user.id,
+                    workspace_name: 'Main Account',
+                    minute_limit: trialConfig.free_trial_minutes,
+                    minutes_used: 0,
+                    workspace_type: 'simple',
+                  } as any);
+              }
+
               await supabase
                 .from('users')
                 .update({ trial_ends_at: trialEndsAt.toISOString() } as any)
