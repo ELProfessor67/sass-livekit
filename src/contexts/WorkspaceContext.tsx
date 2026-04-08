@@ -134,15 +134,10 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 }
             }
 
-            // 1.5. Get user profile for total minutes
-            const { data: userData, error: userError } = await supabase
-                .from('users')
-                .select('minutes_limit')
-                .eq('id', user.id)
-                .single();
-
-            if (!userError && userData?.minutes_limit) {
-                setTotalMinutes(userData.minutes_limit);
+            // 1.5. Get total minutes from Main Account workspace
+            const mainAccountWorkspace = ownedData?.find(w => w.workspace_name === 'Main Account');
+            if (mainAccountWorkspace?.minute_limit) {
+                setTotalMinutes(mainAccountWorkspace.minute_limit);
             }
 
             // 2. Get workspaces where user is a member

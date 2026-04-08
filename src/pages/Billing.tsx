@@ -108,7 +108,7 @@ export default function Billing() {
         // Fetch user data for subscription info FIRST (to get real plan from database)
         const { data: userData } = await supabase
           .from('users')
-          .select('is_active, trial_ends_at, plan, minutes_limit, minutes_used, is_unlimited, billing, stripe_customer_id, updated_at, tenant, slug_name')
+          .select('is_active, trial_ends_at, plan, is_unlimited, billing, stripe_customer_id, updated_at, tenant, slug_name')
           .eq('id', user.id)
           .single();
 
@@ -293,13 +293,20 @@ export default function Billing() {
           nextBilling
         });
 
-        // Set minutes balance (remaining = limit - used) and usage
-        let minutesLimit = userData?.minutes_limit || 0;
-        const minutesUsed = userData?.minutes_used || 0;
+        // Set minutes balance — read from Main Account workspace (the source of truth)
+        const { data: mainAccountWs } = await supabase
+          .from('workspace_settings')
+          .select('id, minute_limit, minutes_used')
+          .eq('user_id', user.id)
+          .eq('workspace_name', 'Main Account')
+          .single();
+
+        let minutesLimit = mainAccountWs?.minute_limit || 0;
+        const minutesUsed = mainAccountWs?.minutes_used || 0;
         const userIsUnlimited = !!userData?.is_unlimited;
 
         // Auto-apply trial minutes if user has 0 minutes and hasn't used any yet
-        if (!userIsUnlimited && minutesLimit === 0 && minutesUsed === 0) {
+        if (!userIsUnlimited && minutesLimit === 0 && minutesUsed === 0 && mainAccountWs?.id) {
           try {
             const trialTenant = userData?.slug_name ? userData.slug_name : (userData?.tenant && userData.tenant !== 'main' ? userData.tenant : 'main');
             const { data: trialConfig } = await (supabase as any)
@@ -312,11 +319,12 @@ export default function Billing() {
               const trialEndsAt = new Date();
               trialEndsAt.setDate(trialEndsAt.getDate() + (trialConfig.free_trial_days || 7));
               await supabase
+                .from('workspace_settings')
+                .update({ minute_limit: trialConfig.free_trial_minutes } as any)
+                .eq('id', mainAccountWs.id);
+              await supabase
                 .from('users')
-                .update({
-                  minutes_limit: trialConfig.free_trial_minutes,
-                  trial_ends_at: trialEndsAt.toISOString(),
-                } as any)
+                .update({ trial_ends_at: trialEndsAt.toISOString() } as any)
                 .eq('id', user.id);
               minutesLimit = trialConfig.free_trial_minutes;
             }
@@ -998,16 +1006,17 @@ export default function Billing() {
           isUnlimited={isUnlimited}
           minutesUsed={minutesUsed}
           onPurchaseComplete={async () => {
-            // Refresh minutes balance after purchase
-            const { data: userData } = await supabase
-              .from('users')
-              .select('minutes_limit, minutes_used')
-              .eq('id', user?.id)
+            // Refresh minutes balance from Main Account workspace after purchase
+            const { data: wsData } = await supabase
+              .from('workspace_settings')
+              .select('minute_limit, minutes_used')
+              .eq('user_id', user?.id)
+              .eq('workspace_name', 'Main Account')
               .single();
 
-            if (userData) {
-              const minutesLimit = userData.minutes_limit || 0;
-              const minutesUsed = userData.minutes_used || 0;
+            if (wsData) {
+              const minutesLimit = wsData.minute_limit || 0;
+              const minutesUsed = wsData.minutes_used || 0;
               const remainingMinutes = Math.max(0, minutesLimit - minutesUsed);
               setMinutesBalance(remainingMinutes);
               setMinutesUsed(minutesUsed);

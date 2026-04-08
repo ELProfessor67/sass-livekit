@@ -89,7 +89,8 @@ export default function TopNavigation() {
 
   const showDeleteAccount = !websiteSettings?.slug_name &&
     workspaces.length === 1 &&
-    workspaces[0]?.name === "Main Account";
+    workspaces[0]?.name === "Main Account" &&
+    !user?.trialEndsAt;
 
   const handleDeleteAccount = async () => {
     try {

@@ -69,8 +69,31 @@ export function OnboardingComplete() {
               const trialMinutes = trialSettings.free_trial_minutes > 0 ? trialSettings.free_trial_minutes : 30;
               const trialEndsAt = new Date();
               trialEndsAt.setDate(trialEndsAt.getDate() + trialDays);
-              trialUpdate.minutes_limit = trialMinutes;
               trialUpdate.trial_ends_at = trialEndsAt.toISOString();
+
+              // Write trial minutes to Main Account workspace (the source of truth for minutes)
+              const { data: mainWs } = await supabase
+                .from("workspace_settings")
+                .select("id")
+                .eq("user_id", user.id)
+                .eq("workspace_name", "Main Account")
+                .maybeSingle();
+
+              if (mainWs?.id) {
+                await supabase
+                  .from("workspace_settings")
+                  .update({ minute_limit: trialMinutes } as any)
+                  .eq("id", mainWs.id);
+              } else {
+                await supabase
+                  .from("workspace_settings")
+                  .insert({
+                    user_id: user.id,
+                    workspace_name: "Main Account",
+                    minute_limit: trialMinutes,
+                    workspace_type: "simple",
+                  } as any);
+              }
             }
 
             await supabase

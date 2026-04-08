@@ -31,16 +31,17 @@ export function useAccountMinutes(): AccountMinutes {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
-        .from("users")
-        .select("minutes_limit, minutes_used, plan")
-        .eq("id", user.id)
+        .from("workspace_settings")
+        .select("minute_limit, minutes_used")
+        .eq("user_id", user.id)
+        .eq("workspace_name", "Main Account")
         .single();
 
       if (error) throw error;
 
-      setTotalMinutes(data?.minutes_limit || 0);
+      setTotalMinutes(data?.minute_limit || 0);
       setUsedMinutes(data?.minutes_used || 0);
-      setPlanName(data?.plan || user.plan || "Free Plan");
+      setPlanName(user.plan || "Free Plan");
     } catch (error) {
       console.error("Error fetching account minutes:", error);
       setTotalMinutes(0);
@@ -66,7 +67,7 @@ export function useAccountMinutes(): AccountMinutes {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [fetchMinutes]);
 
-  // Realtime subscription — update instantly when minutes_limit or minutes_used changes in DB
+  // Realtime subscription — update instantly when minute_limit or minutes_used changes in Main Account workspace
   useEffect(() => {
     if (!user?.id) return;
 
@@ -77,14 +78,15 @@ export function useAccountMinutes(): AccountMinutes {
         {
           event: "UPDATE",
           schema: "public",
-          table: "users",
-          filter: `id=eq.${user.id}`,
+          table: "workspace_settings",
+          filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
           const row = payload.new as any;
-          if (row.minutes_limit !== undefined) setTotalMinutes(row.minutes_limit || 0);
-          if (row.minutes_used !== undefined) setUsedMinutes(row.minutes_used || 0);
-          if (row.plan !== undefined) setPlanName(row.plan || "Free Plan");
+          if (row.workspace_name === "Main Account") {
+            if (row.minute_limit !== undefined) setTotalMinutes(row.minute_limit || 0);
+            if (row.minutes_used !== undefined) setUsedMinutes(row.minutes_used || 0);
+          }
         }
       )
       .subscribe();

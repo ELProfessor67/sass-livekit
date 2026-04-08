@@ -104,11 +104,18 @@ export function PlansAndPricingSettings() {
 
         const assistantIds = assistantsData?.map(a => a.id) || [];
 
-        // Fetch user data for limits
+        // Fetch user data for limits — minutes come from Main Account workspace
         const { data: userData } = await supabase
           .from('users')
-          .select('minutes_limit, minutes_used, is_unlimited, plan')
+          .select('is_unlimited, plan')
           .eq('id', user.id)
+          .single();
+
+        const { data: mainAccountWs } = await supabase
+          .from('workspace_settings')
+          .select('minute_limit, minutes_used')
+          .eq('user_id', user.id)
+          .eq('workspace_name', 'Main Account')
           .single();
 
         // 1. API Calls (count from call_history for current month)
@@ -196,8 +203,8 @@ export function PlansAndPricingSettings() {
             label: "Team Members"
           },
           minutes: {
-            used: userData?.minutes_used || 0,
-            limit: userData?.is_unlimited ? -1 : (userData?.minutes_limit || 0),
+            used: mainAccountWs?.minutes_used || 0,
+            limit: userData?.is_unlimited ? -1 : (mainAccountWs?.minute_limit || 0),
             label: "Available Minutes"
           }
         });

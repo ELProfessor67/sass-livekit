@@ -690,10 +690,30 @@ const AdminPanel = () => {
           });
         }
 
-        setUsers(filteredUsers);
+        // Enrich users with minutes from their Main Account workspace
+        const userIds = filteredUsers.map((u: User) => u.id);
+        let enrichedUsers = filteredUsers;
+        if (userIds.length > 0) {
+          const { data: mainAccountWs } = await supabase
+            .from('workspace_settings')
+            .select('user_id, minute_limit, minutes_used')
+            .eq('workspace_name', 'Main Account')
+            .in('user_id', userIds);
+
+          if (mainAccountWs && mainAccountWs.length > 0) {
+            const wsMap: Record<string, any> = {};
+            mainAccountWs.forEach((ws: any) => { wsMap[ws.user_id] = ws; });
+            enrichedUsers = filteredUsers.map((u: User) => {
+              const ws = wsMap[u.id];
+              return ws ? { ...u, minutes_limit: ws.minute_limit || 0, minutes_used: ws.minutes_used || 0 } : u;
+            });
+          }
+        }
+
+        setUsers(enrichedUsers);
 
         // Fetch stats for all filtered users
-        await fetchAllUserStats(filteredUsers);
+        await fetchAllUserStats(enrichedUsers);
       } else {
         throw new Error(result.error || 'Failed to fetch users');
       }
