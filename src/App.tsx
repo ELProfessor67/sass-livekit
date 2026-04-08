@@ -84,7 +84,7 @@ const TRIAL_ALLOWED_PATHS = ["/billing", "/settings", "/profile", "/admin"];
 function TrialExpiredGuard() {
   const location = useLocation();
   const { user } = useAuth();
-  const { remainingMinutes, isLoading: minutesLoading } = useAccountMinutes();
+  const { remainingMinutes, totalMinutes, isLoading: minutesLoading } = useAccountMinutes();
 
   // Admins and non-trial users always pass
   if (!user || user.role === 'admin') return <Outlet />;
@@ -96,7 +96,9 @@ function TrialExpiredGuard() {
   if (minutesLoading) return <Outlet />;
 
   const isDateExpired = new Date(trialEndsAt) <= new Date();
-  const isMinutesExhausted = remainingMinutes <= 0;
+  // Only treat minutes as exhausted when we actually loaded data (totalMinutes > 0).
+  // If totalMinutes === 0 it means the fetch failed or there are no workspace_settings rows yet.
+  const isMinutesExhausted = totalMinutes > 0 && remainingMinutes <= 0;
 
   // Block when either the trial period has ended OR the trial minutes ran out
   const isBlocked = isDateExpired || isMinutesExhausted;

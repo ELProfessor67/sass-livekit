@@ -30,12 +30,14 @@ export function useAccountMinutes(): AccountMinutes {
 
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data: rows, error } = await supabase
         .from("workspace_settings")
         .select("minute_limit, minutes_used")
         .eq("user_id", user.id)
         .eq("workspace_name", "Main Account")
-        .single();
+        .limit(1);
+
+      const data = rows?.[0] ?? null;
 
       if (error) throw error;
 

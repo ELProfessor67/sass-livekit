@@ -79,21 +79,19 @@ export function OnboardingComplete() {
                 .eq("workspace_name", "Main Account")
                 .maybeSingle();
 
-              if (mainWs?.id) {
-                await supabase
-                  .from("workspace_settings")
-                  .update({ minute_limit: trialMinutes } as any)
-                  .eq("id", mainWs.id);
-              } else {
-                await supabase
-                  .from("workspace_settings")
-                  .insert({
+              // Upsert so this is safe even if WorkspaceContext already created the row.
+              await supabase
+                .from("workspace_settings")
+                .upsert(
+                  {
                     user_id: user.id,
                     workspace_name: "Main Account",
                     minute_limit: trialMinutes,
                     workspace_type: "simple",
-                  } as any);
-              }
+                    ...(mainWs?.id ? { id: mainWs.id } : {}),
+                  } as any,
+                  { onConflict: 'user_id,workspace_name' }
+                );
             }
 
             const { error: trialUpdateError } = await supabase

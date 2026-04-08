@@ -117,15 +117,20 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
             if (ownedError) throw ownedError;
 
-            // Auto-create "Main Account" if no owned workspaces exist
+            // Auto-create "Main Account" if no owned workspaces exist.
+            // Use upsert (onConflict) so concurrent calls from OnboardingComplete
+            // never produce duplicate rows.
             if (!ownedData || ownedData.length === 0) {
                 const { data: newWorkspace, error: insertError } = await supabase
                     .from('workspace_settings')
-                    .insert({
-                        workspace_name: 'Main Account',
-                        user_id: user.id,
-                        workspace_type: 'simple'
-                    })
+                    .upsert(
+                        {
+                            workspace_name: 'Main Account',
+                            user_id: user.id,
+                            workspace_type: 'simple'
+                        },
+                        { onConflict: 'user_id,workspace_name', ignoreDuplicates: true }
+                    )
                     .select('*, members:workspace_members(count)')
                     .maybeSingle();
 
