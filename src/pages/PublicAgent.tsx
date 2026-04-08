@@ -280,10 +280,7 @@ function IdleScreen({
                         </span>
                     </GlassButton>
 
-                    {/* brand */}
-                    <p className="text-[11px] text-white/18 tracking-widest uppercase">
-                        Powered by AI
-                    </p>
+
                 </div>
             </Glass>
         </motion.div>

@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NovaMind AI — Always-On Customer Support</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #fafafa;
+      --surface:   #ffffff;
+      --border:    #e5e7eb;
+      --text:      #111827;
+      --muted:     #6b7280;
+      --accent:    #7c3aed;
+      --accent-lt: #ede9fe;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    /* ── NAV ─────────────────────────────────── */
+    nav {
+      position: sticky; top: 0; z-index: 50;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 5%; height: 64px;
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 1.1rem; font-weight: 700; color: var(--text); text-decoration: none;
+    }
+
+    .logo-icon {
+      width: 32px; height: 32px; border-radius: 9px;
+      background: linear-gradient(135deg, #7c3aed, #a78bfa);
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 15px;
+    }
+
+    .nav-links {
+      display: flex; align-items: center; gap: 28px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      text-decoration: none; font-size: 14px; color: var(--muted);
+      transition: color .2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+
+    .nav-cta {
+      padding: 8px 20px; border-radius: 8px;
+      background: var(--accent); color: #fff !important;
+      font-weight: 600; font-size: 14px;
+      transition: opacity .2s !important;
+    }
+    .nav-cta:hover { opacity: 0.88; }
+
+    /* ── HERO ────────────────────────────────── */
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: center;
+      gap: 48px;
+      max-width: 1120px; margin: 0 auto;
+      padding: 80px 5% 96px;
+    }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 99px;
+      background: var(--accent-lt); color: var(--accent);
+      font-size: 12px; font-weight: 600; letter-spacing: .04em;
+      margin-bottom: 20px;
+    }
+
+    .badge::before { content: "●"; font-size: 8px; }
+
+    h1 {
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 800; letter-spacing: -.02em; line-height: 1.18;
+      color: var(--text);
+    }
+
+    h1 span { color: var(--accent); }
+
+    .hero-sub {
+      margin-top: 18px;
+      font-size: 1.05rem; color: var(--muted); max-width: 480px;
+    }
+
+    .hero-actions {
+      margin-top: 36px; display: flex; gap: 12px; flex-wrap: wrap;
+    }
+
+    .btn-primary {
+      padding: 13px 28px; border-radius: 10px;
+      background: var(--accent); color: #fff;
+      font-size: 15px; font-weight: 600; border: none; cursor: pointer;
+      transition: transform .15s, box-shadow .15s;
+      box-shadow: 0 4px 14px rgba(124,58,237,.35);
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(124,58,237,.4); }
+
+    .btn-ghost {
+      padding: 13px 24px; border-radius: 10px;
+      background: transparent; color: var(--text);
+      font-size: 15px; font-weight: 500;
+      border: 1px solid var(--border); cursor: pointer;
+      transition: border-color .2s;
+    }
+    .btn-ghost:hover { border-color: #9ca3af; }
+
+    .hero-stats {
+      margin-top: 40px; display: flex; gap: 32px;
+    }
+
+    .stat-item { display: flex; flex-direction: column; }
+    .stat-num { font-size: 1.5rem; font-weight: 800; color: var(--text); }
+    .stat-lbl { font-size: 12px; color: var(--muted); margin-top: 1px; }
+
+    /* ── DEMO WIDGET ─────────────────────────── */
+    .hero-demo {
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+    }
+
+    .demo-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
+      color: var(--muted); font-weight: 600;
+    }
+
+    .embed-input-row {
+      width: 100%; max-width: 420px;
+      display: flex; gap: 8px;
+    }
+
+    .embed-input {
+      flex: 1;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      font-size: 13px; color: var(--text);
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+      font-family: ui-monospace, monospace;
+    }
+    .embed-input::placeholder { color: #9ca3af; }
+    .embed-input:focus {
+      border-color: rgba(124,58,237,.5);
+      box-shadow: 0 0 0 3px rgba(124,58,237,.1);
+    }
+
+    .embed-load-btn {
+      padding: 10px 18px; border-radius: 10px;
+      background: var(--accent); color: #fff;
+      border: none; font-size: 13px; font-weight: 600;
+      cursor: pointer; white-space: nowrap;
+      transition: opacity .2s;
+    }
+    .embed-load-btn:hover { opacity: .85; }
+
+    .demo-shell {
+      width: 100%; max-width: 420px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.1), 0 0 0 1px rgba(124,58,237,.07);
+    }
+
+    .demo-chrome {
+      display: flex; align-items: center; gap: 6px;
+      padding: 10px 14px;
+      background: #f9f9fb;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot.r { background: #ff5f57; }
+    .dot.y { background: #febc2e; }
+    .dot.g { background: #28c840; }
+
+    .demo-chrome-url {
+      flex: 1; margin-left: 8px;
+      padding: 3px 10px; border-radius: 5px;
+      background: #eff0f2;
+      font-size: 11px; color: #8a8fa3;
+      overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    }
+
+    .demo-shell iframe {
+      width: 100%; height: 520px; border: none; display: block;
+      background: #06060f;
+    }
+
+    /* ── LOGOS ───────────────────────────────── */
+    .logos-strip {
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 32px 5%;
+      text-align: center;
+    }
+
+    .logos-strip p {
+      font-size: 12px; text-transform: uppercase; letter-spacing: .1em;
+      color: var(--muted); margin-bottom: 20px;
+    }
+
+    .logos-row {
+      display: flex; align-items: center; justify-content: center;
+      flex-wrap: wrap; gap: 36px;
+    }
+
+    .logo-pill {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 16px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--surface);
+      font-size: 13px; font-weight: 600; color: #374151;
+    }
+
+    .logo-pill .ico { font-size: 16px; }
+
+    /* ── FEATURES ────────────────────────────── */
+    .features {
+      max-width: 1120px; margin: 0 auto;
+      padding: 96px 5%;
+    }
+
+    .section-label {
+      font-size: 13px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--accent); margin-bottom: 12px;
+    }
+
+    .section-title {
+      font-size: clamp(1.6rem, 3vw, 2.4rem);
+      font-weight: 800; letter-spacing: -.02em; line-height: 1.2;
+      max-width: 520px;
+    }
+
+    .feature-grid {
+      margin-top: 56px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+    }
+
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      transition: box-shadow .2s, transform .2s;
+    }
+    .feature-card:hover {
+      box-shadow: 0 8px 32px rgba(0,0,0,0.08);
+      transform: translateY(-2px);
+    }
+
+    .feature-icon {
+      width: 44px; height: 44px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+      background: var(--accent-lt);
+      margin-bottom: 18px;
+    }
+
+    .feature-title { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
+    .feature-desc { font-size: 14px; color: var(--muted); line-height: 1.65; }
+
+    /* ── HOW IT WORKS ─────────────────────────── */
+    .how {
+      background: #f5f3ff;
+      padding: 96px 5%;
+    }
+
+    .how-inner { max-width: 900px; margin: 0 auto; }
+
+    .steps {
+      margin-top: 56px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 24px;
+      position: relative;
+    }
+
+    .step {
+      background: #fff;
+      border: 1px solid #e8e3ff;
+      border-radius: 16px;
+      padding: 28px;
+      text-align: center;
+    }
+
+    .step-num {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+      font-size: 16px; font-weight: 800;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 16px;
+    }
+
+    .step h3 { font-size: .95rem; font-weight: 700; margin-bottom: 8px; }
+    .step p  { font-size: 13px; color: var(--muted); }
+
+    /* ── PRICING ─────────────────────────────── */
+    .pricing {
+      max-width: 1120px; margin: 0 auto;
+      padding: 96px 5%;
+    }
+
+    .plan-grid {
+      margin-top: 56px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 24px;
+      align-items: start;
+    }
+
+    .plan-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px;
+    }
+
+    .plan-card.popular {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(124,58,237,.08);
+      position: relative;
+    }
+
+    .pop-badge {
+      position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+      padding: 4px 14px; border-radius: 99px;
+      background: var(--accent); color: #fff;
+      font-size: 11px; font-weight: 700; letter-spacing: .05em;
+      white-space: nowrap;
+    }
+
+    .plan-name { font-size: .85rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+    .plan-price { font-size: 2.4rem; font-weight: 800; margin: 8px 0 4px; }
+    .plan-price span { font-size: 1rem; font-weight: 500; color: var(--muted); }
+    .plan-desc { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
+
+    .plan-features { list-style: none; display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
+    .plan-features li { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #374151; }
+    .plan-features li::before { content: "✓"; color: var(--accent); font-weight: 700; flex-shrink: 0; }
+
+    .plan-btn {
+      display: block; width: 100%;
+      padding: 12px; border-radius: 10px; border: none;
+      font-size: 15px; font-weight: 600; cursor: pointer;
+      transition: opacity .2s;
+    }
+    .plan-btn.outline {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .plan-btn.solid  { background: var(--accent); color: #fff; box-shadow: 0 4px 14px rgba(124,58,237,.3); }
+    .plan-btn:hover  { opacity: 0.82; }
+
+    /* ── CTA BANNER ───────────────────────────── */
+    .cta-banner {
+      background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 60%, #4c1d95 100%);
+      padding: 80px 5%;
+      text-align: center;
+      color: #fff;
+    }
+
+    .cta-banner h2 {
+      font-size: clamp(1.6rem, 3.5vw, 2.8rem);
+      font-weight: 800; letter-spacing: -.02em; margin-bottom: 16px;
+    }
+
+    .cta-banner p { font-size: 1rem; opacity: .75; max-width: 480px; margin: 0 auto 36px; }
+
+    .btn-white {
+      padding: 14px 32px; border-radius: 10px;
+      background: #fff; color: var(--accent);
+      font-size: 15px; font-weight: 700; border: none; cursor: pointer;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      transition: transform .15s;
+    }
+    .btn-white:hover { transform: translateY(-2px); }
+
+    /* ── FOOTER ──────────────────────────────── */
+    footer {
+      background: #111827; color: rgba(255,255,255,0.45);
+      padding: 48px 5%;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 16px;
+    }
+
+    .footer-logo { color: rgba(255,255,255,0.75); font-weight: 700; font-size: .95rem; }
+    footer p { font-size: 13px; }
+
+    /* ── RESPONSIVE ──────────────────────────── */
+    @media (max-width: 768px) {
+      .hero { grid-template-columns: 1fr; }
+      .hero-demo { order: -1; }
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <a class="logo" href="#">
+      <div class="logo-icon">✦</div>
+      NovaMind AI
+    </a>
+    <ul class="nav-links">
+      <li><a href="#">Features</a></li>
+      <li><a href="#">Pricing</a></li>
+      <li><a href="#">Docs</a></li>
+      <li><a href="#">Blog</a></li>
+      <li><a href="#" class="nav-cta">Get Started Free</a></li>
+    </ul>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-copy">
+      <div class="badge">Now in Public Beta</div>
+      <h1>Your AI agent,<br><span>always available</span><br>to your customers</h1>
+      <p class="hero-sub">
+        Deploy a voice-powered AI assistant on your site in minutes. Let it handle
+        support, onboarding, and sales — 24 / 7, in any language.
+      </p>
+      <div class="hero-actions">
+        <button class="btn-primary">Start for free →</button>
+        <button class="btn-ghost">See how it works</button>
+      </div>
+      <div class="hero-stats">
+        <div class="stat-item">
+          <span class="stat-num">3 min</span>
+          <span class="stat-lbl">avg. setup time</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-num">99.9%</span>
+          <span class="stat-lbl">uptime SLA</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-num">40+</span>
+          <span class="stat-lbl">languages</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- EMBEDDED WIDGET DEMO -->
+    <div class="hero-demo">
+      <p class="demo-label">Live demo — paste your embed code</p>
+
+      <div class="embed-input-row">
+        <input
+          id="embedInput"
+          class="embed-input"
+          type="text"
+          placeholder='<iframe src="http://…" …></iframe>'
+        />
+        <button class="embed-load-btn" onclick="loadEmbed()">Embed</button>
+      </div>
+
+      <div class="demo-shell">
+        <div class="demo-chrome">
+          <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
+          <div class="demo-chrome-url" id="demoUrl">Paste your iframe snippet above</div>
+        </div>
+        <div id="frameContainer">
+          <iframe id="agentFrame" src="" allow="microphone; autoplay" style="display:none;"></iframe>
+          <div id="placeholder" style="
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            height:520px; background:#06060f; gap:14px;
+            font-family:system-ui,sans-serif; color:rgba(255,255,255,.3); font-size:13px; text-align:center;
+          ">
+            <span style="font-size:34px;opacity:.35;">🎙️</span>
+            <span style="max-width:200px;line-height:1.6;">Paste your <code style="background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-size:11px;">&lt;iframe&gt;</code> snippet above and click Embed</span>
+          </div>
+        </div>
+      </div>
+      <p style="font-size:12px;color:#9ca3af;margin-top:4px;">Microphone access required for voice chat</p>
+    </div>
+  </section>
+
+  <!-- LOGO STRIP -->
+  <div class="logos-strip">
+    <p>Trusted by teams at</p>
+    <div class="logos-row">
+      <div class="logo-pill"><span class="ico">🏦</span> FinTrust</div>
+      <div class="logo-pill"><span class="ico">🛍️</span> Shopwave</div>
+      <div class="logo-pill"><span class="ico">🏥</span> MediSoft</div>
+      <div class="logo-pill"><span class="ico">🚀</span> LaunchPad</div>
+      <div class="logo-pill"><span class="ico">🎓</span> EduCore</div>
+    </div>
+  </div>
+
+  <!-- FEATURES -->
+  <section class="features">
+    <p class="section-label">Features</p>
+    <h2 class="section-title">Everything you need to deploy AI support</h2>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon">🎙️</div>
+        <h3 class="feature-title">Real-Time Voice</h3>
+        <p class="feature-desc">Sub-300 ms latency powered by LiveKit. Conversations feel instant and natural, not robotic.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🌐</div>
+        <h3 class="feature-title">Multilingual</h3>
+        <p class="feature-desc">Auto-detects and responds in 40+ languages. No extra configuration needed.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔌</div>
+        <h3 class="feature-title">One-Line Embed</h3>
+        <p class="feature-desc">Drop an <code>&lt;iframe&gt;</code> anywhere — docs, marketing pages, portals. Fully iframe-friendly.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <h3 class="feature-title">Enterprise Security</h3>
+        <p class="feature-desc">SOC 2 Type II. End-to-end encrypted audio. No audio is stored unless you opt in.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h3 class="feature-title">Analytics Dashboard</h3>
+        <p class="feature-desc">Track conversation quality, drop-offs, and satisfaction scores in real time.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🤖</div>
+        <h3 class="feature-title">Custom Personas</h3>
+        <p class="feature-desc">Give your agent a name, tone, and knowledge base that match your brand perfectly.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="how">
+    <div class="how-inner">
+      <p class="section-label">How it works</p>
+      <h2 class="section-title">Live in three steps</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <h3>Create your agent</h3>
+          <p>Give it a name, upload your docs, and set its personality in minutes.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <h3>Grab the snippet</h3>
+          <p>Copy the one-line iframe embed code from your dashboard.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <h3>Paste &amp; publish</h3>
+          <p>Drop it on any page. Your AI agent is live instantly — no backend work.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section class="pricing">
+    <p class="section-label">Pricing</p>
+    <h2 class="section-title">Simple, transparent pricing</h2>
+    <div class="plan-grid">
+      <div class="plan-card">
+        <p class="plan-name">Starter</p>
+        <p class="plan-price">$0 <span>/ mo</span></p>
+        <p class="plan-desc">Perfect for prototyping and side projects.</p>
+        <ul class="plan-features">
+          <li>1 AI agent</li>
+          <li>100 conversations / mo</li>
+          <li>Community support</li>
+          <li>Basic analytics</li>
+        </ul>
+        <button class="plan-btn outline">Get started free</button>
+      </div>
+      <div class="plan-card popular">
+        <div class="pop-badge">Most Popular</div>
+        <p class="plan-name">Pro</p>
+        <p class="plan-price">$49 <span>/ mo</span></p>
+        <p class="plan-desc">For growing teams deploying at scale.</p>
+        <ul class="plan-features">
+          <li>10 AI agents</li>
+          <li>5,000 conversations / mo</li>
+          <li>Priority email support</li>
+          <li>Full analytics + exports</li>
+          <li>Custom branding</li>
+        </ul>
+        <button class="plan-btn solid">Start Pro trial</button>
+      </div>
+      <div class="plan-card">
+        <p class="plan-name">Enterprise</p>
+        <p class="plan-price" style="font-size:1.8rem">Custom</p>
+        <p class="plan-desc">Dedicated infrastructure and SLA guarantees.</p>
+        <ul class="plan-features">
+          <li>Unlimited agents</li>
+          <li>Unlimited conversations</li>
+          <li>Dedicated success manager</li>
+          <li>SSO / SAML</li>
+          <li>On-prem option</li>
+        </ul>
+        <button class="plan-btn outline">Contact sales</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA BANNER -->
+  <section class="cta-banner">
+    <h2>Ready to delight your customers?</h2>
+    <p>Join thousands of teams using NovaMind AI to deliver instant, intelligent support around the clock.</p>
+    <button class="btn-white">Start for free — no card required</button>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <span class="footer-logo">✦ NovaMind AI</span>
+    <p>© 2025 NovaMind AI, Inc. · Privacy · Terms</p>
+  </footer>
+
+  <script>
+    function loadEmbed() {
+      const raw = document.getElementById("embedInput").value.trim();
+      if (!raw) return;
+
+      // Parse the <iframe> snippet to extract src and other attributes
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(raw, "text/html");
+      const parsed = doc.querySelector("iframe");
+
+      const frame = document.getElementById("agentFrame");
+      const placeholder = document.getElementById("placeholder");
+      const urlBar = document.getElementById("demoUrl");
+
+      if (parsed && parsed.src) {
+        // Copy src (and allow if present) from the pasted snippet
+        frame.src = parsed.src;
+        if (parsed.getAttribute("allow")) {
+          frame.setAttribute("allow", parsed.getAttribute("allow"));
+        }
+        urlBar.textContent = parsed.src;
+        frame.style.display = "block";
+        placeholder.style.display = "none";
+      } else {
+        urlBar.textContent = "Could not parse iframe — check your snippet";
+      }
+    }
+
+    // Load on Enter key
+    document.getElementById("embedInput").addEventListener("keydown", function(e) {
+      if (e.key === "Enter") loadEmbed();
+    });
+  </script>
+</body>
+</html>

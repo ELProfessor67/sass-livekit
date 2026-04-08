@@ -736,7 +736,7 @@ app.get('/api/v1/assistants/public/:id', async (req, res) => {
 
     const { data, error } = await supabaseAdmin
       .from('assistant')
-      .select('id, name, description, status')
+      .select('id, name')
       .eq('id', id)
       .maybeSingle();
 
