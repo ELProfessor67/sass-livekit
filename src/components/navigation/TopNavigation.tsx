@@ -188,30 +188,6 @@ export default function TopNavigation() {
                   />
                 )}
                 <WorkspaceSwitcher />
-                {trialCountdown && (
-                  <Link to="/billing">
-                    <Badge
-                      variant="secondary"
-                      className={cn(
-                        "px-2 py-0 h-5 text-[10px] font-bold tracking-widest uppercase flex items-center gap-1 cursor-pointer transition-opacity hover:opacity-80",
-                        trialCountdown.isExpired
-                          ? "bg-destructive/10 text-destructive border-destructive/30"
-                          : trialCountdown.isUrgent
-                            ? "bg-orange-500/10 text-orange-600 border-orange-500/20"
-                            : "bg-amber-500/10 text-amber-600 border-amber-500/20"
-                      )}
-                    >
-                      {trialCountdown.isExpired ? (
-                        <AlertTriangle className="w-2.5 h-2.5" />
-                      ) : trialCountdown.isUrgent ? (
-                        <Clock className="w-2.5 h-2.5" />
-                      ) : (
-                        <Sparkles className="w-2.5 h-2.5" />
-                      )}
-                      {trialCountdown.label}
-                    </Badge>
-                  </Link>
-                )}
               </div>
             ) : (
               <>
@@ -325,6 +301,30 @@ export default function TopNavigation() {
                               )}>
                                 {remainingMinutes.toLocaleString()} minutes left
                               </p>
+                            </Link>
+                          )}
+                          {trialCountdown && (
+                            <Link to="/billing" className="block mt-1.5">
+                              <Badge
+                                variant="secondary"
+                                className={cn(
+                                  "px-2 py-0 h-5 text-[10px] font-bold tracking-widest uppercase flex items-center gap-1 cursor-pointer transition-opacity hover:opacity-80",
+                                  trialCountdown.isExpired
+                                    ? "bg-destructive/10 text-destructive border-destructive/30"
+                                    : trialCountdown.isUrgent
+                                      ? "bg-orange-500/10 text-orange-600 border-orange-500/20"
+                                      : "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                                )}
+                              >
+                                {trialCountdown.isExpired ? (
+                                  <AlertTriangle className="w-2.5 h-2.5" />
+                                ) : trialCountdown.isUrgent ? (
+                                  <Clock className="w-2.5 h-2.5" />
+                                ) : (
+                                  <Sparkles className="w-2.5 h-2.5" />
+                                )}
+                                {trialCountdown.label}
+                              </Badge>
                             </Link>
                           )}
                         </div>
