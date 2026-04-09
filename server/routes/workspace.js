@@ -132,7 +132,13 @@ router.post('/invite', authenticateToken, async (req, res) => {
         });
 
         if (!emailResult.success) {
-            console.error('Failed to send invitation email but invitation was created in DB');
+            console.error('Failed to send invitation email:', emailResult.error);
+            // Clean up the invitation since the email failed
+            await supabaseAdmin.from('workspace_invitations').delete().eq('id', invitation.id);
+            return res.status(500).json({
+                success: false,
+                message: `Invitation created but email failed to send: ${emailResult.error || 'Unknown error'}. Check your SendGrid API key and verified sender address.`
+            });
         }
 
         return res.json({
@@ -457,27 +463,33 @@ router.post('/invitations/:invitationId/resend', authenticateToken, async (req, 
             .eq('user_id', requesterId)
             .maybeSingle();
 
-        if (smtpCredentials) {
-            const siteUrl = process.env.VITE_SITE_URL || 'http://localhost:8080';
-            const invitationLink = `${siteUrl}/accept-invitation?token=${newToken}`;
+        const siteUrl = process.env.VITE_SITE_URL || 'http://localhost:8080';
+        const invitationLink = `${siteUrl}/accept-invitation?token=${newToken}`;
 
-            const { data: inviterProfile } = await supabaseAdmin
-                .from('users')
-                .select('name')
-                .eq('id', requesterId)
-                .single();
+        const { data: inviterProfile } = await supabaseAdmin
+            .from('users')
+            .select('name')
+            .eq('id', requesterId)
+            .single();
 
-            const emailHtml = getInvitationEmailTemplate({
-                workspaceName: invitation.workspace_settings?.workspace_name || 'the workspace',
-                inviterName: inviterProfile?.name || 'A team member',
-                invitationLink
-            });
+        const emailHtml = getInvitationEmailTemplate({
+            workspaceName: invitation.workspace_settings?.workspace_name || 'the workspace',
+            inviterName: inviterProfile?.name || 'A team member',
+            invitationLink
+        });
 
-            await sendEmail({
-                to: invitation.email,
-                subject: `Reminder: You're invited to join ${invitation.workspace_settings?.workspace_name || 'a workspace'}`,
-                html: emailHtml,
-                smtpCredentials
+        const emailResult = await sendEmail({
+            to: invitation.email,
+            subject: `Reminder: You're invited to join ${invitation.workspace_settings?.workspace_name || 'a workspace'}`,
+            html: emailHtml,
+            smtpCredentials: smtpCredentials || undefined
+        });
+
+        if (!emailResult.success) {
+            console.error('Failed to resend invitation email:', emailResult.error);
+            return res.status(500).json({
+                success: false,
+                message: `Email failed to send: ${emailResult.error || 'Unknown error'}. Check your SendGrid API key and verified sender address.`
             });
         }
 
