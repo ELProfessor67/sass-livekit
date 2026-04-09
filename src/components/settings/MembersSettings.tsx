@@ -59,7 +59,7 @@ const ROLE_DESCRIPTIONS: Record<string, string> = {
   viewer: "Read-only access to workspace content"
 };
 
-const API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000/api/v1';
+const API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
 
 export function MembersSettings() {
   const { currentWorkspace, canManageMembers } = useWorkspace();
@@ -146,7 +146,7 @@ export function MembersSettings() {
     setIsInviting(true);
     try {
       const headers = await getAuthHeader();
-      const response = await fetch(`${API_BASE}/workspaces/invite`, {
+      const response = await fetch(`${API_BASE}/api/v1/workspaces/invite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify({ workspaceId: currentWorkspace.id, email: inviteEmail, role: inviteRole })
@@ -175,7 +175,7 @@ export function MembersSettings() {
     setIsRemoving(true);
     try {
       const headers = await getAuthHeader();
-      const response = await fetch(`${API_BASE}/workspaces/${currentWorkspace.id}/members/${memberToRemove.id}`, {
+      const response = await fetch(`${API_BASE}/api/v1/workspaces/${currentWorkspace.id}/members/${memberToRemove.id}`, {
         method: 'DELETE',
         headers
       });
@@ -196,7 +196,7 @@ export function MembersSettings() {
     setChangingRoleFor(memberId);
     try {
       const headers = await getAuthHeader();
-      const response = await fetch(`${API_BASE}/workspaces/${currentWorkspace.id}/members/${memberId}/role`, {
+      const response = await fetch(`${API_BASE}/api/v1/workspaces/${currentWorkspace.id}/members/${memberId}/role`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify({ role: newRole })
@@ -216,7 +216,7 @@ export function MembersSettings() {
     setResendingId(invitationId);
     try {
       const headers = await getAuthHeader();
-      const response = await fetch(`${API_BASE}/workspaces/invitations/${invitationId}/resend`, {
+      const response = await fetch(`${API_BASE}/api/v1/workspaces/invitations/${invitationId}/resend`, {
         method: 'POST',
         headers
       });
@@ -235,7 +235,7 @@ export function MembersSettings() {
     setCancellingId(invitationId);
     try {
       const headers = await getAuthHeader();
-      const response = await fetch(`${API_BASE}/workspaces/invitations/${invitationId}`, {
+      const response = await fetch(`${API_BASE}/api/v1/workspaces/invitations/${invitationId}`, {
         method: 'DELETE',
         headers
       });
