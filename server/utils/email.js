@@ -26,6 +26,9 @@ export const sendEmail = async ({ to, subject, html, smtpCredentials }) => {
 
     const fromName = smtpCredentials?.from_name || process.env.EMAIL_FROM_NAME || 'UltraTalk AI';
 
+    console.log('[SendGrid Debug] API key prefix:', apiKey?.substring(0, 10));
+    console.log('[SendGrid Debug] From email:', fromEmail);
+
     sgMail.setApiKey(apiKey);
 
     try {
