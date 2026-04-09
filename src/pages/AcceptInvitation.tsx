@@ -29,7 +29,7 @@ export function AcceptInvitation() {
 
     const fetchInvitationDetails = async () => {
         try {
-            const response = await fetch(`${import.meta.env.VITE_SITE_URL || 'http://localhost:4000/api/v1'}/workspaces/invitation-details/${token}`);
+            const response = await fetch(`${import.meta.env.BACKEND_URL || 'http://localhost:4000/api/v1'}/workspaces/invitation-details/${token}`);
             const data = await response.json();
 
             if (!response.ok) {
@@ -56,7 +56,7 @@ export function AcceptInvitation() {
                 return;
             }
 
-            const response = await fetch(`${import.meta.env.VITE_SITE_URL || 'http://localhost:4000/api/v1'}/workspaces/accept-invitation`, {
+            const response = await fetch(`${import.meta.env.BACKEND_URL || 'http://localhost:4000/api/v1'}/workspaces/accept-invitation`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

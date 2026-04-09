@@ -59,7 +59,7 @@ const ROLE_DESCRIPTIONS: Record<string, string> = {
   viewer: "Read-only access to workspace content"
 };
 
-const API_BASE = import.meta.env.VITE_SITE_URL || 'http://localhost:4000/api/v1';
+const API_BASE = import.meta.env.BACKEND_URL || 'http://localhost:4000/api/v1';
 
 export function MembersSettings() {
   const { currentWorkspace, canManageMembers } = useWorkspace();
@@ -436,8 +436,8 @@ export function MembersSettings() {
             <div
               key={invitation.id}
               className={`group flex items-center justify-between p-4 rounded-2xl backdrop-blur-xl border border-dashed transition-all duration-300 ${expired
-                  ? 'border-destructive/30 bg-destructive/5 opacity-60'
-                  : 'border-white/[0.12] bg-white/[0.01] opacity-70 hover:opacity-100'
+                ? 'border-destructive/30 bg-destructive/5 opacity-60'
+                : 'border-white/[0.12] bg-white/[0.01] opacity-70 hover:opacity-100'
                 }`}
             >
               <div className="flex items-center gap-4">
