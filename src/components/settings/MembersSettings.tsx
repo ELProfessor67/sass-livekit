@@ -59,7 +59,7 @@ const ROLE_DESCRIPTIONS: Record<string, string> = {
   viewer: "Read-only access to workspace content"
 };
 
-const API_BASE = import.meta.env.BACKEND_URL || 'http://localhost:4000/api/v1';
+const API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000/api/v1';
 
 export function MembersSettings() {
   const { currentWorkspace, canManageMembers } = useWorkspace();
