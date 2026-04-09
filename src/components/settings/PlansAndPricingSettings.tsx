@@ -49,8 +49,6 @@ export function PlansAndPricingSettings() {
   const [selectedPlan, setSelectedPlan] = useState<string>(user?.plan || "free");
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [usageStats, setUsageStats] = useState<{
-    calls: { used: number; limit: number; label: string };
-    storage: { used: number; limit: number; label: string };
     users: { used: number; limit: number; label: string };
     minutes: { used: number; limit: number; label: string };
   } | null>(null);
@@ -111,50 +109,39 @@ export function PlansAndPricingSettings() {
           .eq('id', user.id)
           .single();
 
-        const { data: mainAccountWs } = await supabase
+        // Fetch Main Account workspace minutes (order desc to get highest limit row)
+        const { data: mainAccountWsRows } = await supabase
           .from('workspace_settings')
-          .select('minute_limit, minutes_used')
+          .select('id, minute_limit, minutes_used')
           .eq('user_id', user.id)
           .eq('workspace_name', 'Main Account')
-          .single();
+          .order('minute_limit', { ascending: false });
 
-        // 1. API Calls (count from call_history for current month)
-        const apiCallsResult = assistantIds.length > 0
-          ? await supabase
-            .from('call_history')
-            .select('*', { count: 'exact', head: true })
-            .in('assistant_id', assistantIds)
-            .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
-          : { count: 0, error: null };
+        let mainAccountWs = mainAccountWsRows?.[0] || null;
+        let minutesLimit = mainAccountWs?.minute_limit || 0;
+        const minutesUsed = mainAccountWs?.minutes_used || 0;
+        const userIsUnlimited = !!userData?.is_unlimited;
 
-        // 2. Storage - Calculate from knowledge base documents if available
-        // Note: If you have a storage tracking system, replace this calculation
-        let storageUsed = 0;
-        try {
-          // Try to fetch from knowledge_documents if table exists
-          const { data: documentsData } = await (supabase as any)
-            .from('knowledge_documents')
-            .select('file_size, file_path')
-            .eq('user_id', user.id);
+        // Auto-apply free trial minutes if limit is still 0
+        if (!userIsUnlimited && minutesLimit === 0 && minutesUsed === 0) {
+          try {
+            const { data: trialConfig } = await (supabase as any)
+              .from('minutes_pricing_config')
+              .select('free_trial_enabled, free_trial_minutes')
+              .eq('tenant', 'main')
+              .maybeSingle();
 
-          if (documentsData) {
-            // Sum file sizes (assuming file_size is in bytes, convert to GB)
-            const totalBytes = documentsData.reduce((sum: number, doc: any) => {
-              const size = doc.file_size || 0;
-              return sum + (typeof size === 'number' ? size : 0);
-            }, 0);
-            storageUsed = totalBytes / (1024 * 1024 * 1024); // Convert bytes to GB
+            if (trialConfig?.free_trial_enabled && trialConfig.free_trial_minutes > 0) {
+              minutesLimit = trialConfig.free_trial_minutes;
+            }
+          } catch (_) {
+            // trial config not available
           }
-        } catch (error) {
-          // Knowledge documents table doesn't exist or error - use 0
-          console.log('Storage calculation not available:', error);
         }
-        const storageLimit = 10; // Default, could be from plan config
 
-        // 3. Team Members - Count from workspace_members table
-        let teamMembersUsed = 1; // At least the current user
+        // Team Members - Count from workspace_members table
+        let teamMembersUsed = 1;
         try {
-          // First, find the workspace(s) the user belongs to
           const { data: userWorkspaceMembers } = await supabase
             .from('workspace_members')
             .select('workspace_id')
@@ -162,58 +149,38 @@ export function PlansAndPricingSettings() {
             .eq('status', 'active');
 
           if (userWorkspaceMembers && userWorkspaceMembers.length > 0) {
-            // Get all unique workspace IDs
             const workspaceIds = [...new Set(userWorkspaceMembers.map(m => m.workspace_id))];
-
-            // Count all active members in those workspaces
             const { count: membersCount } = await supabase
               .from('workspace_members')
               .select('*', { count: 'exact', head: true })
               .in('workspace_id', workspaceIds)
               .eq('status', 'active');
-
             teamMembersUsed = membersCount || 1;
           }
         } catch (error) {
-          // Workspace members table doesn't exist or error - fallback to assistants count
           console.log('Workspace members not available, using assistants count:', error);
           teamMembersUsed = assistantIds.length || 1;
         }
 
-        // Get limits from plan config
-        const apiCallsLimit = 2500; // Default limit for API calls
         const teamMembersLimit = planConfig.features?.find((f: string) => f.includes('team'))
           ? parseInt(planConfig.features.find((f: string) => f.includes('team'))?.match(/\d+/)?.[0] || '10')
           : 10;
 
         setUsageStats({
-          calls: {
-            used: apiCallsResult.count || 0,
-            limit: apiCallsLimit,
-            label: "API Calls"
-          },
-          storage: {
-            used: storageUsed,
-            limit: storageLimit,
-            label: "Storage (GB)"
-          },
           users: {
             used: teamMembersUsed,
             limit: teamMembersLimit,
             label: "Team Members"
           },
           minutes: {
-            used: mainAccountWs?.minutes_used || 0,
-            limit: userData?.is_unlimited ? -1 : (mainAccountWs?.minute_limit || 0),
+            used: minutesUsed,
+            limit: userIsUnlimited ? -1 : minutesLimit,
             label: "Available Minutes"
           }
         });
       } catch (error) {
         console.error('Error fetching usage stats:', error);
-        // Set defaults on error
         setUsageStats({
-          calls: { used: 0, limit: 2500, label: "API Calls" },
-          storage: { used: 0, limit: 10, label: "Storage (GB)" },
           users: { used: 0, limit: 10, label: "Team Members" },
           minutes: { used: 0, limit: 0, label: "Available Minutes" }
         });
@@ -322,39 +289,40 @@ export function PlansAndPricingSettings() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {loadingUsage ? (
-            <div className="col-span-3 text-center py-4 text-muted-foreground">
+            <div className="col-span-2 text-center py-4 text-muted-foreground">
               Loading usage data...
             </div>
           ) : usageStats ? (
             Object.entries(usageStats).map(([key, stat]) => {
-              const percentage = (stat.used / stat.limit) * 100;
+              const percentage = stat.limit > 0 ? (stat.used / stat.limit) * 100 : 0;
               const isNearLimit = percentage > 80;
+              const isTeamMembers = key === 'users';
 
               return (
                 <div key={key} className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-foreground">{stat.label}</span>
                     <span className="text-sm text-muted-foreground">
-                      {typeof stat.used === 'number' && stat.used % 1 !== 0
-                        ? stat.used.toFixed(1)
-                        : stat.used.toLocaleString()} / {stat.limit === -1 ? '∞' : stat.limit.toLocaleString()}
+                      {stat.used.toLocaleString()} / {stat.limit === -1 ? '∞' : stat.limit > 0 ? stat.limit.toLocaleString() : '—'}
                     </span>
                   </div>
                   <Progress
-                    value={stat.limit === -1 ? 0 : percentage}
-                    className={`h-2 ${isNearLimit && stat.limit !== -1 ? 'bg-orange-200' : 'bg-secondary'}`}
+                    value={stat.limit === -1 || stat.limit === 0 ? 0 : Math.min(percentage, 100)}
+                    className={`h-2 ${isNearLimit && stat.limit > 0 ? 'bg-orange-200' : 'bg-secondary'}`}
                   />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{stat.limit === -1 ? 'Unlimited' : `${percentage.toFixed(1)}% used`}</span>
-                    {isNearLimit && stat.limit !== -1 && <span className="text-orange-500">Approaching limit</span>}
-                  </div>
+                  {!isTeamMembers && (
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>{stat.limit === -1 ? 'Unlimited' : stat.limit === 0 ? 'No limit set' : `${percentage.toFixed(1)}% used`}</span>
+                      {isNearLimit && stat.limit > 0 && <span className="text-orange-500">Approaching limit</span>}
+                    </div>
+                  )}
                 </div>
               );
             })
           ) : (
-            <div className="col-span-3 text-center py-4 text-muted-foreground">
+            <div className="col-span-2 text-center py-4 text-muted-foreground">
               Unable to load usage data
             </div>
           )}

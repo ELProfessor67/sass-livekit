@@ -140,12 +140,12 @@ const integrationList: Integration[] = [
   },
   {
     id: "smtp",
-    name: "Custom SMTP",
-    description: "Send emails from your own SMTP server",
+    name: "SendGrid",
+    description: "Optional: use your own SendGrid account to send emails from your domain",
     icon: Mail,
     status: "available",
     category: "Communication",
-    brandColor: "#6366f1",
+    brandColor: "#1A82E2",
   },
   // Calendar
   {

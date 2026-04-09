@@ -9,19 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
+import { useTheme } from "@/components/ThemeProvider";
+import { cn } from "@/lib/utils";
 import React from "react";
 
 interface CreateWorkflowDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    onCreate: (name: string, description: string, category: string) => void;
+    onCreate: (name: string, description: string) => void;
 }
 
 export function CreateWorkflowDialog({
@@ -29,17 +24,17 @@ export function CreateWorkflowDialog({
     onOpenChange,
     onCreate
 }: CreateWorkflowDialogProps) {
+    const { uiStyle } = useTheme();
+    const isGlass = uiStyle === "glass";
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
-    const [category, setCategory] = useState("unsorted");
 
     const handleCreate = () => {
         if (name.trim()) {
-            onCreate(name, description, category);
+            onCreate(name, description);
             // Reset form
             setName("");
             setDescription("");
-            setCategory("unsorted");
             onOpenChange(false);
         }
     };
@@ -62,7 +57,12 @@ export function CreateWorkflowDialog({
                             placeholder="e.g., Guest Request Additional Supplies"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
-                            className="bg-muted/30 border-border/50 focus:border-primary/50"
+                            className={cn(
+                                "border transition-colors",
+                                isGlass
+                                    ? "bg-white/10 border-white/20 focus:border-white/40 dark:bg-white/5 dark:border-white/10 dark:focus:border-white/25"
+                                    : "bg-muted/30 border-border/50 focus:border-primary/50"
+                            )}
                         />
                     </div>
 
@@ -76,36 +76,24 @@ export function CreateWorkflowDialog({
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             rows={3}
-                            className="bg-muted/30 border-border/50 focus:border-primary/50 resize-none"
+                            className={cn(
+                                "border resize-none transition-colors",
+                                isGlass
+                                    ? "bg-white/10 border-white/20 focus:border-white/40 dark:bg-white/5 dark:border-white/10 dark:focus:border-white/25"
+                                    : "bg-muted/30 border-border/50 focus:border-primary/50"
+                            )}
                         />
                     </div>
 
-                    <div className="space-y-2">
-                        <Label htmlFor="create-workflow-category" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
-                            Initial Category
-                        </Label>
-                        <Select value={category} onValueChange={setCategory}>
-                            <SelectTrigger id="create-workflow-category" className="bg-muted/30 border-border/50">
-                                <SelectValue placeholder="Select a category" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="unsorted">Unsorted / General</SelectItem>
-                                <SelectItem value="proactive">Proactive Outbound</SelectItem>
-                                <SelectItem value="reception">Inbound Reception</SelectItem>
-                                <SelectItem value="support">Customer Support</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
                 </div>
 
                 <DialogFooter className="gap-2 sm:gap-0">
-                    <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>
                         Cancel
                     </Button>
                     <Button
                         onClick={handleCreate}
                         disabled={!name.trim()}
-                        className="bg-primary text-primary-foreground hover:bg-primary/90"
                     >
                         Create Workflow
                     </Button>

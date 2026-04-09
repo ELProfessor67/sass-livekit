@@ -174,10 +174,20 @@ export default function TopNavigation() {
           <div className="flex items-center gap-4">
             {isAuthenticated ? (
               <div className="flex items-center gap-4">
-                <WorkspaceSwitcher variant="logo" />
-                <h1 className="font-sans font-light text-xl tracking-tight text-foreground hidden sm:block">
-                  {websiteSettings?.website_name || "AI Call Center"}
-                </h1>
+                {websiteSettings?.logo ? (
+                  <img
+                    src={websiteSettings.logo}
+                    alt={websiteSettings.website_name || "Logo"}
+                    className="h-10 w-auto object-contain max-w-[150px]"
+                  />
+                ) : (
+                  <img
+                    src="/logo.png"
+                    alt="Wave Runner"
+                    className="h-10 w-auto object-contain max-w-[150px]"
+                  />
+                )}
+                <WorkspaceSwitcher />
                 {trialCountdown && (
                   <Link to="/billing">
                     <Badge

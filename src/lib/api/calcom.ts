@@ -6,7 +6,7 @@ export interface CalComEventTypeResponse {
 }
 
 /**
- * Create an event type in Cal.com using v1 API
+ * Create an event type in Cal.com using v2 API
  */
 export async function createCalComEventType(
   apiKey: string,
@@ -16,31 +16,26 @@ export async function createCalComEventType(
   durationMinutes: number = 30,
   scheduleId?: number
 ): Promise<CalComEventTypeResponse> {
-  const url = `https://api.cal.com/v1/event-types?apiKey=${apiKey}`;
-  
-  const payload = {
-    title: title,
-    slug: slug,
-    length: durationMinutes,
-    description: description,
-    metadata: {}, // Required field, can be empty object
-    hidden: false, // Set to true if you want it hidden initially
-    position: 0,
-    scheduleId: scheduleId, // Optional: link to a schedule
-    requiresConfirmation: false,
-    disableGuests: false,
-    minimumBookingNotice: 120, // 2 hours in minutes
-    beforeEventBuffer: 0,
-    afterEventBuffer: 0,
-    price: 0,
-    currency: 'usd'
+  const url = `https://api.cal.com/v2/event-types`;
+
+  const payload: Record<string, unknown> = {
+    title,
+    slug,
+    lengthInMinutes: durationMinutes,
+    description,
   };
+
+  if (scheduleId !== undefined) {
+    payload.scheduleId = scheduleId;
+  }
 
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'cal-api-version': '2024-08-13',
       },
       body: JSON.stringify(payload),
     });
@@ -51,12 +46,13 @@ export async function createCalComEventType(
     }
 
     const data = await response.json();
-    
+    const et = data.data || data;
+
     return {
-      eventTypeId: data.event_type?.id?.toString() || data.id?.toString(),
-      slug: data.event_type?.slug || data.slug,
-      title: data.event_type?.title || data.title,
-      length: data.event_type?.length || data.length
+      eventTypeId: et.id?.toString(),
+      slug: et.slug,
+      title: et.title,
+      length: et.lengthInMinutes ?? et.length
     };
   } catch (error) {
     console.error('Error creating Cal.com event type:', error);
@@ -65,16 +61,18 @@ export async function createCalComEventType(
 }
 
 /**
- * Get all event types from Cal.com using v1 API
+ * Get all event types from Cal.com using v2 API
  */
 export async function getCalComEventTypes(apiKey: string): Promise<any[]> {
-  const url = `https://api.cal.com/v1/event-types?apiKey=${apiKey}`;
-  
+  const url = `https://api.cal.com/v2/event-types`;
+
   try {
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'cal-api-version': '2024-08-13',
       },
     });
 
@@ -84,7 +82,8 @@ export async function getCalComEventTypes(apiKey: string): Promise<any[]> {
     }
 
     const data = await response.json();
-    return data.event_types || [];
+    // v2 returns { status, data: [...] }
+    return Array.isArray(data.data) ? data.data : (data.event_types || []);
   } catch (error) {
     console.error('Error fetching Cal.com event types:', error);
     throw error;

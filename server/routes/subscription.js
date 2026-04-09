@@ -110,8 +110,17 @@ router.post('/change-plan', validateAuth, async (req, res) => {
             return res.status(400).json({ success: false, error: 'plan is required' });
         }
 
-        const validPlans = ['free', 'starter', 'professional', 'enterprise'];
-        if (!validPlans.includes(plan.toLowerCase())) {
+        // Validate plan against plan_configs table (supports custom plan keys like 'launch')
+        const supabaseForValidation = getSupabaseClient();
+        const { data: planRow } = await supabaseForValidation
+            .from('plan_configs')
+            .select('plan_key')
+            .eq('plan_key', plan.toLowerCase())
+            .eq('is_active', true)
+            .maybeSingle();
+
+        const fallbackValidPlans = ['free', 'starter', 'professional', 'enterprise'];
+        if (!planRow && !fallbackValidPlans.includes(plan.toLowerCase())) {
             return res.status(400).json({ success: false, error: 'Invalid plan' });
         }
 

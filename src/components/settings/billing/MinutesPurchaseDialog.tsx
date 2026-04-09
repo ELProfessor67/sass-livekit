@@ -10,6 +10,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, CreditCard, History, Plus, Check, AlertTriangle } from "lucide-react";
+import { useTheme } from "@/components/ThemeProvider";
+import { cn } from "@/lib/utils";
 import { loadStripe } from "@stripe/stripe-js";
 import {
     Elements,
@@ -66,6 +68,8 @@ function MinutesPurchaseDialogInner({
 }: MinutesPurchaseDialogProps) {
     const stripe = useStripe();
     const elements = useElements();
+    const { uiStyle } = useTheme();
+    const isGlass = uiStyle === "glass";
     const [minutesToPurchase, setMinutesToPurchase] = useState<number>(100);
     const [pricing, setPricing] = useState<PricingConfig | null>(null);
     const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -445,7 +449,14 @@ function MinutesPurchaseDialogInner({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+            <DialogContent className={cn(
+                "sm:max-w-[600px] max-h-[90vh] overflow-y-auto",
+                isGlass
+                    ? "backdrop-blur-xl border rounded-2xl shadow-2xl " +
+                      "bg-[hsl(214_60%_97%/0.88)] border-blue-200/60 shadow-blue-900/10 " +
+                      "dark:bg-[hsl(224_32%_18%/0.82)] dark:border-[hsl(224_30%_45%/0.30)] dark:shadow-blue-900/40"
+                    : "bg-card border-border"
+            )}>
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <CreditCard className="h-5 w-5" />
@@ -460,14 +471,24 @@ function MinutesPurchaseDialogInner({
                 <div className="space-y-6">
                     {/* Current Balance */}
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="rounded-lg border border-border/40 bg-muted/10 p-4">
+                        <div className={cn(
+                            "rounded-lg border p-4",
+                            isGlass
+                                ? "border-blue-300/20 bg-blue-500/5 dark:border-blue-400/15 dark:bg-blue-500/10"
+                                : "border-border/40 bg-muted/10"
+                        )}>
                             <div className="text-sm text-muted-foreground">Current Balance</div>
                             <div className="text-2xl font-bold text-foreground">
                                 {isUnlimited ? 'Unlimited' : currentBalance.toLocaleString()}
                             </div>
                             <div className="text-xs text-muted-foreground">minutes available</div>
                         </div>
-                        <div className="rounded-lg border border-border/40 bg-muted/10 p-4">
+                        <div className={cn(
+                            "rounded-lg border p-4",
+                            isGlass
+                                ? "border-blue-300/20 bg-blue-500/5 dark:border-blue-400/15 dark:bg-blue-500/10"
+                                : "border-border/40 bg-muted/10"
+                        )}>
                             <div className="text-sm text-muted-foreground">Minutes Used</div>
                             <div className="text-2xl font-bold text-foreground">{minutesUsed.toLocaleString()}</div>
                             <div className="text-xs text-muted-foreground">this period</div>
@@ -481,10 +502,15 @@ function MinutesPurchaseDialogInner({
                         </div>
                     ) : pricing ? (
                         <div className="space-y-4">
-                            <div className="rounded-lg border border-border/40 bg-muted/10 p-4">
+                            <div className={cn(
+                                "rounded-lg border p-4",
+                                isGlass
+                                    ? "border-blue-300/20 bg-blue-500/5 dark:border-blue-400/15 dark:bg-blue-500/10"
+                                    : "border-border/40 bg-muted/10"
+                            )}>
                                 <div className="text-sm text-muted-foreground mb-2">Pricing</div>
                                 <div className="text-lg font-semibold text-foreground">
-                                    ${pricing.price_per_minute.toFixed(4)} per minute
+                                    ${pricing.price_per_minute.toFixed(2)} per minute
                                 </div>
                                 {pricing.minimum_purchase > 0 && (
                                     <div className="text-xs text-muted-foreground mt-1">
@@ -534,7 +560,12 @@ function MinutesPurchaseDialogInner({
                                         {paymentMethods.length > 0 && !showNewCardForm && (
                                             <RadioGroup value={selectedPaymentMethod || undefined} onValueChange={setSelectedPaymentMethod}>
                                                 {paymentMethods.map((pm) => (
-                                                    <div key={pm.id} className="flex items-center space-x-3 rounded-lg border border-border/40 p-3 hover:bg-muted/10 transition-colors">
+                                                    <div key={pm.id} className={cn(
+                                                        "flex items-center space-x-3 rounded-lg border p-3 transition-colors",
+                                                        isGlass
+                                                            ? "border-blue-300/20 hover:bg-blue-500/5 dark:border-blue-400/15 dark:hover:bg-blue-500/10"
+                                                            : "border-border/40 hover:bg-muted/10"
+                                                    )}>
                                                         <RadioGroupItem value={pm.id} id={pm.id} />
                                                         <label htmlFor={pm.id} className="flex-1 flex items-center justify-between cursor-pointer">
                                                             <div className="flex items-center gap-3">
@@ -561,19 +592,29 @@ function MinutesPurchaseDialogInner({
                                         )}
 
                                         {showNewCardForm ? (
-                                            <div className="rounded-lg border border-border/40 bg-muted/10 p-4 space-y-3">
-                                                <p className="text-sm text-white">
+                                            <div className={cn(
+                                                "rounded-lg border p-4 space-y-3",
+                                                isGlass
+                                                    ? "border-blue-300/20 bg-blue-500/5 dark:border-blue-400/15 dark:bg-blue-500/10"
+                                                    : "border-border/40 bg-muted/10"
+                                            )}>
+                                                <p className="text-sm text-foreground/80">
                                                     Enter your card details to pay securely with Stripe. Your whitelabel
                                                     admin (or main account) will receive payouts via Stripe Connect.
                                                 </p>
-                                                <div className="mt-2 p-3 bg-background/40 border border-border/40 rounded-md">
+                                                <div className={cn(
+                                                    "mt-2 p-3 rounded-md border",
+                                                    isGlass
+                                                        ? "bg-blue-950/20 border-blue-400/20 dark:bg-blue-900/20"
+                                                        : "bg-background/40 border-border/40"
+                                                )}>
                                                     <CardElement
                                                         options={{
                                                             style: {
                                                                 base: {
                                                                     fontSize: '16px',
-                                                                    color: '#ffffff',
-                                                                    '::placeholder': { color: '#a1a1aa' },
+                                                                    color: 'var(--foreground, #e2e8f0)',
+                                                                    '::placeholder': { color: '#94a3b8' },
                                                                 },
                                                                 invalid: { color: '#ef4444' },
                                                             },
@@ -612,7 +653,12 @@ function MinutesPurchaseDialogInner({
                                 )}
                             </div>
 
-                            <div className="rounded-lg border border-border/40 bg-primary/5 p-4">
+                            <div className={cn(
+                                "rounded-lg border p-4",
+                                isGlass
+                                    ? "border-blue-400/25 bg-blue-500/10 dark:border-blue-400/20 dark:bg-blue-500/15"
+                                    : "border-border/40 bg-primary/5"
+                            )}>
                                 <div className="flex justify-between items-center">
                                     <span className="text-sm font-medium text-foreground">Total Cost:</span>
                                     <span className="text-2xl font-bold text-foreground">
@@ -629,16 +675,21 @@ function MinutesPurchaseDialogInner({
 
                     {/* Purchase History */}
                     <div className="space-y-2">
-                        <div className="flex items-center text-white gap-2">
-                            <History className="h-4 w-4 text-white" />
-                            <h3 className="text-sm text-white font-medium">Recent Purchases</h3>
+                        <div className="flex items-center gap-2">
+                            <History className="h-4 w-4 text-muted-foreground" />
+                            <h3 className="text-sm text-foreground font-medium">Recent Purchases</h3>
                         </div>
                         {loadingHistory ? (
                             <div className="flex items-center justify-center py-4">
                                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                             </div>
                         ) : purchases.length > 0 ? (
-                            <div className="rounded-lg border border-border/40">
+                            <div className={cn(
+                                "rounded-lg border",
+                                isGlass
+                                    ? "border-blue-300/20 dark:border-blue-400/15"
+                                    : "border-border/40"
+                            )}>
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
@@ -665,7 +716,12 @@ function MinutesPurchaseDialogInner({
                                 </Table>
                             </div>
                         ) : (
-                            <div className="text-center text-sm text-muted-foreground py-4 rounded-lg border border-border/40">
+                            <div className={cn(
+                                "text-center text-sm text-muted-foreground py-4 rounded-lg border",
+                                isGlass
+                                    ? "border-blue-300/20 dark:border-blue-400/15"
+                                    : "border-border/40"
+                            )}>
                                 No purchase history yet
                             </div>
                         )}

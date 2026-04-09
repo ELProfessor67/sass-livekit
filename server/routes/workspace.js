@@ -34,20 +34,12 @@ router.post('/invite', authenticateToken, async (req, res) => {
             return res.status(403).json({ success: false, message: 'You must upgrade to a paid plan before inviting members.' });
         }
 
-        // 0. Fetch SMTP credentials for the inviter
-        const { data: smtpCredentials, error: smtpError } = await supabaseAdmin
+        // 0. Fetch user's custom SendGrid credentials (optional — falls back to system key)
+        const { data: smtpCredentials } = await supabaseAdmin
             .from('user_smtp_credentials')
             .select('*')
             .eq('user_id', inviterId)
             .maybeSingle();
-
-        if (!smtpCredentials) {
-            return res.status(400).json({
-                success: false,
-                error_code: 'MISSING_SMTP_CREDENTIALS',
-                message: 'Please configure your SMTP settings in Integrations before inviting members.'
-            });
-        }
 
         // 1. Verify inviter has permission (is owner or admin of the workspace)
         const { data: inviterMember, error: memberError } = await supabaseAdmin

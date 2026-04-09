@@ -321,10 +321,19 @@ class SMSIntegrationService {
       const startTime = startDate.toISOString();
       const endTime = endDate.toISOString();
       
-      const response = await fetch(`https://api.cal.com/v1/slots?apiKey=${apiKey}&eventTypeId=${eventTypeId}&startTime=${startTime}&endTime=${endTime}&timeZone=${timezone}`, {
+      const params = new URLSearchParams({
+        eventTypeId: String(eventTypeId),
+        start: startTime,
+        end: endTime,
+        timeZone: timezone,
+      });
+
+      const response = await fetch(`https://api.cal.com/v2/slots/available?${params}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'cal-api-version': '2024-08-13',
         }
       });
 
@@ -334,7 +343,12 @@ class SMSIntegrationService {
       }
 
       const data = await response.json();
-      return data.slots || [];
+      // v2 returns { status, data: { "YYYY-MM-DD": [{ start: "..." }] } }
+      // data.data is the date-keyed object directly (no .slots wrapper)
+      const slotsObj = data?.data || {};
+      if (Array.isArray(slotsObj)) return slotsObj;
+      // Flatten all date buckets into a single array of slot objects
+      return Object.values(slotsObj).flat();
     } catch (error) {
       console.error('Error calling Cal.com slots API:', error);
       return [];

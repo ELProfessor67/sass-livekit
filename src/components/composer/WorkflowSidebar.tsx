@@ -225,11 +225,6 @@ export function WorkflowSidebar({ activeFilter, onFilterChange, className }: Wor
                             <Export size={16} weight="bold" />
                             Deploy to Client
                         </Button>
-                    ) : isClient ? (
-                        <Button variant="outline" className="w-full gap-2 border-dashed" size="sm">
-                            <Plus size={16} weight="bold" />
-                            New Folder
-                        </Button>
                     ) : isPlatformOwner && (
                         <Button className="w-full gap-2" size="sm">
                             <Lightning size={16} weight="bold" />

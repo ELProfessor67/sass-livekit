@@ -155,13 +155,6 @@ export function MembersSettings() {
       const result = await response.json();
 
       if (!response.ok) {
-        if (result.error_code === 'MISSING_SMTP_CREDENTIALS') {
-          toast.error(result.message, {
-            description: "Go to Settings > Integrations to configure your SMTP server.",
-            duration: 6000,
-          });
-          return;
-        }
         throw new Error(result.message || 'Failed to send invitation');
       }
 

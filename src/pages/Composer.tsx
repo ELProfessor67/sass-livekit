@@ -63,11 +63,10 @@ function ComposerContent() {
         return workflows?.reduce((acc, w) => acc + (w.completed_count || 0), 0) || 0;
     }, [workflows]);
 
-    const handleCreateWorkflow = (name: string, description: string, category: string) => {
+    const handleCreateWorkflow = (name: string, description: string) => {
         createWorkflow.mutate({
             name,
             description,
-            category,
             status: 'draft',
             source_type: 'scratch',
         }, {

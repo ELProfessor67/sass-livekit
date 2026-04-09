@@ -5,112 +5,73 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Mail, Plus, Settings, Trash2, CheckCircle, AlertCircle } from "lucide-react";
+import { Mail, Plus, Settings, Trash2, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { SMTPCredentialsService, type UserSMTPCredentials, type SMTPCredentialsInput } from "@/lib/smtp-credentials";
+import { SMTPCredentialsService, type UserSMTPCredentials } from "@/lib/smtp-credentials";
 
 export function SMTPIntegrationCard() {
     const { toast } = useToast();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [credentials, setCredentials] = useState<UserSMTPCredentials | null>(null);
-    const [formData, setFormData] = useState<SMTPCredentialsInput>({
-        smtp_host: "",
-        smtp_port: 587,
-        smtp_user: "",
-        smtp_pass: "",
-        smtp_secure: false,
-        from_email: "",
-        from_name: ""
-    });
+    const [formData, setFormData] = useState({ api_key: "", from_email: "", from_name: "" });
 
     useEffect(() => {
-        loadSMTPCredentials();
+        loadCredentials();
     }, []);
 
-    const loadSMTPCredentials = async () => {
+    const loadCredentials = async () => {
         try {
             const creds = await SMTPCredentialsService.getCredentials();
             setCredentials(creds);
             if (creds) {
                 setFormData({
-                    smtp_host: creds.smtp_host,
-                    smtp_port: creds.smtp_port,
-                    smtp_user: creds.smtp_user,
-                    smtp_pass: creds.smtp_pass,
-                    smtp_secure: creds.smtp_secure,
+                    api_key: creds.smtp_pass,
                     from_email: creds.from_email,
-                    from_name: creds.from_name || ""
+                    from_name: creds.from_name || "",
                 });
             }
         } catch (error) {
-            console.error("Error loading SMTP credentials:", error);
+            console.error("Error loading SendGrid credentials:", error);
         }
     };
 
-    const handleSaveCredentials = async () => {
+    const handleSave = async () => {
         try {
             setIsLoading(true);
-
             const validation = SMTPCredentialsService.validateCredentials(formData);
             if (!validation.isValid) {
-                toast({
-                    title: "Validation Error",
-                    description: validation.errors.join(", "),
-                    variant: "destructive",
-                });
+                toast({ title: "Validation Error", description: validation.errors.join(", "), variant: "destructive" });
                 return;
             }
-
             await SMTPCredentialsService.saveCredentials(formData);
-
-            toast({
-                title: "Success",
-                description: "SMTP credentials saved successfully!",
-            });
-
+            toast({ title: "Success", description: "SendGrid credentials saved successfully!" });
             setIsDialogOpen(false);
-            await loadSMTPCredentials();
+            await loadCredentials();
         } catch (error) {
-            console.error("Error saving SMTP credentials:", error);
-            toast({
-                title: "Error",
-                description: "Failed to save SMTP credentials. Please try again.",
-                variant: "destructive",
-            });
+            console.error("Error saving SendGrid credentials:", error);
+            toast({ title: "Error", description: "Failed to save credentials. Please try again.", variant: "destructive" });
         } finally {
             setIsLoading(false);
         }
     };
 
-    const handleDeleteCredentials = async () => {
+    const handleDelete = async () => {
         if (!credentials) return;
         try {
             await SMTPCredentialsService.deleteCredentials(credentials.id);
-
-            toast({
-                title: "Success",
-                description: "SMTP credentials deleted successfully!",
-            });
-
+            toast({ title: "Success", description: "SendGrid credentials removed successfully!" });
             setCredentials(null);
-            setFormData({
-                smtp_host: "",
-                smtp_port: 587,
-                smtp_user: "",
-                smtp_pass: "",
-                smtp_secure: false,
-                from_email: "",
-                from_name: ""
-            });
+            setFormData({ api_key: "", from_email: "", from_name: "" });
         } catch (error) {
-            console.error("Error deleting SMTP credentials:", error);
-            toast({
-                title: "Error",
-                description: "Failed to delete SMTP credentials. Please try again.",
-                variant: "destructive",
-            });
+            console.error("Error deleting SendGrid credentials:", error);
+            toast({ title: "Error", description: "Failed to remove credentials. Please try again.", variant: "destructive" });
         }
+    };
+
+    const maskApiKey = (key: string) => {
+        if (key.length <= 8) return key;
+        return key.slice(0, 5) + "•".repeat(key.length - 9) + key.slice(-4);
     };
 
     return (
@@ -122,10 +83,10 @@ export function SMTPIntegrationCard() {
                     </div>
                     <div>
                         <CardTitle className="text-lg font-medium text-indigo-900">
-                            Custom Email (SMTP)
+                            SendGrid
                         </CardTitle>
                         <CardDescription className="text-indigo-700">
-                            Configure your own SMTP server to send workspace invitations
+                            Override system emails — send from your own SendGrid account and verified domain
                         </CardDescription>
                     </div>
                 </div>
@@ -142,12 +103,12 @@ export function SMTPIntegrationCard() {
                         </DialogTrigger>
                         <DialogContent className="sm:max-w-md">
                             <DialogHeader>
-                                <DialogTitle>SMTP Configuration</DialogTitle>
+                                <DialogTitle>SendGrid Configuration</DialogTitle>
                                 <DialogDescription>
-                                    Enter your SMTP server details to send emails from your own domain.
+                                    Enter your SendGrid API key and verified sender details.
                                 </DialogDescription>
                             </DialogHeader>
-                            <div className="space-y-4 max-h-[60vh] overflow-y-auto px-1">
+                            <div className="space-y-4 px-1">
                                 <div className="space-y-2">
                                     <Label htmlFor="from_name">Sender Name</Label>
                                     <Input
@@ -158,7 +119,7 @@ export function SMTPIntegrationCard() {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="from_email">Sender Email *</Label>
+                                    <Label htmlFor="from_email">Verified Sender Email *</Label>
                                     <Input
                                         id="from_email"
                                         type="email"
@@ -166,58 +127,22 @@ export function SMTPIntegrationCard() {
                                         value={formData.from_email}
                                         onChange={(e) => setFormData({ ...formData, from_email: e.target.value })}
                                     />
-                                </div>
-                                <div className="grid grid-cols-3 gap-4">
-                                    <div className="col-span-2 space-y-2">
-                                        <Label htmlFor="smtp_host">SMTP Host *</Label>
-                                        <Input
-                                            id="smtp_host"
-                                            placeholder="smtp.example.com"
-                                            value={formData.smtp_host}
-                                            onChange={(e) => setFormData({ ...formData, smtp_host: e.target.value })}
-                                        />
-                                    </div>
-                                    <div className="col-span-1 space-y-2">
-                                        <Label htmlFor="smtp_port">Port *</Label>
-                                        <Input
-                                            id="smtp_port"
-                                            type="number"
-                                            placeholder="587"
-                                            value={formData.smtp_port}
-                                            onChange={(e) => setFormData({ ...formData, smtp_port: parseInt(e.target.value) || 587 })}
-                                        />
-                                    </div>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        Must be verified in your SendGrid account.
+                                    </p>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="smtp_user">SMTP Username *</Label>
+                                    <Label htmlFor="api_key">SendGrid API Key *</Label>
                                     <Input
-                                        id="smtp_user"
-                                        placeholder="Username or email"
-                                        value={formData.smtp_user}
-                                        onChange={(e) => setFormData({ ...formData, smtp_user: e.target.value })}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="smtp_pass">SMTP Password *</Label>
-                                    <Input
-                                        id="smtp_pass"
+                                        id="api_key"
                                         type="password"
-                                        placeholder="Enter your password or app passkey"
-                                        value={formData.smtp_pass}
-                                        onChange={(e) => setFormData({ ...formData, smtp_pass: e.target.value })}
+                                        placeholder="SG.xxxxxxxxxxxxxx"
+                                        value={formData.api_key}
+                                        onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
                                     />
-                                </div>
-                                <div className="flex items-center space-x-2">
-                                    <input
-                                        type="checkbox"
-                                        id="smtp_secure"
-                                        checked={formData.smtp_secure}
-                                        onChange={(e) => setFormData({ ...formData, smtp_secure: e.target.checked })}
-                                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
-                                    />
-                                    <Label htmlFor="smtp_secure" className="font-normal">
-                                        Use secure connection (SSL/TLS - usually required for port 465)
-                                    </Label>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        Create at sendgrid.com → Settings → API Keys with "Mail Send" permission.
+                                    </p>
                                 </div>
                             </div>
                             <DialogFooter>
@@ -225,7 +150,7 @@ export function SMTPIntegrationCard() {
                                     Cancel
                                 </Button>
                                 <Button
-                                    onClick={handleSaveCredentials}
+                                    onClick={handleSave}
                                     disabled={isLoading}
                                     className="bg-indigo-600 hover:bg-indigo-700 text-white"
                                 >
@@ -240,9 +165,9 @@ export function SMTPIntegrationCard() {
                 {!credentials ? (
                     <div className="text-center py-6">
                         <Mail className="h-12 w-12 text-indigo-300 mx-auto mb-3" />
-                        <p className="text-indigo-600 font-medium mb-1">No SMTP credentials configured</p>
+                        <p className="text-indigo-600 font-medium mb-1">Using system email sender</p>
                         <p className="text-indigo-500 text-sm">
-                            You must configure SMTP settings to invite members to your workspaces.
+                            Add your own SendGrid API key to send emails from your verified domain instead.
                         </p>
                     </div>
                 ) : (
@@ -252,22 +177,24 @@ export function SMTPIntegrationCard() {
                                 <CheckCircle className="h-5 w-5 text-indigo-600" />
                                 <div>
                                     <p className="font-medium text-indigo-900">
-                                        {credentials.from_name ? `${credentials.from_name} (${credentials.from_email})` : credentials.from_email}
+                                        {credentials.from_name
+                                            ? `${credentials.from_name} <${credentials.from_email}>`
+                                            : credentials.from_email}
                                     </p>
-                                    <p className="text-sm text-indigo-600">SMTP Host: {credentials.smtp_host}:{credentials.smtp_port}</p>
+                                    <p className="text-sm text-indigo-600 font-mono">
+                                        API Key: {maskApiKey(credentials.smtp_pass)}
+                                    </p>
                                 </div>
                             </div>
-                            <div className="flex items-center space-x-2">
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={handleDeleteCredentials}
-                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    title="Remove Credentials"
-                                >
-                                    <Trash2 className="h-4 w-4" />
-                                </Button>
-                            </div>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={handleDelete}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                title="Remove Credentials"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
                         </div>
                     </div>
                 )}

@@ -1,75 +1,51 @@
-import nodemailer from 'nodemailer';
-
-// Email transporter configuration
-const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-    auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-    },
-});
+import sgMail from '@sendgrid/mail';
 
 /**
- * Create a transporter dynamically from provided SMTP credentials
- * @param {Object} credentials - SMTP credentials
- * @returns {Object} - Nodemailer transporter
- */
-export const createDynamicTransporter = (credentials) => {
-    return nodemailer.createTransport({
-        host: credentials.smtp_host,
-        port: parseInt(credentials.smtp_port),
-        secure: credentials.smtp_secure,
-        auth: {
-            user: credentials.smtp_user,
-            pass: credentials.smtp_pass,
-        },
-    });
-};
-
-/**
- * Send an email using specialized HTML templates
- * @param {Object} options - Email options
+ * Send an email via SendGrid HTTP API.
+ * When smtpCredentials is provided (user's own SendGrid key), it uses that key.
+ * Otherwise falls back to the system SENDGRID_API_KEY env var.
+ *
+ * @param {Object} options
  * @param {string} options.to - Recipient email
  * @param {string} options.subject - Email subject
  * @param {string} options.html - HTML content
- * @param {Object} [options.smtpCredentials] - Optional dynamic SMTP credentials
- * @returns {Promise<Object>} - Promise resolving to the send result
+ * @param {Object} [options.smtpCredentials] - Optional user credentials (smtp_pass = API key)
  */
 export const sendEmail = async ({ to, subject, html, smtpCredentials }) => {
-    const from = smtpCredentials
-        ? (smtpCredentials.from_name
-            ? `"${smtpCredentials.from_name}" <${smtpCredentials.from_email}>`
-            : smtpCredentials.from_email)
-        : (process.env.EMAIL_FROM || '"UltraTalk AI" <noreply@ultratalkai.com>');
+    // smtp_pass stores the SendGrid API key for user-configured integrations
+    const apiKey = smtpCredentials?.smtp_pass || process.env.SENDGRID_API_KEY;
+
+    if (!apiKey) {
+        console.error('No SendGrid API key available');
+        return { success: false, error: 'No SendGrid API key configured' };
+    }
+
+    const fromEmail = smtpCredentials
+        ? smtpCredentials.from_email
+        : (process.env.EMAIL_FROM_ADDRESS || 'noreply@ultratalkai.com');
+
+    const fromName = smtpCredentials?.from_name || process.env.EMAIL_FROM_NAME || 'UltraTalk AI';
+
+    sgMail.setApiKey(apiKey);
 
     try {
-        const activeTransporter = smtpCredentials
-            ? createDynamicTransporter(smtpCredentials)
-            : transporter;
-
-        const info = await activeTransporter.sendMail({
-            from,
+        await sgMail.send({
             to,
+            from: { email: fromEmail, name: fromName },
             subject,
             html,
         });
 
-        console.log('Message sent: %s', info.messageId);
-        return { success: true, messageId: info.messageId };
+        console.log('Email sent via SendGrid to:', to);
+        return { success: true };
     } catch (error) {
-        console.error('Error sending email:', error);
+        console.error('Error sending email via SendGrid:', error?.response?.body || error.message);
         return { success: false, error: error.message };
     }
 };
 
 /**
  * Generate the workspace invitation email template
- * @param {Object} data - Invitation data
- * @param {string} data.workspaceName - Name of the workspace
- * @param {string} data.inviterName - Name of the person who invited
- * @param {string} data.invitationLink - Link to accept the invitation
  */
 export const getInvitationEmailTemplate = ({ workspaceName, inviterName, invitationLink }) => {
     return `

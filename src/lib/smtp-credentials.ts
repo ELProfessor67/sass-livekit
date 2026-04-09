@@ -6,7 +6,7 @@ export interface UserSMTPCredentials {
     smtp_host: string;
     smtp_port: number;
     smtp_user: string;
-    smtp_pass: string;
+    smtp_pass: string; // stores SendGrid API key
     smtp_secure: boolean;
     from_email: string;
     from_name: string | null;
@@ -14,22 +14,22 @@ export interface UserSMTPCredentials {
     updated_at: string;
 }
 
+// What the user actually provides for SendGrid
 export interface SMTPCredentialsInput {
-    smtp_host: string;
-    smtp_port: number;
-    smtp_user: string;
-    smtp_pass: string;
-    smtp_secure: boolean;
+    api_key: string;       // SendGrid API key — stored in smtp_pass
     from_email: string;
     from_name?: string;
+    // Internal DB fields filled with defaults:
+    smtp_host?: string;
+    smtp_port?: number;
+    smtp_user?: string;
+    smtp_pass?: string;
+    smtp_secure?: boolean;
 }
 
 export class SMTPCredentialsService {
     /**
-     * Fetch SMTP credentials for the current user, optionally scoped to a workspace.
-     * workspaceId = null → main account (workspace_id IS NULL)
-     * workspaceId = string → specific workspace
-     * workspaceId = undefined → no workspace filter (backward compat)
+     * Fetch SendGrid credentials for the current user, optionally scoped to a workspace.
      */
     static async getCredentials(workspaceId?: string | null): Promise<UserSMTPCredentials | null> {
         const { data: { user } } = await supabase.auth.getUser();
@@ -49,7 +49,7 @@ export class SMTPCredentialsService {
         const { data, error } = await query.maybeSingle();
 
         if (error) {
-            console.error('Error fetching SMTP credentials:', error);
+            console.error('Error fetching SendGrid credentials:', error);
             throw error;
         }
 
@@ -57,11 +57,22 @@ export class SMTPCredentialsService {
     }
 
     /**
-     * Save or update SMTP credentials for the current user, optionally scoped to a workspace.
+     * Save or update SendGrid credentials for the current user.
      */
     static async saveCredentials(credentials: SMTPCredentialsInput, workspaceId?: string | null): Promise<UserSMTPCredentials> {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error("No authenticated user");
+
+        // Map SendGrid fields to the DB schema (reuse smtp_pass for the API key)
+        const dbRecord = {
+            smtp_host: 'api.sendgrid.com',
+            smtp_port: 443,
+            smtp_user: 'apikey',
+            smtp_pass: credentials.api_key,
+            smtp_secure: true,
+            from_email: credentials.from_email,
+            from_name: credentials.from_name ?? null,
+        };
 
         let existingQuery = supabase
             .from('user_smtp_credentials')
@@ -75,17 +86,12 @@ export class SMTPCredentialsService {
         }
 
         const { data: existing, error: fetchError } = await existingQuery.maybeSingle();
-
         if (fetchError) throw fetchError;
 
         if (existing) {
-            // Update
             const { data, error } = await supabase
                 .from('user_smtp_credentials')
-                .update({
-                    ...credentials,
-                    updated_at: new Date().toISOString()
-                })
+                .update({ ...dbRecord, updated_at: new Date().toISOString() })
                 .eq('id', existing.id)
                 .select()
                 .single();
@@ -93,14 +99,9 @@ export class SMTPCredentialsService {
             if (error) throw error;
             return data;
         } else {
-            // Insert
             const { data, error } = await supabase
                 .from('user_smtp_credentials')
-                .insert({
-                    user_id: user.id,
-                    workspace_id: workspaceId ?? null,
-                    ...credentials
-                })
+                .insert({ user_id: user.id, workspace_id: workspaceId ?? null, ...dbRecord })
                 .select()
                 .single();
 
@@ -110,7 +111,7 @@ export class SMTPCredentialsService {
     }
 
     /**
-     * Delete SMTP credentials
+     * Delete SendGrid credentials
      */
     static async deleteCredentials(id: string): Promise<void> {
         const { error } = await supabase
@@ -127,20 +128,13 @@ export class SMTPCredentialsService {
     static validateCredentials(input: SMTPCredentialsInput): { isValid: boolean; errors: string[] } {
         const errors: string[] = [];
 
-        if (!input.smtp_host) errors.push("SMTP Host is required");
-        if (!input.smtp_port) errors.push("SMTP Port is required");
-        if (!input.smtp_user) errors.push("SMTP Username is required");
-        if (!input.smtp_pass) errors.push("SMTP Password is required");
-        if (!input.from_email) errors.push("Sender Email is required");
+        if (!input.api_key) errors.push("SendGrid API key is required");
+        if (!input.from_email) errors.push("Sender email is required");
 
-        // Basic email validation
         if (input.from_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.from_email)) {
             errors.push("Invalid sender email format");
         }
 
-        return {
-            isValid: errors.length === 0,
-            errors
-        };
+        return { isValid: errors.length === 0, errors };
     }
 }

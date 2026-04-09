@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm list:*)",
+      "WebFetch(domain:cal.com)",
+      "WebFetch(domain:api.cal.com)",
+      "WebSearch"
+    ]
+  }
+}
