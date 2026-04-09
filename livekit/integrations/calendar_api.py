@@ -42,7 +42,6 @@ def _clean_calendar_cache():
 # API versions & base URLs
 CAL_EVENT_TYPES_VERSION = "2024-06-14"   # v2 event types requires this header
 CAL_BOOKINGS_VERSION    = "2024-08-13"   # v2 bookings requires this header
-BASE_URL_V1 = "https://api.cal.com/v1/"
 BASE_URL_V2 = "https://api.cal.com/v2/"
 
 
@@ -112,8 +111,8 @@ class Calendar(Protocol):
 
 class CalComCalendar(Calendar):
     """
-    Cal.com implementation using:
-      - v1 /slots for availability
+    Cal.com implementation using v2 API exclusively:
+      - v2 /slots/available for availability
       - v2 /event-types for metadata (length)
       - v2 /bookings for booking
     """
@@ -186,12 +185,6 @@ class CalComCalendar(Calendar):
             return ZoneInfo("UTC")
 
     # -------- headers
-
-    def _headers_v1(self) -> dict[str, str]:
-        # v1 API requires apiKey as query parameter, not header
-        return {
-            "Content-Type": "application/json"
-        }
 
     def _headers_v2(self, version: str) -> dict[str, str]:
         return {
@@ -280,7 +273,7 @@ class CalComCalendar(Calendar):
         self, *, start_time: datetime.datetime, end_time: datetime.datetime
     ) -> CalendarResult:
         """
-        Use v1 /slots with retries and v2 fallback for better reliability.
+        Use v2 /slots/available (v1 was shut down on 2026-04-08).
         Returns CalendarResult with distinct error states.
         Includes aggressive caching for performance.
         """
@@ -295,17 +288,15 @@ class CalComCalendar(Calendar):
                 )
             )
 
-        # Use request timezone (caller's when agent passes it) for slot window and API; convert to UTC only at API boundary.
         request_tz = start_time.tzinfo if start_time.tzinfo is not None else self.tz
         if not hasattr(request_tz, "key"):
             request_tz = self.tz  # fallback if plain tzinfo
-        # Cal v1 requires string<date-time> for startTime/endTime. Send local-tz ISO with seconds.
         start_local = start_time.astimezone(request_tz)
         end_local = end_time.astimezone(request_tz).replace(hour=23, minute=59, second=59, microsecond=0)
 
         start_param = start_local.isoformat(timespec="seconds")
         end_param = end_local.isoformat(timespec="seconds")
-        
+
         # Check cache first for massive speed improvement
         cache_key = _get_calendar_cache_key(str(self._event_type_id or ""), start_param, end_param)
         if cache_key in _calendar_cache:
@@ -315,28 +306,23 @@ class CalComCalendar(Calendar):
                 return cached_result
             else:
                 del _calendar_cache[cache_key]
-        
+
         if len(_calendar_cache) > _cache_max_size * 0.8:
             _clean_calendar_cache()
 
-        slots = await self._fetch_slots_v1_with_retry(start_param, end_param, request_tz)
+        slots = await self._fetch_slots_v2(start_param, end_param, request_tz)
+
         if slots is None:
-            self._log.info("Cal.com: v1 failed, trying v2 fallback")
-            slots = await self._fetch_slots_v2(start_param, end_param, request_tz)
-        
-        if slots is None:
-            # Both v1 and v2 failed
             return CalendarResult(
                 slots=[],
                 error=CalendarError(
                     error_type="calendar_unavailable",
                     message="Calendar service temporarily unavailable",
-                    details="Both v1 and v2 API endpoints failed"
+                    details="v2 slots/available API failed"
                 )
             )
-        
+
         if not slots:
-            # Successfully got response but no slots available
             return CalendarResult(
                 slots=[],
                 error=CalendarError(
@@ -345,100 +331,25 @@ class CalComCalendar(Calendar):
                     details=f"No slots found for {start_local.date()}"
                 )
             )
-        
+
         result = CalendarResult(slots=slots)
-        
+
         # Cache the result for future queries
         _calendar_cache[cache_key] = (result, time.time())
         self._log.info("CALENDAR_CACHE_STORED | slots=%d | cache_size=%d", len(slots), len(_calendar_cache))
-        
+
         return result
 
-    async def _fetch_slots_v1_with_retry(self, start_param: str, end_param: str, request_tz: ZoneInfo) -> list[AvailableSlot] | None:
-        """Try v1 /slots with exponential backoff retries. request_tz is used for API timeZone and parsing (caller's tz when set)."""
+    async def _fetch_slots_v2(self, start_param: str, end_param: str, request_tz: ZoneInfo) -> list[AvailableSlot] | None:
+        """Fetch slots from v2 /slots/available with exponential backoff retries."""
         import asyncio
-        
-        params: dict[str, str | int | bool] = {
-            "apiKey": self._api_key,
+
+        params: dict[str, str] = {
             "startTime": start_param,
             "endTime": end_param,
             "timeZone": request_tz.key if hasattr(request_tz, "key") else str(request_tz),
         }
 
-        # Prefer eventTypeId if provided; otherwise fall back to username/slug mode
-        if self._event_type_id:
-            # v1 API expects eventTypeId as number, but we'll try both string and int
-            try:
-                params["eventTypeId"] = int(self._event_type_id)
-            except (ValueError, TypeError):
-                # If conversion fails, use as string (some APIs accept both)
-                params["eventTypeId"] = str(self._event_type_id)
-        else:
-            if self._username:
-                params["usernameList"] = self._username
-            if self._event_type_slug:
-                params["eventTypeSlug"] = self._event_type_slug
-            if self._org_slug:
-                params["orgSlug"] = self._org_slug
-
-        url = f"{BASE_URL_V1}slots"
-        
-        # Retry up to 3 times with exponential backoff
-        for attempt in range(3):
-            try:
-                self._log.info("Cal.com: Requesting slots %s params=%s (attempt %d)", url, params, attempt + 1)
-                
-                async with self._http.get(url, headers=self._headers_v1(), params=params, timeout=30) as resp:
-                    txt = await resp.text()
-                    
-                    if resp.status == 200:
-                        try:
-                            payload = await resp.json()
-                            return self._parse_slots_response(payload, request_tz)
-                        except Exception as e:
-                            self._log.error("Cal.com V1 /slots non-JSON response: %s", txt)
-                            return None # Return None to signal failure, not empty slots (Fix #6)
-                    
-                    elif resp.status >= 500:
-                        # Server error - retry with backoff
-                        if attempt < 2:  # Don't sleep on last attempt
-                            wait_time = 0.8 * (2 ** attempt)  # 0.8s, 1.6s, 3.2s
-                            self._log.warning("Cal.com V1 /slots error %s (attempt %d), retrying in %.1fs: %s", 
-                                            resp.status, attempt + 1, wait_time, txt)
-                            await asyncio.sleep(wait_time)
-                            continue
-                        else:
-                            self._log.error("Cal.com V1 /slots error %s (final attempt): %s", resp.status, txt)
-                            return None
-                    
-                    else:
-                        # Client error (4xx) - don't retry
-                        self._log.error("Cal.com V1 /slots error %s: %s", resp.status, txt)
-                        return None
-                        
-            except asyncio.TimeoutError:
-                if attempt < 2:
-                    wait_time = 0.8 * (2 ** attempt)
-                    self._log.warning("Cal.com V1 /slots timeout (attempt %d), retrying in %.1fs", attempt + 1, wait_time)
-                    await asyncio.sleep(wait_time)
-                    continue
-                else:
-                    self._log.error("Cal.com V1 /slots timeout (final attempt)")
-                    return None
-            except Exception as e:
-                self._log.error("Cal.com V1 /slots unexpected error: %s", str(e))
-                return None
-        
-        return None
-
-    async def _fetch_slots_v2(self, start_param: str, end_param: str, request_tz: ZoneInfo) -> list[AvailableSlot] | None:
-        """Fallback to v2 /slots using GET with query parameters. request_tz used for API and parsing."""
-        params: dict[str, str] = {
-            "start": start_param,
-            "end": end_param,
-            "timeZone": request_tz.key if hasattr(request_tz, "key") else str(request_tz),
-        }
-        
         # Add event type identification
         if self._event_type_id:
             params["eventTypeId"] = str(self._event_type_id)
@@ -450,28 +361,53 @@ class CalComCalendar(Calendar):
         else:
             self._log.warning("Cal.com v2: No valid event type identification available")
             return []
-        
-        url = f"{BASE_URL_V2}slots"
-        self._log.info("Cal.com: Requesting v2 slots %s params=%s", url, params)
-        
-        try:
-            async with self._http.get(url, headers=self._headers_v2("2024-09-04"), params=params, timeout=30) as resp:
-                txt = await resp.text()
-                
-                if resp.status == 200:
-                    try:
-                        payload = await resp.json()
-                        return self._parse_slots_response_v2(payload, request_tz)
-                    except Exception as e:
-                        self._log.error("Cal.com V2 /slots non-JSON response: %s", txt)
-                        return None # Return None to signal failure (Fix #6)
+
+        url = f"{BASE_URL_V2}slots/available"
+
+        for attempt in range(3):
+            try:
+                self._log.info("Cal.com: Requesting v2 slots %s params=%s (attempt %d)", url, params, attempt + 1)
+
+                async with self._http.get(url, headers=self._headers_v2(CAL_BOOKINGS_VERSION), params=params, timeout=30) as resp:
+                    txt = await resp.text()
+
+                    if resp.status == 200:
+                        try:
+                            payload = await resp.json()
+                            return self._parse_slots_response_v2(payload, request_tz)
+                        except Exception:
+                            self._log.error("Cal.com V2 /slots/available non-JSON response: %s", txt)
+                            return None
+
+                    elif resp.status >= 500:
+                        if attempt < 2:
+                            wait_time = 0.8 * (2 ** attempt)
+                            self._log.warning("Cal.com V2 /slots/available error %s (attempt %d), retrying in %.1fs: %s",
+                                             resp.status, attempt + 1, wait_time, txt)
+                            await asyncio.sleep(wait_time)
+                            continue
+                        else:
+                            self._log.error("Cal.com V2 /slots/available error %s (final attempt): %s", resp.status, txt)
+                            return None
+
+                    else:
+                        self._log.error("Cal.com V2 /slots/available error %s: %s", resp.status, txt)
+                        return None
+
+            except asyncio.TimeoutError:
+                if attempt < 2:
+                    wait_time = 0.8 * (2 ** attempt)
+                    self._log.warning("Cal.com V2 /slots/available timeout (attempt %d), retrying in %.1fs", attempt + 1, wait_time)
+                    await asyncio.sleep(wait_time)
+                    continue
                 else:
-                    self._log.error("Cal.com V2 /slots error %s: %s", resp.status, txt)
-                    return None # Return None to signal failure (Fix #6)
-                    
-        except Exception as e:
-            self._log.error("Cal.com V2 /slots unexpected error: %s", str(e))
-            return None # Return None to signal failure (Fix #6)
+                    self._log.error("Cal.com V2 /slots/available timeout (final attempt)")
+                    return None
+            except Exception as e:
+                self._log.error("Cal.com V2 /slots/available unexpected error: %s", str(e))
+                return None
+
+        return None
 
     def _parse_slots_response(self, payload: dict, request_tz: ZoneInfo) -> list[AvailableSlot]:
         """Parse v1 slots response. request_tz is the timezone for slot display (caller's when set)."""

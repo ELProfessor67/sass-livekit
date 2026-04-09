@@ -323,8 +323,8 @@ class SMSIntegrationService {
       
       const params = new URLSearchParams({
         eventTypeId: String(eventTypeId),
-        start: startTime,
-        end: endTime,
+        startTime: startTime,
+        endTime: endTime,
         timeZone: timezone,
       });
 
