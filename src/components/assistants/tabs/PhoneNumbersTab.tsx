@@ -56,7 +56,8 @@ function PhoneNumberCard({
   onAssign: (phoneNumber: PhoneNumber, inboundAssistant: string, outboundAssistant?: string) => void;
   loading: boolean;
 }) {
-  const { currentWorkspace, canEdit } = useWorkspace();
+  const { currentWorkspace, canManagePhoneNumbers } = useWorkspace();
+  const canEdit = canManagePhoneNumbers;
   const { toast } = useToast();
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingNumber, setEditingNumber] = useState(phoneNumber);
@@ -247,7 +248,8 @@ export function PhoneNumbersTab({ tabChangeTrigger = 0 }: PhoneNumbersTabProps) 
   const [isImportOpen, setIsImportOpen] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
-  const { currentWorkspace, canEdit } = useWorkspace();
+  const { currentWorkspace, canManagePhoneNumbers } = useWorkspace();
+  const canEdit = canManagePhoneNumbers;
 
   const base = (import.meta.env.VITE_BACKEND_URL as string) ?? "http://localhost:4000";
 

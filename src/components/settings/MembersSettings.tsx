@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,7 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { useWorkspace, PagePermissions, DEFAULT_PAGE_PERMISSIONS } from "@/contexts/WorkspaceContext";
 import { AlertTriangle } from "lucide-react";
 import { useAuth } from "@/contexts/SupportAccessAuthContext";
 
@@ -59,6 +60,24 @@ const ROLE_DESCRIPTIONS: Record<string, string> = {
   viewer: "Read-only access to workspace content"
 };
 
+/** Pages shown in the permissions grid — order matches the screenshot */
+const PERMISSION_PAGES: Array<{
+  key: keyof PagePermissions;
+  label: string;
+  description: string;
+  hasManage: boolean;
+}> = [
+  { key: 'dashboard',        label: 'Dashboard',          description: 'View workspace analytics and overview',   hasManage: false },
+  { key: 'unibox',           label: 'Unibox',             description: 'Unified inbox for all conversations',     hasManage: true  },
+  { key: 'agents',           label: 'Agents',             description: 'Create and manage AI voice agents',       hasManage: true  },
+  { key: 'contacts',         label: 'Contacts',           description: 'Manage contact lists and records',        hasManage: true  },
+  { key: 'workflows',        label: 'Workflows',          description: 'Create and manage automation workflows',  hasManage: true  },
+  { key: 'conversationLogs', label: 'Conversation Logs',  description: 'View and manage call conversations',      hasManage: true  },
+  { key: 'phoneNumbers',     label: 'Phone Numbers',      description: 'Manage phone numbers and DIDs',           hasManage: true  },
+  { key: 'integrations',     label: 'Integrations',       description: 'Configure third-party integrations',      hasManage: true  },
+  { key: 'settings',         label: 'Settings',           description: 'Access workspace settings',               hasManage: true  },
+];
+
 const API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
 
 export function MembersSettings() {
@@ -72,7 +91,7 @@ export function MembersSettings() {
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteEmailError, setInviteEmailError] = useState("");
-  const [inviteRole, setInviteRole] = useState("member");
+  const [invitePermissions, setInvitePermissions] = useState<PagePermissions>(DEFAULT_PAGE_PERMISSIONS);
   const [isInviting, setIsInviting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -122,7 +141,7 @@ export function MembersSettings() {
   };
 
   const handleInviteMember = async () => {
-    if (!inviteEmail || !inviteRole || !currentWorkspace) return;
+    if (!inviteEmail || !currentWorkspace) return;
 
     // Validate email format
     if (!EMAIL_REGEX.test(inviteEmail)) {
@@ -149,7 +168,12 @@ export function MembersSettings() {
       const response = await fetch(`${API_BASE}/api/v1/workspaces/invite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ workspaceId: currentWorkspace.id, email: inviteEmail, role: inviteRole })
+        body: JSON.stringify({
+          workspaceId: currentWorkspace.id,
+          email: inviteEmail,
+          role: 'member',          // kept for DB constraint; permissions take precedence
+          permissions: invitePermissions
+        })
       });
 
       const result = await response.json();
@@ -161,7 +185,7 @@ export function MembersSettings() {
       toast.success(`Invitation sent to ${inviteEmail}`);
       setShowInviteDialog(false);
       setInviteEmail("");
-      setInviteRole("member");
+      setInvitePermissions(DEFAULT_PAGE_PERMISSIONS);
       fetchMembersAndInvitations();
     } catch (error: any) {
       toast.error(error.message || 'Failed to send invitation');
@@ -250,6 +274,25 @@ export function MembersSettings() {
     }
   };
 
+  const updatePermission = (
+    page: keyof PagePermissions,
+    type: 'view' | 'manage',
+    value: boolean
+  ) => {
+    setInvitePermissions(prev => {
+      const updated = { ...prev, [page]: { ...(prev[page] as any), [type]: value } };
+      // Turning off "view" also turns off "manage"
+      if (type === 'view' && !value) {
+        (updated[page] as any).manage = false;
+      }
+      // Turning on "manage" also turns on "view"
+      if (type === 'manage' && value) {
+        (updated[page] as any).view = true;
+      }
+      return updated;
+    });
+  };
+
   const getRoleIcon = (role: string) => {
     switch (role) {
       case 'owner': return <Crown size={14} weight="duotone" className="text-yellow-500" />;
@@ -310,7 +353,7 @@ export function MembersSettings() {
         </div>
         {canManageMembers && (
           <Button
-            onClick={() => { setInviteEmail(""); setInviteRole("member"); setInviteEmailError(""); setShowInviteDialog(true); }}
+            onClick={() => { setInviteEmail(""); setInvitePermissions(DEFAULT_PAGE_PERMISSIONS); setInviteEmailError(""); setShowInviteDialog(true); }}
             className="backdrop-blur-sm bg-primary/90 hover:bg-primary transition-all duration-200 border border-primary/20"
             disabled={isOnTrial}
             title={isOnTrial ? "Upgrade to a paid plan to invite members" : undefined}
@@ -524,15 +567,16 @@ export function MembersSettings() {
 
       {/* Invite Dialog */}
       <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
-        <DialogContent className="backdrop-blur-xl bg-background/95 border-white/[0.08] rounded-2xl max-w-md">
+        <DialogContent className="backdrop-blur-xl bg-background/95 border-white/[0.08] rounded-2xl max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-xl font-medium">Invite team member</DialogTitle>
             <DialogDescription className="text-muted-foreground leading-relaxed">
-              Send an invitation to join your workspace. They'll receive an email with a link to accept.
+              Send an invitation and configure exactly what this person can view and manage.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-5 py-4">
+          <div className="space-y-5 py-2">
+            {/* Email */}
             <div className="space-y-2">
               <Label htmlFor="invite-email" className="text-sm font-medium">Email address</Label>
               <Input
@@ -552,26 +596,61 @@ export function MembersSettings() {
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="invite-role" className="text-sm font-medium">Role</Label>
-              <Select value={inviteRole} onValueChange={setInviteRole}>
-                <SelectTrigger className="backdrop-blur-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="backdrop-blur-xl bg-background/95 border-white/[0.08] rounded-xl">
-                  {roleOptions.map(r => (
-                    <SelectItem key={r.value} value={r.value} className="rounded-lg">
-                      <div className="flex items-center gap-2">
-                        {getRoleIcon(r.value)}
-                        {r.label}
+            {/* Permissions grid */}
+            <div className="space-y-1">
+              <p className="text-sm font-medium mb-2">Permissions</p>
+
+              {/* Header row */}
+              <div className="flex items-center px-3 py-1.5 border-b border-white/[0.08]">
+                <span className="flex-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Page</span>
+                <span className="w-14 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">View</span>
+                <span className="w-16 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Manage</span>
+              </div>
+
+              {/* Page rows */}
+              <div className="rounded-xl border border-white/[0.08] overflow-hidden">
+                {PERMISSION_PAGES.map((page, idx) => {
+                  const perm = invitePermissions[page.key] as any;
+                  return (
+                    <div
+                      key={page.key}
+                      className={`flex items-center px-3 py-3 gap-2 ${idx < PERMISSION_PAGES.length - 1 ? 'border-b border-white/[0.06]' : ''} hover:bg-white/[0.03] transition-colors`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium leading-tight">{page.label}</p>
+                        <p className="text-xs text-muted-foreground truncate">{page.description}</p>
                       </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {inviteRole && ROLE_DESCRIPTIONS[inviteRole] && (
-                <p className="text-xs text-muted-foreground">{ROLE_DESCRIPTIONS[inviteRole]}</p>
-              )}
+
+                      {/* View toggle */}
+                      <div className="w-14 flex justify-center">
+                        <Switch
+                          checked={perm.view}
+                          onCheckedChange={(v) => updatePermission(page.key, 'view', v)}
+                          aria-label={`${page.label} view`}
+                        />
+                      </div>
+
+                      {/* Manage toggle */}
+                      <div className="w-16 flex justify-center">
+                        {page.hasManage ? (
+                          <Switch
+                            checked={perm.manage ?? false}
+                            onCheckedChange={(v) => updatePermission(page.key, 'manage', v)}
+                            disabled={!perm.view}
+                            aria-label={`${page.label} manage`}
+                          />
+                        ) : (
+                          <span className="text-muted-foreground/30 text-lg select-none">—</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <p className="text-xs text-muted-foreground pt-1">
+                Enabling <span className="font-medium">Manage</span> automatically grants View access.
+              </p>
             </div>
           </div>
 

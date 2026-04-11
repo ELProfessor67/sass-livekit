@@ -21,7 +21,7 @@ import { ThemeContainer, ThemeSection } from "@/components/theme";
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 
 function ComposerContent() {
-    const { canEdit } = useWorkspace();
+    const { canEdit, canViewWorkflows } = useWorkspace();
     const navigate = useNavigate();
     const [activeFilter, setActiveFilter] = useState<SidebarFilter>('all');
     const [searchQuery, setSearchQuery] = useState('');
@@ -75,6 +75,20 @@ function ComposerContent() {
             }
         });
     };
+
+    if (!canViewWorkflows) {
+        return (
+            <ThemeContainer variant="base" className="min-h-screen no-hover-scaling">
+                <div className="flex items-center justify-center h-full py-20">
+                    <ThemeCard variant="glass" className="p-10 text-center max-w-md">
+                        <h2 className="text-2xl font-light mb-4 text-foreground">Access Denied</h2>
+                        <p className="text-muted-foreground mb-6">You don't have permission to view workflows in this workspace.</p>
+                        <Button onClick={() => window.history.back()}>Go Back</Button>
+                    </ThemeCard>
+                </div>
+            </ThemeContainer>
+        );
+    }
 
     return (
         <ThemeContainer variant="base" className="min-h-screen no-hover-scaling py-12">

@@ -2,6 +2,30 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
+export interface PagePermissions {
+    dashboard: { view: boolean };
+    unibox: { view: boolean; manage: boolean };
+    agents: { view: boolean; manage: boolean };
+    contacts: { view: boolean; manage: boolean };
+    workflows: { view: boolean; manage: boolean };
+    conversationLogs: { view: boolean; manage: boolean };
+    phoneNumbers: { view: boolean; manage: boolean };
+    integrations: { view: boolean; manage: boolean };
+    settings: { view: boolean; manage: boolean };
+}
+
+export const DEFAULT_PAGE_PERMISSIONS: PagePermissions = {
+    dashboard: { view: false },
+    unibox: { view: false, manage: false },
+    agents: { view: false, manage: false },
+    contacts: { view: false, manage: false },
+    workflows: { view: false, manage: false },
+    conversationLogs: { view: false, manage: false },
+    phoneNumbers: { view: false, manage: false },
+    integrations: { view: false, manage: false },
+    settings: { view: false, manage: false },
+};
+
 export interface Workspace {
     id: string | null;
     name: string;
@@ -27,6 +51,9 @@ export interface Workspace {
     agency_id?: string | null;
     role: string;
     user_id: string;
+    /** Granular page-level permissions set by the workspace owner on invite.
+     *  Present only for non-owner members who were invited with custom permissions. */
+    permissions?: PagePermissions | null;
 }
 
 interface WorkspaceContextType {
@@ -73,6 +100,8 @@ interface WorkspaceContextType {
     canViewSettings: boolean;
     canManageSettings: boolean;
     canManageWorkspace: boolean;
+    canViewPhoneNumbers: boolean;
+    canManagePhoneNumbers: boolean;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -85,7 +114,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const [limitMinutesEnabled, setLimitMinutesEnabled] = useState(false);
     const [totalMinutes, setTotalMinutes] = useState(0);
 
-    const mapWorkspace = (dbWorkspace: any, userId: string, role?: string): Workspace => ({
+    const mapWorkspace = (dbWorkspace: any, userId: string, role?: string, permissions?: PagePermissions | null): Workspace => ({
         ...dbWorkspace,
         name: dbWorkspace.workspace_name,
         logoUrl: dbWorkspace.logo_url || undefined,
@@ -98,6 +127,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         memberCount: dbWorkspace.members?.[0]?.count || 1,
         workspace_type: dbWorkspace.workspace_type || 'simple',
         agency_id: dbWorkspace.agency_id,
+        permissions: permissions ?? null,
     });
 
     const fetchWorkspaces = async () => {
@@ -145,10 +175,10 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 setTotalMinutes(mainAccountWorkspace.minute_limit);
             }
 
-            // 2. Get workspaces where user is a member
+            // 2. Get workspaces where user is a member (include granular permissions)
             const { data: memberData, error: memberError } = await supabase
                 .from('workspace_members')
-                .select('workspace_id, role, status')
+                .select('workspace_id, role, status, permissions')
                 .eq('user_id', user.id);
 
             if (memberError) throw memberError;
@@ -175,7 +205,12 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                             };
                         })
                         .filter(item => item.memberInfo?.status === 'active')
-                        .map(item => mapWorkspace(item.workspace, user.id, item.memberInfo?.role));
+                        .map(item => mapWorkspace(
+                            item.workspace,
+                            user.id,
+                            item.memberInfo?.role,
+                            item.memberInfo?.permissions as PagePermissions | null
+                        ));
                 }
             }
 
@@ -349,55 +384,70 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const isMember = role === 'member';
     const isViewer = role === 'viewer';
 
-    const canEdit = !isViewer;
+    // Granular custom permissions — present for invited (non-owner) members
+    const customPerms = currentWorkspace?.permissions as PagePermissions | null | undefined;
+    // Use custom permissions only when they exist and the user is not the workspace owner
+    const hasCustomPerms = !isOwner && !!customPerms;
 
-    // Billing/Plans
+    const canEdit = isOwner || isManager || (hasCustomPerms
+        ? Object.values(customPerms!).some((p: any) => p.manage === true)
+        : isMember);
+
+    // Billing/Plans — always role-based (never exposed via custom perms)
     const canViewBilling = isOwner || isManager;
     const canManageBilling = isOwner;
 
-    // Members
-    const canViewMembers = isOwner || isManager || isMember;
-    const canManageMembers = isOwner || isManager;
+    // Members — part of "Settings" page
+    const canViewMembers = isOwner || isManager || (hasCustomPerms ? customPerms!.settings.view : isMember);
+    const canManageMembers = isOwner || isManager || (hasCustomPerms ? customPerms!.settings.manage : false);
 
-    // Assistants
-    const canViewAssistants = isOwner || isManager || isMember || isViewer;
-    const canCreateAssistants = isOwner || isManager || isMember;
-    const canManageAssistants = isOwner || isManager;
-    const canDeleteAssistants = isOwner || isManager;
+    // Agents / Assistants
+    const canViewAssistants = isOwner || isManager || (hasCustomPerms ? customPerms!.agents.view : isMember || isViewer);
+    const canCreateAssistants = isOwner || isManager || (hasCustomPerms ? customPerms!.agents.manage : isMember);
+    const canManageAssistants = isOwner || isManager || (hasCustomPerms ? customPerms!.agents.manage : false);
+    const canDeleteAssistants = isOwner || isManager || (hasCustomPerms ? customPerms!.agents.manage : false);
 
-    // Composer (Workflows)
-    const canViewWorkflows = isOwner || isManager || isMember || isViewer;
-    const canCreateWorkflows = isOwner || isManager || isMember;
-    const canManageWorkflows = isOwner || isManager || isMember; // TODO: Implement "Own" restriction
+    // Workflows
+    const canViewWorkflows = isOwner || isManager || (hasCustomPerms ? customPerms!.workflows.view : isMember || isViewer);
+    const canCreateWorkflows = isOwner || isManager || (hasCustomPerms ? customPerms!.workflows.manage : isMember);
+    const canManageWorkflows = isOwner || isManager || (hasCustomPerms ? customPerms!.workflows.manage : isMember);
 
     // Deploy to Client
     const canDeploy = isOwner || isManager;
 
-    // Calls/Convos
-    const canViewCalls = isOwner || isManager || isMember;
-    const canManageCalls = isOwner || isManager;
+    // Unibox + Conversation Logs both map to calls/convos
+    const canViewCalls = isOwner || isManager || (hasCustomPerms
+        ? customPerms!.unibox.view || customPerms!.conversationLogs.view
+        : isMember);
+    const canManageCalls = isOwner || isManager || (hasCustomPerms
+        ? customPerms!.unibox.manage || customPerms!.conversationLogs.manage
+        : false);
 
     // Contacts
-    const canViewContacts = isOwner || isManager || isMember;
-    const canCreateContacts = isOwner || isManager || isMember;
-    const canManageContacts = isOwner || isManager;
+    const canViewContacts = isOwner || isManager || (hasCustomPerms ? customPerms!.contacts.view : isMember);
+    const canCreateContacts = isOwner || isManager || (hasCustomPerms ? customPerms!.contacts.manage : isMember);
+    const canManageContacts = isOwner || isManager || (hasCustomPerms ? customPerms!.contacts.manage : false);
 
-    // Campaigns
-    const canViewCampaigns = isOwner || isManager || isMember;
-    const canCreateCampaigns = isOwner || isManager || isMember;
-    const canManageCampaigns = isOwner || isManager;
+    // Campaigns (reuse contacts permission)
+    const canViewCampaigns = isOwner || isManager || (hasCustomPerms ? customPerms!.contacts.view : isMember);
+    const canCreateCampaigns = isOwner || isManager || (hasCustomPerms ? customPerms!.contacts.manage : isMember);
+    const canManageCampaigns = isOwner || isManager || (hasCustomPerms ? customPerms!.contacts.manage : false);
+
+    // Phone Numbers
+    const canViewPhoneNumbers = isOwner || isManager || (hasCustomPerms ? customPerms!.phoneNumbers.view : isMember);
+    const canManagePhoneNumbers = isOwner || isManager || (hasCustomPerms ? customPerms!.phoneNumbers.manage : false);
 
     // Integrations
-    const canViewIntegrations = isOwner || isManager || isMember;
-    const canManageIntegrations = isOwner || isManager;
+    const canViewIntegrations = isOwner || isManager || (hasCustomPerms ? customPerms!.integrations.view : isMember);
+    const canManageIntegrations = isOwner || isManager || (hasCustomPerms ? customPerms!.integrations.manage : false);
 
-    // White Label
+    // White Label — always role-based
     const canViewWhitelabel = isOwner || isManager;
     const canManageWhitelabel = isOwner || isManager;
 
-    // Workspace Settings
-    const canViewSettings = isOwner || isManager || isMember;
-    const canManageSettings = isOwner || isManager;
+    // Settings
+    const canViewSettings = isOwner || isManager || (hasCustomPerms ? customPerms!.settings.view : isMember);
+    const canManageSettings = isOwner || isManager || (hasCustomPerms ? customPerms!.settings.manage : false);
     const canManageWorkspace = isOwner || isManager;
 
     return (
@@ -444,7 +494,9 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             canManageWhitelabel,
             canViewSettings,
             canManageSettings,
-            canManageWorkspace
+            canManageWorkspace,
+            canViewPhoneNumbers,
+            canManagePhoneNumbers,
         }}>
             {children}
         </WorkspaceContext.Provider>

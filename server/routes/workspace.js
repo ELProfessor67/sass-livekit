@@ -16,7 +16,7 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
  */
 router.post('/invite', authenticateToken, async (req, res) => {
     try {
-        const { workspaceId, email, role = 'member' } = req.body;
+        const { workspaceId, email, role = 'member', permissions = null } = req.body;
         const inviterId = req.user.id;
 
         if (!workspaceId || !email) {
@@ -94,6 +94,7 @@ router.post('/invite', authenticateToken, async (req, res) => {
                 workspace_id: workspaceId,
                 email: email.toLowerCase(),
                 role,
+                permissions: permissions || null,
                 invited_by: inviterId,
                 token,
                 status: 'pending'
@@ -194,7 +195,7 @@ router.post('/accept-invitation', authenticateToken, async (req, res) => {
             });
         }
 
-        // 2b. Add as member
+        // 2b. Add as member — carry over granular permissions from the invitation
         const { error: memberError } = await supabaseAdmin
             .from('workspace_members')
             .insert({
@@ -202,6 +203,7 @@ router.post('/accept-invitation', authenticateToken, async (req, res) => {
                 user_id: userId,
                 email: userEmail || invitation.email,
                 role: invitation.role,
+                permissions: invitation.permissions || null,
                 status: 'active',
                 joined_at: new Date().toISOString()
             });

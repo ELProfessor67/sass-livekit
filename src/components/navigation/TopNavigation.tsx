@@ -82,7 +82,11 @@ export default function TopNavigation() {
   const { uiStyle } = useTheme();
   const { remainingMinutes, percentageUsed, isLoading: minutesLoading } = useAccountMinutes();
   const { websiteSettings } = useWebsiteSettings();
-  const { workspaces, isOwner, isManager, isViewer } = useWorkspace();
+  const {
+    workspaces, isOwner, isManager, isViewer,
+    canViewAssistants, canViewCalls, canViewContacts,
+    canViewCampaigns, canViewWorkflows,
+  } = useWorkspace();
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const trialCountdown = useTrialCountdown(user?.trialEndsAt);
@@ -152,9 +156,14 @@ export default function TopNavigation() {
     label: "Composer",
     to: "/workflows"
   }].filter(item => {
-    // Hidden modules based on role
-    // For now, all basic modules are visible to everyone, but specific actions inside are restricted
-    return true;
+    // Hide nav items the current user has no view access to
+    if (item.to === '/assistants') return canViewAssistants;
+    if (item.to === '/conversations') return canViewCalls;
+    if (item.to === '/contacts') return canViewContacts;
+    if (item.to === '/campaigns') return canViewCampaigns;
+    if (item.to === '/calls') return canViewCalls;
+    if (item.to === '/workflows') return canViewWorkflows;
+    return true; // dashboard always visible
   });
 
   // Add admin panel to nav items if user is admin

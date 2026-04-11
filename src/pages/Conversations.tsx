@@ -14,10 +14,11 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from 'date-fns';
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
 
 export default function Conversations() {
   const { user, loading: isAuthLoading } = useAuth();
-  const { currentWorkspace, canEdit } = useWorkspace();
+  const { currentWorkspace, canEdit, canViewCalls } = useWorkspace();
   const { toast } = useToast();
   const [selectedAssistantId, setSelectedAssistantId] = useState<string>("all");
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
@@ -450,6 +451,23 @@ export default function Conversations() {
       )
     );
   };
+
+  // Access check
+  if (!canViewCalls) {
+    return (
+      <DashboardLayout>
+        <ThemeContainer variant="base" className="min-h-screen no-hover-scaling">
+          <div className="flex items-center justify-center h-full py-20">
+            <ThemeCard variant="glass" className="p-10 text-center max-w-md">
+              <h2 className="text-2xl font-light mb-4 text-foreground">Access Denied</h2>
+              <p className="text-muted-foreground mb-6">You don't have permission to view conversations in this workspace.</p>
+              <Button onClick={() => window.history.back()}>Go Back</Button>
+            </ThemeCard>
+          </div>
+        </ThemeContainer>
+      </DashboardLayout>
+    );
+  }
 
   // Only show loading screen for auth or initial contact loading, not for conversation details
   if (isAuthLoading || (isLoadingContacts && contacts.length === 0)) {
