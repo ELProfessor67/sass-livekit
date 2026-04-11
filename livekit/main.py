@@ -1384,6 +1384,12 @@ class CallHandler:
                 await self._execute_user_workflows(assistant_config, call_data)
             except Exception as workflow_error:
                 logger.error(f"WORKFLOW_EXECUTION_ERROR | error={str(workflow_error)}")
+
+            # POST transcript + call data to extract endpoint so structured_data.outcome is populated
+            try:
+                await self._trigger_extract_workflow(assistant_config, call_data, transcription)
+            except Exception as extract_error:
+                logger.error(f"EXTRACT_WORKFLOW_TRIGGER_FAILED | error={str(extract_error)}")
                 
         except Exception as e:
             logger.error(f"POST_CALL_PROCESSING_ERROR | error={str(e)}")
@@ -1426,6 +1432,77 @@ class CallHandler:
                 )
         except Exception as e:
             logger.error(f"BACKEND_WORKFLOW_TRIGGER_FAILED | error={str(e)}")
+
+    async def _trigger_extract_workflow(
+        self,
+        assistant_config: Dict[str, Any],
+        call_data: Dict[str, Any],
+        transcription: list,
+    ) -> None:
+        """POST transcript + call data to /api/v1/workflows/extract so the backend
+        can populate structured_data.outcome on the call_history record.
+
+        The extract endpoint is fire-and-forget from the agent's perspective; failures
+        are logged but do not affect the call save result. Until the backend processes
+        the request, structured_data.outcome remains null and the dashboard correctly
+        falls back to call_status.
+        """
+        call_id = call_data.get("call_id") or call_data.get("call_sid")
+        assistant_id = assistant_config.get("id")
+
+        if not call_id or not assistant_id:
+            logger.warning(
+                "EXTRACT_WORKFLOW_SKIPPED | missing call_id or assistant_id"
+            )
+            return
+
+        try:
+            backend_url = os.environ.get("BACKEND_URL", "http://localhost:4000")
+
+            payload = {
+                "call_id": call_id,
+                "assistant_id": assistant_id,
+                "transcript": transcription,
+                "call_data": {
+                    k: call_data.get(k)
+                    for k in (
+                        "call_id",
+                        "call_sid",
+                        "assistant_id",
+                        "phone_number",
+                        "agent_phone_number",
+                        "participant_identity",
+                        "start_time",
+                        "end_time",
+                        "call_duration",
+                        "call_status",
+                        "outcome",
+                        "call_summary",
+                        "success_evaluation",
+                        "structured_data",
+                        "appointment",
+                    )
+                    if call_data.get(k) is not None
+                },
+            }
+
+            logger.info(
+                f"EXTRACT_WORKFLOW_SENDING | call_id={call_id} | assistant_id={assistant_id} "
+                f"| transcript_items={len(transcription)}"
+            )
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{backend_url}/api/v1/workflows/extract",
+                    json=payload,
+                    timeout=10.0,
+                )
+                logger.info(
+                    f"EXTRACT_WORKFLOW_SENT | call_id={call_id} | status={response.status_code}"
+                )
+
+        except Exception as e:
+            logger.error(f"EXTRACT_WORKFLOW_REQUEST_FAILED | call_id={call_id} | error={str(e)}")
 
     def _extract_call_sid(self, ctx: JobContext, participant) -> Optional[str]:
         """Extract call_sid from various sources like in old implementation."""
